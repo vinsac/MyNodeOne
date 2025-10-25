@@ -1,4 +1,4 @@
-# NodeZero Security Best Practices
+# MyNodeOne Security Best Practices
 
 **Version:** 1.0.0  
 **Last Updated:** October 25, 2025  
@@ -8,7 +8,7 @@
 
 ## 🔒 Overview
 
-This guide provides security best practices for deploying and maintaining NodeZero in production environments. Following these guidelines will significantly reduce your security risk.
+This guide provides security best practices for deploying and maintaining MyNodeOne in production environments. Following these guidelines will significantly reduce your security risk.
 
 ---
 
@@ -16,8 +16,8 @@ This guide provides security best practices for deploying and maintaining NodeZe
 
 ### Immediate Actions (After Installation)
 
-- [ ] Save all credentials from `/root/nodezero-*.txt` files to a password manager
-- [ ] Delete credential files after saving: `rm /root/nodezero-*.txt`
+- [ ] Save all credentials from `/root/mynodeone-*.txt` files to a password manager
+- [ ] Delete credential files after saving: `rm /root/mynodeone-*.txt`
 - [ ] Change default SSH port (optional but recommended)
 - [ ] Enable automatic security updates
 - [ ] Review firewall rules: `sudo ufw status verbose`

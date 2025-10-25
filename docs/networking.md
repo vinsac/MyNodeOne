@@ -1,6 +1,6 @@
-# NodeZero Networking Guide
+# MyNodeOne Networking Guide
 
-Complete guide to networking in NodeZero, including Tailscale setup, alternatives, and CLI management.
+Complete guide to networking in MyNodeOne, including Tailscale setup, alternatives, and CLI management.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Tailscale creates a **secure mesh VPN** between your machines using WireGuard pr
 - ✅ NAT Traversal
 - ✅ Free Tier (up to 20 devices)
 
-### Why NodeZero Uses It
+### Why MyNodeOne Uses It
 
 **Problem:** Home servers behind NAT can't be reached from internet.
 
@@ -51,7 +51,7 @@ sudo tailscale up
 sudo tailscale up --accept-routes --accept-dns=false
 
 # With hostname
-sudo tailscale up --hostname="nodezero-control-01"
+sudo tailscale up --hostname="mynodeone-control-01"
 ```
 
 ### Get Your IP
@@ -180,10 +180,10 @@ sudo nano /etc/headscale/config.yaml
 sudo headscale serve &
 
 # Create user
-headscale users create nodezero
+headscale users create mynodeone
 
 # Generate auth key
-headscale preauthkeys create --user nodezero --expiration 24h
+headscale preauthkeys create --user mynodeone --expiration 24h
 
 # On clients
 tailscale up --login-server=https://your-headscale:8080 --authkey=xxx
@@ -292,9 +292,9 @@ sudo wg-quick up wg0
 | **Performance** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 | **Mobile Apps** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
-### NodeZero Default: **Tailscale** ⭐
+### MyNodeOne Default: **Tailscale** ⭐
 
-**Tailscale is the default and recommended networking solution for NodeZero.**
+**Tailscale is the default and recommended networking solution for MyNodeOne.**
 
 All scripts are configured to use Tailscale by default. No additional setup needed beyond running the installer.
 
@@ -305,7 +305,7 @@ All scripts are configured to use Tailscale by default. No additional setup need
 - ✅ **Best NAT traversal** - Works behind any firewall
 - ✅ **Automatic updates** - Always secure
 - ✅ **Cross-platform** - Linux, Windows, Mac, mobile
-- ✅ **Perfect for NodeZero** - Designed for this use case
+- ✅ **Perfect for MyNodeOne** - Designed for this use case
 
 **Bottom line:** Use Tailscale unless you have a specific reason not to.
 
@@ -335,7 +335,7 @@ All scripts are configured to use Tailscale by default. No additional setup need
 ### Recommendation: Use Tailscale
 
 **Why:**
-1. Get NodeZero running in 30 minutes
+1. Get MyNodeOne running in 30 minutes
 2. Focus on applications, not networking
 3. Can switch to Headscale later (same clients)
 4. Free tier is generous (20 devices)
@@ -349,9 +349,9 @@ All scripts are configured to use Tailscale by default. No additional setup need
 
 ---
 
-## Tailscale in NodeZero
+## Tailscale in MyNodeOne
 
-### How NodeZero Uses Tailscale
+### How MyNodeOne Uses Tailscale
 
 ```
 ┌─────────────────┐
@@ -382,18 +382,18 @@ All scripts are configured to use Tailscale by default. No additional setup need
 4. No port forwarding on home router needed
 5. End-to-end encryption
 
-### Configuration in NodeZero Scripts
+### Configuration in MyNodeOne Scripts
 
 ```bash
 # scripts/interactive-setup.sh installs Tailscale
 # Gets Tailscale IP automatically
 TAILSCALE_IP=$(tailscale ip -4 | head -n1)
 
-# Saves to ~/.nodezero/config.env
-echo "TAILSCALE_IP=$TAILSCALE_IP" >> ~/.nodezero/config.env
+# Saves to ~/.mynodeone/config.env
+echo "TAILSCALE_IP=$TAILSCALE_IP" >> ~/.mynodeone/config.env
 
 # Other scripts read this config
-source ~/.nodezero/config.env
+source ~/.mynodeone/config.env
 
 # K3s configured to use Tailscale interface
 cat > /etc/rancher/k3s/config.yaml <<EOF
@@ -467,7 +467,7 @@ sudo tailscale up
 
 ## Summary
 
-**For NodeZero:**
+**For MyNodeOne:**
 - ✅ **Use Tailscale** for easiest setup
 - ✅ All CLI commands available
 - ✅ Can switch to Headscale later if needed
@@ -479,4 +479,4 @@ sudo tailscale up
 For more help:
 - Tailscale Docs: https://tailscale.com/kb
 - Headscale Repo: https://github.com/juanfont/headscale
-- NodeZero FAQ: ../FAQ.md
+- MyNodeOne FAQ: ../FAQ.md

@@ -1,4 +1,4 @@
-# NodeZero Operations Guide
+# MyNodeOne Operations Guide
 
 ## Day-to-Day Operations
 
@@ -142,33 +142,33 @@ sudo mv mc /usr/local/bin/
 
 # Configure
 MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-mc alias set nodezero http://$MINIO_ENDPOINT:9000 <access-key> <secret-key>
-# Get credentials from /root/nodezero-minio-credentials.txt on toronto-0001
+mc alias set mynodeone http://$MINIO_ENDPOINT:9000 <access-key> <secret-key>
+# Get credentials from /root/mynodeone-minio-credentials.txt on toronto-0001
 ```
 
 #### Common MinIO Operations
 
 ```bash
 # List buckets
-mc ls nodezero
+mc ls mynodeone
 
 # Create bucket
-mc mb nodezero/my-bucket
+mc mb mynodeone/my-bucket
 
 # Upload file
-mc cp myfile.txt nodezero/my-bucket/
+mc cp myfile.txt mynodeone/my-bucket/
 
 # Download file
-mc cp nodezero/my-bucket/myfile.txt ./
+mc cp mynodeone/my-bucket/myfile.txt ./
 
 # Sync directory
-mc mirror ./local-dir nodezero/my-bucket/
+mc mirror ./local-dir mynodeone/my-bucket/
 
 # Set bucket policy (public read)
-mc anonymous set download nodezero/my-bucket
+mc anonymous set download mynodeone/my-bucket
 
 # Get bucket size
-mc du nodezero/my-bucket
+mc du mynodeone/my-bucket
 ```
 
 ### Longhorn (Block Storage)
@@ -382,10 +382,10 @@ EOF
 
 ```bash
 # Using mc mirror
-mc mirror nodezero s3-backup-location
+mc mirror mynodeone s3-backup-location
 
 # Or setup MinIO replication
-mc replicate add nodezero/my-bucket --remote-bucket backup-bucket --priority 1
+mc replicate add mynodeone/my-bucket --remote-bucket backup-bucket --priority 1
 ```
 
 ### Certificate Management
@@ -607,7 +607,7 @@ kubectl rollout restart deployment/<deployment-name>
 
 2. **Restore from MinIO backup**
    ```bash
-   mc mirror s3-backup-location nodezero
+   mc mirror s3-backup-location mynodeone
    ```
 
 ## Regular Maintenance Schedule

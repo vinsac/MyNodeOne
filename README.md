@@ -1,4 +1,4 @@
-# NodeZero - Your Private Cloud Infrastructure
+# MyNodeOne - Your Private Cloud Infrastructure
 
 > Build your own mini AWS region with commodity hardware
 
@@ -12,15 +12,15 @@
 
 ## 👋 New Here? → **[START HERE](START-HERE.md)**
 
-If you're new to NodeZero, start with **[START-HERE.md](START-HERE.md)** for a guided introduction.
+If you're new to MyNodeOne, start with **[START-HERE.md](START-HERE.md)** for a guided introduction.
 
 **Don't understand the technical terms?** → Check **[GLOSSARY.md](GLOSSARY.md)** for simple explanations!
 
 ---
 
-## What is NodeZero?
+## What is MyNodeOne?
 
-NodeZero is a production-ready, scalable private cloud infrastructure that lets you run containerized applications across multiple machines with enterprise-grade features:
+MyNodeOne is a production-ready, scalable private cloud infrastructure that lets you run containerized applications across multiple machines with enterprise-grade features:
 
 ✅ **Auto-scaling** across multiple nodes  
 ✅ **S3-compatible object storage** (MinIO)  
@@ -31,11 +31,11 @@ NodeZero is a production-ready, scalable private cloud infrastructure that lets 
 ✅ **Secure networking** (Tailscale mesh - **default** + VPS edge nodes)  
 ✅ **100% free and open source**
 
-> **Networking:** NodeZero uses **Tailscale by default** for secure mesh networking. Zero configuration required!
+> **Networking:** MyNodeOne uses **Tailscale by default** for secure mesh networking. Zero configuration required!
 
 ## 🆕 What's New in Version 1.0
 
-✅ **One Command Setup** - `sudo ./scripts/nodezero` does everything  
+✅ **One Command Setup** - `sudo ./scripts/mynodeone` does everything  
 ✅ **System Cleanup** - Automatic removal of bloat and unused packages  
 ✅ **Disk Auto-Detection** - Finds and configures external drives automatically  
 ✅ **Fully Generic** - Works with ANY hardware, names, IPs  
@@ -47,11 +47,11 @@ NodeZero is a production-ready, scalable private cloud infrastructure that lets 
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 
 # Run ONE command (handles everything)
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 
 # Follow interactive prompts
 # Done in 30 minutes!
@@ -61,7 +61,7 @@ For detailed guide, see [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 
 ## 🔒 Security Hardening
 
-NodeZero includes comprehensive security features:
+MyNodeOne includes comprehensive security features:
 
 **Built-in (Automatic):**
 - ✅ Firewall (UFW) on all nodes
@@ -143,8 +143,8 @@ Enables:
 
 ```bash
 # Clone this repo
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 
 # Run bootstrap script
 sudo ./scripts/bootstrap-control-plane.sh
@@ -212,10 +212,10 @@ git push
 
 All accessible via Tailscale network from your vivobook:
 
-- **ArgoCD** (GitOps): https://argocd.nodezero.local
-- **Grafana** (Monitoring): https://grafana.nodezero.local
-- **MinIO Console** (S3): https://minio.nodezero.local
-- **Traefik Dashboard**: https://traefik.nodezero.local
+- **ArgoCD** (GitOps): https://argocd.mynodeone.local
+- **Grafana** (Monitoring): https://grafana.mynodeone.local
+- **MinIO Console** (S3): https://minio.mynodeone.local
+- **Traefik Dashboard**: https://traefik.mynodeone.local
 
 ### CLI Tools
 
@@ -240,13 +240,13 @@ kubectl top pods -A
 
 ```bash
 # Access MinIO
-mc alias set nodezero http://minio.nodezero.local accesskey secretkey
+mc alias set mynodeone http://minio.mynodeone.local accesskey secretkey
 
 # Create bucket
-mc mb nodezero/my-bucket
+mc mb mynodeone/my-bucket
 
 # Upload file
-mc cp myfile.txt nodezero/my-bucket/
+mc cp myfile.txt mynodeone/my-bucket/
 ```
 
 ### Block Storage (Persistent Volumes)
@@ -269,7 +269,7 @@ spec:
 
 ## Monitoring
 
-Access Grafana at https://grafana.nodezero.local
+Access Grafana at https://grafana.mynodeone.local
 
 Pre-configured dashboards:
 - Cluster overview
@@ -318,14 +318,14 @@ Pre-configured dashboards:
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
 ### User Guides
-- **[docs/comparison-guide.md](docs/comparison-guide.md)** - NodeZero vs alternatives (OpenStack, Proxmox, etc.) ⭐
+- **[docs/comparison-guide.md](docs/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐
 - **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
 - **[docs/networking.md](docs/networking.md)** - Tailscale guide (default)
 - **[docs/operations.md](docs/operations.md)** - Daily management
 - **[docs/troubleshooting.md](docs/troubleshooting.md)** - Problem solving
 
 ### Technical Guides
-- **[docs/architecture.md](docs/architecture.md)** - How NodeZero works
+- **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works
 - **[docs/scaling.md](docs/scaling.md)** - Add more nodes
 
 ### Community
@@ -335,9 +335,9 @@ Pre-configured dashboards:
 ## Directory Structure
 
 ```
-nodezero/
+mynodeone/
 ├── scripts/
-│   ├── nodezero                      # ⭐ Main entry point
+│   ├── mynodeone                      # ⭐ Main entry point
 │   ├── interactive-setup.sh          # Configuration wizard
 │   ├── bootstrap-control-plane.sh    # Control plane setup
 │   ├── add-worker-node.sh            # Worker addition
@@ -360,7 +360,7 @@ nodezero/
 
 ## Philosophy
 
-NodeZero is designed to be:
+MyNodeOne is designed to be:
 - **Simple**: Opinionated choices, minimal configuration
 - **Scalable**: Add machines as you grow
 - **Portable**: Not tied to specific hardware
@@ -382,7 +382,7 @@ NodeZero is designed to be:
 
 ## Contributing
 
-NodeZero is designed to be a community project. Contributions welcome!
+MyNodeOne is designed to be a community project. Contributions welcome!
 
 ## License
 
@@ -395,7 +395,7 @@ MIT License - Use it however you want!
 **Version:** 1.0.0  
 **Author:** Vinay Sachdeva  
 **License:** MIT  
-**Repository:** https://github.com/vinsac/nodezero  
+**Repository:** https://github.com/vinsac/mynodeone  
 
 **Development:** Built with assistance from AI tools for enhanced code quality and comprehensive documentation.
 

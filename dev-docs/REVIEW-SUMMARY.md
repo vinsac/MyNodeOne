@@ -1,4 +1,4 @@
-# NodeZero Complete Review Summary
+# MyNodeOne Complete Review Summary
 
 **Code Edge Cases + Documentation Accessibility Review**
 
@@ -30,7 +30,7 @@
 
 **Severity:** 🔴 CRITICAL  
 **Impact:** Could erase user's important data without warning  
-**File:** `scripts/nodezero` lines 217-277
+**File:** `scripts/mynodeone` lines 217-277
 
 **Problem:**
 ```bash
@@ -66,7 +66,7 @@ warn_data_loss() {
         echo
         if prompt_confirm "Show files on this disk before formatting?"; then
             # Try to mount and show contents
-            local temp_mount="/tmp/nodezero-check-$$"
+            local temp_mount="/tmp/mynodeone-check-$$"
             mkdir -p "$temp_mount"
             if mount -o ro "$disk" "$temp_mount" 2>/dev/null; then
                 echo "Files found:"
@@ -104,7 +104,7 @@ fi
 
 **Severity:** 🔴 CRITICAL  
 **Impact:** Could destroy existing RAID arrays  
-**File:** `scripts/nodezero` lines 279-345
+**File:** `scripts/mynodeone` lines 279-345
 
 **Problem:**
 ```bash
@@ -159,7 +159,7 @@ check_network() {
     if ! ping -c 1 -W 5 8.8.8.8 &> /dev/null; then
         print_error "No internet connection detected"
         echo
-        echo "NodeZero requires internet to download components."
+        echo "MyNodeOne requires internet to download components."
         echo "Please check your network connection and try again."
         echo
         return 1
@@ -194,7 +194,7 @@ check_network || exit 1
 ```bash
 check_existing_installation() {
     if [ -f "$CONFIG_FILE" ]; then
-        print_warning "NodeZero appears to be already installed"
+        print_warning "MyNodeOne appears to be already installed"
         echo
         echo "Existing configuration found at: $CONFIG_FILE"
         echo
@@ -211,7 +211,7 @@ check_existing_installation() {
                 return 0
                 ;;
             2)
-                print_warning "This will remove existing NodeZero installation"
+                print_warning "This will remove existing MyNodeOne installation"
                 if prompt_confirm "Are you sure?"; then
                     cleanup_existing_installation
                     return 0
@@ -252,7 +252,7 @@ check_system_resources() {
     if [ "$ram_gb" -lt "$min_ram" ]; then
         print_error "Insufficient RAM: ${ram_gb}GB (minimum ${min_ram}GB required)"
         echo
-        echo "Your system has ${ram_gb}GB RAM, but NodeZero requires at least ${min_ram}GB."
+        echo "Your system has ${ram_gb}GB RAM, but MyNodeOne requires at least ${min_ram}GB."
         echo
         echo "Options:"
         echo "  1. Add more RAM to this machine"

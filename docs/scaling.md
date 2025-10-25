@@ -1,8 +1,8 @@
-# NodeZero Scaling Guide
+# MyNodeOne Scaling Guide
 
 ## Scaling Philosophy
 
-NodeZero is designed to scale with your needs:
+MyNodeOne is designed to scale with your needs:
 - **Vertical Scaling**: Upgrade individual nodes (more RAM, CPU, storage)
 - **Horizontal Scaling**: Add more nodes to the cluster
 - **Application Scaling**: Increase replicas, optimize code
@@ -28,8 +28,8 @@ sudo tailscale up
 
 ```bash
 # On toronto-0002
-git clone <nodezero-repo-url>
-cd nodezero
+git clone <mynodeone-repo-url>
+cd mynodeone
 sudo ./scripts/add-worker-node.sh
 ```
 
@@ -45,8 +45,8 @@ The script will:
 ```bash
 # On toronto-0001
 kubectl label node toronto-0002 node-role.kubernetes.io/worker=true
-kubectl label node toronto-0002 nodezero.io/location=toronto
-kubectl label node toronto-0002 nodezero.io/storage=true
+kubectl label node toronto-0002 mynodeone.io/location=toronto
+kubectl label node toronto-0002 mynodeone.io/storage=true
 ```
 
 #### 4. Verify
@@ -90,8 +90,8 @@ sudo ./scripts/add-worker-node.sh
 
 # On control plane
 kubectl label node toronto-0003 node-role.kubernetes.io/worker=true
-kubectl label node toronto-0003 nodezero.io/location=toronto
-kubectl label node toronto-0003 nodezero.io/storage=true
+kubectl label node toronto-0003 mynodeone.io/location=toronto
+kubectl label node toronto-0003 mynodeone.io/storage=true
 
 # Update Longhorn for 3 replicas
 kubectl -n longhorn-system patch settings.longhorn.io default-replica-count \
@@ -272,8 +272,8 @@ Add more Contabo VPS or other providers:
 
 ```bash
 # On new VPS
-git clone <nodezero-repo>
-cd nodezero
+git clone <mynodeone-repo>
+cd mynodeone
 sudo ./scripts/setup-edge-node.sh
 ```
 
@@ -443,7 +443,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: nodezero.io/gpu
+              - key: mynodeone.io/gpu
                 operator: In
                 values:
                 - "true"
@@ -639,4 +639,4 @@ spec:
 
 ---
 
-**Ready to scale?** Your NodeZero cluster grows with you! 🚀
+**Ready to scale?** Your MyNodeOne cluster grows with you! 🚀

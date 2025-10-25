@@ -1,4 +1,4 @@
-# NodeZero v1.0 - Repository Structure
+# MyNodeOne v1.0 - Repository Structure
 
 **Author:** Vinay Sachdeva  
 **Version:** 1.0.0  
@@ -9,7 +9,7 @@
 ## 📁 Clean Repository Layout
 
 ```
-nodezero/
+mynodeone/
 │
 ├── 📖 Core Documentation
 │   ├── README.md              ← Project overview & features
@@ -28,7 +28,7 @@ nodezero/
 │
 ├── 🔧 Scripts (Automation)
 │   └── scripts/
-│       ├── nodezero           ⭐ Main installer (run this!)
+│       ├── mynodeone           ⭐ Main installer (run this!)
 │       ├── interactive-setup.sh    Configuration wizard
 │       ├── bootstrap-control-plane.sh
 │       ├── add-worker-node.sh
@@ -40,7 +40,7 @@ nodezero/
 │   └── docs/
 │       ├── setup-options-guide.md   Beginner-friendly options guide
 │       ├── networking.md            Tailscale guide (default)
-│       ├── architecture.md          How NodeZero works
+│       ├── architecture.md          How MyNodeOne works
 │       ├── operations.md            Daily management
 │       ├── troubleshooting.md       Problem solving
 │       └── scaling.md               Add more nodes
@@ -61,7 +61,7 @@ nodezero/
 │
 ├── ⚙️ Configuration Templates
 │   └── config/
-│       └── nodezero.conf.example
+│       └── mynodeone.conf.example
 │
 └── 🔨 Developer Documentation (Optional)
     └── dev-docs/
@@ -85,7 +85,7 @@ nodezero/
 
 ### For New Users
 1. Start → [START-HERE.md](START-HERE.md)
-2. Install → `sudo ./scripts/nodezero`
+2. Install → `sudo ./scripts/mynodeone`
 3. Questions → [FAQ.md](FAQ.md)
 4. Terms → [GLOSSARY.md](GLOSSARY.md)
 
@@ -165,7 +165,7 @@ nodezero/
 - **CONTRIBUTING.md** - How to contribute
 
 ### Automation
-- **scripts/nodezero** - Main entry point (ONE command)
+- **scripts/mynodeone** - Main entry point (ONE command)
 - **scripts/interactive-setup.sh** - Configuration wizard
 - **scripts/bootstrap-control-plane.sh** - First node setup
 - **scripts/add-worker-node.sh** - Add compute nodes
@@ -230,7 +230,7 @@ nodezero/
 
 ## 🎉 Ready for Use
 
-**NodeZero v1.0 is production-ready!**
+**MyNodeOne v1.0 is production-ready!**
 
 - ✅ Clean repository structure
 - ✅ Proper authorship (Vinay Sachdeva)

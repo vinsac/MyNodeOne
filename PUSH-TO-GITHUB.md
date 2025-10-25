@@ -34,7 +34,7 @@ Everything has been prepared and committed locally. Now you just need to push to
 ## 🚀 Push to GitHub (Run These Commands)
 
 ```bash
-cd /home/vinay/Projects/nodezero/code/nodezero
+cd /home/vinay/Projects/mynodeone/code/mynodeone
 
 # Push the main branch
 git push -u origin main
@@ -57,7 +57,7 @@ git push origin v1.0.0
 
 **Tag:**
 - Tag: v1.0.0
-- Message: "NodeZero v1.0.0 - First Stable Release"
+- Message: "MyNodeOne v1.0.0 - First Stable Release"
 
 ---
 
@@ -82,7 +82,7 @@ git push origin v1.0.0
 ### Option 3: SSH Key
 If you have SSH key set up:
 ```bash
-git remote set-url origin git@github.com:vinsac/nodezero.git
+git remote set-url origin git@github.com:vinsac/mynodeone.git
 git push -u origin main
 git push origin v1.0.0
 ```
@@ -92,16 +92,16 @@ git push origin v1.0.0
 ## ✅ After Pushing
 
 ### Verify on GitHub
-1. Go to: https://github.com/vinsac/nodezero
+1. Go to: https://github.com/vinsac/mynodeone
 2. Check that v1.0.0 tag is visible
 3. Check that main branch is updated
 4. Verify README looks correct
 
 ### Create GitHub Release (Optional but Recommended)
-1. Go to: https://github.com/vinsac/nodezero/releases
+1. Go to: https://github.com/vinsac/mynodeone/releases
 2. Click "Draft a new release"
 3. Select tag: v1.0.0
-4. Release title: "NodeZero v1.0.0 - First Stable Release"
+4. Release title: "MyNodeOne v1.0.0 - First Stable Release"
 5. Description: Copy from RELEASE-NOTES-v1.0.md
 6. Click "Publish release"
 
@@ -112,7 +112,7 @@ git push origin v1.0.0
 Your GitHub repo will have:
 
 ```
-vinsac/nodezero (v1.0.0)
+vinsac/mynodeone (v1.0.0)
 │
 ├── README.md              ⭐ Main entry point
 ├── START-HERE.md          For new users
@@ -144,11 +144,11 @@ git push -u origin main
 git push origin v1.0.0
 ```
 
-Then your NodeZero v1.0.0 will be live on GitHub! 🚀
+Then your MyNodeOne v1.0.0 will be live on GitHub! 🚀
 
 ---
 
-**Repository:** https://github.com/vinsac/nodezero  
+**Repository:** https://github.com/vinsac/mynodeone  
 **Version:** 1.0.0  
 **Release Date:** October 25, 2025  
 **Author:** Vinay Sachdeva  

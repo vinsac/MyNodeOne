@@ -1,4 +1,4 @@
-# NodeZero Changelog
+# MyNodeOne Changelog
 
 ## Version 1.0.0 (October 25, 2025)
 
@@ -6,7 +6,7 @@
 
 ### Major Safety, Security & Usability Improvements
 
-NodeZero is now **production-ready** with comprehensive safety features, enterprise-grade security, and user-friendly documentation.
+MyNodeOne is now **production-ready** with comprehensive safety features, enterprise-grade security, and user-friendly documentation.
 
 ---
 
@@ -42,7 +42,7 @@ NodeZero is now **production-ready** with comprehensive safety features, enterpr
 - Compliance guidelines (GDPR, HIPAA, SOC 2)
 
 **Password Management:**
-- ⚠️ Detailed guide on why NOT to self-host password manager on NodeZero
+- ⚠️ Detailed guide on why NOT to self-host password manager on MyNodeOne
 - ✅ Recommendations: Bitwarden Cloud ($10/year) or 1Password ($8/user/month)
 - ✅ Complete workflow for secure credential storage
 - ✅ Monthly rotation schedule included
@@ -73,7 +73,7 @@ NodeZero is now **production-ready** with comprehensive safety features, enterpr
 
 ### 2. Pre-Flight Checks ✈️
 
-**New:** Before installation starts, NodeZero checks:
+**New:** Before installation starts, MyNodeOne checks:
 
 - ✅ **Internet connectivity** - Fails fast if offline
 - ✅ **System resources** - Checks RAM, disk space, CPU
@@ -190,9 +190,9 @@ Examples:
 ### New Installation
 Just use the updated scripts:
 ```bash
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
-sudo ./scripts/nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
+sudo ./scripts/mynodeone
 ```
 
 The new safety features work automatically!
@@ -221,7 +221,7 @@ All these scenarios now work correctly:
 ### Check Your System First
 ```bash
 # The script now checks automatically:
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 ```
 
 You'll see a "Pre-Flight Checks" section before anything installs.
@@ -289,7 +289,7 @@ A: Not recommended, but you can if you're certain your system meets requirements
 
 ## 🎉 Thank You!
 
-These improvements make NodeZero:
+These improvements make MyNodeOne:
 - ✅ **Safer** - No accidental data loss
 - ✅ **Smarter** - Catches problems early
 - ✅ **Clearer** - Better error messages
@@ -312,4 +312,4 @@ These improvements make NodeZero:
 **License:** MIT  
 **Status:** ✅ Production Ready
 
-🚀 **Happy cloud building with NodeZero!** 🚀
+🚀 **Happy cloud building with MyNodeOne!** 🚀

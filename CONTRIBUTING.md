@@ -1,6 +1,6 @@
-# Contributing to NodeZero
+# Contributing to MyNodeOne
 
-Thank you for your interest in contributing to NodeZero! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to MyNodeOne! This document provides guidelines and information for contributors.
 
 ## Code of Conduct
 
@@ -13,7 +13,7 @@ Be respectful, inclusive, and constructive. We're building a community tool for 
 1. Check if the issue already exists
 2. Use the issue template
 3. Include:
-   - NodeZero version
+   - MyNodeOne version
    - Kubernetes version
    - Operating system
    - Steps to reproduce
@@ -24,7 +24,7 @@ Be respectful, inclusive, and constructive. We're building a community tool for 
 
 1. Open an issue with the "enhancement" label
 2. Describe the use case
-3. Explain why it would benefit NodeZero users
+3. Explain why it would benefit MyNodeOne users
 4. Consider implementation complexity
 
 ### Contributing Code
@@ -41,7 +41,7 @@ Be respectful, inclusive, and constructive. We're building a community tool for 
    - Update documentation if needed
 
 4. **Test your changes**
-   - Test on a real NodeZero cluster
+   - Test on a real MyNodeOne cluster
    - Verify backward compatibility
    - Check all scripts run successfully
 
@@ -59,11 +59,11 @@ Be respectful, inclusive, and constructive. We're building a community tool for 
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 
 # Add upstream remote
-git remote add upstream https://github.com/original/nodezero.git
+git remote add upstream https://github.com/original/mynodeone.git
 
 # Create test environment (optional)
 # Use a VM or spare machine for testing
@@ -234,4 +234,4 @@ Contributors will be:
 - Mentioned in release notes
 - Given credit in documentation
 
-Thank you for contributing to NodeZero! 🚀
+Thank you for contributing to MyNodeOne! 🚀

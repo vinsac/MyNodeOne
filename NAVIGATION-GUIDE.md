@@ -1,6 +1,6 @@
-# 🗺️ NodeZero Navigation Guide
+# 🗺️ MyNodeOne Navigation Guide
 
-Quick reference for finding what you need in the NodeZero repository.
+Quick reference for finding what you need in the MyNodeOne repository.
 
 ---
 
@@ -9,10 +9,10 @@ Quick reference for finding what you need in the NodeZero repository.
 ### Get Started
 - **"I'm brand new"** → [START-HERE.md](START-HERE.md)
 - **"Quick overview"** → [README.md](README.md)
-- **"Install now"** → Run `sudo ./scripts/nodezero`
+- **"Install now"** → Run `sudo ./scripts/mynodeone`
 - **"Step-by-step guide"** → [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 
-### Understand NodeZero
+### Understand MyNodeOne
 - **"What are the options?"** → [docs/setup-options-guide.md](docs/setup-options-guide.md)
 - **"How does it work?"** → [docs/architecture.md](docs/architecture.md)
 - **"What about networking?"** → [docs/networking.md](docs/networking.md)
@@ -39,7 +39,7 @@ Quick reference for finding what you need in the NodeZero repository.
 ## 📁 File Organization
 
 ```
-nodezero/
+mynodeone/
 │
 ├── 🚀 START-HERE.md              ← Entry point for new users
 ├── 📖 README.md                  ← Project overview
@@ -50,7 +50,7 @@ nodezero/
 ├── 🤝 CONTRIBUTING.md            ← How to contribute
 │
 ├── scripts/                      ← Automation
-│   └── 🎯 nodezero               ← Main installer
+│   └── 🎯 mynodeone               ← Main installer
 │
 ├── docs/                         ← User guides
 │   ├── setup-options-guide.md    ← For beginners
@@ -75,7 +75,7 @@ nodezero/
 2. [README.md](README.md) - 5 min
 3. [docs/setup-options-guide.md](docs/setup-options-guide.md) - 15 min
 4. [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - 20 min
-5. Install: `sudo ./scripts/nodezero`
+5. Install: `sudo ./scripts/mynodeone`
 6. [docs/operations.md](docs/operations.md) - After install
 7. [FAQ.md](FAQ.md) - When questions arise
 
@@ -83,14 +83,14 @@ nodezero/
 1. [README.md](README.md) - 5 min
 2. [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - 10 min
 3. [docs/architecture.md](docs/architecture.md) - 15 min
-4. Install: `sudo ./scripts/nodezero`
+4. Install: `sudo ./scripts/mynodeone`
 5. [docs/operations.md](docs/operations.md) - Reference
 6. [docs/scaling.md](docs/scaling.md) - When ready to grow
 
 ### Advanced (Kubernetes experience)
 1. [docs/architecture.md](docs/architecture.md) - Technical design
 2. [REPO-STRUCTURE.md](REPO-STRUCTURE.md) - Repository layout
-3. Install: `sudo ./scripts/nodezero`
+3. Install: `sudo ./scripts/mynodeone`
 4. Explore: `manifests/` and `scripts/`
 5. [dev-docs/](dev-docs/) - Developer documentation
 6. [CONTRIBUTING.md](CONTRIBUTING.md) - Help improve
@@ -100,19 +100,19 @@ nodezero/
 ## 🔍 Find Specific Topics
 
 ### Installation & Setup
-- Main installer: `scripts/nodezero`
+- Main installer: `scripts/mynodeone`
 - Installation guide: [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 - Setup options: [docs/setup-options-guide.md](docs/setup-options-guide.md)
 - Configuration wizard: `scripts/interactive-setup.sh`
 
 ### Comparisons & Alternatives
-- **NodeZero vs Alternatives:** [docs/comparison-guide.md](docs/comparison-guide.md) ⭐
-- NodeZero vs OpenStack
-- NodeZero vs Proxmox
-- NodeZero vs Bare Kubernetes
-- NodeZero vs Docker Compose
-- NodeZero vs Managed K8s (AWS/GCP/Azure)
-- When to use NodeZero?
+- **MyNodeOne vs Alternatives:** [docs/comparison-guide.md](docs/comparison-guide.md) ⭐
+- MyNodeOne vs OpenStack
+- MyNodeOne vs Proxmox
+- MyNodeOne vs Bare Kubernetes
+- MyNodeOne vs Docker Compose
+- MyNodeOne vs Managed K8s (AWS/GCP/Azure)
+- When to use MyNodeOne?
 - Decision tree and use cases
 
 ### Networking
@@ -149,7 +149,7 @@ nodezero/
 → [START-HERE.md](START-HERE.md)
 
 **"How do I install?"**  
-→ `sudo ./scripts/nodezero`
+→ `sudo ./scripts/mynodeone`
 
 **"What's Tailscale?"**  
 → [docs/networking.md](docs/networking.md) - Default networking (automatic)
@@ -180,7 +180,7 @@ nodezero/
 - [docs/troubleshooting.md](docs/troubleshooting.md) - Problem solving
 
 ### Explanations (Understanding)
-- [README.md](README.md) - What is NodeZero?
+- [README.md](README.md) - What is MyNodeOne?
 - [docs/architecture.md](docs/architecture.md) - How it works
 - [docs/setup-options-guide.md](docs/setup-options-guide.md) - Options explained
 - [docs/networking.md](docs/networking.md) - Networking explained
@@ -202,11 +202,11 @@ nodezero/
 
 Based on where you are:
 
-### Just Discovered NodeZero
+### Just Discovered MyNodeOne
 → Read [START-HERE.md](START-HERE.md)
 
 ### Ready to Install
-→ Run `sudo ./scripts/nodezero`
+→ Run `sudo ./scripts/mynodeone`
 
 ### Already Installed
 → Check [docs/operations.md](docs/operations.md)

@@ -1,8 +1,8 @@
-# NodeZero Architecture
+# MyNodeOne Architecture
 
 ## Overview
 
-NodeZero is a distributed cloud infrastructure built on top of Kubernetes (K3s) with a focus on simplicity, scalability, and cost-effectiveness.
+MyNodeOne is a distributed cloud infrastructure built on top of Kubernetes (K3s) with a focus on simplicity, scalability, and cost-effectiveness.
 
 ## Design Principles
 
@@ -296,7 +296,7 @@ Replicated Volume (2x18TB HDDs)
 
 ## Comparison with Cloud Providers
 
-| Feature | NodeZero | AWS | GCP | Azure |
+| Feature | MyNodeOne | AWS | GCP | Azure |
 |---------|----------|-----|-----|-------|
 | **Cost (monthly)** | ~$30 (VPS only) | $500+ | $500+ | $500+ |
 | **Compute** | 256GB RAM, 32 cores | Extra charges | Extra charges | Extra charges |

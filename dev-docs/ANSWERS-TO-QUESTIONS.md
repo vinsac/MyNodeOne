@@ -1,6 +1,6 @@
-# Answers to Your NodeZero Questions
+# Answers to Your MyNodeOne Questions
 
-Comprehensive answers to all your questions about the updated NodeZero setup.
+Comprehensive answers to all your questions about the updated MyNodeOne setup.
 
 ---
 
@@ -12,10 +12,10 @@ Comprehensive answers to all your questions about the updated NodeZero setup.
 
 ### What's Been Added
 
-The new unified script `scripts/nodezero` now includes a comprehensive system cleanup phase:
+The new unified script `scripts/mynodeone` now includes a comprehensive system cleanup phase:
 
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Step 1: System Cleanup & Optimization (interactive)
 ```
 
@@ -77,7 +77,7 @@ All cleanup operations are:
 
 ### Automatic Detection
 
-The `scripts/nodezero` script now:
+The `scripts/mynodeone` script now:
 
 1. **Scans for all disks:**
    ```bash
@@ -201,14 +201,14 @@ sudo ./scripts/setup-edge-node.sh
 **New Way (Simple):**
 ```bash
 # ONE script does everything
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 ```
 
 ### What the Unified Script Does
 
 ```
 ┌─────────────────────────────────────┐
-│  sudo ./scripts/nodezero            │
+│  sudo ./scripts/mynodeone            │
 └─────────────────────────────────────┘
            ↓
 ┌─────────────────────────────────────┐
@@ -259,11 +259,11 @@ sudo ./scripts/nodezero
 
 ```bash
 # Clone repo
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 
 # Run THE script
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 
 # Follow the interactive prompts
 # Everything else is automatic!
@@ -287,11 +287,11 @@ sudo ./scripts/nodezero
 
 ### Website Deployment
 
-The website can be deployed to your NodeZero cluster:
+The website can be deployed to your MyNodeOne cluster:
 
 ```bash
 # Deploy website to cluster
-cd nodezero
+cd mynodeone
 ./website/deploy.sh
 
 # Access at:
@@ -360,7 +360,7 @@ https://docs.yourdomain.com
 
 #### 3. Via GitHub (Public)
 ```
-https://github.com/yourusername/nodezero
+https://github.com/yourusername/mynodeone
 - All docs are in repo
 - Rendered nicely by GitHub
 - Accessible to anyone
@@ -409,7 +409,7 @@ For **non-tech users**, comprehensive guides explain:
 ```html
 Navigation:
 ├── Home (index.html)
-│   ├── What is NodeZero?
+│   ├── What is MyNodeOne?
 │   ├── Why use it?
 │   ├── Quick start
 │   └── Get started button
@@ -467,7 +467,7 @@ tailscale logout
 
 ```bash
 # Custom hostname
-sudo tailscale up --hostname="nodezero-control-01"
+sudo tailscale up --hostname="mynodeone-control-01"
 
 # Auth key (for automation)
 sudo tailscale up --authkey=tskey-auth-xxxxx
@@ -510,12 +510,12 @@ Access at: **https://login.tailscale.com/admin**
 
 **No CLI needed** for these tasks - full GUI available!
 
-### Configuration in NodeZero
+### Configuration in MyNodeOne
 
-NodeZero scripts handle Tailscale automatically:
+MyNodeOne scripts handle Tailscale automatically:
 
 ```bash
-# scripts/nodezero installs Tailscale
+# scripts/mynodeone installs Tailscale
 curl -fsSL https://tailscale.com/install.sh | sh
 
 # Prompts for authentication
@@ -525,10 +525,10 @@ sudo tailscale up
 TAILSCALE_IP=$(tailscale ip -4 | head -n1)
 
 # Saves to config
-echo "TAILSCALE_IP=$TAILSCALE_IP" >> ~/.nodezero/config.env
+echo "TAILSCALE_IP=$TAILSCALE_IP" >> ~/.mynodeone/config.env
 
 # All other scripts read this
-source ~/.nodezero/config.env
+source ~/.mynodeone/config.env
 ```
 
 ### Open Source Alternatives
@@ -554,10 +554,10 @@ sudo mv headscale_linux_amd64 /usr/local/bin/headscale
 sudo chmod +x /usr/local/bin/headscale
 
 # Create user
-headscale users create nodezero
+headscale users create mynodeone
 
 # Generate auth key
-headscale preauthkeys create --user nodezero
+headscale preauthkeys create --user mynodeone
 
 # On clients, point to your server
 tailscale up --login-server=https://your-headscale:8080 --authkey=xxx
@@ -612,7 +612,7 @@ tailscale up --login-server=https://your-headscale:8080 --authkey=xxx
 
 ### My Recommendation
 
-**For NodeZero: Start with Tailscale**
+**For MyNodeOne: Start with Tailscale**
 
 **Reasons:**
 1. ✅ **Works immediately** - 5 minute setup
@@ -656,7 +656,7 @@ tailscale up --login-server=https://your-headscale:8080 --authkey=xxx
 - UUID-based (safe)
 
 ### 3. ✅ Unified Installation Script
-- One command: `sudo ./scripts/nodezero`
+- One command: `sudo ./scripts/mynodeone`
 - Guided experience
 - All node types supported
 - Context-aware questions
@@ -681,7 +681,7 @@ tailscale up --login-server=https://your-headscale:8080 --authkey=xxx
 
 ### Installation (One Command)
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 ```
 
 ### Deploy Documentation Website
@@ -707,7 +707,7 @@ tailscale down        # Disconnect
 ### Add More Nodes Later
 ```bash
 # On new machine
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Select option 2 (Worker) or 3 (VPS Edge)
 ```
 
@@ -717,8 +717,8 @@ sudo ./scripts/nodezero
 
 1. ✅ Review `docs/setup-options-guide.md` - Understand each option
 2. ✅ Review `docs/networking.md` - Understand Tailscale
-3. ✅ Run `sudo ./scripts/nodezero` - Start installation
+3. ✅ Run `sudo ./scripts/mynodeone` - Start installation
 4. ✅ Deploy website with `./website/deploy.sh` - Get web docs
-5. ✅ Read generated credentials in `/root/nodezero-*-credentials.txt`
+5. ✅ Read generated credentials in `/root/mynodeone-*-credentials.txt`
 
 **You're ready to build your private cloud!** 🚀

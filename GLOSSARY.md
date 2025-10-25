@@ -1,4 +1,4 @@
-# NodeZero Glossary - Simple Definitions
+# MyNodeOne Glossary - Simple Definitions
 
 **For non-technical users and product managers**
 
@@ -9,7 +9,7 @@
 ### Cloud
 **Simple:** Computers that run your applications, accessible from anywhere via the internet.
 
-**Example:** Like renting an office vs. owning a building. AWS is renting, NodeZero is owning.
+**Example:** Like renting an office vs. owning a building. AWS is renting, MyNodeOne is owning.
 
 ---
 
@@ -94,7 +94,7 @@
 
 **Example:** Like putting mail in a locked mailbox instead of leaving it on your doorstep.
 
-**NodeZero:** Does this automatically for free!
+**MyNodeOne:** Does this automatically for free!
 
 ---
 
@@ -173,7 +173,7 @@
 
 **Example:** Like a restaurant manager deciding which chef cooks which dish.
 
-**NodeZero uses:** K3s (lightweight version, perfect for small setups).
+**MyNodeOne uses:** K3s (lightweight version, perfect for small setups).
 
 ---
 
@@ -274,7 +274,7 @@
 ## ⚙️ System Terms
 
 ### Ubuntu
-**Simple:** The version of Linux that NodeZero uses.
+**Simple:** The version of Linux that MyNodeOne uses.
 
 **Example:** Like Windows or macOS, but free and open-source.
 
@@ -287,7 +287,7 @@
 
 **Example:** Like texting commands to your computer instead of clicking.
 
-**Don't worry:** NodeZero's scripts do most of the work.
+**Don't worry:** MyNodeOne's scripts do most of the work.
 
 ---
 
@@ -296,7 +296,7 @@
 
 **Example:** Like "Run as Administrator" in Windows.
 
-**When you see:** `sudo ./scripts/nodezero` - you're running with full permissions.
+**When you see:** `sudo ./scripts/mynodeone` - you're running with full permissions.
 
 ---
 
@@ -305,7 +305,7 @@
 
 **Example:** Like a recipe - follow steps in order to get result.
 
-**NodeZero scripts:** Do all the setup work for you!
+**MyNodeOne scripts:** Do all the setup work for you!
 
 ---
 
@@ -341,7 +341,7 @@
 
 **Example:** Like paying for outgoing mail - AWS charges $0.09 per GB leaving their servers.
 
-**NodeZero:** $0 egress fees!
+**MyNodeOne:** $0 egress fees!
 
 ---
 
@@ -350,7 +350,7 @@
 
 **Example:** Like car ownership - not just purchase price, also gas, insurance, maintenance.
 
-**NodeZero TCO:** Hardware (one-time) + electricity (ongoing) + VPS (optional, $5-15/month).
+**MyNodeOne TCO:** Hardware (one-time) + electricity (ongoing) + VPS (optional, $5-15/month).
 
 ---
 
@@ -381,15 +381,15 @@
 
 ## 📞 Still Confused?
 
-**This is normal!** You don't need to understand everything to use NodeZero.
+**This is normal!** You don't need to understand everything to use MyNodeOne.
 
 **Think of it like driving a car:**
 - ❌ You don't need to know how the engine works
 - ✅ You just need to know gas, brake, steering
 
-**With NodeZero:**
+**With MyNodeOne:**
 - ❌ You don't need to know how Kubernetes works
-- ✅ You just need to run `sudo ./scripts/nodezero` and answer questions
+- ✅ You just need to run `sudo ./scripts/mynodeone` and answer questions
 
 ---
 

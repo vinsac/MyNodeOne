@@ -1,4 +1,4 @@
-# NodeZero Password & Secrets Management Guide
+# MyNodeOne Password & Secrets Management Guide
 
 **Version:** 1.0.0  
 **Last Updated:** October 25, 2025  
@@ -6,11 +6,11 @@
 
 ---
 
-## ⚠️ CRITICAL: Do NOT Host Password Manager on NodeZero
+## ⚠️ CRITICAL: Do NOT Host Password Manager on MyNodeOne
 
 ### Why Not Self-Host?
 
-**DO NOT install a password manager (Vaultwarden, Bitwarden, etc.) on your NodeZero cluster for storing NodeZero's own credentials.**
+**DO NOT install a password manager (Vaultwarden, Bitwarden, etc.) on your MyNodeOne cluster for storing MyNodeOne's own credentials.**
 
 **Reasons:**
 1. **Single Point of Failure** - If cluster is compromised, attacker gets all passwords
@@ -28,7 +28,7 @@
 
 **1. Bitwarden (Self-Hosted Elsewhere) or Cloud**
 - **Option A:** Use Bitwarden cloud ($10/year)
-- **Option B:** Self-host on a **separate** VPS (not NodeZero)
+- **Option B:** Self-host on a **separate** VPS (not MyNodeOne)
 - Open source
 - Excellent security
 - Browser extensions
@@ -90,22 +90,22 @@
 
 ### Critical Credentials (Must Store Securely)
 
-After NodeZero installation, you'll have these credential files in `/root/`:
+After MyNodeOne installation, you'll have these credential files in `/root/`:
 
-1. **nodezero-minio-credentials.txt**
+1. **mynodeone-minio-credentials.txt**
    - MinIO admin user and password
    - S3 endpoint URL
    - Console URL
 
-2. **nodezero-grafana-credentials.txt**
+2. **mynodeone-grafana-credentials.txt**
    - Grafana admin password
    - Dashboard URL
 
-3. **nodezero-argocd-credentials.txt**
+3. **mynodeone-argocd-credentials.txt**
    - ArgoCD admin password
    - GitOps URL
 
-4. **nodezero-join-token.txt**
+4. **mynodeone-join-token.txt**
    - K3s cluster join token
    - Allows adding nodes to cluster
 
@@ -122,29 +122,29 @@ After NodeZero installation, you'll have these credential files in `/root/`:
 **Step 1: Save to Password Manager**
 
 ```bash
-# On your NodeZero control plane node
+# On your MyNodeOne control plane node
 
 # View credentials
-sudo cat /root/nodezero-minio-credentials.txt
-sudo cat /root/nodezero-grafana-credentials.txt
-sudo cat /root/nodezero-argocd-credentials.txt
-sudo cat /root/nodezero-join-token.txt
+sudo cat /root/mynodeone-minio-credentials.txt
+sudo cat /root/mynodeone-grafana-credentials.txt
+sudo cat /root/mynodeone-argocd-credentials.txt
+sudo cat /root/mynodeone-join-token.txt
 
 # Copy each to your password manager
 # Create entries:
-# - "NodeZero MinIO"
-# - "NodeZero Grafana"
-# - "NodeZero ArgoCD"
-# - "NodeZero Join Token"
+# - "MyNodeOne MinIO"
+# - "MyNodeOne Grafana"
+# - "MyNodeOne ArgoCD"
+# - "MyNodeOne Join Token"
 ```
 
 **Step 2: Save Kubeconfig**
 
 ```bash
 # Copy kubeconfig to your workstation
-scp user@nodezer-node:~/.kube/config ~/.kube/nodezero-config
+scp user@nodezer-node:~/.kube/config ~/.kube/mynodeone-config
 
-# OR copy content and save in password manager as "NodeZero Kubeconfig"
+# OR copy content and save in password manager as "MyNodeOne Kubeconfig"
 cat ~/.kube/config
 ```
 
@@ -152,10 +152,10 @@ cat ~/.kube/config
 
 ```bash
 # After confirming you've saved everything
-sudo rm /root/nodezero-*.txt
+sudo rm /root/mynodeone-*.txt
 
 # Verify deletion
-sudo ls /root/nodezero-*.txt
+sudo ls /root/mynodeone-*.txt
 # Should show: No such file or directory
 ```
 
@@ -177,13 +177,13 @@ echo ".kube/config" >> ~/.gitignore
 
 1. **Sign up** at https://bitwarden.com
 2. **Install** browser extension
-3. **Create** vault folder: "NodeZero Production"
+3. **Create** vault folder: "MyNodeOne Production"
 4. **Add** secure notes for each credential file
 5. **Enable** 2FA for Bitwarden account
 
 **Structure:**
 ```
-NodeZero Production/
+MyNodeOne Production/
 ├── MinIO Admin (Login item)
 │   ├── Username: admin
 │   ├── Password: [saved]
@@ -196,10 +196,10 @@ NodeZero Production/
 
 ### Option 2: Self-Hosted Bitwarden on Separate VPS
 
-**DO NOT install on NodeZero. Use a separate $5/month VPS.**
+**DO NOT install on MyNodeOne. Use a separate $5/month VPS.**
 
 ```bash
-# On a SEPARATE VPS (not NodeZero!)
+# On a SEPARATE VPS (not MyNodeOne!)
 # Using Vaultwarden (lightweight Bitwarden)
 
 # Install Docker
@@ -351,7 +351,7 @@ cp ~/Passwords.kdbx ~/Backups/Passwords-$(date +%Y%m%d).kdbx
 4. **Use weak passwords**
    - "admin"
    - "password123"
-   - "nodezero2024"
+   - "mynodeone2024"
 
 5. **Reuse passwords across services**
    - If one is compromised, all are
@@ -371,7 +371,7 @@ cp ~/Passwords.kdbx ~/Backups/Passwords-$(date +%Y%m%d).kdbx
 
 ## 🎓 Kubernetes Secrets Best Practices
 
-### For Application Secrets (Not NodeZero Infrastructure)
+### For Application Secrets (Not MyNodeOne Infrastructure)
 
 **Option 1: Sealed Secrets (GitOps-Friendly)**
 
@@ -431,17 +431,17 @@ sops -e secrets.yaml > secrets.enc.yaml
 
 ## ✅ Quick Start Checklist
 
-### After Installing NodeZero
+### After Installing MyNodeOne
 
 - [ ] Choose password manager (Bitwarden or 1Password recommended)
 - [ ] Create account and enable 2FA
-- [ ] Create "NodeZero Production" folder/vault
+- [ ] Create "MyNodeOne Production" folder/vault
 - [ ] Save MinIO credentials
 - [ ] Save Grafana credentials
 - [ ] Save ArgoCD credentials
 - [ ] Save join token
 - [ ] Save kubeconfig
-- [ ] Delete /root/nodezero-*.txt files
+- [ ] Delete /root/mynodeone-*.txt files
 - [ ] Test password retrieval
 - [ ] Set up emergency access
 - [ ] Schedule monthly password rotation
@@ -474,7 +474,7 @@ sops -e secrets.yaml > secrets.enc.yaml
 **Questions about password management?**
 - Review this guide thoroughly first
 - Check password manager's documentation
-- For NodeZero-specific questions: GitHub Discussions
+- For MyNodeOne-specific questions: GitHub Discussions
 
 **Security issues with passwords?**
 - Rotate immediately
@@ -494,14 +494,14 @@ sops -e secrets.yaml > secrets.enc.yaml
 - ✅ Backup password database
 
 **DON'T:**
-- ❌ Self-host password manager on NodeZero
+- ❌ Self-host password manager on MyNodeOne
 - ❌ Store passwords in plain text
 - ❌ Commit passwords to Git
 - ❌ Share passwords insecurely
 - ❌ Use weak passwords
 - ❌ Skip 2FA
 
-**Remember:** Your NodeZero cluster is only as secure as your password management practices!
+**Remember:** Your MyNodeOne cluster is only as secure as your password management practices!
 
 ---
 

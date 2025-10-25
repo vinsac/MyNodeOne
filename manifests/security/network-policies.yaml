@@ -1,4 +1,4 @@
-# Default Network Policies for NodeZero
+# Default Network Policies for MyNodeOne
 # These implement a "default deny" strategy with explicit allow rules
 
 ---

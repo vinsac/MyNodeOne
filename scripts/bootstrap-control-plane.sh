@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# NodeZero Control Plane Bootstrap Script
+# MyNodeOne Control Plane Bootstrap Script
 # 
 # This script sets up the control plane node with:
 # - K3s server (lightweight Kubernetes)
@@ -26,7 +26,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Load configuration
-CONFIG_FILE="$HOME/.nodezero/config.env"
+CONFIG_FILE="$HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
     echo "Please run: ./scripts/interactive-setup.sh first"
@@ -179,8 +179,8 @@ EOF
     
     # Label this node as control plane and worker
     kubectl label node "$NODE_NAME" node-role.kubernetes.io/worker=true --overwrite
-    kubectl label node "$NODE_NAME" nodezero.io/location=toronto --overwrite
-    kubectl label node "$NODE_NAME" nodezero.io/storage=true --overwrite
+    kubectl label node "$NODE_NAME" mynodeone.io/location=toronto --overwrite
+    kubectl label node "$NODE_NAME" mynodeone.io/storage=true --overwrite
     
     log_success "K3s installed successfully"
     
@@ -347,7 +347,7 @@ install_minio() {
         --wait
     
     # Save credentials securely
-    cat > /root/nodezero-minio-credentials.txt <<EOF
+    cat > /root/mynodeone-minio-credentials.txt <<EOF
 MinIO Credentials
 =================
 Root User: $MINIO_ROOT_USER
@@ -357,10 +357,10 @@ Console: http://$(kubectl get svc -n minio minio-console -o jsonpath='{.status.l
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
-    chmod 600 /root/nodezero-minio-credentials.txt
+    chmod 600 /root/mynodeone-minio-credentials.txt
     
     log_success "MinIO installed"
-    log_warn "MinIO credentials saved to /root/nodezero-minio-credentials.txt (chmod 600)"
+    log_warn "MinIO credentials saved to /root/mynodeone-minio-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
@@ -405,7 +405,7 @@ install_monitoring() {
     GRAFANA_PASSWORD=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode)
     
     # Save Grafana credentials securely
-    cat > /root/nodezero-grafana-credentials.txt <<EOF
+    cat > /root/mynodeone-grafana-credentials.txt <<EOF
 Grafana Credentials
 ===================
 Username: admin
@@ -414,10 +414,10 @@ URL: http://$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jso
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
-    chmod 600 /root/nodezero-grafana-credentials.txt
+    chmod 600 /root/mynodeone-grafana-credentials.txt
     
     log_success "Monitoring stack installed"
-    log_warn "Grafana credentials saved to /root/nodezero-grafana-credentials.txt (chmod 600)"
+    log_warn "Grafana credentials saved to /root/mynodeone-grafana-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
@@ -439,7 +439,7 @@ install_argocd() {
     ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
     
     # Save credentials securely
-    cat > /root/nodezero-argocd-credentials.txt <<EOF
+    cat > /root/mynodeone-argocd-credentials.txt <<EOF
 ArgoCD Credentials
 ==================
 Username: admin
@@ -448,10 +448,10 @@ URL: https://$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loa
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
-    chmod 600 /root/nodezero-argocd-credentials.txt
+    chmod 600 /root/mynodeone-argocd-credentials.txt
     
     log_success "ArgoCD installed"
-    log_warn "ArgoCD credentials saved to /root/nodezero-argocd-credentials.txt (chmod 600)"
+    log_warn "ArgoCD credentials saved to /root/mynodeone-argocd-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
@@ -461,8 +461,8 @@ create_cluster_token() {
     # K3s token for joining worker nodes
     TOKEN=$(cat /var/lib/rancher/k3s/server/node-token)
     
-    cat > /root/nodezero-join-token.txt <<EOF
-NodeZero Cluster Join Configuration
+    cat > /root/mynodeone-join-token.txt <<EOF
+MyNodeOne Cluster Join Configuration
 ====================================
 Server URL: https://$TAILSCALE_IP:6443
 Token: $TOKEN
@@ -474,17 +474,17 @@ Or use the add-worker-node.sh script (recommended)
 
 WARNING: This token grants access to join nodes to your cluster. Store securely!
 EOF
-    chmod 600 /root/nodezero-join-token.txt
+    chmod 600 /root/mynodeone-join-token.txt
     
-    log_success "Join token saved to /root/nodezero-join-token.txt (chmod 600)"
+    log_success "Join token saved to /root/mynodeone-join-token.txt (chmod 600)"
     log_warn "IMPORTANT: This token grants cluster access. Store securely!"
 }
 
 print_summary() {
-    log_success "NodeZero control plane bootstrap complete! 🎉"
+    log_success "MyNodeOne control plane bootstrap complete! 🎉"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NodeZero Control Plane Summary"
+    echo "  MyNodeOne Control Plane Summary"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     echo "Cluster Information:"
@@ -510,15 +510,15 @@ print_summary() {
     MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending...")
     
     echo "  Grafana: http://$GRAFANA_IP (admin/admin)"
-    echo "  ArgoCD: https://$ARGOCD_IP (see /root/nodezero-argocd-credentials.txt)"
-    echo "  MinIO Console: http://$MINIO_CONSOLE_IP (see /root/nodezero-minio-credentials.txt)"
+    echo "  ArgoCD: https://$ARGOCD_IP (see /root/mynodeone-argocd-credentials.txt)"
+    echo "  MinIO Console: http://$MINIO_CONSOLE_IP (see /root/mynodeone-minio-credentials.txt)"
     echo "  Longhorn: http://$TAILSCALE_IP:30080"
     echo
     echo "Important Files:"
     echo "  Kubeconfig: ~/.kube/config"
-    echo "  Join Token: /root/nodezero-join-token.txt"
-    echo "  ArgoCD Credentials: /root/nodezero-argocd-credentials.txt"
-    echo "  MinIO Credentials: /root/nodezero-minio-credentials.txt"
+    echo "  Join Token: /root/mynodeone-join-token.txt"
+    echo "  ArgoCD Credentials: /root/mynodeone-argocd-credentials.txt"
+    echo "  MinIO Credentials: /root/mynodeone-minio-credentials.txt"
     echo
     echo "Next Steps:"
     echo "  1. Add worker nodes: sudo ./scripts/add-worker-node.sh"
@@ -531,7 +531,7 @@ print_summary() {
 
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NodeZero Control Plane Bootstrap"
+    echo "  MyNodeOne Control Plane Bootstrap"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     

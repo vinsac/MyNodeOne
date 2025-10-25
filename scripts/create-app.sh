@@ -1,10 +1,10 @@
 #!/bin/bash
 
 ###############################################################################
-# NodeZero App Creator
+# MyNodeOne App Creator
 # 
 # Creates a new application with all necessary configurations for deployment
-# to NodeZero cluster via ArgoCD GitOps
+# to MyNodeOne cluster via ArgoCD GitOps
 ###############################################################################
 
 set -euo pipefail
@@ -167,7 +167,7 @@ const server = http.createServer((req, res) => {
   }
   
   res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end('<h1>Hello from NodeZero!</h1><p>Your app is running successfully.</p>');
+  res.end('<h1>Hello from MyNodeOne!</h1><p>Your app is running successfully.</p>');
 });
 
 server.listen(PORT, () => {
@@ -204,7 +204,7 @@ EOF
 {
   "name": "$APP_NAME",
   "version": "1.0.0",
-  "description": "NodeZero application",
+  "description": "MyNodeOne application",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -462,7 +462,7 @@ create_readme() {
     cat > README.md <<EOF
 # $APP_NAME
 
-NodeZero application
+MyNodeOne application
 
 ## Configuration
 
@@ -482,7 +482,7 @@ Visit http://localhost:$PORT
 
 ## Deployment
 
-This app is automatically deployed to NodeZero via GitOps (ArgoCD).
+This app is automatically deployed to MyNodeOne via GitOps (ArgoCD).
 
 1. Push your code to the main branch
 2. GitHub Actions builds and pushes the Docker image
@@ -495,7 +495,7 @@ This app is automatically deployed to NodeZero via GitOps (ArgoCD).
 
 ## Architecture
 
-This application runs on NodeZero, a private cloud infrastructure with:
+This application runs on MyNodeOne, a private cloud infrastructure with:
 - Automatic SSL certificates
 - Load balancing across multiple nodes
 - Distributed storage
@@ -558,7 +558,7 @@ spec:
       - CreateNamespace=true
 EOF
     
-    log_info "To deploy this app to NodeZero:"
+    log_info "To deploy this app to MyNodeOne:"
     echo
     echo "1. Update the repoURL in k8s/argocd-application.yaml"
     echo "2. Apply it: kubectl apply -f k8s/argocd-application.yaml"
@@ -603,7 +603,7 @@ print_summary() {
     echo "     git remote add origin <your-repo-url>"
     echo "     git push -u origin main"
     echo
-    echo "  4. Deploy to NodeZero:"
+    echo "  4. Deploy to MyNodeOne:"
     echo "     kubectl apply -f k8s/argocd-application.yaml"
     echo
     if [ -n "$DOMAIN" ]; then
@@ -618,7 +618,7 @@ print_summary() {
 
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NodeZero App Creator"
+    echo "  MyNodeOne App Creator"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     

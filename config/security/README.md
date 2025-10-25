@@ -1,6 +1,6 @@
 # Security Configuration Files
 
-This directory contains Kubernetes security configuration files that enhance the security posture of your NodeZero cluster.
+This directory contains Kubernetes security configuration files that enhance the security posture of your MyNodeOne cluster.
 
 ## Files
 

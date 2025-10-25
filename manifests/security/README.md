@@ -1,6 +1,6 @@
 # Security Manifests
 
-This directory contains Kubernetes manifests that implement security best practices for your NodeZero cluster.
+This directory contains Kubernetes manifests that implement security best practices for your MyNodeOne cluster.
 
 ## Files
 

@@ -1,4 +1,4 @@
-# NodeZero Documentation Review - Non-Technical Accessibility
+# MyNodeOne Documentation Review - Non-Technical Accessibility
 
 ## 🎯 Assessment for Non-Technical Users & Product Managers
 
@@ -62,8 +62,8 @@
 
 **START-HERE.md Line 10:**
 ```bash
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 ```
 
 **Issues:**
@@ -182,7 +182,7 @@ automatically backed up, even if your laptop breaks.
 ## ⚠️ Safety & Common Questions
 
 ### Will this break my computer?
-**No.** NodeZero only installs software, it doesn't modify your operating system. 
+**No.** MyNodeOne only installs software, it doesn't modify your operating system. 
 You can uninstall everything later.
 
 ### What if something goes wrong?
@@ -200,7 +200,7 @@ Yes! See [UNINSTALL-GUIDE.md](UNINSTALL-GUIDE.md) for step-by-step removal.
 You can walk away - the script runs automatically.
 
 ### What happens to my existing files?
-NodeZero installs in `/opt/nodezero` and doesn't touch your personal files.
+MyNodeOne installs in `/opt/mynodeone` and doesn't touch your personal files.
 **Exception:** If you choose to format a disk, that disk's data will be erased.
 We'll ask for confirmation first!
 ```
@@ -234,13 +234,13 @@ We'll ask for confirmation first!
 
 **Contents:**
 ```markdown
-# NodeZero for Product Managers
+# MyNodeOne for Product Managers
 
 ## Business Case
 
 ### Cost Savings
 - AWS equivalent: $2,760/month
-- NodeZero: $30/month + hardware
+- MyNodeOne: $30/month + hardware
 - ROI: 95% cost reduction
 - Payback: 1-2 months
 
@@ -362,7 +362,7 @@ Answer these questions:
 
 **Top section:** Add 30-second elevator pitch
 **Add:** "Is this for me?" section
-**Add:** Comparison table (NodeZero vs AWS vs DigitalOcean)
+**Add:** Comparison table (MyNodeOne vs AWS vs DigitalOcean)
 **Simplify:** Architecture diagram or make it visual
 
 ---
@@ -441,7 +441,7 @@ Answer these questions:
 - Clear architecture diagrams
 - Glossary always accessible
 
-**Apply to NodeZero:**
+**Apply to MyNodeOne:**
 - Add interactive elements where possible
 - Time estimates for each section
 - Multiple formats (text, video, visual)

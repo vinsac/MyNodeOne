@@ -1,4 +1,4 @@
-# NodeZero Setup Options Guide
+# MyNodeOne Setup Options Guide
 
 Complete guide to understanding each setup option and choosing the right one for your needs.
 
@@ -289,7 +289,7 @@ What storage do you need?
 
 ## System Cleanup Explained
 
-When you run `sudo ./scripts/nodezero`, it offers to clean up your system:
+When you run `sudo ./scripts/mynodeone`, it offers to clean up your system:
 
 ### What Gets Cleaned
 
@@ -328,7 +328,7 @@ Yes! Answer "No" when prompted. Your system will work fine either way.
 
 ## External Disk Detection
 
-NodeZero automatically detects and offers to set up:
+MyNodeOne automatically detects and offers to set up:
 
 ### Detected Disks
 
@@ -388,7 +388,7 @@ A: No. Just the ones where you want extra storage. Control plane benefits most.
 
 1. Read this guide carefully
 2. Decide your node type
-3. Run: `sudo ./scripts/nodezero`
+3. Run: `sudo ./scripts/mynodeone`
 4. Follow the prompts
 5. Refer back to this guide if confused
 

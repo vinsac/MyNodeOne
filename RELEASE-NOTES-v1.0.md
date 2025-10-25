@@ -1,4 +1,4 @@
-# NodeZero v1.0.0 - Release Notes
+# MyNodeOne v1.0.0 - Release Notes
 
 **Release Date:** October 25, 2025  
 **Author:** Vinay Sachdeva  
@@ -9,14 +9,14 @@
 
 ## 🎉 First Stable Release!
 
-NodeZero v1.0.0 is the first production-ready release of NodeZero - your private cloud infrastructure built with commodity hardware.
+MyNodeOne v1.0.0 is the first production-ready release of MyNodeOne - your private cloud infrastructure built with commodity hardware.
 
 ---
 
 ## 📦 What's Included
 
 ### Core Features
-- ✅ **One-command installation** - `sudo ./scripts/nodezero`
+- ✅ **One-command installation** - `sudo ./scripts/mynodeone`
 - ✅ **Automatic system cleanup** - Removes bloat, saves resources
 - ✅ **External disk detection** - Automatically finds and configures storage
 - ✅ **Multiple node types** - Control plane, worker, VPS edge, management workstation
@@ -73,7 +73,7 @@ NodeZero v1.0.0 is the first production-ready release of NodeZero - your private
 
 | Setup | Monthly Cost | Annual Cost |
 |-------|--------------|-------------|
-| **NodeZero** | $30 (VPS optional) | $360 |
+| **MyNodeOne** | $30 (VPS optional) | $360 |
 | **AWS Equivalent** | $2,760 | $33,120 |
 | **Savings** | $2,730/month | **$32,760/year** |
 
@@ -83,11 +83,11 @@ NodeZero v1.0.0 is the first production-ready release of NodeZero - your private
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/vinsac/nodezero.git
-cd nodezero
+git clone https://github.com/vinsac/mynodeone.git
+cd mynodeone
 
 # 2. Run ONE command
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 
 # 3. Answer a few questions
 # Everything else is automatic!
@@ -242,7 +242,7 @@ We aim for:
 
 ## 🤝 Contributing
 
-NodeZero is open source and welcomes contributions!
+MyNodeOne is open source and welcomes contributions!
 
 **Ways to contribute:**
 - Report bugs on GitHub Issues
@@ -259,7 +259,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **License:** MIT License  
 **Copyright:** 2024 Vinay Sachdeva  
-**Repository:** https://github.com/vinsac/nodezero  
+**Repository:** https://github.com/vinsac/mynodeone  
 **Author:** [Vinay Sachdeva](https://github.com/vinsac)
 
 ---
@@ -267,20 +267,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## 🔗 Resources
 
 ### Documentation
-- **GitHub:** https://github.com/vinsac/nodezero
+- **GitHub:** https://github.com/vinsac/mynodeone
 - **Quick Start:** [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 - **Guide:** [START-HERE.md](START-HERE.md)
 - **FAQ:** [FAQ.md](FAQ.md)
 
 ### Community
-- **Issues:** https://github.com/vinsac/nodezero/issues
-- **Discussions:** https://github.com/vinsac/nodezero/discussions
+- **Issues:** https://github.com/vinsac/mynodeone/issues
+- **Discussions:** https://github.com/vinsac/mynodeone/discussions
 
 ---
 
 ## 🎊 Thank You!
 
-Thank you for using NodeZero! This release represents:
+Thank you for using MyNodeOne! This release represents:
 - **6+ hours** of safety implementations
 - **15,000+ words** of documentation
 - **4,500+ lines** of code
@@ -310,4 +310,4 @@ Future enhancements being considered:
 **Author:** Vinay Sachdeva  
 **License:** MIT
 
-🎉 **Welcome to NodeZero v1.0!** 🎉
+🎉 **Welcome to MyNodeOne v1.0!** 🎉

@@ -1,9 +1,9 @@
 #!/bin/bash
 
 ###############################################################################
-# NodeZero Worker Node Addition Script
+# MyNodeOne Worker Node Addition Script
 # 
-# This script adds a new worker node to the NodeZero cluster
+# This script adds a new worker node to the MyNodeOne cluster
 # Run this on the NEW worker node (e.g., node-002, node-003, etc.)
 #
 # IMPORTANT: Run ./scripts/interactive-setup.sh first!
@@ -19,7 +19,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Load configuration
-CONFIG_FILE="$HOME/.nodezero/config.env"
+CONFIG_FILE="$HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
     echo "Please run: ./scripts/interactive-setup.sh first"
@@ -92,7 +92,7 @@ get_join_token() {
     echo
     log_info "Please obtain the K3s token from the control plane node ($CONTROL_PLANE_IP)"
     log_info "On the control plane, run: sudo cat /var/lib/rancher/k3s/server/node-token"
-    log_info "Or check: /root/nodezero-join-token.txt"
+    log_info "Or check: /root/mynodeone-join-token.txt"
     echo
     read -p "Enter K3s token: " K3S_TOKEN
     
@@ -149,7 +149,7 @@ configure_firewall() {
 }
 
 join_cluster() {
-    log_info "Joining NodeZero cluster..."
+    log_info "Joining MyNodeOne cluster..."
     
     # Prepare K3s configuration
     mkdir -p /etc/rancher/k3s
@@ -173,7 +173,7 @@ EOF
     log_info "Waiting for node to register with cluster..."
     sleep 10
     
-    log_success "Successfully joined NodeZero cluster!"
+    log_success "Successfully joined MyNodeOne cluster!"
 }
 
 label_node() {
@@ -182,19 +182,19 @@ label_node() {
     # This requires kubectl access from control plane
     # We'll save the labels in a file for the admin to apply
     
-    cat > /root/nodezero-node-labels.txt <<EOF
+    cat > /root/mynodeone-node-labels.txt <<EOF
 # Apply these labels on the control plane node:
 kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true --overwrite
-kubectl label node $NODE_NAME nodezero.io/location=${NODE_LOCATION} --overwrite
-kubectl label node $NODE_NAME nodezero.io/storage=true --overwrite
+kubectl label node $NODE_NAME mynodeone.io/location=${NODE_LOCATION} --overwrite
+kubectl label node $NODE_NAME mynodeone.io/storage=true --overwrite
 EOF
     
-    log_info "Node labels saved to /root/nodezero-node-labels.txt"
+    log_info "Node labels saved to /root/mynodeone-node-labels.txt"
     log_info "Run these commands on the control plane to complete setup"
 }
 
 print_summary() {
-    log_success "Worker node successfully added to NodeZero! 🎉"
+    log_success "Worker node successfully added to MyNodeOne! 🎉"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Worker Node Summary"
@@ -207,7 +207,7 @@ print_summary() {
     echo
     echo "Next Steps:"
     echo "  1. On the control plane node, apply node labels:"
-    echo "     See: /root/nodezero-node-labels.txt on this machine"
+    echo "     See: /root/mynodeone-node-labels.txt on this machine"
     echo
     echo "  2. Verify node status on control plane:"
     echo "     kubectl get nodes"
@@ -219,7 +219,7 @@ print_summary() {
 
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NodeZero Worker Node Addition"
+    echo "  MyNodeOne Worker Node Addition"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     

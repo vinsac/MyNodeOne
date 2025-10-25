@@ -1,6 +1,6 @@
-# 👋 START HERE - New to NodeZero?
+# 👋 START HERE - New to MyNodeOne?
 
-**Welcome!** This is your starting point for building your private cloud with NodeZero.
+**Welcome!** This is your starting point for building your private cloud with MyNodeOne.
 
 ---
 
@@ -8,13 +8,13 @@
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 ```
 
 ### Step 2: Run Installation
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 ```
 
 ### Step 3: Follow Prompts
@@ -36,7 +36,7 @@ Answer a few questions, wait 30 minutes, and you're done!
 
 ### Installing Now?
 1. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
-2. Run: `sudo ./scripts/nodezero`
+2. Run: `sudo ./scripts/mynodeone`
 3. Have **[NEW-QUICKSTART.md](NEW-QUICKSTART.md)** open for reference
 
 ### Already Installed?
@@ -50,9 +50,9 @@ Answer a few questions, wait 30 minutes, and you're done!
 
 ---
 
-## 🎯 What is NodeZero?
+## 🎯 What is MyNodeOne?
 
-NodeZero turns your hardware into a **private cloud** like AWS, but:
+MyNodeOne turns your hardware into a **private cloud** like AWS, but:
 - ✅ **Save $30,000+/year** vs AWS
 - ✅ **Own your data** - stays on your machines
 - ✅ **One command setup** - fully automated
@@ -78,7 +78,7 @@ That's it! Start with what you have, scale later.
 
 ## 🛠️ What Does Installation Do?
 
-The `sudo ./scripts/nodezero` command:
+The `sudo ./scripts/mynodeone` command:
 
 1. **Cleans your system** - Removes unnecessary software to save RAM
 2. **Detects external disks** - Finds and offers to configure extra storage
@@ -99,7 +99,7 @@ The `sudo ./scripts/nodezero` command:
 
 ## 🌐 Networking: Tailscale (Default)
 
-**NodeZero uses Tailscale by default** for secure networking between machines.
+**MyNodeOne uses Tailscale by default** for secure networking between machines.
 
 ### What is Tailscale?
 - Secure mesh VPN (like a private internet for your machines)
@@ -111,7 +111,7 @@ The `sudo ./scripts/nodezero` command:
 - ✅ **5 minute setup** - fastest option
 - ✅ **Zero configuration** - just works
 - ✅ **Free for personal use**
-- ✅ **Perfect for NodeZero** - designed for this
+- ✅ **Perfect for MyNodeOne** - designed for this
 
 ### Installation Handles It
 The installation script automatically:
@@ -134,7 +134,7 @@ See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, 
 ### Scenario 1: Just Learning
 **What you have:** 1 old laptop or desktop  
 **What to do:**
-1. Run `sudo ./scripts/nodezero`
+1. Run `sudo ./scripts/mynodeone`
 2. Select: **Control Plane**
 3. Deploy example apps
 4. Access via Tailscale from your phone/laptop
@@ -147,7 +147,7 @@ See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, 
 ### Scenario 2: Home Server
 **What you have:** 1 powerful home server (like yours: 256GB RAM)  
 **What to do:**
-1. Run `sudo ./scripts/nodezero`
+1. Run `sudo ./scripts/mynodeone`
 2. Select: **Control Plane**
 3. Let it detect your external disks (2x18TB)
 4. Access from laptop via Tailscale
@@ -163,13 +163,13 @@ See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, 
 
 **Home server:**
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Select: Control Plane
 ```
 
 **VPS:**
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Select: VPS Edge Node
 ```
 
@@ -202,7 +202,7 @@ docs/setup-options-guide.md (understand choices)
     ↓
 NEW-QUICKSTART.md (step-by-step)
     ↓
-sudo ./scripts/nodezero (install!)
+sudo ./scripts/mynodeone (install!)
     ↓
 docs/operations.md (daily use)
     ↓
@@ -227,8 +227,8 @@ docs/scaling.md (grow your cloud)
 
 ### Ready to Install?
 ```bash
-cd nodezero
-sudo ./scripts/nodezero
+cd mynodeone
+sudo ./scripts/mynodeone
 ```
 
 Have [NEW-QUICKSTART.md](NEW-QUICKSTART.md) open for reference!
@@ -249,16 +249,16 @@ Have [NEW-QUICKSTART.md](NEW-QUICKSTART.md) open for reference!
 ## ⚠️ Safety & Common Concerns
 
 ### Will this break my computer?
-**No.** NodeZero only installs software in its own directories. Your personal files and existing setup remain untouched.
+**No.** MyNodeOne only installs software in its own directories. Your personal files and existing setup remain untouched.
 
 ### What if something goes wrong?
 The script stops if there's an error. Nothing is changed until you explicitly confirm. You'll see what's happening at each step.
 
 ### Can I undo the installation?
-Yes! You can uninstall NodeZero completely. (We'll add an uninstall guide soon.)
+Yes! You can uninstall MyNodeOne completely. (We'll add an uninstall guide soon.)
 
 ### What about my existing files?
-NodeZero installs to `/opt/nodezero` and doesn't touch your documents, photos, etc.
+MyNodeOne installs to `/opt/mynodeone` and doesn't touch your documents, photos, etc.
 
 **⚠️ IMPORTANT:** If you choose to format a disk for storage, that disk's data WILL be erased. The script will warn you and ask for confirmation first!
 
@@ -291,7 +291,7 @@ A: 30-45 minutes for first node. Mostly automated - you just answer a few questi
 A: **Tailscale (default)**. It's automatic and just works. Don't overthink it!
 
 **Q: Can I migrate from AWS?**  
-A: NodeZero IS your AWS alternative! Run the same apps here for 95% less cost.
+A: MyNodeOne IS your AWS alternative! Run the same apps here for 95% less cost.
 
 **Q: What if I don't understand the technical terms?**  
 A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
@@ -307,7 +307,7 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 - **[NEW-QUICKSTART.md](NEW-QUICKSTART.md)** - Step-by-step guide
 
 ### Reference Guides
-- **[docs/architecture.md](docs/architecture.md)** - How NodeZero works
+- **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works
 - **[docs/operations.md](docs/operations.md)** - Daily management
 - **[docs/troubleshooting.md](docs/troubleshooting.md)** - Fix problems
 - **[docs/scaling.md](docs/scaling.md)** - Add more nodes
@@ -328,7 +328,7 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 
 1. **Read** [README.md](README.md) (5 min)
 2. **Read** [docs/setup-options-guide.md](docs/setup-options-guide.md) (15 min)
-3. **Run** `sudo ./scripts/nodezero`
+3. **Run** `sudo ./scripts/mynodeone`
 4. **Celebrate** your new private cloud! 🎊
 
 ---
@@ -347,12 +347,12 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 ## 🚀 One Command to Rule Them All
 
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 ```
 
 That's it. Everything else is automatic.
 
-**Welcome to NodeZero!** 🎉
+**Welcome to MyNodeOne!** 🎉
 
 ---
 
@@ -360,4 +360,4 @@ That's it. Everything else is automatic.
 
 **Questions?** Check [FAQ.md](FAQ.md)  
 **Problems?** See [docs/troubleshooting.md](docs/troubleshooting.md)  
-**Ready?** Run `sudo ./scripts/nodezero`
+**Ready?** Run `sudo ./scripts/mynodeone`

@@ -1,4 +1,4 @@
-# NodeZero vs Alternatives - Detailed Comparison Guide
+# MyNodeOne vs Alternatives - Detailed Comparison Guide
 
 **Author:** Vinay Sachdeva  
 **Last Updated:** October 25, 2025  
@@ -8,15 +8,15 @@
 
 ## 🎯 Purpose of This Guide
 
-This guide helps you decide if NodeZero is the right choice for your use case by comparing it with popular alternatives like OpenStack, Proxmox, Kubernetes, Docker Compose, and cloud providers.
+This guide helps you decide if MyNodeOne is the right choice for your use case by comparing it with popular alternatives like OpenStack, Proxmox, Kubernetes, Docker Compose, and cloud providers.
 
-**TL;DR:** NodeZero is best for **small to medium teams** (1-50 nodes) who want **production-ready container infrastructure** with **minimal setup** and **maximum cost savings**.
+**TL;DR:** MyNodeOne is best for **small to medium teams** (1-50 nodes) who want **production-ready container infrastructure** with **minimal setup** and **maximum cost savings**.
 
 ---
 
 ## 📊 Quick Comparison Matrix
 
-| Feature | NodeZero | OpenStack | Proxmox | Bare K8s | Docker Compose | Managed K8s |
+| Feature | MyNodeOne | OpenStack | Proxmox | Bare K8s | Docker Compose | Managed K8s |
 |---------|----------|-----------|---------|----------|----------------|-------------|
 | **Setup Time** | 30 min | 2-4 weeks | 2-3 hours | 1-2 weeks | 10 min | 10 min |
 | **Target Scale** | 1-50 nodes | 100+ nodes | 1-20 nodes | Any | 1 node | 1-1000+ |
@@ -34,38 +34,38 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 ## 🆚 Detailed Comparisons
 
-### 1. NodeZero vs OpenStack
+### 1. MyNodeOne vs OpenStack
 
 #### Overview
 - **OpenStack:** Full IaaS platform for large-scale VM deployments (think AWS clone)
-- **NodeZero:** Kubernetes-based container platform for modern applications
+- **MyNodeOne:** Kubernetes-based container platform for modern applications
 
-#### When to Choose NodeZero ✅
+#### When to Choose MyNodeOne ✅
 
 **Setup Complexity:**
-- **NodeZero:** One command, 30 minutes
+- **MyNodeOne:** One command, 30 minutes
 - **OpenStack:** Multiple servers, days/weeks of configuration
-- **Winner:** NodeZero (by far)
+- **Winner:** MyNodeOne (by far)
 
 **Team Size:**
-- **NodeZero:** 1 person can manage everything
+- **MyNodeOne:** 1 person can manage everything
 - **OpenStack:** Typically needs 5+ ops engineers
-- **Winner:** NodeZero for small teams
+- **Winner:** MyNodeOne for small teams
 
 **Use Case:**
-- **NodeZero:** Perfect for containerized apps, microservices, modern stack
+- **MyNodeOne:** Perfect for containerized apps, microservices, modern stack
 - **OpenStack:** Better for VM-heavy workloads, legacy apps
-- **Winner:** NodeZero for cloud-native apps
+- **Winner:** MyNodeOne for cloud-native apps
 
 **Cost:**
-- **NodeZero:** $6-30/month (VPS) + hardware
+- **MyNodeOne:** $6-30/month (VPS) + hardware
 - **OpenStack:** Hundreds to thousands in management overhead
-- **Winner:** NodeZero dramatically cheaper
+- **Winner:** MyNodeOne dramatically cheaper
 
 **Learning Curve:**
-- **NodeZero:** 1-2 hours to get productive
+- **MyNodeOne:** 1-2 hours to get productive
 - **OpenStack:** Months to become proficient
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 #### When to Choose OpenStack ❌
 
@@ -84,42 +84,42 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Can afford dedicated ops team
 - Time to market doesn't matter
 
-**Bottom Line:** Choose NodeZero unless you're running 100+ servers with a dedicated ops team.
+**Bottom Line:** Choose MyNodeOne unless you're running 100+ servers with a dedicated ops team.
 
 ---
 
-### 2. NodeZero vs Proxmox
+### 2. MyNodeOne vs Proxmox
 
 #### Overview
 - **Proxmox:** Hypervisor platform focused on VMs with container support
-- **NodeZero:** Container platform with cloud-native orchestration
+- **MyNodeOne:** Container platform with cloud-native orchestration
 
-#### When to Choose NodeZero ✅
+#### When to Choose MyNodeOne ✅
 
 **Application Type:**
-- **NodeZero:** Cloud-native apps, microservices, APIs, web apps
+- **MyNodeOne:** Cloud-native apps, microservices, APIs, web apps
 - **Proxmox:** VMs, Windows servers, legacy applications
-- **Winner:** NodeZero for modern development
+- **Winner:** MyNodeOne for modern development
 
 **Automation:**
-- **NodeZero:** GitOps, automatic deployments, declarative
+- **MyNodeOne:** GitOps, automatic deployments, declarative
 - **Proxmox:** Manual VM creation via GUI
-- **Winner:** NodeZero for DevOps workflows
+- **Winner:** MyNodeOne for DevOps workflows
 
 **Scaling:**
-- **NodeZero:** Automatic horizontal pod scaling
+- **MyNodeOne:** Automatic horizontal pod scaling
 - **Proxmox:** Manual VM cloning and management
-- **Winner:** NodeZero for elastic workloads
+- **Winner:** MyNodeOne for elastic workloads
 
 **Storage:**
-- **NodeZero:** S3-compatible (MinIO) + distributed block storage
+- **MyNodeOne:** S3-compatible (MinIO) + distributed block storage
 - **Proxmox:** ZFS, Ceph (complex setup)
-- **Winner:** NodeZero for simplicity
+- **Winner:** MyNodeOne for simplicity
 
 **Monitoring:**
-- **NodeZero:** Prometheus + Grafana pre-configured
+- **MyNodeOne:** Prometheus + Grafana pre-configured
 - **Proxmox:** Basic metrics, manual setup for advanced
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 #### When to Choose Proxmox ❌
 
@@ -143,31 +143,31 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Running personal VMs
 - Testing different OS distributions
 
-**Bottom Line:** NodeZero for modern apps, Proxmox for VMs and home labs.
+**Bottom Line:** MyNodeOne for modern apps, Proxmox for VMs and home labs.
 
 ---
 
-### 3. NodeZero vs Bare Kubernetes
+### 3. MyNodeOne vs Bare Kubernetes
 
 #### Overview
 - **Bare Kubernetes:** Plain K8s installation, configure everything yourself
-- **NodeZero:** Kubernetes with production stack pre-configured
+- **MyNodeOne:** Kubernetes with production stack pre-configured
 
-#### When to Choose NodeZero ✅
+#### When to Choose MyNodeOne ✅
 
 **Time to Production:**
-- **NodeZero:** 30 minutes to production-ready
+- **MyNodeOne:** 30 minutes to production-ready
 - **Bare K8s:** Days/weeks to configure all components
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 **Complexity:**
-- **NodeZero:** Opinionated, best practices built-in
+- **MyNodeOne:** Opinionated, best practices built-in
 - **Bare K8s:** Choose and configure: storage, ingress, monitoring, GitOps
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 **What's Included:**
 
-**NodeZero gives you:**
+**MyNodeOne gives you:**
 - ✅ K3s (lightweight Kubernetes)
 - ✅ Longhorn (distributed storage)
 - ✅ MinIO (S3-compatible object storage)
@@ -182,12 +182,12 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - ✅ Kubernetes API
 - ❌ Configure everything else yourself
 
-**Winner:** NodeZero unless you need specific alternatives
+**Winner:** MyNodeOne unless you need specific alternatives
 
 **Maintenance:**
-- **NodeZero:** Unified stack, easier updates
+- **MyNodeOne:** Unified stack, easier updates
 - **Bare K8s:** Manage each component separately
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 #### When to Choose Bare Kubernetes ❌
 
@@ -211,42 +211,42 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Have legacy systems to connect
 - Specific compliance requirements
 
-**Bottom Line:** NodeZero saves weeks of setup. Use bare K8s only if you need complete control.
+**Bottom Line:** MyNodeOne saves weeks of setup. Use bare K8s only if you need complete control.
 
 ---
 
-### 4. NodeZero vs Docker Compose
+### 4. MyNodeOne vs Docker Compose
 
 #### Overview
 - **Docker Compose:** Simple container orchestration for single machines
-- **NodeZero:** Multi-machine container orchestration with HA
+- **MyNodeOne:** Multi-machine container orchestration with HA
 
-#### When to Choose NodeZero ✅
+#### When to Choose MyNodeOne ✅
 
 **Multiple Machines:**
-- **NodeZero:** Designed for multiple servers working together
+- **MyNodeOne:** Designed for multiple servers working together
 - **Docker Compose:** Single machine only
-- **Winner:** NodeZero for scaling beyond one server
+- **Winner:** MyNodeOne for scaling beyond one server
 
 **High Availability:**
-- **NodeZero:** Apps survive node failures, automatic failover
+- **MyNodeOne:** Apps survive node failures, automatic failover
 - **Docker Compose:** Single point of failure
-- **Winner:** NodeZero for production
+- **Winner:** MyNodeOne for production
 
 **Scaling:**
-- **NodeZero:** Auto-scale across multiple nodes
+- **MyNodeOne:** Auto-scale across multiple nodes
 - **Docker Compose:** Manual, single-node limit
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 **Production Features:**
-- **NodeZero:** Monitoring, logging, GitOps, secrets management
+- **MyNodeOne:** Monitoring, logging, GitOps, secrets management
 - **Docker Compose:** Basic orchestration only
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 **Storage:**
-- **NodeZero:** Distributed, replicated across nodes
+- **MyNodeOne:** Distributed, replicated across nodes
 - **Docker Compose:** Local volumes only
-- **Winner:** NodeZero for data safety
+- **Winner:** MyNodeOne for data safety
 
 #### When to Choose Docker Compose ❌
 
@@ -270,17 +270,17 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Minimal budget
 - Proof of concept stage
 
-**Bottom Line:** Start with Docker Compose, graduate to NodeZero when you need multiple machines or production features.
+**Bottom Line:** Start with Docker Compose, graduate to MyNodeOne when you need multiple machines or production features.
 
 ---
 
-### 5. NodeZero vs Managed Kubernetes (EKS/GKE/AKS)
+### 5. MyNodeOne vs Managed Kubernetes (EKS/GKE/AKS)
 
 #### Overview
 - **Managed K8s:** Cloud provider handles Kubernetes for you
-- **NodeZero:** Self-hosted Kubernetes on your hardware
+- **MyNodeOne:** Self-hosted Kubernetes on your hardware
 
-#### When to Choose NodeZero ✅
+#### When to Choose MyNodeOne ✅
 
 **Cost Savings:**
 
@@ -294,7 +294,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Egress (500GB): $45/month
 - **Total: $543/month = $6,516/year**
 
-**NodeZero:**
+**MyNodeOne:**
 - 3x used servers: $600 one-time
 - VPS edge: $6/month
 - Electricity: ~$20/month
@@ -305,19 +305,19 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 **Break-even: 1.1 months**
 
 **Privacy:**
-- **NodeZero:** Data stays on your hardware
+- **MyNodeOne:** Data stays on your hardware
 - **Managed K8s:** Data in cloud provider's data centers
-- **Winner:** NodeZero for sensitive data
+- **Winner:** MyNodeOne for sensitive data
 
 **Egress Fees:**
-- **NodeZero:** $0 (no egress charges)
+- **MyNodeOne:** $0 (no egress charges)
 - **Managed K8s:** $0.09/GB adds up fast
-- **Winner:** NodeZero (save thousands on egress)
+- **Winner:** MyNodeOne (save thousands on egress)
 
 **Control:**
-- **NodeZero:** Full control over everything
+- **MyNodeOne:** Full control over everything
 - **Managed K8s:** Limited by provider
-- **Winner:** NodeZero
+- **Winner:** MyNodeOne
 
 #### When to Choose Managed Kubernetes ❌
 
@@ -346,13 +346,13 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Regulatory requirements for cloud hosting
 - Audit requirements for cloud infrastructure
 
-**Bottom Line:** NodeZero for cost-conscious teams with hardware. Managed K8s for unlimited budget and zero maintenance.
+**Bottom Line:** MyNodeOne for cost-conscious teams with hardware. Managed K8s for unlimited budget and zero maintenance.
 
 ---
 
 ## 🎯 Use Case Decision Matrix
 
-### Choose NodeZero If:
+### Choose MyNodeOne If:
 
 ✅ **Budget conscious** (want to save 90%+ on cloud costs)  
 ✅ **Small to medium team** (1-50 nodes)  
@@ -385,7 +385,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - 3-person engineering team
 - Growing fast, costs growing faster
 
-**Recommendation: NodeZero** ✅
+**Recommendation: MyNodeOne** ✅
 
 **Why:**
 - Cut infrastructure costs by 90% ($1,350/month savings)
@@ -406,15 +406,15 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Mostly VMs with some containers
 - Replacing aging VMware
 
-**Recommendation: OpenStack** ❌ (Not NodeZero)
+**Recommendation: OpenStack** ❌ (Not MyNodeOne)
 
 **Why:**
-- Scale is too large for NodeZero's sweet spot
+- Scale is too large for MyNodeOne's sweet spot
 - Need multi-tenancy with strict isolation
 - Have team to manage complex system
 - VM-heavy workload
 
-**Note:** Could use NodeZero for container workloads alongside OpenStack for VMs
+**Note:** Could use MyNodeOne for container workloads alongside OpenStack for VMs
 
 ---
 
@@ -426,7 +426,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Have old gaming PC (32GB RAM, good CPU)
 - Want to reduce costs, learn cloud infrastructure
 
-**Recommendation: NodeZero** ✅
+**Recommendation: MyNodeOne** ✅
 
 **Why:**
 - Repurpose existing hardware
@@ -447,7 +447,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Legacy applications
 - IT team familiar with VMs
 
-**Recommendation: Proxmox** ❌ (Not NodeZero)
+**Recommendation: Proxmox** ❌ (Not MyNodeOne)
 
 **Why:**
 - VM-focused workload
@@ -455,7 +455,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Team comfortable with traditional IT
 - Legacy app support critical
 
-**Note:** Could add NodeZero later for new cloud-native apps
+**Note:** Could add MyNodeOne later for new cloud-native apps
 
 ---
 
@@ -467,7 +467,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Want hands-on production experience
 - Limited budget
 
-**Recommendation: NodeZero** ✅
+**Recommendation: MyNodeOne** ✅
 
 **Why:**
 - Get production-grade K8s experience
@@ -476,13 +476,13 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 - Resume-worthy project
 - Production skills, not just theory
 
-**Alternative:** Minikube for learning basics first, then NodeZero for production skills
+**Alternative:** Minikube for learning basics first, then MyNodeOne for production skills
 
 ---
 
 ## 📈 Migration Paths
 
-### From Docker Compose → NodeZero
+### From Docker Compose → MyNodeOne
 
 **Why Migrate:**
 - Need multiple machines
@@ -492,9 +492,9 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 **How:**
 1. Keep Docker Compose running
-2. Setup NodeZero cluster
-3. Convert docker-compose.yaml to K8s manifests (NodeZero includes helper)
-4. Deploy to NodeZero
+2. Setup MyNodeOne cluster
+3. Convert docker-compose.yaml to K8s manifests (MyNodeOne includes helper)
+4. Deploy to MyNodeOne
 5. Test thoroughly
 6. Switch traffic
 7. Decommission Docker Compose
@@ -505,7 +505,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 ---
 
-### From AWS/GCP/Azure → NodeZero
+### From AWS/GCP/Azure → MyNodeOne
 
 **Why Migrate:**
 - Cost savings (90%+ reduction)
@@ -515,8 +515,8 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 **How:**
 1. Inventory current cloud usage
-2. Calculate NodeZero hardware needs
-3. Setup NodeZero cluster
+2. Calculate MyNodeOne hardware needs
+3. Setup MyNodeOne cluster
 4. Migrate non-critical apps first
 5. Test performance and reliability
 6. Migrate critical apps
@@ -530,7 +530,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 ---
 
-### From Bare Kubernetes → NodeZero
+### From Bare Kubernetes → MyNodeOne
 
 **Why Migrate:**
 - Tired of maintaining everything
@@ -540,10 +540,10 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 **How:**
 1. Document current setup
-2. Test NodeZero cluster
+2. Test MyNodeOne cluster
 3. Migrate apps (K8s manifests are compatible)
 4. Compare features
-5. Switch if NodeZero meets needs
+5. Switch if MyNodeOne meets needs
 
 **Difficulty:** Easy  
 **Time:** 1-2 days  
@@ -553,7 +553,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 ## 🎓 Learning Resources
 
-### If Choosing NodeZero
+### If Choosing MyNodeOne
 
 **Start here:**
 1. [START-HERE.md](../START-HERE.md) - Quick introduction
@@ -594,7 +594,7 @@ This guide helps you decide if NodeZero is the right choice for your use case by
 
 ## ✅ Final Recommendations
 
-### You Should Use NodeZero If You Answer "Yes" to These:
+### You Should Use MyNodeOne If You Answer "Yes" to These:
 
 1. Want to save money (90%+ cost reduction)
 2. Have 1-50 machines (or plan to)
@@ -623,30 +623,30 @@ Ask yourself:
 
 1. **How many servers do I have/need?**
    - 1 → Docker Compose
-   - 2-50 → NodeZero
-   - 50-100 → NodeZero or Bare K8s
+   - 2-50 → MyNodeOne
+   - 50-100 → MyNodeOne or Bare K8s
    - 100+ → OpenStack or Managed K8s
 
 2. **What's my primary workload?**
-   - Containers → NodeZero
+   - Containers → MyNodeOne
    - VMs → Proxmox or OpenStack
    - Mixed → Proxmox
    - Windows → Proxmox
 
 3. **What's my budget?**
-   - $0-100/month → NodeZero
-   - $100-500/month → NodeZero or cloud
+   - $0-100/month → MyNodeOne
+   - $100-500/month → MyNodeOne or cloud
    - $500+/month → Whatever fits needs
    - Unlimited → Managed K8s
 
 4. **What's my team size?**
-   - Just me → NodeZero or Docker Compose
-   - 2-5 people → NodeZero
-   - 5-10 people → NodeZero or Bare K8s
+   - Just me → MyNodeOne or Docker Compose
+   - 2-5 people → MyNodeOne
+   - 5-10 people → MyNodeOne or Bare K8s
    - 10+ people → Any option
 
 5. **How much time do I have?**
-   - 30 minutes → NodeZero or Managed K8s
+   - 30 minutes → MyNodeOne or Managed K8s
    - Few hours → Proxmox
    - Few days → Bare K8s
    - Few weeks → OpenStack
@@ -655,7 +655,7 @@ Ask yourself:
 
 **Author:** Vinay Sachdeva  
 **License:** MIT  
-**Repository:** https://github.com/vinsac/nodezero  
+**Repository:** https://github.com/vinsac/mynodeone  
 **Version:** 1.0.0  
 **Last Updated:** October 25, 2025
 

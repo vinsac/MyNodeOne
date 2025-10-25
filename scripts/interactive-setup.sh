@@ -1,9 +1,9 @@
 #!/bin/bash
 
 ###############################################################################
-# NodeZero Interactive Setup Wizard
+# MyNodeOne Interactive Setup Wizard
 # 
-# This script helps you configure NodeZero for your specific environment
+# This script helps you configure MyNodeOne for your specific environment
 # Run this FIRST before any other scripts
 ###############################################################################
 
@@ -18,7 +18,7 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-CONFIG_DIR="$HOME/.nodezero"
+CONFIG_DIR="$HOME/.mynodeone"
 CONFIG_FILE="$CONFIG_DIR/config.env"
 
 # Helper functions
@@ -155,17 +155,18 @@ welcome() {
     clear
     echo -e "${MAGENTA}"
     cat << "EOF"
-    _   __          __     ______                
-   / | / /___  ____/ /__  /__  (_)___  _________
-  /  |/ / __ \/ __  / _ \   / / / _ \/ ___/ __ \
- / /|  / /_/ / /_/ /  __/  / /_/  __/ /  / /_/ /
-/_/ |_/\____/\__,_/\___/  /___/\___/_/   \____/ 
+   __  ___       _   __          __     ____             
+  /  |/  /_  __/ | / /___  ____/ /__  / __ \____  _____ 
+ / /|_/ / / / /  |/ / __ \/ __  / _ \/ / / / __ \/ _ \  
+/ /  / / /_/ / /|  / /_/ / /_/ /  __/ /_/ / / / /  __/  
+/_/  /_/\__, /_/ |_/\____/\__,_/\___/\____/_/ /_/\___/   
+       /____/ 
                                                  
 EOF
     echo -e "${NC}"
-    echo -e "${CYAN}Welcome to NodeZero Interactive Setup!${NC}"
+    echo -e "${CYAN}Welcome to MyNodeOne Interactive Setup!${NC}"
     echo
-    echo "This wizard will help you configure NodeZero for your hardware."
+    echo "This wizard will help you configure MyNodeOne for your hardware."
     echo "We'll detect your environment and ask a few questions."
     echo
     echo -e "${YELLOW}Note: This wizard should be run on each machine (control plane, workers, VPS).${NC}"
@@ -269,7 +270,7 @@ configure_node_type() {
 configure_cluster_info() {
     print_header "Cluster Configuration"
     
-    prompt_input "Give your cluster a name" CLUSTER_NAME "nodezero"
+    prompt_input "Give your cluster a name" CLUSTER_NAME "mynodeone"
     
     # For control plane, this is the node name
     # For workers, we'll ask for control plane IP
@@ -309,7 +310,7 @@ configure_storage() {
     if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
         print_header "Storage Configuration"
         
-        print_info "NodeZero uses Longhorn for distributed storage."
+        print_info "MyNodeOne uses Longhorn for distributed storage."
         print_info "Longhorn can use any mounted disk or directory."
         echo
         
@@ -389,7 +390,7 @@ save_configuration() {
     mkdir -p "$CONFIG_DIR"
     
     cat > "$CONFIG_FILE" <<EOF
-# NodeZero Configuration
+# MyNodeOne Configuration
 # Generated: $(date)
 # Node: $NODE_NAME
 
@@ -463,7 +464,7 @@ show_next_steps() {
             echo "Your worker node is configured! Next:"
             echo
             echo "1. Get the join token from your control plane node"
-            echo "   (It was displayed after bootstrap, or check /root/nodezero-join-token.txt)"
+            echo "   (It was displayed after bootstrap, or check /root/mynodeone-join-token.txt)"
             echo
             echo "2. Run the worker node script:"
             echo -e "   ${CYAN}sudo ./scripts/add-worker-node.sh${NC}"
@@ -498,7 +499,7 @@ show_next_steps() {
     
     echo
     print_info "Your configuration is saved in: $CONFIG_FILE"
-    print_info "All NodeZero scripts will automatically use this configuration."
+    print_info "All MyNodeOne scripts will automatically use this configuration."
     echo
 }
 

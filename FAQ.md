@@ -1,12 +1,12 @@
-# NodeZero - Frequently Asked Questions
+# MyNodeOne - Frequently Asked Questions
 
 ## General Questions
 
-### What is NodeZero?
+### What is MyNodeOne?
 
-NodeZero is a production-ready private cloud infrastructure that turns commodity hardware into an AWS-like environment. It uses open-source tools like Kubernetes (K3s), MinIO, Longhorn, and more to provide enterprise features at a fraction of the cost.
+MyNodeOne is a production-ready private cloud infrastructure that turns commodity hardware into an AWS-like environment. It uses open-source tools like Kubernetes (K3s), MinIO, Longhorn, and more to provide enterprise features at a fraction of the cost.
 
-### Why should I use NodeZero instead of AWS/GCP/Azure?
+### Why should I use MyNodeOne instead of AWS/GCP/Azure?
 
 **Cost:** Save $30,000+ per year compared to cloud providers  
 **Control:** Full ownership of your infrastructure and data  
@@ -14,9 +14,9 @@ NodeZero is a production-ready private cloud infrastructure that turns commodity
 **Privacy:** Your data never leaves your machines  
 **Learning:** Understand how cloud infrastructure really works  
 
-### Is NodeZero secure?
+### Is MyNodeOne secure?
 
-**Yes!** NodeZero includes enterprise-grade security:
+**Yes!** MyNodeOne includes enterprise-grade security:
 
 **Built-in Security (Automatic):**
 - ✅ Firewall (UFW) on all nodes
@@ -54,11 +54,11 @@ Enables:
 
 ---
 
-## 🆚 NodeZero vs Alternatives
+## 🆚 MyNodeOne vs Alternatives
 
-### NodeZero vs OpenStack
+### MyNodeOne vs OpenStack
 
-**Use NodeZero when:**
+**Use MyNodeOne when:**
 - ✅ You want **simple, fast setup** (30 minutes vs days/weeks)
 - ✅ You have **small to medium scale** (1-50 nodes)
 - ✅ You want **container-first** infrastructure (Kubernetes native)
@@ -74,13 +74,13 @@ Enables:
 - ❌ You need **multi-tenancy** with strict isolation
 - ❌ You're replacing a **VMware infrastructure**
 
-**Bottom line:** NodeZero is **easier, faster, and cheaper** for most use cases. OpenStack is better for massive enterprise VM deployments.
+**Bottom line:** MyNodeOne is **easier, faster, and cheaper** for most use cases. OpenStack is better for massive enterprise VM deployments.
 
 ---
 
-### NodeZero vs Proxmox
+### MyNodeOne vs Proxmox
 
-**Use NodeZero when:**
+**Use MyNodeOne when:**
 - ✅ You want **cloud-native** apps (containers, microservices)
 - ✅ You need **automatic scaling** and orchestration
 - ✅ You want **GitOps** deployment (push to GitHub, auto-deploy)
@@ -96,13 +96,13 @@ Enables:
 - ❌ You prefer **manual management** over automation
 - ❌ Target: **Infrastructure and VMs**
 
-**Bottom line:** NodeZero is for **modern cloud apps**, Proxmox is for **traditional VMs and mixed environments**.
+**Bottom line:** MyNodeOne is for **modern cloud apps**, Proxmox is for **traditional VMs and mixed environments**.
 
 ---
 
-### NodeZero vs Bare Kubernetes
+### MyNodeOne vs Bare Kubernetes
 
-**Use NodeZero when:**
+**Use MyNodeOne when:**
 - ✅ You want **everything pre-configured** (storage, networking, monitoring)
 - ✅ You need **production-ready** out of the box
 - ✅ You want **one command** to set up everything
@@ -112,18 +112,18 @@ Enables:
 
 **Use Bare Kubernetes when:**
 - ❌ You need **complete customization** of every component
-- ❌ You have **specific requirements** that don't fit NodeZero's stack
+- ❌ You have **specific requirements** that don't fit MyNodeOne's stack
 - ❌ You want to **learn every detail** of Kubernetes
 - ❌ You have **time to configure** everything manually
 - ❌ You're a **Kubernetes expert** already
 
-**Bottom line:** NodeZero is **Kubernetes with everything configured**. Bare K8s is for experts who want full control.
+**Bottom line:** MyNodeOne is **Kubernetes with everything configured**. Bare K8s is for experts who want full control.
 
 ---
 
-### NodeZero vs Docker Compose
+### MyNodeOne vs Docker Compose
 
-**Use NodeZero when:**
+**Use MyNodeOne when:**
 - ✅ You need **multiple servers** working together
 - ✅ You want **high availability** (apps survive node failures)
 - ✅ You need **automatic scaling** across machines
@@ -138,13 +138,13 @@ Enables:
 - ❌ You don't need **scaling**
 - ❌ You want the **simplest** possible setup
 
-**Bottom line:** Start with Docker Compose, graduate to NodeZero when you need multiple machines and production features.
+**Bottom line:** Start with Docker Compose, graduate to MyNodeOne when you need multiple machines and production features.
 
 ---
 
-### NodeZero vs Managed Kubernetes (EKS/GKE/AKS)
+### MyNodeOne vs Managed Kubernetes (EKS/GKE/AKS)
 
-**Use NodeZero when:**
+**Use MyNodeOne when:**
 - ✅ You want to **save 90%+ on costs**
 - ✅ You have **hardware available** (old servers, desktops)
 - ✅ You can **manage your own infrastructure**
@@ -160,13 +160,13 @@ Enables:
 - ❌ You want **someone else** to handle everything
 - ❌ You need **99.99%+ SLA** with financial guarantees
 
-**Bottom line:** NodeZero for **cost-conscious** teams with hardware. Managed K8s for **hands-off, global scale**.
+**Bottom line:** MyNodeOne for **cost-conscious** teams with hardware. Managed K8s for **hands-off, global scale**.
 
 ---
 
-### NodeZero vs Cloud VMs + Manual Setup
+### MyNodeOne vs Cloud VMs + Manual Setup
 
-**Use NodeZero when:**
+**Use MyNodeOne when:**
 - ✅ You want **automation** instead of manual work
 - ✅ You need **repeatable** infrastructure (one command setup)
 - ✅ You want **best practices** built-in
@@ -180,11 +180,11 @@ Enables:
 - ❌ You enjoy **tinkering** with configurations
 - ❌ Time is **not a constraint**
 
-**Bottom line:** NodeZero **saves time** with automation and best practices. Manual setup is for learning or unique requirements.
+**Bottom line:** MyNodeOne **saves time** with automation and best practices. Manual setup is for learning or unique requirements.
 
 ---
 
-## 🎯 When Should You Use NodeZero?
+## 🎯 When Should You Use MyNodeOne?
 
 ### ✅ Perfect For:
 
@@ -255,7 +255,7 @@ Enables:
 - Monitoring: $30
 - **Total: $625/month = $7,500/year**
 
-**NodeZero Costs (Monthly):**
+**MyNodeOne Costs (Monthly):**
 - 3x used servers ($600 one-time)
 - $6 VPS (edge node)
 - Electricity: ~$20
@@ -290,23 +290,23 @@ Want to save $30,000+/year?
 ├─ No → Use AWS/GCP (unlimited budget)
 └─ Yes ↓
 
-🎉 Use NodeZero! 🎉
+🎉 Use MyNodeOne! 🎉
 ```
 
 ---
 
-### Is NodeZero production-ready?
+### Is MyNodeOne production-ready?
 
-Yes! NodeZero uses battle-tested open-source tools:
+Yes! MyNodeOne uses battle-tested open-source tools:
 - K3s (used by Cisco, Siemens, and thousands of companies)
 - Longhorn (enterprise storage by SUSE/Rancher)
 - MinIO (trusted by NASA, Intel, and many Fortune 500s)
 - Traefik (powers millions of sites)
 - Prometheus/Grafana (industry standard monitoring)
 
-### Can I use NodeZero for commercial projects?
+### Can I use MyNodeOne for commercial projects?
 
-Absolutely! NodeZero is MIT licensed. Use it for your startup, business, or personal projects. All components are free and open source.
+Absolutely! MyNodeOne is MIT licensed. Use it for your startup, business, or personal projects. All components are free and open source.
 
 ## Technical Questions
 
@@ -314,7 +314,7 @@ Absolutely! NodeZero is MIT licensed. Use it for your startup, business, or pers
 
 Ubuntu 24.04 LTS (Desktop or Server edition). Other Linux distributions may work but are untested.
 
-### Can I run NodeZero on just one machine?
+### Can I run MyNodeOne on just one machine?
 
 Yes! Start with your first node (e.g., `node-001`) and add more nodes later. The architecture scales from 1 to 100+ nodes.
 
@@ -328,7 +328,7 @@ Recommended: 100 Mbps upload minimum. With 500 Mbps (like yours), you can serve 
 
 That's why we use VPS edge nodes! They handle public traffic and route to your home via Tailscale on non-blocked ports.
 
-### Can I use NodeZero without Tailscale?
+### Can I use MyNodeOne without Tailscale?
 
 Not recommended. Tailscale provides:
 - NAT traversal (works behind any router)
@@ -355,7 +355,7 @@ Solution: Add additional nodes (e.g., `node-002`, `node-003`) for high availabil
 
 ### Can I mix different hardware?
 
-Yes! NodeZero works with:
+Yes! MyNodeOne works with:
 - Different CPU architectures (as long as all are x86_64 or all ARM64)
 - Different RAM amounts
 - Different storage sizes
@@ -363,7 +363,7 @@ Yes! NodeZero works with:
 
 Kubernetes handles scheduling appropriately.
 
-### Does NodeZero support GPU workloads?
+### Does MyNodeOne support GPU workloads?
 
 Not out of the box, but it's on the roadmap. You can manually install NVIDIA device plugin for GPU support.
 
@@ -396,7 +396,7 @@ Both are needed and complement each other.
 
 ## Application Questions
 
-### What apps can I run on NodeZero?
+### What apps can I run on MyNodeOne?
 
 Anything that runs in Docker/containers:
 - Web apps (React, Vue, Angular, etc.)
@@ -478,7 +478,7 @@ Yes, but not recommended. Let's Encrypt is free and automatic. If you need custo
 
 ## Security Questions
 
-### What security features does NodeZero have?
+### What security features does MyNodeOne have?
 
 **Automatic Security (Built-in):**
 - Firewall (UFW) on all nodes - only allows SSH and Tailscale
@@ -603,7 +603,7 @@ kubectl get svc -A | grep LoadBalancer
 ### App not accessible from internet
 
 **Cause:** VPS routing not configured
-**Solution:** Update `/etc/traefik/dynamic/nodezero-routes.yml` on VPS
+**Solution:** Update `/etc/traefik/dynamic/mynodeone-routes.yml` on VPS
 
 ## Maintenance Questions
 
@@ -668,7 +668,7 @@ If your ISP allows ports 80/443:
 
 Cost: $0/month (electricity only)
 
-### Can I sell hosting on NodeZero?
+### Can I sell hosting on MyNodeOne?
 
 Technically yes, but consider:
 - Legal/business licenses
@@ -681,13 +681,13 @@ Better for personal/small business use.
 
 ## Migration Questions
 
-### Can I migrate from AWS/GCP to NodeZero?
+### Can I migrate from AWS/GCP to MyNodeOne?
 
 Yes! Process:
-1. Set up NodeZero cluster
+1. Set up MyNodeOne cluster
 2. Migrate databases (dump/restore)
 3. Build Docker images for apps
-4. Deploy to NodeZero
+4. Deploy to MyNodeOne
 5. Test thoroughly
 6. Switch DNS
 7. Decommission cloud resources
@@ -698,7 +698,7 @@ Saves $2,000+/month!
 
 Yes! Very easy:
 1. Convert docker-compose.yml to K8s manifests
-2. Deploy to NodeZero
+2. Deploy to MyNodeOne
 3. Much better scaling and management
 
 ### How long does migration take?
@@ -710,7 +710,7 @@ Yes! Very easy:
 
 ## Community Questions
 
-### Can I contribute to NodeZero?
+### Can I contribute to MyNodeOne?
 
 Yes! See CONTRIBUTING.md. All contributions welcome:
 - Bug fixes
@@ -719,12 +719,12 @@ Yes! See CONTRIBUTING.md. All contributions welcome:
 - Example apps
 - Testing
 
-### Is there a NodeZero community?
+### Is there a MyNodeOne community?
 
 We're just starting! Share your setup:
 - GitHub Discussions
 - Reddit /r/selfhosted
-- Twitter/X with #NodeZero
+- Twitter/X with #MyNodeOne
 - Your blog!
 
 ### Can I get help with my setup?
@@ -736,7 +736,7 @@ We're just starting! Share your setup:
 
 ### Can I hire someone to set this up?
 
-NodeZero is designed to be self-service, but if you need help:
+MyNodeOne is designed to be self-service, but if you need help:
 - Freelancers on Upwork/Fiverr
 - DevOps consultants
 - Or follow QUICKSTART.md - it's quite simple!

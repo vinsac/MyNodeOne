@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# NodeZero VPS Edge Node Setup Script
+# MyNodeOne VPS Edge Node Setup Script
 # 
 # This script configures a VPS with public IP as an edge/ingress node
 # 
@@ -18,7 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Load configuration
-CONFIG_FILE="$HOME/.nodezero/config.env"
+CONFIG_FILE="$HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
     echo "Please run: ./scripts/interactive-setup.sh first"
@@ -182,7 +182,7 @@ http:
   routers:
     # Example router - add your domains here
     dashboard:
-      rule: "Host(\`traefik.nodezero.local\`)"
+      rule: "Host(\`traefik.mynodeone.local\`)"
       service: api@internal
       entryPoints:
         - websecure
@@ -259,14 +259,14 @@ prompt_confirm() {
 }
 
 configure_routing() {
-    log_info "Configuring routing to NodeZero cluster..."
+    log_info "Configuring routing to MyNodeOne cluster..."
     
     CONTROL_PLANE_IP=$(cat /etc/traefik/control-plane-ip)
     
     # This creates a sample configuration
     # Users will need to add their own routes
-    cat > /etc/traefik/dynamic/nodezero-routes.yml <<EOF
-# NodeZero Routes Configuration
+    cat > /etc/traefik/dynamic/mynodeone-routes.yml <<EOF
+# MyNodeOne Routes Configuration
 # 
 # Add your application routes here
 # Example:
@@ -307,7 +307,7 @@ http:
 EOF
     
     log_success "Routing configured"
-    log_info "Edit /etc/traefik/dynamic/nodezero-routes.yml to add your domains"
+    log_info "Edit /etc/traefik/dynamic/mynodeone-routes.yml to add your domains"
 }
 
 setup_monitoring_agent() {
@@ -372,7 +372,7 @@ print_summary() {
     echo "     Example: A record @ -> $VPS_PUBLIC_IP"
     echo
     echo "  2. Add your application routes in:"
-    echo "     /etc/traefik/dynamic/nodezero-routes.yml"
+    echo "     /etc/traefik/dynamic/mynodeone-routes.yml"
     echo
     echo "  3. Restart Traefik to apply changes:"
     echo "     cd /etc/traefik && docker compose restart"
@@ -387,7 +387,7 @@ print_summary() {
 
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NodeZero VPS Edge Node Setup"
+    echo "  MyNodeOne VPS Edge Node Setup"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     

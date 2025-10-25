@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# NodeZero Security Hardening Script
+# MyNodeOne Security Hardening Script
 # 
 # Enables all MEDIUM/LOW security features:
 # - Kubernetes audit logging
@@ -224,7 +224,7 @@ print_summary() {
 
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NodeZero Security Hardening"
+    echo "  MyNodeOne Security Hardening"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     

@@ -1,4 +1,4 @@
-# NodeZero Security Audit & Hardening Report
+# MyNodeOne Security Audit & Hardening Report
 
 **Date:** October 25, 2025  
 **Version:** 1.0.0  
@@ -9,7 +9,7 @@
 
 ## ✅ Executive Summary
 
-NodeZero v1.0.0 has been audited for security vulnerabilities and **ALL ISSUES HAVE BEEN FIXED**. This document is kept for transparency and educational purposes.
+MyNodeOne v1.0.0 has been audited for security vulnerabilities and **ALL ISSUES HAVE BEEN FIXED**. This document is kept for transparency and educational purposes.
 
 **Original Risk Level:** HIGH (20 vulnerabilities found)  
 **Current Risk Level:** LOW (0 vulnerabilities remaining)  
@@ -109,7 +109,7 @@ GRAFANA_PASSWORD=$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-24)
 **Severity:** CRITICAL
 
 **Risk:**
-- Credentials stored in `/root/nodezero-*.txt` with default permissions
+- Credentials stored in `/root/mynodeone-*.txt` with default permissions
 - No encryption at rest
 - Credentials visible in process lists during creation
 - Easily accessible if system compromised
@@ -119,7 +119,7 @@ GRAFANA_PASSWORD=$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-24)
 **Fix:**
 ```bash
 # Set restrictive permissions
-chmod 600 /root/nodezero-*.txt
+chmod 600 /root/mynodeone-*.txt
 
 # Better: Use Kubernetes secrets and display once
 echo "Save these credentials securely:"
@@ -246,7 +246,7 @@ configure_firewall() {
 **Fix:**
 ```bash
 # Set restrictive permissions on all sensitive files
-chmod 600 /root/nodezero-*.txt
+chmod 600 /root/mynodeone-*.txt
 chmod 600 $USER_HOME/.kube/config
 umask 077  # Set restrictive default
 ```

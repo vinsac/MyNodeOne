@@ -1,18 +1,18 @@
 #!/bin/bash
 
 ###############################################################################
-# Deploy NodeZero Documentation Website
+# Deploy MyNodeOne Documentation Website
 # 
-# This deploys the website and documentation to your NodeZero cluster
+# This deploys the website and documentation to your MyNodeOne cluster
 # so users can access help via web browser
 ###############################################################################
 
 set -euo pipefail
 
-echo "Deploying NodeZero Documentation Website..."
+echo "Deploying MyNodeOne Documentation Website..."
 
 # Create namespace
-kubectl create namespace nodezero-docs --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace mynodeone-docs --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy nginx with documentation
 kubectl apply -f - <<EOF
@@ -21,7 +21,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-config
-  namespace: nodezero-docs
+  namespace: mynodeone-docs
 data:
   nginx.conf: |
     server {
@@ -43,17 +43,17 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nodezero-docs
-  namespace: nodezero-docs
+  name: mynodeone-docs
+  namespace: mynodeone-docs
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: nodezero-docs
+      app: mynodeone-docs
   template:
     metadata:
       labels:
-        app: nodezero-docs
+        app: mynodeone-docs
     spec:
       containers:
       - name: nginx
@@ -86,30 +86,30 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nodezero-docs
-  namespace: nodezero-docs
+  name: mynodeone-docs
+  namespace: mynodeone-docs
 spec:
   type: LoadBalancer
   ports:
   - port: 80
     targetPort: 80
   selector:
-    app: nodezero-docs
+    app: mynodeone-docs
 EOF
 
 # Wait for deployment
 echo "Waiting for deployment..."
-kubectl wait --for=condition=available --timeout=120s deployment/nodezero-docs -n nodezero-docs
+kubectl wait --for=condition=available --timeout=120s deployment/mynodeone-docs -n mynodeone-docs
 
 # Get service IP
-SERVICE_IP=$(kubectl get svc nodezero-docs -n nodezero-docs -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+SERVICE_IP=$(kubectl get svc mynodeone-docs -n mynodeone-docs -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 if [ -z "$SERVICE_IP" ]; then
-    SERVICE_IP=$(kubectl get svc nodezero-docs -n nodezero-docs -o jsonpath='{.spec.clusterIP}')
+    SERVICE_IP=$(kubectl get svc mynodeone-docs -n mynodeone-docs -o jsonpath='{.spec.clusterIP}')
 fi
 
 echo
-echo "✓ NodeZero Documentation Website deployed successfully!"
+echo "✓ MyNodeOne Documentation Website deployed successfully!"
 echo
 echo "Access it at: http://$SERVICE_IP"
 echo
@@ -125,8 +125,8 @@ cat > website/ingress-route-example.yaml <<'EOFINGRESS'
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
-  name: nodezero-docs
-  namespace: nodezero-docs
+  name: mynodeone-docs
+  namespace: mynodeone-docs
 spec:
   entryPoints:
     - websecure
@@ -134,7 +134,7 @@ spec:
     - match: Host(`docs.yourdomain.com`)  # UPDATE THIS
       kind: Rule
       services:
-        - name: nodezero-docs
+        - name: mynodeone-docs
           port: 80
   tls:
     certResolver: letsencrypt

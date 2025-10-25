@@ -1,4 +1,4 @@
-# Default Resource Quotas for NodeZero
+# Default Resource Quotas for MyNodeOne
 # Prevents resource exhaustion attacks and ensures fair resource allocation
 
 ---

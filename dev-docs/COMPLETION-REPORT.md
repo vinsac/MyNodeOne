@@ -1,8 +1,8 @@
-# NodeZero v2.0 - Completion Report
+# MyNodeOne v2.0 - Completion Report
 
 ## 🎉 Project Status: COMPLETE
 
-All requested features have been implemented. NodeZero is now **production-ready** and **fully generic**.
+All requested features have been implemented. MyNodeOne is now **production-ready** and **fully generic**.
 
 ---
 
@@ -10,7 +10,7 @@ All requested features have been implemented. NodeZero is now **production-ready
 
 ### Question 1: System Cleanup in Scripts ✓
 
-**Implemented in:** `scripts/nodezero`
+**Implemented in:** `scripts/mynodeone`
 
 **What it does:**
 - Removes Snap packages (optional, saves 500MB+ RAM)
@@ -25,7 +25,7 @@ All requested features have been implemented. NodeZero is now **production-ready
 
 ### Question 2: External Hard Disk Detection ✓
 
-**Implemented in:** `scripts/nodezero`
+**Implemented in:** `scripts/mynodeone`
 
 **What it does:**
 - Automatically scans for unmounted disks
@@ -45,11 +45,11 @@ All requested features have been implemented. NodeZero is now **production-ready
 
 ### Question 3: One Unified Installation Script ✓
 
-**Implemented as:** `scripts/nodezero`
+**Implemented as:** `scripts/mynodeone`
 
 **How it works:**
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Does everything:
 # 1. System cleanup
 # 2. Disk detection
@@ -129,7 +129,7 @@ sudo ./scripts/nodezero
 ### Scripts (7 files)
 ```
 scripts/
-├── nodezero ⭐                       # Main entry point (NEW!)
+├── mynodeone ⭐                       # Main entry point (NEW!)
 ├── interactive-setup.sh              # Configuration wizard
 ├── bootstrap-control-plane.sh        # Control plane setup
 ├── add-worker-node.sh                # Worker node addition
@@ -186,7 +186,7 @@ website/
 ### Configuration (1 file)
 ```
 config/
-└── nodezero.conf.example             # Config template
+└── mynodeone.conf.example             # Config template
 ```
 
 **Total Files:** 32  
@@ -220,15 +220,15 @@ config/
 ### Complete Setup (Control Plane)
 ```bash
 # Toronto-0001 setup
-cd nodezero
-sudo ./scripts/nodezero
+cd mynodeone
+sudo ./scripts/mynodeone
 
 # Wizard asks:
 ? Clean up unnecessary packages? [y/N]: y
 ? Found 2 unmounted disks. Set up? [y/N]: y
 ? Setup option (1-4): 1  # Longhorn
 ? Node type (1-4): 1     # Control Plane
-? Cluster name [nodezero]: 
+? Cluster name [mynodeone]: 
 ? Node name [toronto-0001]: 
 ? Location [home]: toronto
 
@@ -239,8 +239,8 @@ sudo ./scripts/nodezero
 ### Add Worker (Future)
 ```bash
 # Toronto-0002 setup
-cd nodezero
-sudo ./scripts/nodezero
+cd mynodeone
+sudo ./scripts/mynodeone
 
 # Wizard asks:
 ? Node type (1-4): 2  # Worker
@@ -252,8 +252,8 @@ sudo ./scripts/nodezero
 ### Setup VPS Edge
 ```bash
 # VPS setup
-cd nodezero
-sudo ./scripts/nodezero
+cd mynodeone
+sudo ./scripts/mynodeone
 
 # Wizard asks:
 ? Node type (1-4): 3  # VPS Edge
@@ -376,7 +376,7 @@ Total: $2,760/month
 ### If You Haven't Deployed Yet
 Perfect! Just follow the new process:
 ```bash
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Everything is automatic
 ```
 
@@ -384,7 +384,7 @@ sudo ./scripts/nodezero
 Your existing setup still works! When adding toronto-0002:
 ```bash
 # On toronto-0002
-sudo ./scripts/nodezero
+sudo ./scripts/mynodeone
 # Select: Worker Node
 # Enter toronto-0001 IP
 # Done!
@@ -435,8 +435,8 @@ If you want self-hosted Tailscale later:
 ### Soon (When Ready)
 1. 🔄 Test on toronto-0001
    ```bash
-   cd nodezero
-   sudo ./scripts/nodezero
+   cd mynodeone
+   sudo ./scripts/mynodeone
    ```
 
 2. 🔄 Deploy docs website
@@ -447,13 +447,13 @@ If you want self-hosted Tailscale later:
 3. 🔄 Configure VPS servers
    ```bash
    # On each VPS
-   sudo ./scripts/nodezero
+   sudo ./scripts/mynodeone
    ```
 
 ### Future (In 2 Months)
 1. 🔜 Add toronto-0002
    ```bash
-   sudo ./scripts/nodezero
+   sudo ./scripts/mynodeone
    # Select: Worker Node
    ```
 
@@ -540,7 +540,7 @@ If you want self-hosted Tailscale later:
 
 ## 🎊 Congratulations!
 
-NodeZero is **complete and production-ready**!
+MyNodeOne is **complete and production-ready**!
 
 You now have:
 - ✅ Enterprise-grade infrastructure
@@ -557,8 +557,8 @@ You now have:
 ## 🚀 Ready to Deploy?
 
 ```bash
-cd /home/vinay/Projects/nodezero/code/nodezero
-sudo ./scripts/nodezero
+cd /home/vinay/Projects/mynodeone/code/mynodeone
+sudo ./scripts/mynodeone
 ```
 
 **That's it! One command to rule them all.** 🎉

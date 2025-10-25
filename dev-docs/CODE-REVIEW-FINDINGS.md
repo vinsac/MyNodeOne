@@ -1,10 +1,10 @@
-# NodeZero Code Review - Edge Cases & Issues
+# MyNodeOne Code Review - Edge Cases & Issues
 
 ## 🔍 Critical Edge Cases Found
 
 ### 1. **Disk Setup - Data Loss Risk** 🔴 HIGH PRIORITY
 
-**Location:** `scripts/nodezero` lines 217-277
+**Location:** `scripts/mynodeone` lines 217-277
 
 **Issues:**
 - ❌ No warning that formatting will **erase all data**
@@ -72,18 +72,18 @@ check_network() {
 
 ### 4. **Idempotency Issues** 🟡 MEDIUM PRIORITY
 
-**Location:** `scripts/nodezero`
+**Location:** `scripts/mynodeone`
 
 **Issues:**
 - ❌ Running script twice could cause errors
-- ❌ No check if NodeZero already installed
+- ❌ No check if MyNodeOne already installed
 - ❌ Could duplicate entries in /etc/fstab
 
 **Fix Needed:**
 ```bash
 check_existing_installation() {
     if [ -f "$CONFIG_FILE" ]; then
-        print_warning "NodeZero already configured"
+        print_warning "MyNodeOne already configured"
         if ! prompt_confirm "Reinstall?"; then
             exit 0
         fi
@@ -116,7 +116,7 @@ handle_interrupt() {
 
 ### 6. **Disk Health Not Checked** 🟢 LOW PRIORITY
 
-**Location:** `scripts/nodezero` disk detection
+**Location:** `scripts/mynodeone` disk detection
 
 **Issues:**
 - ❌ No SMART disk health check
@@ -195,7 +195,7 @@ echo "Logs: journalctl -u k3s -f"
 
 ### 9. **RAID Setup Unsafe** 🔴 HIGH PRIORITY
 
-**Location:** `scripts/nodezero` lines 279-345
+**Location:** `scripts/mynodeone` lines 279-345
 
 **Issues:**
 - ❌ No check if /dev/md0 already exists

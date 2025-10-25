@@ -41,7 +41,7 @@ Version 2.0 changelog with:
 
 ## For Contributors
 
-If you're contributing to NodeZero, these documents explain:
+If you're contributing to MyNodeOne, these documents explain:
 - Why design decisions were made
 - How features are implemented
 - Technical specifications

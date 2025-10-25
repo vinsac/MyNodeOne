@@ -1,4 +1,4 @@
-# NodeZero Troubleshooting Guide
+# MyNodeOne Troubleshooting Guide
 
 ## Quick Diagnostics
 
@@ -8,7 +8,7 @@
 #!/bin/bash
 # Save as check-health.sh
 
-echo "=== NodeZero Health Check ==="
+echo "=== MyNodeOne Health Check ==="
 echo
 
 echo "1. Nodes Status:"
@@ -514,7 +514,7 @@ du -sh /var/lib/rancher/k3s/*
 docker logs traefik
 
 # Check Traefik config
-cat /etc/traefik/dynamic/nodezero-routes.yml
+cat /etc/traefik/dynamic/mynodeone-routes.yml
 
 # Test Tailscale connectivity to Toronto
 ping <toronto-tailscale-ip>
@@ -548,7 +548,7 @@ cat /etc/traefik/control-plane-ip
 echo "<correct-tailscale-ip>" > /etc/traefik/control-plane-ip
 
 # Update routes
-vi /etc/traefik/dynamic/nodezero-routes.yml
+vi /etc/traefik/dynamic/mynodeone-routes.yml
 # Change server URL to correct IP
 
 docker compose restart
@@ -656,7 +656,7 @@ kubectl rollout restart deployment/<deployment-name>
 #!/bin/bash
 # Save as collect-debug-info.sh
 
-OUTPUT_DIR="nodezero-debug-$(date +%Y%m%d-%H%M%S)"
+OUTPUT_DIR="mynodeone-debug-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUTPUT_DIR"
 
 echo "Collecting debug information..."
@@ -680,7 +680,7 @@ echo "Debug info saved to $OUTPUT_DIR.tar.gz"
 
 ### Community Support
 
-- GitHub Issues: https://github.com/yourusername/nodezero/issues
+- GitHub Issues: https://github.com/yourusername/mynodeone/issues
 - Kubernetes Slack: https://kubernetes.slack.com
 - K3s GitHub: https://github.com/k3s-io/k3s/issues
 - Longhorn Slack: https://slack.rancher.io

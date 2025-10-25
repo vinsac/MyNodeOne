@@ -1,4 +1,4 @@
-# NodeZero Quick Start - Interactive Setup
+# MyNodeOne Quick Start - Interactive Setup
 
 Get your private cloud running in 30 minutes with our interactive wizard!
 
@@ -37,8 +37,8 @@ Run this wizard **on each machine** (control plane, workers, VPS, laptop):
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/nodezero.git
-cd nodezero
+git clone https://github.com/yourusername/mynodeone.git
+cd mynodeone
 
 # Run the interactive wizard
 ./scripts/interactive-setup.sh
@@ -68,7 +68,7 @@ The wizard will:
    - Workload types
 
 4. **Save configuration**
-   - Stores in `~/.nodezero/config.env`
+   - Stores in `~/.mynodeone/config.env`
    - All scripts automatically use it
    - No manual editing needed!
 
@@ -81,7 +81,7 @@ The wizard will:
  / /|  / /_/ / /_/ /  __/  / /_/  __/ /  / /_/ /
 /_/ |_/\____/\__,_/\___/  /___/\___/_/   \____/ 
 
-Welcome to NodeZero Interactive Setup!
+Welcome to MyNodeOne Interactive Setup!
 
 ? Ready to start? [Y/n] y
 
@@ -112,7 +112,7 @@ What type of node is this?
   Cluster Configuration
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-? Give your cluster a name [nodezero]: 
+? Give your cluster a name [mynodeone]: 
 ? What should we call this node? [myserver]: 
 ? Where is this node located? (e.g., home, office, datacenter) [home]: 
 
@@ -120,7 +120,7 @@ What type of node is this?
   Saving Configuration
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✓ Configuration saved to: /home/user/.nodezero/config.env
+✓ Configuration saved to: /home/user/.mynodeone/config.env
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Next Steps
@@ -156,9 +156,9 @@ sudo ./scripts/bootstrap-control-plane.sh
 - Configures SSL automation
 
 **Important:** Save these after completion:
-- `/root/nodezero-join-token.txt` - For adding workers
-- `/root/nodezero-argocd-credentials.txt` - For ArgoCD UI
-- `/root/nodezero-minio-credentials.txt` - For S3 storage
+- `/root/mynodeone-join-token.txt` - For adding workers
+- `/root/mynodeone-argocd-credentials.txt` - For ArgoCD UI
+- `/root/mynodeone-minio-credentials.txt` - For S3 storage
 
 ## Step 3: Add Worker Nodes (10 minutes each, optional)
 
@@ -276,8 +276,8 @@ This adds:
 **Important: Password Management**
 
 1. Save all credentials to a password manager (Bitwarden/1Password)
-2. **DO NOT** self-host password manager on NodeZero
-3. Delete credential files after saving: `sudo rm /root/nodezero-*.txt`
+2. **DO NOT** self-host password manager on MyNodeOne
+3. Delete credential files after saving: `sudo rm /root/mynodeone-*.txt`
 
 See `docs/password-management.md` for detailed guide.
 
@@ -415,7 +415,7 @@ ssh <control-plane-ip> "sudo systemctl status k3s"
 
 ## What's Different from Cloud Providers?
 
-| Feature | NodeZero | AWS |
+| Feature | MyNodeOne | AWS |
 |---------|----------|-----|
 | **Setup** | Interactive wizard | Complex console |
 | **Cost** | $0-50/month | $500+/month |
@@ -427,7 +427,7 @@ ssh <control-plane-ip> "sudo systemctl status k3s"
 
 ## Next Steps
 
-1. ✅ **Customize your setup** - Edit configs in `~/.nodezero/`
+1. ✅ **Customize your setup** - Edit configs in `~/.mynodeone/`
 2. ✅ **Deploy more apps** - Use `create-app.sh` or examples
 3. ✅ **Add monitoring alerts** - Configure in Grafana
 4. ✅ **Set up backups** - Deploy backup CronJob
@@ -438,7 +438,7 @@ ssh <control-plane-ip> "sudo systemctl status k3s"
 - **Documentation:** See `docs/` folder
 - **FAQ:** Check `FAQ.md`
 - **Issues:** Open on GitHub
-- **Configuration:** Stored in `~/.nodezero/config.env`
+- **Configuration:** Stored in `~/.mynodeone/config.env`
 
 ---
 

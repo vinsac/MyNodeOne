@@ -1,8 +1,8 @@
-# NodeZero v2 - Generic & Production-Ready Updates
+# MyNodeOne v2 - Generic & Production-Ready Updates
 
 ## 🎯 Major Changes
 
-This update makes NodeZero **100% generic** and **production-ready** for anyone to use, regardless of their hardware setup.
+This update makes MyNodeOne **100% generic** and **production-ready** for anyone to use, regardless of their hardware setup.
 
 ## ✅ What's Fixed
 
@@ -27,7 +27,7 @@ This update makes NodeZero **100% generic** and **production-ready** for anyone 
 **What it does:**
 - Detects your environment automatically
 - Asks intelligent questions
-- Saves configuration to `~/.nodezero/config.env`
+- Saves configuration to `~/.mynodeone/config.env`
 - All other scripts read from this config
 - No manual editing needed!
 
@@ -71,7 +71,7 @@ Option 4: Multi-Node Production
 ### 4. **Updated Scripts**
 
 All scripts now:
-- ✅ Load configuration from `~/.nodezero/config.env`
+- ✅ Load configuration from `~/.mynodeone/config.env`
 - ✅ Check for config file first
 - ✅ Provide clear error messages
 - ✅ Auto-detect when possible
@@ -122,16 +122,16 @@ All scripts now:
 - Marketing the project
 - Easy onboarding
 - Visual appeal
-- Can be hosted on NodeZero itself!
+- Can be hosted on MyNodeOne itself!
 
 ## 📝 Configuration File
 
-**Location:** `~/.nodezero/config.env`
+**Location:** `~/.mynodeone/config.env`
 
 **Example for Control Plane:**
 ```bash
 # Cluster
-CLUSTER_NAME="nodezero"
+CLUSTER_NAME="mynodeone"
 NODE_NAME="myserver"
 NODE_TYPE="control-plane"
 NODE_LOCATION="home"
@@ -153,7 +153,7 @@ HAS_GPU="false"
 **Example for Worker Node:**
 ```bash
 # Cluster
-CLUSTER_NAME="nodezero"
+CLUSTER_NAME="mynodeone"
 NODE_NAME="worker-1"
 NODE_TYPE="worker"
 NODE_LOCATION="home"
@@ -169,7 +169,7 @@ LONGHORN_PATH="/mnt/longhorn"
 **Example for VPS Edge Node:**
 ```bash
 # Cluster
-CLUSTER_NAME="nodezero"
+CLUSTER_NAME="mynodeone"
 NODE_NAME="vps-edge-1"
 NODE_TYPE="edge"
 NODE_LOCATION="us-east"
@@ -214,7 +214,7 @@ sudo ./scripts/bootstrap-control-plane.sh
 - Testimonial section
 - Call to action
 
-**Deploy on NodeZero:**
+**Deploy on MyNodeOne:**
 ```bash
 kubectl create namespace website
 kubectl create configmap website-html --from-file=index.html=website/index.html -n website
@@ -222,7 +222,7 @@ kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nodezero-website
+  name: mynodeone-website
   namespace: website
 spec:
   replicas: 2
@@ -267,7 +267,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(\`nodezero.yourdomain.com\`)
+    - match: Host(\`mynodeone.yourdomain.com\`)
       kind: Rule
       services:
         - name: website
@@ -295,9 +295,9 @@ EOF
 **Option 2: Adopt new config system**
 ```bash
 # Create config manually
-mkdir -p ~/.nodezero
-cat > ~/.nodezero/config.env <<EOF
-CLUSTER_NAME="nodezero"
+mkdir -p ~/.mynodeone
+cat > ~/.mynodeone/config.env <<EOF
+CLUSTER_NAME="mynodeone"
 NODE_NAME="toronto-0001"  # Your existing name
 NODE_TYPE="control-plane"
 NODE_LOCATION="toronto"
@@ -321,7 +321,7 @@ EOF
 | **Hardware Flexibility** | Assumed specific | Works with any |
 | **Number of VPS** | Exactly 2 | 0 to N |
 | **Machine Names** | toronto-000x | Any name |
-| **Configuration** | In scripts | In ~/.nodezero/ |
+| **Configuration** | In scripts | In ~/.mynodeone/ |
 | **Tailscale Setup** | Manual | Wizard installs |
 | **Error Messages** | Generic | Specific & helpful |
 | **Documentation** | Assumed setup | All scenarios |
@@ -386,7 +386,7 @@ Before deploying to production:
 ## 📚 Updated Documentation Tree
 
 ```
-nodezero/
+mynodeone/
 ├── NEW-QUICKSTART.md          ← Start here!
 ├── UPDATES-v2.md              ← This file
 ├── README.md                  ← Updated with new flow
@@ -414,7 +414,7 @@ nodezero/
 
 ## 🤝 Contributing
 
-With these changes, NodeZero is now:
+With these changes, MyNodeOne is now:
 - ✅ Easy for others to use
 - ✅ Well-documented
 - ✅ Production-ready

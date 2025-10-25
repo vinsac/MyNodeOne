@@ -25,19 +25,44 @@ Learn how to:
 ✅ **No Hardcoding** - Works with ANY hardware setup  
 ✅ **Step-by-Step** - Clear guidance at every step  
 
-## Prerequisites
+## 🎯 Overview: What You'll Do
+
+**MyNodeOne installation has 3 simple steps:**
+
+1. **Prepare Your Control Plane Machine** ← Start here! (this section)
+2. **Download MyNodeOne** (Step 1 below)
+3. **Run the Installation Wizard** (Step 2 below)
+
+The wizard will ask if you want to add more machines (workers/VPS) - you can add them later!
+
+---
+
+## Prerequisites: Prepare Your Control Plane Machine
+
+> 🎯 **Start with Your Control Plane (Master Node)**
+> 
+> **What is it?** Your control plane is the "brain" of your cluster - it manages everything.
+> 
+> **Why start here?** Once your control plane is ready, it can automatically configure any worker nodes you add later via SSH. You only need to manually prepare ONE machine!
+> 
+> **Which machine?** Your most powerful/reliable machine (recommended: 8GB+ RAM, but 4GB works for learning).
 
 > 💡 **Understanding Command Output:** Not sure if a command worked? Copy the output and ask ChatGPT, Gemini, or Claude: "Did this command succeed?" They can help you understand what you're seeing!
 
-Before starting, you need:
+---
 
-1. **At least one machine** with Ubuntu 24.04 LTS
-   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
-   - Can be named anything (e.g., `node-001`, `server-alpha`, `homelab-01`, etc.)
-   - Any amount of RAM/CPU (minimum 4GB RAM recommended)
-   - Desktop or Server edition works
+### What You Need on Your Control Plane Machine
 
-2. **Git installed** on your machine
+**Hardware:**
+- ✅ At least ONE machine with Ubuntu 24.04 LTS installed
+  - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
+  - Can be named anything (e.g., `node-001`, `server-alpha`, `homelab-01`)
+  - Minimum 4GB RAM (8GB+ recommended for control plane)
+  - Desktop or Server edition works
+
+**Software to install on this machine:**
+
+### 1. Git - For downloading MyNodeOne
    
    **First, open your terminal:**
    - Press `Ctrl + Alt + T` on Ubuntu Desktop
@@ -72,7 +97,9 @@ Before starting, you need:
    
    - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
-3. **SSH Server installed** (required on ALL machines - control plane AND workers)
+---
+
+### 2. SSH Server - For managing other machines (if you add them later)
    
    **In the same terminal, run:**
    ```bash
@@ -116,10 +143,13 @@ Before starting, you need:
    
    **Press `q` to exit the status screen**
    
-   - **Why needed on ALL nodes:** Control plane uses SSH to remotely configure worker nodes. Each node needs SSH server so others can connect to it.
+   - **Why needed:** When you add worker nodes later, your control plane uses SSH to configure them automatically. Each machine needs SSH server so others can connect to it.
+   - **Install on workers too:** When you add more machines, you'll install SSH on them as well (same commands).
    - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 
-4. **Tailscale installed** on your machine
+---
+
+### 3. Tailscale - For secure networking between machines
    
    **In the same terminal, run:**
    ```bash
@@ -151,35 +181,33 @@ Before starting, you need:
    - **First time?** Sign up for free at https://tailscale.com before running this
    - **No browser?** Copy the URL shown and open it on another device
    - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
-
-5. **Optional: VPS server(s)** with public IP
-   - Any provider (Contabo, DigitalOcean, Hetzner, etc.)
-   - Any number (0, 1, 2, or more)
-   - Only needed if you want public internet access
-
-6. **Optional: Management laptop/desktop**
-   - Your daily driver for deploying apps
-   - Any OS with kubectl installed
-
-> **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
-
-## 📍 Step 1: Prepare Your Machine (5 minutes)
-
-### Which Machine?
-**Run these commands on your control plane machine** (the most powerful one you have).
-
-### Where to Run Commands?
-**Open terminal on your Ubuntu machine:**
-- Press `Ctrl + Alt + T` (or see [TERMINAL-BASICS.md](TERMINAL-BASICS.md))
-
-### What Directory?
-**Your home directory is fine!** When you open terminal, you're usually at `/home/yourusername/` - perfect!
+   - **Install on workers too:** When you add more machines, you'll install Tailscale on them as well (same commands).
 
 ---
 
-## 🔽 Step 2: Download MyNodeOne (30 seconds)
+### ✅ Control Plane Machine is Ready!
 
-**Run these commands in your terminal:**
+**You now have:**
+- ✅ Ubuntu 24.04 LTS installed
+- ✅ Git installed
+- ✅ SSH server running
+- ✅ Tailscale connected
+
+**What about worker nodes or VPS?**
+- 🎯 **Add them later!** The installation wizard will ask if you want to add more machines
+- 🎯 **Worker nodes:** Additional machines in your cluster (optional)
+- 🎯 **VPS with public IP:** For internet access (optional)
+- 🎯 **Management laptop:** Any device with kubectl to deploy apps (optional)
+
+**For now, just focus on your control plane machine!**
+
+> **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
+
+---
+
+## 📍 Step 1: Download MyNodeOne (30 seconds)
+
+**On your control plane machine, in your terminal, run:**
 
 ```bash
 # Clone the repo (choose one method):
@@ -197,13 +225,13 @@ cd MyNodeOne
 ```
 
 **What just happened?**
-- Created a `MyNodeOne` folder in your home directory
-- Downloaded all MyNodeOne code into it
-- Changed into that folder
+- ✅ Created a `MyNodeOne` folder in your home directory
+- ✅ Downloaded all MyNodeOne code into it
+- ✅ Changed into that folder
 
 ---
 
-## 🚀 Step 3: Run Installation Wizard (30 minutes)
+## 🚀 Step 2: Run the Installation Wizard (30 minutes)
 
 **Run this ONE command:**
 

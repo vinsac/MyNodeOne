@@ -26,9 +26,11 @@
 
 ---
 
-## 👋 New Here? → **[START HERE](START-HERE.md)**
+## 👋 New Here? → **[START-HERE.md](START-HERE.md)**
 
 If you're new to MyNodeOne, start with **[START-HERE.md](START-HERE.md)** for a guided introduction.
+
+**Never used terminal/command line?** → Read **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** first!
 
 **Don't understand the technical terms?** → Check **[GLOSSARY.md](GLOSSARY.md)** for simple explanations!
 

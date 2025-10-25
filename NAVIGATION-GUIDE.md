@@ -42,10 +42,12 @@ Quick reference for finding what you need in the MyNodeOne repository.
 mynodeone/
 │
 ├── 🚀 START-HERE.md              ← Entry point for new users
+├── 🌱 ABSOLUTE-BEGINNERS-GUIDE.md ← Never used terminal? Start here!
 ├── 📖 README.md                  ← Project overview
 ├── ⚡ QUICKSTART.md               ← Step-by-step installation
 ├── 🗺️ NAVIGATION-GUIDE.md        ← This file
 ├── 📊 REPO-STRUCTURE.md          ← Repository layout
+├── 📚 GLOSSARY.md                ← Simple term definitions
 ├── ❓ FAQ.md                     ← 50+ questions
 ├── 🤝 CONTRIBUTING.md            ← How to contribute
 │
@@ -71,13 +73,14 @@ mynodeone/
 ## 🎓 Reading Order by Experience Level
 
 ### Complete Beginner (Never used Kubernetes)
-1. [START-HERE.md](START-HERE.md) - 5 min
-2. [README.md](README.md) - 5 min
-3. [docs/setup-options-guide.md](docs/setup-options-guide.md) - 15 min
-4. [QUICKSTART.md](QUICKSTART.md) - 20 min
-5. Install: `sudo ./scripts/mynodeone`
-6. [docs/operations.md](docs/operations.md) - After install
-7. [FAQ.md](FAQ.md) - When questions arise
+1. [ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md) - 10 min (if new to terminal) ⭐
+2. [START-HERE.md](START-HERE.md) - 5 min
+3. [README.md](README.md) - 5 min
+4. [docs/setup-options-guide.md](docs/setup-options-guide.md) - 15 min
+5. [QUICKSTART.md](QUICKSTART.md) - 20 min
+6. Install: `sudo ./scripts/mynodeone`
+7. [docs/operations.md](docs/operations.md) - After install
+8. [FAQ.md](FAQ.md) - When questions arise
 
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](README.md) - 5 min

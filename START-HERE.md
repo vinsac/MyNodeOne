@@ -2,6 +2,22 @@
 
 **Welcome!** This is your starting point for building your private cloud with MyNodeOne.
 
+---
+
+## 🌱 Brand New to Linux/Terminal?
+
+**Never used command line before?** → Read **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** first!
+
+This guide teaches you:
+- How to open terminal
+- How to copy/paste commands  
+- What `sudo` means
+- What to expect when running commands
+
+**10 minutes reading = ready to install MyNodeOne!**
+
+---
+
 ## 🏠 What is MyNodeOne?
 
 **MyNodeOne turns consumer hardware into enterprise cloud infrastructure.**

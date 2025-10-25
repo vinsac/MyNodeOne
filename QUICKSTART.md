@@ -2,6 +2,22 @@
 
 Get your private cloud running in 30 minutes with our interactive wizard!
 
+---
+
+## 🌱 Never Used Terminal Before?
+
+**First time with Linux or command line?** → Read **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** first!
+
+Learn how to:
+- Open terminal
+- Copy/paste commands
+- Understand what each command does
+- Fix common mistakes
+
+**Takes 10 minutes, saves hours of confusion!**
+
+---
+
 ## What Makes This Easy?
 
 ✅ **Interactive Setup Wizard** - Answers all your questions  

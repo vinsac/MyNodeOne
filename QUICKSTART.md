@@ -171,6 +171,27 @@ Your control plane is configured! Next:
 ✓ Setup complete! 🎉
 ```
 
+---
+
+## 🎯 Choosing Your Control Plane Machine
+
+If you have **multiple machines**, choose your control plane wisely:
+
+**Recommended characteristics:**
+- ✅ **Most RAM/CPU** - Control plane runs cluster management + your workloads
+- ✅ **Most reliable** - Should stay running 24/7
+- ✅ **Best network** - Central location with good connectivity
+- ✅ **Most storage** - Will host monitoring data, logs, and system databases
+
+**Examples:**
+- **Home setup:** Your most powerful desktop/server (not a laptop that moves around)
+- **Multiple servers:** The one with 32GB+ RAM vs others with 8-16GB
+- **Mixed hardware:** Intel NUC with 32GB RAM > Raspberry Pi with 8GB RAM
+
+**Single machine?** No problem - it will be both control plane and worker!
+
+---
+
 ## Step 2: Bootstrap Control Plane (20 minutes)
 
 On your **first machine** (the one you configured as "Control Plane"):

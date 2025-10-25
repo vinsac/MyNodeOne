@@ -99,6 +99,9 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 - **Tailscale installed**
   ```bash
+  # Install curl (if not already installed):
+  sudo apt install -y curl
+  
   # Install Tailscale:
   curl -fsSL https://tailscale.com/install.sh | sh
   
@@ -239,6 +242,26 @@ sudo ./scripts/mynodeone
 
 **Cost:** $10-30/month (VPS)  
 **Perfect for:** High availability, production workloads
+
+---
+
+### Scenario 5: VPS-Only (No Home Hardware)
+**What you have:** No home hardware, just VPS  
+**What to do:**
+
+**VPS 1:** Control Plane (4GB+ RAM)  
+**VPS 2-3:** Worker Nodes (2GB+ RAM)  
+
+```bash
+# On each VPS, run:
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+sudo ./scripts/mynodeone
+# Select: Control Plane (VPS 1) or Worker Node (VPS 2-3)
+```
+
+**Cost:** $30-60/month  
+**Perfect for:** 100% cloud-based, no home hardware needed, public internet access
 
 ---
 

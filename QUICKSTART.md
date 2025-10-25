@@ -35,6 +35,9 @@ Before starting, you need:
 
 3. **Tailscale installed** on your machine
    ```bash
+   # Install curl (if not already installed):
+   sudo apt install -y curl
+   
    # Install Tailscale:
    curl -fsSL https://tailscale.com/install.sh | sh
    

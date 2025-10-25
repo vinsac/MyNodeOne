@@ -80,6 +80,14 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 - **2x Beelink Mini PC** ($200 each, 16GB RAM) → Workers
 - **Total:** ~$800 (scales to 50+ services easily)
 
+### Example Setup 4: VPS-Only (No Home Hardware)
+- **2-3 VPS servers** ($15-20/month each)
+  - 1x Control plane (4GB+ RAM)
+  - 1-2x Worker nodes (2GB+ RAM)
+- **Total:** ~$30-60/month
+- **Perfect for:** No home hardware, 100% cloud-based, public internet access
+- **Providers:** Contabo, Hetzner, DigitalOcean, Linode, Vultr
+
 **Compatible with:**
 - x86_64: Intel/AMD processors (most common)
 - ARM64: Raspberry Pi 4/5, Apple Silicon (M1/M2)
@@ -198,6 +206,9 @@ Enables:
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 - **Tailscale installed** on all machines
   ```bash
+  # Install curl (if not already installed):
+  sudo apt install -y curl
+  
   # Install Tailscale:
   curl -fsSL https://tailscale.com/install.sh | sh
   

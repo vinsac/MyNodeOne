@@ -1,12 +1,28 @@
 # MyNodeOne - Your Private Cloud Infrastructure
 
-> Build your own mini AWS region with commodity hardware
+> **Transform consumer hardware into enterprise cloud infrastructure**
 
-**Version 1.0** - Production Ready • Fully Generic • One Command Setup
+**Build your own AWS-like cloud using regular computers, old laptops, mini PCs, or servers you already own**
+
+**Version 1.0** - Production Ready • Consumer Hardware Focused • One Command Setup
 
 **Author:** [Vinay Sachdeva](https://github.com/vinsac)  
 **License:** MIT  
 **Status:** ✅ Production Ready
+
+---
+
+## 💡 The Vision
+
+**Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build an enterprise-grade private cloud using:
+
+- 🖥️ **Old laptops** gathering dust
+- 💻 **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
+- 🏠 **Home servers** you already have
+- 🛒 **Used enterprise hardware** from eBay ($200-$500)
+- ⚡ **Mix and match** - use whatever you have!
+
+**No expensive enterprise gear required. No monthly cloud bills. Just your hardware, your data, your control.**
 
 ---
 
@@ -42,6 +58,32 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 ✅ **Web Documentation** - Deploy docs website to your cluster  
 ✅ **LLM Support** - Run language models on CPU  
 ✅ **Complete Networking Guide** - Tailscale + alternatives fully explained  
+
+## 🖥️ Real-World Hardware Examples
+
+**MyNodeOne works on everyday consumer hardware:**
+
+### Example Setup 1: $0 (Use what you have)
+- **Old laptop** (2015+, 8GB RAM) → Control plane
+- **Mini PC** (Intel NUC, 4GB RAM) → Worker node
+- **Raspberry Pi 5** (8GB) → Edge/worker node
+- **Total cost:** $0 (using existing hardware)
+
+### Example Setup 2: ~$400 Budget Build
+- **Used Dell Optiplex** ($150, 16GB RAM, 500GB SSD) → Control plane
+- **2x Mini PC** ($100 each, 8GB RAM) → Worker nodes
+- **$5/month VPS** (optional, for public access)
+- **Total:** ~$400 one-time + $5/month (optional)
+
+### Example Setup 3: Power User ($800-1000)
+- **Intel NUC** ($400, 32GB RAM, 1TB NVMe) → Control plane
+- **2x Beelink Mini PC** ($200 each, 16GB RAM) → Workers
+- **Total:** ~$800 (scales to 50+ services easily)
+
+**Compatible with:**
+- x86_64: Intel/AMD processors (most common)
+- ARM64: Raspberry Pi 4/5, Apple Silicon (M1/M2)
+- Any Ubuntu 24.04 LTS compatible machine
 
 ## Quick Start
 

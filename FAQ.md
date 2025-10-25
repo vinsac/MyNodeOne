@@ -4,7 +4,7 @@
 
 ### What is MyNodeOne?
 
-MyNodeOne is a production-ready private cloud infrastructure that turns commodity hardware into an AWS-like environment. It uses open-source tools like Kubernetes (K3s), MinIO, Longhorn, and more to provide enterprise features at a fraction of the cost.
+MyNodeOne is a production-ready private cloud infrastructure that turns **consumer hardware** into an AWS-like environment. Use old laptops, mini PCs, Raspberry Pis, or any regular computers you already own. It uses open-source tools like Kubernetes (K3s), MinIO, Longhorn, and more to provide enterprise features without expensive enterprise gear or monthly cloud bills.
 
 ### Why should I use MyNodeOne instead of AWS/GCP/Azure?
 
@@ -51,6 +51,89 @@ Enables:
 - ✅ Privacy-focused deployments
 - ✅ Internal company use
 - ✅ Compliance requirements (with proper configuration)
+
+---
+
+## 🖥️ Hardware Questions
+
+### What hardware do I need?
+
+**Minimum (Single Node):**
+- Any computer with 4GB RAM (8GB+ recommended)
+- 20GB disk space (50GB+ recommended)
+- Ubuntu 24.04 LTS installed
+- Internet connection
+
+**Examples that work:**
+- 💻 Old laptop (2015+)
+- 🖥️ Intel NUC or similar mini PC
+- 🏠 Home server
+- 🍓 Raspberry Pi 4/5 (4GB+ RAM)
+- 💼 Used Dell/HP/Lenovo from eBay ($150-300)
+
+**For production (recommended):**
+- 1 control plane: 8-16GB RAM, 100GB+ disk
+- 1-3 worker nodes: 4-8GB RAM each
+- Total cost: $0 (use what you have) to $500 (buy used hardware)
+
+### Can I use old laptops?
+
+**Yes!** Old laptops are perfect for MyNodeOne:
+- Keep the lid closed, plug in external monitor (optional)
+- Use as control plane or worker nodes
+- Even 2015 laptops with 8GB RAM work great
+- Power consumption ~15-30W (cheaper than a VPS!)
+
+### Does it work on Raspberry Pi?
+
+**Yes!** Raspberry Pi 4/5 with 4GB+ RAM works perfectly:
+- Can be control plane (8GB model) or worker node
+- ARM64 architecture fully supported
+- Great for edge nodes or low-power setups
+- Note: Use fast SD card or SSD via USB
+
+### What about mixing different hardware?
+
+**Absolutely!** Mix and match freely:
+- Old laptop + Mini PC + Raspberry Pi = perfectly valid cluster
+- Different CPU speeds = no problem (workloads balance automatically)
+- Different RAM sizes = works great (specify limits per node)
+- Different storage = Longhorn handles it all
+
+### Do I need enterprise server hardware?
+
+**No!** Consumer hardware works perfectly:
+- ❌ Don't need: Enterprise servers, RAID cards, SAN storage
+- ✅ Do need: Regular computers with Ubuntu 24.04
+- **Why?** Kubernetes handles redundancy and distribution in software
+
+### What if I only have one computer?
+
+**That works!** Start with one machine:
+- Run control plane + workloads on same node
+- Add more nodes later (zero downtime)
+- Perfect for learning, development, or small projects
+- Can still run 10-20 services easily
+
+### How much does hardware cost?
+
+**$0 to $1000 depending on what you have:**
+
+**Option 1: Free ($0)**
+- Use computers you already own
+- Old laptop + desktop + Pi = powerful cluster
+
+**Option 2: Budget ($300-500)**
+- 1x Used Dell Optiplex ($150-200, 16GB RAM)
+- 1-2x Mini PC ($100-150 each, 8GB RAM)
+- Total: Production-ready cluster for less than 2 months of AWS
+
+**Option 3: New Hardware ($800-1000)**
+- 1x Intel NUC ($400, 32GB RAM)
+- 2x Beelink Mini PC ($200 each, 16GB RAM)
+- Professional setup, scales to 50+ services
+
+**No monthly fees!** Unlike cloud, you pay once and own it forever.
 
 ---
 

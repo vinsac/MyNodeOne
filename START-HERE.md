@@ -2,6 +2,19 @@
 
 **Welcome!** This is your starting point for building your private cloud with MyNodeOne.
 
+## 🏠 What is MyNodeOne?
+
+**MyNodeOne turns consumer hardware into enterprise cloud infrastructure.**
+
+Use regular computers you already own:
+- Old laptops
+- Mini PCs (Intel NUC, Beelink, etc.)
+- Raspberry Pi 4/5
+- Home servers
+- Used enterprise hardware ($150-500)
+
+**No expensive equipment needed. No monthly cloud bills. Your hardware, your cloud, your control.**
+
 ---
 
 ## 🚀 Quick Setup (3 Steps)

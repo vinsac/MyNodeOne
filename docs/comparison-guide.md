@@ -557,7 +557,7 @@ This guide helps you decide if MyNodeOne is the right choice for your use case b
 
 **Start here:**
 1. [START-HERE.md](../START-HERE.md) - Quick introduction
-2. [NEW-QUICKSTART.md](../NEW-QUICKSTART.md) - Installation guide
+2. [QUICKSTART.md](../QUICKSTART.md) - Installation guide
 3. [GLOSSARY.md](../GLOSSARY.md) - Understand the terms
 4. [FAQ.md](../FAQ.md) - Common questions
 

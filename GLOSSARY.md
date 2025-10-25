@@ -397,7 +397,7 @@
 
 - **Quick Questions:** Check [FAQ.md](FAQ.md)
 - **Getting Started:** Read [START-HERE.md](START-HERE.md)
-- **Detailed Guide:** See [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
+- **Detailed Guide:** See [QUICKSTART.md](QUICKSTART.md)
 - **Problems:** Check [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ---

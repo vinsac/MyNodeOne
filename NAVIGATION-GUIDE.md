@@ -10,7 +10,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"I'm brand new"** → [START-HERE.md](START-HERE.md)
 - **"Quick overview"** → [README.md](README.md)
 - **"Install now"** → Run `sudo ./scripts/mynodeone`
-- **"Step-by-step guide"** → [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
+- **"Step-by-step guide"** → [QUICKSTART.md](QUICKSTART.md)
 
 ### Understand MyNodeOne
 - **"What are the options?"** → [docs/setup-options-guide.md](docs/setup-options-guide.md)
@@ -43,7 +43,7 @@ mynodeone/
 │
 ├── 🚀 START-HERE.md              ← Entry point for new users
 ├── 📖 README.md                  ← Project overview
-├── ⚡ NEW-QUICKSTART.md          ← Step-by-step installation
+├── ⚡ QUICKSTART.md               ← Step-by-step installation
 ├── 🗺️ NAVIGATION-GUIDE.md        ← This file
 ├── 📊 REPO-STRUCTURE.md          ← Repository layout
 ├── ❓ FAQ.md                     ← 50+ questions
@@ -74,14 +74,14 @@ mynodeone/
 1. [START-HERE.md](START-HERE.md) - 5 min
 2. [README.md](README.md) - 5 min
 3. [docs/setup-options-guide.md](docs/setup-options-guide.md) - 15 min
-4. [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - 20 min
+4. [QUICKSTART.md](QUICKSTART.md) - 20 min
 5. Install: `sudo ./scripts/mynodeone`
 6. [docs/operations.md](docs/operations.md) - After install
 7. [FAQ.md](FAQ.md) - When questions arise
 
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](README.md) - 5 min
-2. [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - 10 min
+2. [QUICKSTART.md](QUICKSTART.md) - 10 min
 3. [docs/architecture.md](docs/architecture.md) - 15 min
 4. Install: `sudo ./scripts/mynodeone`
 5. [docs/operations.md](docs/operations.md) - Reference
@@ -101,7 +101,7 @@ mynodeone/
 
 ### Installation & Setup
 - Main installer: `scripts/mynodeone`
-- Installation guide: [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
+- Installation guide: [QUICKSTART.md](QUICKSTART.md)
 - Setup options: [docs/setup-options-guide.md](docs/setup-options-guide.md)
 - Configuration wizard: `scripts/interactive-setup.sh`
 
@@ -138,7 +138,7 @@ mynodeone/
 
 ### Scaling
 - Add workers: [docs/scaling.md](docs/scaling.md)
-- Add VPS: [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - Section "Step 4"
+- Add VPS: [QUICKSTART.md](QUICKSTART.md) - Section "Step 4"
 - High availability: [docs/architecture.md](docs/architecture.md)
 
 ---
@@ -174,7 +174,7 @@ mynodeone/
 ## 📚 Documentation by Type
 
 ### Guides (How-to)
-- [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - Installation walkthrough
+- [QUICKSTART.md](QUICKSTART.md) - Installation walkthrough
 - [docs/operations.md](docs/operations.md) - Daily management
 - [docs/scaling.md](docs/scaling.md) - Growth strategies
 - [docs/troubleshooting.md](docs/troubleshooting.md) - Problem solving
@@ -193,7 +193,7 @@ mynodeone/
 
 ### Tutorials (Learning)
 - [START-HERE.md](START-HERE.md) - Guided introduction
-- [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - Step-by-step
+- [QUICKSTART.md](QUICKSTART.md) - Step-by-step
 - `manifests/examples/` - Example deployments
 
 ---

@@ -50,12 +50,12 @@ Answer a few questions, wait 30 minutes, and you're done!
 1. **[README.md](README.md)** - Project overview (5 min read)
 2. **This file** - You're reading it! ✓
 3. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - Understand your options (15 min)
-4. **[NEW-QUICKSTART.md](NEW-QUICKSTART.md)** - Detailed walkthrough (20 min)
+4. **[QUICKSTART.md](QUICKSTART.md)** - Detailed walkthrough (20 min)
 
 ### Installing Now?
 1. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
 2. Run: `sudo ./scripts/mynodeone`
-3. Have **[NEW-QUICKSTART.md](NEW-QUICKSTART.md)** open for reference
+3. Have **[QUICKSTART.md](QUICKSTART.md)** open for reference
 
 ### Already Installed?
 1. **[docs/operations.md](docs/operations.md)** - Daily management
@@ -235,7 +235,7 @@ README.md (overview)
     ↓
 docs/setup-options-guide.md (understand choices)
     ↓
-NEW-QUICKSTART.md (step-by-step)
+QUICKSTART.md (step-by-step)
     ↓
 sudo ./scripts/mynodeone (install!)
     ↓
@@ -256,7 +256,7 @@ docs/scaling.md (grow your cloud)
 3. 📖 Read [docs/setup-options-guide.md](docs/setup-options-guide.md) - Understand options
 
 ### Before Installing (15 minutes)
-1. 📖 Read [NEW-QUICKSTART.md](NEW-QUICKSTART.md) - See step-by-step
+1. 📖 Read [QUICKSTART.md](QUICKSTART.md) - See step-by-step
 2. 📖 Skim [FAQ.md](FAQ.md) - Common questions
 3. 💡 Decide your scenario (Learning? Home? Production?)
 
@@ -270,7 +270,7 @@ cd MyNodeOne
 sudo ./scripts/mynodeone
 ```
 
-Have [NEW-QUICKSTART.md](NEW-QUICKSTART.md) open for reference!
+Have [QUICKSTART.md](QUICKSTART.md) open for reference!
 
 ### After Installation (1 hour)
 1. 📖 Read [docs/operations.md](docs/operations.md) - Learn daily management
@@ -343,7 +343,7 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 - **[START-HERE.md](START-HERE.md)** ← You are here
 - **[README.md](README.md)** - Project overview
 - **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
-- **[NEW-QUICKSTART.md](NEW-QUICKSTART.md)** - Step-by-step guide
+- **[QUICKSTART.md](QUICKSTART.md)** - Step-by-step guide
 
 ### Reference Guides
 - **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works

@@ -34,7 +34,10 @@ MyNodeOne v1.0.0 is the first production-ready release of MyNodeOne - your priva
 ### Documentation
 - ✅ **GLOSSARY.md** - 50+ terms explained simply
 - ✅ **START-HERE.md** - Beginner-friendly entry point
-- ✅ **NEW-QUICKSTART.md** - Detailed installation guide
+- ✅ **QUICKSTART.md** - Detailed installation guide (renamed from NEW-QUICKSTART.md)
+- ✅ **Ubuntu/Git installation guidance** - Clear instructions for prerequisites
+- ✅ **Both HTTPS and SSH clone options** - User choice for repository cloning
+- ✅ **AI assistant references** - Guidance to use ChatGPT/Gemini for help
 - ✅ **6 user guides** - Architecture, operations, troubleshooting, scaling, networking, setup options
 - ✅ **FAQ.md** - 50+ questions answered
 - ✅ **Documentation website** - Deployable landing page
@@ -82,9 +85,11 @@ MyNodeOne v1.0.0 is the first production-ready release of MyNodeOne - your priva
 ## 🚀 Quick Start
 
 ```bash
-# 1. Clone repository
+# 1. Clone repository (HTTPS or SSH)
 git clone https://github.com/vinsac/MyNodeOne.git
-cd mynodeone
+# OR: git clone git@github.com:vinsac/MyNodeOne.git
+
+cd MyNodeOne
 
 # 2. Run ONE command
 sudo ./scripts/mynodeone
@@ -149,7 +154,7 @@ sudo ./scripts/mynodeone
 - **START-HERE.md** - Your entry point
 - **GLOSSARY.md** - Every term explained simply
 - **FAQ.md** - Common questions answered
-- **NEW-QUICKSTART.md** - Step-by-step guide
+- **QUICKSTART.md** - Step-by-step guide
 
 ### For Technical Users
 - **docs/architecture.md** - System design
@@ -268,7 +273,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Documentation
 - **GitHub:** https://github.com/vinsac/MyNodeOne
-- **Quick Start:** [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
+- **Quick Start:** [QUICKSTART.md](QUICKSTART.md)
 - **Guide:** [START-HERE.md](START-HERE.md)
 - **FAQ:** [FAQ.md](FAQ.md)
 

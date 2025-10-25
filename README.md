@@ -106,7 +106,7 @@ sudo ./scripts/mynodeone
 # Done in 30 minutes!
 ```
 
-For detailed guide, see [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
+For detailed guide, see [QUICKSTART.md](QUICKSTART.md)
 
 ## 🔒 Security Hardening
 
@@ -372,7 +372,7 @@ Pre-configured dashboards:
 
 ### Getting Started
 - **[START-HERE.md](START-HERE.md)** - Entry point for new users ⭐
-- **[NEW-QUICKSTART.md](NEW-QUICKSTART.md)** - Step-by-step installation guide
+- **[QUICKSTART.md](QUICKSTART.md)** - Step-by-step installation guide
 - **[NAVIGATION-GUIDE.md](NAVIGATION-GUIDE.md)** - Find what you need quickly
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 

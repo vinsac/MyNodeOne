@@ -36,6 +36,12 @@ Before starting, you need:
    - Desktop or Server edition works
 
 2. **Git installed** on your machine
+   
+   **First, open your terminal:**
+   - Press `Ctrl + Alt + T` on Ubuntu Desktop
+   - Or see [TERMINAL-BASICS.md](TERMINAL-BASICS.md) for help
+   
+   **Then run these commands:**
    ```bash
    # Update package list
    sudo apt update
@@ -50,6 +56,8 @@ Before starting, you need:
    - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
 3. **SSH Server installed** (required for worker nodes and remote management)
+   
+   **In the same terminal, run:**
    ```bash
    # Install OpenSSH Server:
    sudo apt install -y openssh-server
@@ -61,6 +69,8 @@ Before starting, you need:
    - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 
 4. **Tailscale installed** on your machine
+   
+   **In the same terminal, run:**
    ```bash
    # Install curl (if not already installed):
    sudo apt install -y curl

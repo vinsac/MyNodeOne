@@ -184,6 +184,12 @@ Enables:
 - **Ubuntu 24.04 LTS** (Desktop or Server)
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
 - **Git installed**
+  
+  **First, open your terminal:**
+  - Press `Ctrl + Alt + T` on Ubuntu Desktop
+  - Or see [TERMINAL-BASICS.md](TERMINAL-BASICS.md) for help
+  
+  **Then run these commands:**
   ```bash
   # Update package list
   sudo apt update
@@ -198,6 +204,8 @@ Enables:
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
 - **SSH Server installed** (required for worker nodes and remote management)
+  
+  **In the same terminal, run:**
   ```bash
   # Install OpenSSH Server:
   sudo apt install -y openssh-server
@@ -209,6 +217,8 @@ Enables:
   - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 
 - **Tailscale installed** on all machines
+  
+  **In the same terminal, run:**
   ```bash
   # Install curl (if not already installed):
   sudo apt install -y curl

@@ -33,7 +33,7 @@ NodeZero is a production-ready, scalable private cloud infrastructure that lets 
 
 > **Networking:** NodeZero uses **Tailscale by default** for secure mesh networking. Zero configuration required!
 
-## 🆕 What's New in Version 2.0
+## 🆕 What's New in Version 1.0
 
 ✅ **One Command Setup** - `sudo ./scripts/nodezero` does everything  
 ✅ **System Cleanup** - Automatic removal of bloat and unused packages  
@@ -107,7 +107,9 @@ For detailed guide, see [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 - Root/sudo access
 - Git installed
 
-### 1. Bootstrap Control Plane (toronto-0001)
+### 1. Bootstrap Control Plane (First Node)
+
+**Example:** If your first node is named `node-001` or `server-alpha`
 
 ```bash
 # Clone this repo
@@ -128,7 +130,9 @@ This will:
 - Install monitoring stack (Prometheus, Grafana, Loki)
 - Deploy ArgoCD for GitOps
 
-### 2. Add Worker Nodes (toronto-0002, 0003, etc.)
+### 2. Add Worker Nodes (Additional Nodes)
+
+**Example:** Additional nodes like `node-002`, `node-003`, etc.
 
 On each new machine:
 
@@ -155,7 +159,7 @@ sudo ./scripts/setup-edge-node.sh
 This sets up:
 - Traefik as reverse proxy
 - SSL certificate management
-- Routing to Toronto nodes via Tailscale
+- Routing to your nodes via Tailscale
 
 ### 4. Deploy Your First App
 
@@ -362,6 +366,8 @@ MIT License - Use it however you want!
 **Author:** Vinay Sachdeva  
 **License:** MIT  
 **Repository:** https://github.com/vinsac/nodezero  
+
+**Development:** Built with assistance from AI tools for enhanced code quality and comprehensive documentation.
 
 ---
 

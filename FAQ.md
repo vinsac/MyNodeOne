@@ -278,7 +278,9 @@ Ubuntu 24.04 LTS (Desktop or Server edition). Other Linux distributions may work
 
 ### Can I run NodeZero on just one machine?
 
-Yes! Start with toronto-0001 and add more nodes later. The architecture scales from 1 to 100+ nodes.
+Yes! Start with your first node (e.g., `node-001`) and add more nodes later. The architecture scales from 1 to 100+ nodes.
+
+**Note:** Node names like `toronto-0001`, `node-001`, etc. are just examples. You can use any hostname you prefer.
 
 ### Do I need fast internet?
 
@@ -303,15 +305,15 @@ Alternatives like WireGuard require manual configuration.
 **Hardware:** You already own it ($0/month)
 **VPS Edge Nodes:** ~$15/month each (Contabo)
 **Domains:** ~$10-20/year
-**Electricity:** ~$30-50/month for toronto-0001
+**Electricity:** ~$30-50/month for your control plane node
 
 **Total:** ~$30-50/month vs $2,000+/month on AWS
 
-### What happens if toronto-0001 goes down?
+### What happens if my control plane node goes down?
 
 With 1 node: Everything stops until it's back up.
 With 2+ nodes: Apps automatically migrate to healthy nodes.
-Solution: Add toronto-0002 and toronto-0003 for high availability.
+Solution: Add additional nodes (e.g., `node-002`, `node-003`) for high availability.
 
 ### Can I mix different hardware?
 
@@ -407,10 +409,10 @@ Example: curiios.com, vinaysachdeva.com, blog.example.com all on the same cluste
 ### How does traffic flow from internet to my app?
 
 ```
-User → VPS (SSL termination) → Tailscale tunnel → toronto-0001 → App Pod
+User → VPS (SSL termination) → Tailscale tunnel → Control Plane Node → App Pod
 ```
 
-### Why use VPS instead of exposing toronto-0001 directly?
+### Why use VPS instead of exposing my node directly?
 
 1. **ISP blocks:** Many ISPs block ports 80/443
 2. **Dynamic IP:** Home IPs change; VPS IPs are static
@@ -448,9 +450,9 @@ Yes, with best practices:
 - Secrets management (Kubernetes secrets)
 - RBAC for access control
 
-### Should I expose toronto-0001 to the internet?
+### Should I expose my control plane node to the internet?
 
-No! Keep it behind Tailscale. Only VPS nodes should have public IPs.
+No! Keep it behind Tailscale. Only VPS edge nodes should have public IPs.
 
 ### How do I manage secrets?
 
@@ -480,7 +482,7 @@ Yes! Use Kubernetes RBAC to create different user roles with limited permissions
 
 ### When should I add a second node?
 
-Add toronto-0002 when:
+Add a second node when:
 - CPU usage > 70% sustained
 - RAM usage > 80%
 - Need redundancy for production apps
@@ -572,7 +574,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.28.6+k3s1" sh -
 3. **MinIO data:** Use `mc mirror` to sync elsewhere
 4. **Configs:** Git repo (infrastructure as code!)
 
-### What if I lose toronto-0001 completely?
+### What if I lose my control plane node completely?
 
 1. Restore etcd from snapshot on new hardware
 2. Restore Longhorn volumes from backups
@@ -585,8 +587,8 @@ See disaster recovery section in operations.md
 ### What's the total cost of ownership?
 
 **Initial Hardware:** (you already have)
-- toronto-0001: $0 (already owned)
-- vivobook: $0 (already owned)
+- Control plane node: $0 (repurposed hardware)
+- Additional nodes: $0 (repurposed hardware)
 
 **Monthly Costs:**
 - 2x VPS: $30
@@ -603,7 +605,7 @@ See disaster recovery section in operations.md
 If your ISP allows ports 80/443:
 1. Skip VPS setup
 2. Point DNS directly to home IP
-3. Run Traefik on toronto-0001
+3. Run Traefik on your node
 4. Use dynamic DNS if IP changes
 
 Cost: $0/month (electricity only)

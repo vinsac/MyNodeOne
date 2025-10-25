@@ -14,7 +14,7 @@ Get your private cloud running in 30 minutes with our interactive wizard!
 Before starting, you need:
 
 1. **At least one machine** with Ubuntu 24.04 LTS
-   - Can be named anything (toronto-0001, server-1, myserver, etc.)
+   - Can be named anything (e.g., `node-001`, `server-alpha`, `homelab-01`, etc.)
    - Any amount of RAM/CPU (minimum 4GB RAM recommended)
    - Desktop or Server edition works
 
@@ -114,7 +114,7 @@ What type of node is this?
 
 ? Give your cluster a name [nodezero]: 
 ? What should we call this node? [myserver]: 
-? Where is this node located? (e.g., toronto, newyork, home) [home]: 
+? Where is this node located? (e.g., home, office, datacenter) [home]: 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Saving Configuration

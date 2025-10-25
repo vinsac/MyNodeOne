@@ -251,6 +251,38 @@ git push
 # ArgoCD auto-deploys!
 ```
 
+## 🔒 Security Hardening (Recommended)
+
+After installation, enable additional security features:
+
+```bash
+sudo ./scripts/enable-security-hardening.sh
+```
+
+This adds:
+- ✅ Kubernetes audit logging
+- ✅ Secrets encryption at rest
+- ✅ Pod Security Standards (restricted)
+- ✅ Network policies (default deny)
+- ✅ Resource quotas
+- ✅ Security headers (HSTS, CSP)
+
+**Already Enabled (Automatic):**
+- ✅ Firewall on all nodes
+- ✅ fail2ban SSH protection
+- ✅ Strong 32-char random passwords
+- ✅ Encrypted network (Tailscale)
+
+**Important: Password Management**
+
+1. Save all credentials to a password manager (Bitwarden/1Password)
+2. **DO NOT** self-host password manager on NodeZero
+3. Delete credential files after saving: `sudo rm /root/nodezero-*.txt`
+
+See `docs/password-management.md` for detailed guide.
+
+---
+
 ## Access Your Services
 
 ### Via Tailscale (Internal)

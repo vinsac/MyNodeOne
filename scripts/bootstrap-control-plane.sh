@@ -55,6 +55,80 @@ log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+# Generic failsafe installation function
+# Usage: install_tool_failsafe "tool_name" "snap_package" "curl_script_url" "version" "binary_url_template"
+install_tool_failsafe() {
+    local TOOL_NAME=$1
+    local SNAP_PACKAGE=$2
+    local CURL_SCRIPT=$3
+    local VERSION=$4
+    local BINARY_URL_TEMPLATE=$5
+    
+    log_info "Installing $TOOL_NAME..."
+    
+    # Check if already installed
+    if command -v "$TOOL_NAME" &> /dev/null; then
+        local CURRENT_VERSION=$("$TOOL_NAME" version --short 2>/dev/null || "$TOOL_NAME" --version 2>/dev/null || echo "unknown")
+        log_warn "$TOOL_NAME already installed ($CURRENT_VERSION), skipping..."
+        return 0
+    fi
+    
+    log_info "Attempting $TOOL_NAME installation with multiple fallback methods..."
+    
+    # Method 1: Try snap (if available)
+    if [ -n "$SNAP_PACKAGE" ] && command -v snap &> /dev/null; then
+        log_info "Method 1: Trying snap installation..."
+        if snap install "$SNAP_PACKAGE" --classic 2>/dev/null; then
+            log_success "$TOOL_NAME installed via snap"
+            return 0
+        else
+            log_warn "Snap installation failed, trying next method..."
+        fi
+    fi
+    
+    # Method 2: Official script (if provided)
+    if [ -n "$CURL_SCRIPT" ]; then
+        log_info "Method 2: Trying official installation script..."
+        if curl -fsSL "$CURL_SCRIPT" | bash; then
+            log_success "$TOOL_NAME installed via official script"
+            return 0
+        else
+            log_warn "Official script failed, trying next method..."
+        fi
+    fi
+    
+    # Method 3: Direct binary download (if template provided)
+    if [ -n "$BINARY_URL_TEMPLATE" ]; then
+        log_info "Method 3: Trying direct binary download..."
+        
+        local ARCH=$(uname -m)
+        case $ARCH in
+            x86_64) ARCH="amd64" ;;
+            aarch64) ARCH="arm64" ;;
+            armv7l) ARCH="arm" ;;
+        esac
+        
+        local OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        local BINARY_URL=$(echo "$BINARY_URL_TEMPLATE" | sed "s/\${VERSION}/$VERSION/g" | sed "s/\${ARCH}/$ARCH/g" | sed "s/\${OS}/$OS/g")
+        
+        if curl -fsSL "$BINARY_URL" -o "/tmp/${TOOL_NAME}.tar.gz"; then
+            tar -zxvf "/tmp/${TOOL_NAME}.tar.gz" -C /tmp
+            # Find the binary (might be in subdirectory)
+            find /tmp -name "$TOOL_NAME" -type f -executable -exec mv {} /usr/local/bin/ \;
+            chmod +x "/usr/local/bin/$TOOL_NAME"
+            rm -rf "/tmp/${TOOL_NAME}.tar.gz" /tmp/${OS}-${ARCH}
+            log_success "$TOOL_NAME installed via direct binary download"
+            return 0
+        else
+            log_error "Direct binary download failed"
+        fi
+    fi
+    
+    # All methods failed
+    log_error "CRITICAL: All $TOOL_NAME installation methods failed!"
+    return 1
+}
+
 check_requirements() {
     log_info "Checking prerequisites..."
     
@@ -198,16 +272,94 @@ EOF
 }
 
 install_helm() {
-    log_info "Installing Helm..."
+    # Helm installation with multiple failsafe methods
+    # 1. Snap (if available)
+    # 2. Official get-helm-3 script (RECOMMENDED)
+    # 3. Direct binary download (ultimate fallback)
     
+    log_info "Installing Helm with failsafe methods..."
+    
+    # Check if already installed
     if command -v helm &> /dev/null; then
-        log_warn "Helm already installed, skipping..."
-        return
+        HELM_VERSION=$(helm version --short 2>/dev/null || echo "unknown")
+        log_warn "Helm already installed ($HELM_VERSION), skipping..."
+        return 0
     fi
     
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    local success=false
     
-    log_success "Helm installed"
+    # Method 1: Try snap (if available)
+    if command -v snap &> /dev/null; then
+        log_info "Method 1: Trying snap installation..."
+        if snap install helm --classic 2>/dev/null; then
+            log_success "Helm installed via snap"
+            success=true
+        else
+            log_warn "Snap installation failed, trying next method..."
+        fi
+    fi
+    
+    # Method 2: Official get-helm-3 script (RECOMMENDED)
+    if [ "$success" = false ]; then
+        log_info "Method 2: Trying official Helm installation script..."
+        if curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash 2>/dev/null; then
+            log_success "Helm installed via official script"
+            success=true
+        else
+            log_warn "Official script failed, trying next method..."
+        fi
+    fi
+    
+    # Method 3: Direct binary download (ultimate fallback)
+    if [ "$success" = false ]; then
+        log_info "Method 3: Trying direct binary download..."
+        
+        local HELM_VERSION="v3.13.3"
+        local ARCH=$(uname -m)
+        
+        case $ARCH in
+            x86_64) ARCH="amd64" ;;
+            aarch64) ARCH="arm64" ;;
+            armv7l) ARCH="arm" ;;
+        esac
+        
+        local HELM_URL="https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz"
+        
+        if curl -fsSL "$HELM_URL" -o /tmp/helm.tar.gz 2>/dev/null; then
+            tar -zxf /tmp/helm.tar.gz -C /tmp 2>/dev/null
+            mv /tmp/linux-${ARCH}/helm /usr/local/bin/helm
+            chmod +x /usr/local/bin/helm
+            rm -rf /tmp/helm.tar.gz /tmp/linux-${ARCH}
+            log_success "Helm installed via direct binary download"
+            success=true
+        else
+            log_error "Direct binary download failed"
+        fi
+    fi
+    
+    # Check final result
+    if [ "$success" = false ]; then
+        log_error "CRITICAL: All Helm installation methods failed!"
+        log_error "Attempted methods:"
+        log_error "  1. Snap (if available)"
+        log_error "  2. Official get-helm-3 script"
+        log_error "  3. Direct binary download"
+        echo
+        log_error "Please install Helm manually:"
+        log_error "  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+        echo
+        return 1
+    fi
+    
+    # Verify installation
+    if command -v helm &> /dev/null; then
+        local INSTALLED_VERSION=$(helm version --short 2>/dev/null || echo "unknown")
+        log_success "Helm successfully installed: $INSTALLED_VERSION"
+        return 0
+    else
+        log_error "Helm installation verification failed"
+        return 1
+    fi
 }
 
 install_cert_manager() {

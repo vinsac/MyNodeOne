@@ -213,6 +213,12 @@ Enables:
   # Verify it's running:
   sudo systemctl status ssh
   ```
+  
+  **How to know if it's running:**
+  - ✅ Look for `Active: active (running)` in **green** text = Good!
+  - ❌ Look for `Active: inactive` or **red** text = Problem
+  - Press `q` to exit the status screen
+  
   - **Why needed:** Control plane uses SSH to configure worker nodes
   - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 

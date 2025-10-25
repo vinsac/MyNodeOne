@@ -65,6 +65,27 @@ Before starting, you need:
    # Verify it's running:
    sudo systemctl status ssh
    ```
+   
+   **How to know if it's running:**
+   
+   ✅ **Good - SSH is running (you'll see):**
+   ```
+   ● ssh.service - OpenBSD Secure Shell server
+        Loaded: loaded (/lib/systemd/system/ssh.service; enabled)
+        Active: active (running) since ...
+   ```
+   Look for: `Active: active (running)` in **green** text
+   
+   ❌ **Problem - SSH is NOT running (you'll see):**
+   ```
+   ● ssh.service - OpenBSD Secure Shell server
+        Loaded: loaded
+        Active: inactive (dead)
+   ```
+   Look for: `Active: inactive` or any **red** text
+   
+   **Press `q` to exit the status screen**
+   
    - **Why needed:** Control plane uses SSH to configure worker nodes
    - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 

@@ -181,6 +181,8 @@ Enables:
 
 ### Prerequisites
 
+> 💡 **Understanding Command Output:** Not sure if a command worked? Copy the output and ask ChatGPT, Gemini, or Claude: "Did this command succeed?" They can instantly help you understand what you're seeing!
+
 - **Ubuntu 24.04 LTS** (Desktop or Server)
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
 - **Git installed**
@@ -201,6 +203,9 @@ Enables:
   # Install git
   sudo apt install -y git
   ```
+  
+  **Success looks like:** `Setting up git...` with no error messages. Verify with `git --version`
+  
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
 - **SSH Server installed** (required on ALL machines - control plane AND workers)
@@ -217,6 +222,11 @@ Enables:
   # Verify it's running:
   sudo systemctl status ssh
   ```
+  
+  **Expected outputs:**
+  - Install: Shows `Setting up openssh-server...` 
+  - Start: No output = success! (silence is good)
+  - Enable: May show `Synchronizing state...` or nothing = success!
   
   **How to know if it's running:**
   - ✅ Look for `Active: active (running)` in **green** text = Good!
@@ -244,6 +254,12 @@ Enables:
   # 3. Approve this device on your Tailscale network
   # 4. Assign a 100.x.x.x IP address to this machine
   ```
+  
+  **Expected outputs:**
+  - curl: `curl is already the newest version` or `Setting up curl...`
+  - Tailscale install: Shows progress, ends with `Installation complete!`
+  - tailscale up: Shows a URL to open, then displays `Success.` when complete ✅
+  
   - **First time?** Sign up for free at https://tailscale.com before running this
   - **No browser?** Copy the URL shown and open it on another device
   - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)

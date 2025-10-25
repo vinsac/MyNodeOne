@@ -27,6 +27,8 @@ Learn how to:
 
 ## Prerequisites
 
+> 💡 **Understanding Command Output:** Not sure if a command worked? Copy the output and ask ChatGPT, Gemini, or Claude: "Did this command succeed?" They can help you understand what you're seeing!
+
 Before starting, you need:
 
 1. **At least one machine** with Ubuntu 24.04 LTS
@@ -53,6 +55,21 @@ Before starting, you need:
    # Install git
    sudo apt install -y git
    ```
+   
+   **Expected output for successful install:**
+   ```
+   Reading package lists... Done
+   Building dependency tree... Done
+   Setting up git (1:2.43.0-1ubuntu7) ...
+   ```
+   ✅ Look for: `Setting up git` and no error messages
+   
+   **To verify git installed:**
+   ```bash
+   git --version
+   # Should show: git version 2.43.0 (or similar)
+   ```
+   
    - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
 3. **SSH Server installed** (required on ALL machines - control plane AND workers)
@@ -71,6 +88,11 @@ Before starting, you need:
    # Verify it's running:
    sudo systemctl status ssh
    ```
+   
+   **Expected output for successful commands:**
+   - `sudo apt install -y openssh-server` → Should show `Setting up openssh-server` with no errors
+   - `sudo systemctl start ssh` → No output = success! (silence is good here)
+   - `sudo systemctl enable ssh` → May show `Synchronizing state...` or nothing = success!
    
    **How to know if it's running:**
    
@@ -115,6 +137,17 @@ Before starting, you need:
    # 3. Approve this device on your Tailscale network
    # 4. Assign a 100.x.x.x IP address to this machine
    ```
+   
+   **Expected outputs:**
+   - `sudo apt install -y curl` → Should show `curl is already the newest version` or `Setting up curl`
+   - `curl -fsSL https://tailscale.com/install.sh | sh` → Will show installation progress, then `Installation complete!`
+   - `sudo tailscale up` → Shows a URL like `https://login.tailscale.com/a/abc123def` - open this in your browser!
+   
+   **After tailscale up succeeds, you'll see:**
+   ```
+   Success.
+   ```
+   ✅ Your machine is now connected to Tailscale!
    - **First time?** Sign up for free at https://tailscale.com before running this
    - **No browser?** Copy the URL shown and open it on another device
    - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)

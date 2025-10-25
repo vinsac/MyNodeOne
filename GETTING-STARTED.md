@@ -6,7 +6,7 @@
 
 ## 🌱 Brand New to Linux/Terminal?
 
-**Never used command line before?** → Read **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** first!
+**Never used command line before?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
 
 This guide teaches you:
 - How to open terminal
@@ -36,7 +36,7 @@ Use regular computers you already own:
 ## 🎯 Ready to Install?
 
 ### If you're ready RIGHT NOW:
-→ Go to **[QUICKSTART.md](QUICKSTART.md)** for step-by-step installation instructions!
+→ Go to **[INSTALLATION.md](INSTALLATION.md)** for step-by-step installation instructions!
 
 **That guide will tell you:**
 - ✅ Exactly which machine to use
@@ -56,16 +56,16 @@ If you want to understand before installing, read the sections below.
 
 ## 📖 What Should You Read?
 
-> **Lost?** Check the **[NAVIGATION-GUIDE.md](NAVIGATION-GUIDE.md)** for a complete map of all documentation.
+> **Lost?** Check the **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** for a complete map of all documentation.
 
 ### Brand New? Read in This Order:
 1. **This file** - You're reading it! ✓ (understand what MyNodeOne is)
-2. **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** - If new to terminal (10 min)
+2. **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** - If new to terminal (10 min)
 3. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - Understand your options (15 min)
-4. **[QUICKSTART.md](QUICKSTART.md)** - Install step-by-step (30 min actual install)
+4. **[INSTALLATION.md](INSTALLATION.md)** - Install step-by-step (30 min actual install)
 
 ### Ready to Install Now?
-→ **[QUICKSTART.md](QUICKSTART.md)** - Complete installation guide with all commands
+→ **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide with all commands
 
 ### Already Installed?
 1. **[docs/operations.md](docs/operations.md)** - Daily management
@@ -97,7 +97,7 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
 - **4GB RAM** (8GB+ recommended)
 - **20GB disk** (100GB+ recommended)
 - **Internet connection**
-- **Basic software** (git, SSH, Tailscale) - [QUICKSTART.md](QUICKSTART.md) shows how to install these
+- **Basic software** (git, SSH, Tailscale) - [INSTALLATION.md](INSTALLATION.md) shows how to install these
 
 That's it! Start with what you have, scale later.
 
@@ -255,13 +255,13 @@ sudo ./scripts/mynodeone
 ## 🗺️ Documentation Map
 
 ```
-START-HERE.md ← YOU ARE HERE
+GETTING-STARTED.md ← YOU ARE HERE
     ↓
 README.md (overview)
     ↓
 docs/setup-options-guide.md (understand choices)
     ↓
-QUICKSTART.md (step-by-step)
+INSTALLATION.md (step-by-step)
     ↓
 sudo ./scripts/mynodeone (install!)
     ↓
@@ -277,12 +277,12 @@ docs/scaling.md (grow your cloud)
 ## 🎯 Next Steps
 
 ### Right Now (5 minutes)
-1. ✅ You're reading START-HERE.md
+1. ✅ You're reading GETTING-STARTED.md
 2. 📖 Read [README.md](README.md) - Get the big picture
 3. 📖 Read [docs/setup-options-guide.md](docs/setup-options-guide.md) - Understand options
 
 ### Before Installing (15 minutes)
-1. 📖 Read [QUICKSTART.md](QUICKSTART.md) - See step-by-step
+1. 📖 Read [INSTALLATION.md](INSTALLATION.md) - See step-by-step
 2. 📖 Skim [FAQ.md](FAQ.md) - Common questions
 3. 💡 Decide your scenario (Learning? Home? Production?)
 
@@ -296,7 +296,7 @@ cd MyNodeOne
 sudo ./scripts/mynodeone
 ```
 
-Have [QUICKSTART.md](QUICKSTART.md) open for reference!
+Have [INSTALLATION.md](INSTALLATION.md) open for reference!
 
 ### After Installation (1 hour)
 1. 📖 Read [docs/operations.md](docs/operations.md) - Learn daily management
@@ -366,10 +366,10 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 ## 📚 All Documentation
 
 ### Essential (Read First)
-- **[START-HERE.md](START-HERE.md)** ← You are here
+- **[GETTING-STARTED.md](GETTING-STARTED.md)** ← You are here
 - **[README.md](README.md)** - Project overview
 - **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
-- **[QUICKSTART.md](QUICKSTART.md)** - Step-by-step guide
+- **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step guide
 
 ### Reference Guides
 - **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works

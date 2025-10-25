@@ -26,11 +26,11 @@
 
 ---
 
-## 👋 New Here? → **[START-HERE.md](START-HERE.md)**
+## 👋 New Here? → **[GETTING-STARTED.md](GETTING-STARTED.md)**
 
-If you're new to MyNodeOne, start with **[START-HERE.md](START-HERE.md)** for a guided introduction.
+If you're new to MyNodeOne, start with **[GETTING-STARTED.md](GETTING-STARTED.md)** for a guided introduction.
 
-**Never used terminal/command line?** → Read **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** first!
+**Never used terminal/command line?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
 
 **Don't understand the technical terms?** → Check **[GLOSSARY.md](GLOSSARY.md)** for simple explanations!
 
@@ -97,7 +97,7 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 
 ## 🚀 Ready to Install?
 
-**→ Go to [QUICKSTART.md](QUICKSTART.md) for complete step-by-step installation!**
+**→ Go to [INSTALLATION.md](INSTALLATION.md) for complete step-by-step installation!**
 
 **That guide includes:**
 - ✅ Prerequisites (what to install first)
@@ -452,9 +452,9 @@ kubectl apply -f my-app-ingress.yaml
 ## 📚 Documentation
 
 ### Getting Started
-- **[START-HERE.md](START-HERE.md)** - Entry point for new users ⭐
-- **[QUICKSTART.md](QUICKSTART.md)** - Step-by-step installation guide
-- **[NAVIGATION-GUIDE.md](NAVIGATION-GUIDE.md)** - Find what you need quickly
+- **[GETTING-STARTED.md](GETTING-STARTED.md)** - Entry point for new users ⭐
+- **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step installation guide
+- **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** - Find what you need quickly
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
 ### User Guides

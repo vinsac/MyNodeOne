@@ -396,8 +396,8 @@
 ## 🔍 Need More Help?
 
 - **Quick Questions:** Check [FAQ.md](FAQ.md)
-- **Getting Started:** Read [START-HERE.md](START-HERE.md)
-- **Detailed Guide:** See [QUICKSTART.md](QUICKSTART.md)
+- **Getting Started:** Read [GETTING-STARTED.md](GETTING-STARTED.md)
+- **Detailed Guide:** See [INSTALLATION.md](INSTALLATION.md)
 - **Problems:** Check [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ---

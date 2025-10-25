@@ -153,7 +153,7 @@ Examples:
 
 ### 2. Improved Guides 📝
 
-**START-HERE.md:**
+**GETTING-STARTED.md:**
 - ✅ Less jargon
 - ✅ Safety warnings added
 - ✅ Better Q&A section
@@ -180,7 +180,7 @@ Examples:
 
 ### If You're a Product Manager
 - **Lower risk** - Pre-flight checks catch issues early
-- **Documentation** - GLOSSARY makes onboarding easier
+- **Documentation** - GLOSSARY.md makes onboarding easier
 - **Confidence** - Safety improvements reduce support burden
 
 ---
@@ -258,8 +258,8 @@ Or open `GLOSSARY.md` in your editor.
 
 ### For Learning
 - **GLOSSARY.md** - Understand all terms
-- **START-HERE.md** - Improved beginner guide
-- **NAVIGATION-GUIDE.md** - Find what you need
+- **GETTING-STARTED.md** - Improved beginner guide
+- **DOCUMENTATION-INDEX.md** - Find what you need
 
 ### For Reviewing
 - **CODE-REVIEW-FINDINGS.md** - What was fixed
@@ -300,7 +300,7 @@ These improvements make MyNodeOne:
 ## 📞 Questions or Issues?
 
 - **Documentation:** Check GLOSSARY.md first
-- **Setup questions:** See START-HERE.md
+- **Setup questions:** See GETTING-STARTED.md
 - **Problems:** See docs/troubleshooting.md
 - **Report bugs:** GitHub Issues
 

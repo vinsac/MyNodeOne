@@ -6,7 +6,7 @@ Get your private cloud running in 30 minutes with our interactive wizard!
 
 ## 🌱 Never Used Terminal Before?
 
-**First time with Linux or command line?** → Read **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** first!
+**First time with Linux or command line?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
 
 Learn how to:
 - Open terminal
@@ -98,7 +98,7 @@ Before starting, you need:
 
 ### Where to Run Commands?
 **Open terminal on your Ubuntu machine:**
-- Press `Ctrl + Alt + T` (or see [ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md))
+- Press `Ctrl + Alt + T` (or see [TERMINAL-BASICS.md](TERMINAL-BASICS.md))
 
 ### What Directory?
 **Your home directory is fine!** When you open terminal, you're usually at `/home/yourusername/` - perfect!

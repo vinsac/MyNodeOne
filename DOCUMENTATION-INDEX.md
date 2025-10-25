@@ -1,4 +1,4 @@
-# 🗺️ MyNodeOne Navigation Guide
+# 🗺️ MyNodeOne Documentation Index
 
 Quick reference for finding what you need in the MyNodeOne repository.
 
@@ -7,10 +7,10 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ## 🎯 "I want to..."
 
 ### Get Started
-- **"I'm brand new"** → [START-HERE.md](START-HERE.md)
+- **"I'm brand new"** → [GETTING-STARTED.md](GETTING-STARTED.md)
 - **"Quick overview"** → [README.md](README.md)
 - **"Install now"** → Run `sudo ./scripts/mynodeone`
-- **"Step-by-step guide"** → [QUICKSTART.md](QUICKSTART.md)
+- **"Step-by-step guide"** → [INSTALLATION.md](INSTALLATION.md)
 
 ### Understand MyNodeOne
 - **"What are the options?"** → [docs/setup-options-guide.md](docs/setup-options-guide.md)
@@ -41,11 +41,11 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ```
 mynodeone/
 │
-├── 🚀 START-HERE.md              ← Entry point for new users
-├── 🌱 ABSOLUTE-BEGINNERS-GUIDE.md ← Never used terminal? Start here!
+├── 🚀 GETTING-STARTED.md              ← Entry point for new users
+├── 🌱 TERMINAL-BASICS.md ← Never used terminal? Start here!
 ├── 📖 README.md                  ← Project overview
-├── ⚡ QUICKSTART.md               ← Step-by-step installation
-├── 🗺️ NAVIGATION-GUIDE.md        ← This file
+├── ⚡ INSTALLATION.md               ← Step-by-step installation
+├── 🗺️ DOCUMENTATION-INDEX.md        ← This file
 ├── 📊 REPO-STRUCTURE.md          ← Repository layout
 ├── 📚 GLOSSARY.md                ← Simple term definitions
 ├── ❓ FAQ.md                     ← 50+ questions
@@ -73,18 +73,18 @@ mynodeone/
 ## 🎓 Reading Order by Experience Level
 
 ### Complete Beginner (Never used Kubernetes)
-1. [ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md) - 10 min (if new to terminal) ⭐
-2. [START-HERE.md](START-HERE.md) - 5 min
+1. [TERMINAL-BASICS.md](TERMINAL-BASICS.md) - 10 min (if new to terminal) ⭐
+2. [GETTING-STARTED.md](GETTING-STARTED.md) - 5 min
 3. [README.md](README.md) - 5 min
 4. [docs/setup-options-guide.md](docs/setup-options-guide.md) - 15 min
-5. [QUICKSTART.md](QUICKSTART.md) - 20 min
+5. [INSTALLATION.md](INSTALLATION.md) - 20 min
 6. Install: `sudo ./scripts/mynodeone`
 7. [docs/operations.md](docs/operations.md) - After install
 8. [FAQ.md](FAQ.md) - When questions arise
 
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](README.md) - 5 min
-2. [QUICKSTART.md](QUICKSTART.md) - 10 min
+2. [INSTALLATION.md](INSTALLATION.md) - 10 min
 3. [docs/architecture.md](docs/architecture.md) - 15 min
 4. Install: `sudo ./scripts/mynodeone`
 5. [docs/operations.md](docs/operations.md) - Reference
@@ -104,7 +104,7 @@ mynodeone/
 
 ### Installation & Setup
 - Main installer: `scripts/mynodeone`
-- Installation guide: [QUICKSTART.md](QUICKSTART.md)
+- Installation guide: [INSTALLATION.md](INSTALLATION.md)
 - Setup options: [docs/setup-options-guide.md](docs/setup-options-guide.md)
 - Configuration wizard: `scripts/interactive-setup.sh`
 
@@ -141,7 +141,7 @@ mynodeone/
 
 ### Scaling
 - Add workers: [docs/scaling.md](docs/scaling.md)
-- Add VPS: [QUICKSTART.md](QUICKSTART.md) - Section "Step 4"
+- Add VPS: [INSTALLATION.md](INSTALLATION.md) - Section "Step 4"
 - High availability: [docs/architecture.md](docs/architecture.md)
 
 ---
@@ -149,7 +149,7 @@ mynodeone/
 ## 💡 Quick Answers
 
 **"Where do I start?"**  
-→ [START-HERE.md](START-HERE.md)
+→ [GETTING-STARTED.md](GETTING-STARTED.md)
 
 **"How do I install?"**  
 → `sudo ./scripts/mynodeone`
@@ -177,7 +177,7 @@ mynodeone/
 ## 📚 Documentation by Type
 
 ### Guides (How-to)
-- [QUICKSTART.md](QUICKSTART.md) - Installation walkthrough
+- [INSTALLATION.md](INSTALLATION.md) - Installation walkthrough
 - [docs/operations.md](docs/operations.md) - Daily management
 - [docs/scaling.md](docs/scaling.md) - Growth strategies
 - [docs/troubleshooting.md](docs/troubleshooting.md) - Problem solving
@@ -195,8 +195,8 @@ mynodeone/
 - `scripts/` - All automation
 
 ### Tutorials (Learning)
-- [START-HERE.md](START-HERE.md) - Guided introduction
-- [QUICKSTART.md](QUICKSTART.md) - Step-by-step
+- [GETTING-STARTED.md](GETTING-STARTED.md) - Guided introduction
+- [INSTALLATION.md](INSTALLATION.md) - Step-by-step
 - `manifests/examples/` - Example deployments
 
 ---
@@ -206,7 +206,7 @@ mynodeone/
 Based on where you are:
 
 ### Just Discovered MyNodeOne
-→ Read [START-HERE.md](START-HERE.md)
+→ Read [GETTING-STARTED.md](GETTING-STARTED.md)
 
 ### Ready to Install
 → Run `sudo ./scripts/mynodeone`
@@ -225,4 +225,4 @@ Based on where you are:
 
 ---
 
-**Still lost?** Start at [START-HERE.md](START-HERE.md) - it guides you through everything!
+**Still lost?** Start at [GETTING-STARTED.md](GETTING-STARTED.md) - it guides you through everything!

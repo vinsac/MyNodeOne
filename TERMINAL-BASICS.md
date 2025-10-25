@@ -337,7 +337,7 @@ You now know:
 - ✅ What to expect when running commands
 - ✅ How to navigate and fix mistakes
 
-**Next step:** Go to [QUICKSTART.md](QUICKSTART.md) and start installing!
+**Next step:** Go to [INSTALLATION.md](INSTALLATION.md) and start installing!
 
 ---
 
@@ -372,7 +372,7 @@ Go up One Level:      cd ..
 
 ---
 
-**Ready to start?** Go to → [QUICKSTART.md](QUICKSTART.md)
+**Ready to start?** Go to → [INSTALLATION.md](INSTALLATION.md)
 
 **Need simpler explanations?** See → [GLOSSARY.md](GLOSSARY.md)
 

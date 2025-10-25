@@ -822,7 +822,7 @@ We're just starting! Share your setup:
 MyNodeOne is designed to be self-service, but if you need help:
 - Freelancers on Upwork/Fiverr
 - DevOps consultants
-- Or follow QUICKSTART.md - it's quite simple!
+- Or follow GETTING-STARTED.md - it's quite simple!
 
 ---
 

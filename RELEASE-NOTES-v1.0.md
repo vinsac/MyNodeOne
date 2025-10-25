@@ -33,8 +33,8 @@ MyNodeOne v1.0.0 is the first production-ready release of MyNodeOne - your priva
 
 ### Documentation
 - ✅ **GLOSSARY.md** - 50+ terms explained simply
-- ✅ **START-HERE.md** - Beginner-friendly entry point
-- ✅ **QUICKSTART.md** - Detailed installation guide (renamed from NEW-QUICKSTART.md)
+- ✅ **GETTING-STARTED.md** - Beginner-friendly entry point
+- ✅ **INSTALLATION.md** - Detailed installation guide (renamed from NEW-INSTALLATION.md)
 - ✅ **Ubuntu/Git installation guidance** - Clear instructions for prerequisites
 - ✅ **Both HTTPS and SSH clone options** - User choice for repository cloning
 - ✅ **AI assistant references** - Guidance to use ChatGPT/Gemini for help
@@ -151,10 +151,10 @@ sudo ./scripts/mynodeone
 ## 📚 Documentation Highlights
 
 ### For Beginners
-- **START-HERE.md** - Your entry point
+- **GETTING-STARTED.md** - Your entry point
 - **GLOSSARY.md** - Every term explained simply
 - **FAQ.md** - Common questions answered
-- **QUICKSTART.md** - Step-by-step guide
+- **INSTALLATION.md** - Step-by-step guide
 
 ### For Technical Users
 - **docs/architecture.md** - System design
@@ -163,7 +163,7 @@ sudo ./scripts/mynodeone
 - **docs/scaling.md** - Growth strategies
 
 ### For Everyone
-- **NAVIGATION-GUIDE.md** - Find what you need
+- **DOCUMENTATION-INDEX.md** - Find what you need
 - **CHANGELOG.md** - Version history
 - **CONTRIBUTING.md** - How to help
 
@@ -273,8 +273,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Documentation
 - **GitHub:** https://github.com/vinsac/MyNodeOne
-- **Quick Start:** [QUICKSTART.md](QUICKSTART.md)
-- **Guide:** [START-HERE.md](START-HERE.md)
+- **Quick Start:** [INSTALLATION.md](INSTALLATION.md)
+- **Guide:** [GETTING-STARTED.md](GETTING-STARTED.md)
 - **FAQ:** [FAQ.md](FAQ.md)
 
 ### Community

@@ -285,16 +285,9 @@ system_cleanup() {
     if prompt_confirm "Clean up unnecessary packages?"; then
         print_info "Removing unnecessary packages..."
         
-        # Remove snap if not needed (controversial, but saves resources)
-        if command -v snap &> /dev/null; then
-            if prompt_confirm "Remove Snap (saves 500MB+ RAM)?"; then
-                print_info "Removing Snap packages..."
-                snap list | awk 'NR>1 {print $1}' | xargs -I {} snap remove {} 2>/dev/null || true
-                apt-get purge -y snapd 2>/dev/null || true
-                rm -rf /snap /var/snap /var/lib/snapd
-                print_success "Snap removed"
-            fi
-        fi
+        # WARNING: DO NOT remove snap - it's required for tools like Helm
+        # Snap removal can break Firefox, Helm, and other critical tools
+        # Keeping snap check disabled for safety
         
         # Remove unnecessary packages
         print_info "Removing unnecessary packages..."
@@ -355,13 +348,54 @@ detect_disks() {
 setup_disks() {
     print_header "Disk Setup"
     
-    echo "How would you like to use the unmounted disks?"
+    echo "========================================================"
+    echo "  STORAGE CONFIGURATION - Choose Your Setup"
+    echo "========================================================"
     echo
-    echo "1) Longhorn Storage (Recommended - Distributed block storage)"
-    echo "2) MinIO Storage (S3-compatible object storage)"
-    echo "3) RAID Array (Combine multiple disks)"
-    echo "4) Individual Mounts (Mount each disk separately)"
-    echo "5) Skip disk setup"
+    echo "💡 GUIDE: Which option do I need?"
+    echo
+    echo "For MOST users (apps, databases, file storage):"
+    echo "  → Choose Option 1 (Longhorn)"
+    echo "    - Automatic redundancy across nodes"
+    echo "    - Works with your applications (databases, uploads, etc.)"
+    echo "    - Most flexible option"
+    echo
+    echo "For S3-compatible object storage (backups, media, large files):"
+    echo "  → Choose BOTH Option 1 (Longhorn) AND install MinIO later"
+    echo "    - Longhorn for apps, MinIO for S3 storage"
+    echo "    - You can add MinIO anytime after installation"
+    echo
+    echo "For manual control over disks:"
+    echo "  → Choose Option 3 (RAID) or 4 (Individual)"
+    echo
+    echo "========================================================"
+    echo "STORAGE OPTIONS:"
+    echo "========================================================"
+    echo
+    echo "1) Longhorn Storage (RECOMMENDED for most users)"
+    echo "   ✅ Automatic replication across nodes"
+    echo "   ✅ Works with databases, apps, persistent storage"
+    echo "   ✅ Easy to manage, no manual configuration"
+    echo "   ✅ Best for: Running applications"
+    echo
+    echo "2) MinIO Storage (S3-compatible - Advanced users)"
+    echo "   ⚠️  NOT for application storage"
+    echo "   ✅ S3-compatible API (like Amazon S3)"
+    echo "   ✅ Best for: Backups, media files, object storage"
+    echo "   ⚠️  Most users should choose Longhorn + install MinIO later"
+    echo
+    echo "3) RAID Array (Manual redundancy)"
+    echo "   ⚠️  Requires 2+ disks"
+    echo "   ⚠️  Less flexible than Longhorn"
+    echo "   ✅ Best for: Single-node setups, manual control"
+    echo
+    echo "4) Individual Mounts (No redundancy)"
+    echo "   ⚠️  Each disk separate, no protection"
+    echo "   ✅ Best for: Testing, temporary storage"
+    echo
+    echo "5) Skip disk setup (Configure later)"
+    echo
+    echo "========================================================"
     echo
     
     read -p "$(echo -e ${GREEN}?${NC}) Select option (1-5): " DISK_OPTION

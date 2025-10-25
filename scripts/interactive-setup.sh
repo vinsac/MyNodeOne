@@ -59,7 +59,28 @@ prompt_input() {
         read -p "$(echo -e ${GREEN}?${NC}) $prompt: " value
     fi
     
-    eval "$var_name='$value'"
+    # Use printf instead of eval to avoid command injection
+    printf -v "$var_name" '%s' "$value"
+}
+
+validate_hostname() {
+    local name="$1"
+    # RFC 1123 hostname validation: lowercase letters, numbers, hyphens, dots
+    if [[ "$name" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+validate_cluster_name() {
+    local name="$1"
+    # Kubernetes label value validation
+    if [[ "$name" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 prompt_confirm() {

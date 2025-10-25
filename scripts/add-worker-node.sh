@@ -116,12 +116,36 @@ install_dependencies() {
         open-iscsi \
         nfs-common \
         util-linux \
-        netcat-openbsd
+        netcat-openbsd \
+        ufw \
+        fail2ban
     
     # Enable and start iSCSI (required for Longhorn)
     systemctl enable --now iscsid
     
     log_success "Dependencies installed"
+}
+
+configure_firewall() {
+    log_info "Configuring firewall..."
+    
+    # Enable UFW
+    ufw --force enable
+    
+    # Allow SSH
+    ufw allow 22/tcp comment 'SSH'
+    
+    # Allow full access on Tailscale interface
+    ufw allow in on tailscale0 comment 'Tailscale mesh network'
+    
+    # Default policies
+    ufw default deny incoming
+    ufw default allow outgoing
+    
+    # Enable fail2ban for SSH protection
+    systemctl enable --now fail2ban
+    
+    log_success "Firewall configured (UFW enabled)"
 }
 
 join_cluster() {
@@ -203,6 +227,7 @@ main() {
     verify_control_plane
     get_join_token
     install_dependencies
+    configure_firewall
     join_cluster
     label_node
     

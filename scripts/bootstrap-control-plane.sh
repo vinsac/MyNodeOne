@@ -109,12 +109,39 @@ install_dependencies() {
         open-iscsi \
         nfs-common \
         util-linux \
-        software-properties-common \
-        ca-certificates \
-        gnupg \
-        lsb-release
+        ufw \
+        fail2ban
+    
+    # Enable and start iSCSI (required for Longhorn)
+    systemctl enable --now iscsid
     
     log_success "Dependencies installed"
+}
+
+configure_firewall() {
+    log_info "Configuring firewall..."
+    
+    # Enable UFW
+    ufw --force enable
+    
+    # Allow SSH (critical - don't lock yourself out!)
+    ufw allow 22/tcp comment 'SSH'
+    
+    # Allow full access on Tailscale interface
+    ufw allow in on tailscale0 comment 'Tailscale mesh network'
+    
+    # Allow K3s API server (only from Tailscale)
+    # Note: K3s already binds to Tailscale IP
+    
+    # Default policies
+    ufw default deny incoming
+    ufw default allow outgoing
+    
+    # Enable fail2ban for SSH brute force protection
+    systemctl enable --now fail2ban
+    
+    log_success "Firewall configured (UFW enabled, Tailscale allowed)"
+    log_warn "SSH and Tailscale traffic allowed. All other incoming traffic blocked."
 }
 
 install_k3s() {
@@ -125,7 +152,7 @@ install_k3s() {
     
     cat > /etc/rancher/k3s/config.yaml <<EOF
 cluster-init: true
-write-kubeconfig-mode: "0644"
+write-kubeconfig-mode: "0600"
 node-name: "$NODE_NAME"
 node-ip: "$TAILSCALE_IP"
 flannel-iface: tailscale0
@@ -159,11 +186,14 @@ EOF
     
     # Save kubeconfig for regular user
     if [ -n "${SUDO_USER:-}" ]; then
-        USER_HOME=$(eval echo ~$SUDO_USER)
-        mkdir -p "$USER_HOME/.kube"
-        cp /etc/rancher/k3s/k3s.yaml "$USER_HOME/.kube/config"
-        chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.kube"
-        log_success "Kubeconfig saved to $USER_HOME/.kube/config"
+        USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        if [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ]; then
+            mkdir -p "$USER_HOME/.kube"
+            cp /etc/rancher/k3s/k3s.yaml "$USER_HOME/.kube/config"
+            chmod 600 "$USER_HOME/.kube/config"
+            chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.kube"
+            log_success "Kubeconfig saved to $USER_HOME/.kube/config"
+        fi
     fi
 }
 
@@ -288,9 +318,9 @@ install_minio() {
     
     kubectl create namespace minio --dry-run=client -o yaml | kubectl apply -f -
     
-    # Generate random credentials
+    # Generate strong random credentials
     MINIO_ROOT_USER="admin"
-    MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-20)
+    MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)
     
     # Create secret
     kubectl create secret generic minio-credentials \
@@ -316,7 +346,7 @@ install_minio() {
         --set consoleService.type=LoadBalancer \
         --wait
     
-    # Save credentials
+    # Save credentials securely
     cat > /root/nodezero-minio-credentials.txt <<EOF
 MinIO Credentials
 =================
@@ -324,10 +354,14 @@ Root User: $MINIO_ROOT_USER
 Root Password: $MINIO_ROOT_PASSWORD
 Endpoint: http://$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):9000
 Console: http://$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):9001
+
+WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
+    chmod 600 /root/nodezero-minio-credentials.txt
     
     log_success "MinIO installed"
-    log_info "MinIO credentials saved to /root/nodezero-minio-credentials.txt"
+    log_warn "MinIO credentials saved to /root/nodezero-minio-credentials.txt (chmod 600)"
+    log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
 install_monitoring() {
@@ -346,7 +380,7 @@ install_monitoring() {
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=100Gi \
-        --set grafana.adminPassword=admin \
+        --set grafana.adminPassword="$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)" \
         --set grafana.service.type=LoadBalancer \
         --set grafana.persistence.enabled=true \
         --set grafana.persistence.storageClassName=longhorn \
@@ -366,8 +400,25 @@ install_monitoring() {
         --set promtail.enabled=true \
         --wait
     
+    # Get generated Grafana password from secret
+    sleep 5
+    GRAFANA_PASSWORD=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode)
+    
+    # Save Grafana credentials securely
+    cat > /root/nodezero-grafana-credentials.txt <<EOF
+Grafana Credentials
+===================
+Username: admin
+Password: $GRAFANA_PASSWORD
+URL: http://$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+WARNING: Store these credentials securely and delete this file after saving them elsewhere.
+EOF
+    chmod 600 /root/nodezero-grafana-credentials.txt
+    
     log_success "Monitoring stack installed"
-    log_info "Grafana admin password: admin (change after first login!)"
+    log_warn "Grafana credentials saved to /root/nodezero-grafana-credentials.txt (chmod 600)"
+    log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
 install_argocd() {
@@ -387,17 +438,21 @@ install_argocd() {
     # Get initial admin password
     ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
     
-    # Save credentials
+    # Save credentials securely
     cat > /root/nodezero-argocd-credentials.txt <<EOF
 ArgoCD Credentials
 ==================
 Username: admin
 Password: $ARGOCD_PASSWORD
 URL: https://$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
+    chmod 600 /root/nodezero-argocd-credentials.txt
     
     log_success "ArgoCD installed"
-    log_info "ArgoCD credentials saved to /root/nodezero-argocd-credentials.txt"
+    log_warn "ArgoCD credentials saved to /root/nodezero-argocd-credentials.txt (chmod 600)"
+    log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
 create_cluster_token() {
@@ -416,9 +471,13 @@ To join a worker node, run:
 curl -sfL https://get.k3s.io | K3S_URL=https://$TAILSCALE_IP:6443 K3S_TOKEN=$TOKEN sh -
 
 Or use the add-worker-node.sh script (recommended)
+
+WARNING: This token grants access to join nodes to your cluster. Store securely!
 EOF
+    chmod 600 /root/nodezero-join-token.txt
     
-    log_success "Join token saved to /root/nodezero-join-token.txt"
+    log_success "Join token saved to /root/nodezero-join-token.txt (chmod 600)"
+    log_warn "IMPORTANT: This token grants cluster access. Store securely!"
 }
 
 print_summary() {
@@ -478,6 +537,7 @@ main() {
     
     check_requirements
     install_dependencies
+    configure_firewall
     install_k3s
     install_helm
     install_cert_manager

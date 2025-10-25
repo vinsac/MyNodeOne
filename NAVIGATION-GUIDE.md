@@ -105,6 +105,16 @@ nodezero/
 - Setup options: [docs/setup-options-guide.md](docs/setup-options-guide.md)
 - Configuration wizard: `scripts/interactive-setup.sh`
 
+### Comparisons & Alternatives
+- **NodeZero vs Alternatives:** [docs/comparison-guide.md](docs/comparison-guide.md) ⭐
+- NodeZero vs OpenStack
+- NodeZero vs Proxmox
+- NodeZero vs Bare Kubernetes
+- NodeZero vs Docker Compose
+- NodeZero vs Managed K8s (AWS/GCP/Azure)
+- When to use NodeZero?
+- Decision tree and use cases
+
 ### Networking
 - Default (Tailscale): [docs/networking.md](docs/networking.md)
 - All options: [docs/networking.md](docs/networking.md) - Section "Alternative Solutions"

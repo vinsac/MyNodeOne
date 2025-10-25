@@ -284,6 +284,7 @@ Pre-configured dashboards:
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
 ### User Guides
+- **[docs/comparison-guide.md](docs/comparison-guide.md)** - NodeZero vs alternatives (OpenStack, Proxmox, etc.) ⭐
 - **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
 - **[docs/networking.md](docs/networking.md)** - Tailscale guide (default)
 - **[docs/operations.md](docs/operations.md)** - Daily management

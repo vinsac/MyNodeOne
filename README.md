@@ -384,36 +384,58 @@ Pre-configured dashboards:
 - Storage metrics
 - Application logs (Loki)
 
-## Adding Domains
+## Adding Custom Domains
 
-1. Point your domain's DNS to VPS IP addresses:
-   ```
-   A    @              45.8.133.192
-   A    @              31.220.87.37
-   AAAA www            45.8.133.192
-   AAAA www            31.220.87.37
-   ```
+**Do you need this?** Only if you want your apps accessible via your own domain name (e.g., `myapp.com`) from the public internet. Skip if you're only using internal/Tailscale access.
 
-2. Create IngressRoute:
-   ```yaml
-   apiVersion: traefik.containo.us/v1alpha1
-   kind: IngressRoute
-   metadata:
-     name: my-app
-   spec:
-     entryPoints:
-       - websecure
-     routes:
-       - match: Host(`curiios.com`)
-         kind: Rule
-         services:
-           - name: my-app
-             port: 80
-     tls:
-       certResolver: letsencrypt
-   ```
+### Option 1: Use the Helper Script (Recommended for Beginners)
 
-3. SSL certificates are issued automatically!
+```bash
+# Easy way - let the script do the work!
+./scripts/create-app.sh my-app --domain myapp.com --port 3000
+
+# This automatically:
+# - Creates the necessary configuration
+# - Sets up SSL certificates
+# - Configures routing
+```
+
+### Option 2: Manual Setup (Advanced Users)
+
+**Step 1:** Point your domain's DNS to your VPS IP address(es):
+```
+Type  Name  Value              TTL
+A     @     <your-vps-ip>      3600
+A     www   <your-vps-ip>      3600
+```
+
+**Step 2:** Create an IngressRoute file (save as `my-app-ingress.yaml`):
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: my-app
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`myapp.com`) || Host(`www.myapp.com`)
+      kind: Rule
+      services:
+        - name: my-app
+          port: 80
+  tls:
+    certResolver: letsencrypt
+```
+
+**Step 3:** Apply the configuration:
+```bash
+kubectl apply -f my-app-ingress.yaml
+```
+
+**Step 4:** Wait 1-2 minutes for SSL certificates to be issued automatically!
+
+**Need help?** Check [docs/operations.md](docs/operations.md) for detailed deployment guides or use the helper script above.
 
 ## 📚 Documentation
 

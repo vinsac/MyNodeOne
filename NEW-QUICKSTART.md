@@ -14,31 +14,48 @@ Get your private cloud running in 30 minutes with our interactive wizard!
 Before starting, you need:
 
 1. **At least one machine** with Ubuntu 24.04 LTS
+   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
    - Can be named anything (e.g., `node-001`, `server-alpha`, `homelab-01`, etc.)
    - Any amount of RAM/CPU (minimum 4GB RAM recommended)
    - Desktop or Server edition works
 
-2. **Tailscale account** (free)
+2. **Git installed** on your machine
+   ```bash
+   # Install git on Ubuntu:
+   sudo apt update && sudo apt install -y git
+   ```
+   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
+
+3. **Tailscale account** (free)
    - Sign up at https://tailscale.com
    - No configuration needed - scripts handle it
 
-3. **Optional: VPS server(s)** with public IP
+4. **Optional: VPS server(s)** with public IP
    - Any provider (Contabo, DigitalOcean, Hetzner, etc.)
    - Any number (0, 1, 2, or more)
    - Only needed if you want public internet access
 
-4. **Optional: Management laptop/desktop**
+5. **Optional: Management laptop/desktop**
    - Your daily driver for deploying apps
    - Any OS with kubectl installed
+
+> **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
 
 ## Step 1: Interactive Setup (5 minutes per machine)
 
 Run this wizard **on each machine** (control plane, workers, VPS, laptop):
 
 ```bash
-# Clone the repo
-git clone https://github.com/yourusername/mynodeone.git
-cd mynodeone
+# Clone the repo (choose one method):
+
+# Option 1: HTTPS (easier, no SSH key needed)
+git clone https://github.com/vinsac/MyNodeOne.git
+
+# Option 2: SSH (requires SSH key setup)
+git clone git@github.com:vinsac/MyNodeOne.git
+
+# Then proceed:
+cd MyNodeOne
 
 # Run the interactive wizard
 ./scripts/interactive-setup.sh

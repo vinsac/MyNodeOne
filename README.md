@@ -88,9 +88,16 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 ## Quick Start
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/mynodeone.git
-cd mynodeone
+# Clone repository (choose one method):
+
+# Option 1: HTTPS (easier, no SSH key needed)
+git clone https://github.com/vinsac/MyNodeOne.git
+
+# Option 2: SSH (requires SSH key setup)
+git clone git@github.com:vinsac/MyNodeOne.git
+
+# Then proceed:
+cd MyNodeOne
 
 # Run ONE command (handles everything)
 sudo ./scripts/mynodeone
@@ -174,19 +181,29 @@ Enables:
 
 ### Prerequisites
 
-- Ubuntu 24.04 LTS (Desktop or Server)
-- Tailscale installed on all machines
-- Root/sudo access
-- Git installed
+- **Ubuntu 24.04 LTS** (Desktop or Server)
+  - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
+- **Git installed**
+  ```bash
+  # Install git on Ubuntu:
+  sudo apt update && sudo apt install -y git
+  ```
+  - For assistance with git installation, consult ChatGPT, Gemini, or search online.
+- **Tailscale installed** on all machines
+- **Root/sudo access**
+
+> **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
 
 ### 1. Bootstrap Control Plane (First Node)
 
 **Example:** If your first node is named `node-001` or `server-alpha`
 
 ```bash
-# Clone this repo
-git clone https://github.com/yourusername/mynodeone.git
-cd mynodeone
+# Clone this repo (HTTPS or SSH):
+git clone https://github.com/vinsac/MyNodeOne.git
+# OR: git clone git@github.com:vinsac/MyNodeOne.git
+
+cd MyNodeOne
 
 # Run bootstrap script
 sudo ./scripts/bootstrap-control-plane.sh

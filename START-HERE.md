@@ -21,8 +21,13 @@ Use regular computers you already own:
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/yourusername/mynodeone.git
-cd mynodeone
+# Clone using HTTPS (easier, no SSH key needed):
+git clone https://github.com/vinsac/MyNodeOne.git
+
+# OR clone using SSH (requires SSH key setup):
+git clone git@github.com:vinsac/MyNodeOne.git
+
+cd MyNodeOne
 ```
 
 ### Step 2: Run Installation
@@ -78,6 +83,13 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
 
 ### Minimum Setup
 - **1 machine** with Ubuntu 24.04 LTS
+  - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
+- **Git installed**
+  ```bash
+  # Install git on Ubuntu:
+  sudo apt update && sudo apt install -y git
+  ```
+  - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 - **4GB RAM** (8GB+ recommended)
 - **20GB disk** (100GB+ recommended)
 - **Internet connection**
@@ -86,6 +98,8 @@ That's it! Start with what you have, scale later.
 
 ### Optional (For Public Access)
 - **VPS with public IP** ($5-15/month)
+
+> **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
 
 ---
 
@@ -176,12 +190,20 @@ See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, 
 
 **Home server:**
 ```bash
+# Clone (HTTPS or SSH):
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
 sudo ./scripts/mynodeone
 # Select: Control Plane
 ```
 
 **VPS:**
 ```bash
+# Clone (HTTPS or SSH):
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
 sudo ./scripts/mynodeone
 # Select: VPS Edge Node
 ```
@@ -240,7 +262,11 @@ docs/scaling.md (grow your cloud)
 
 ### Ready to Install?
 ```bash
-cd mynodeone
+# Clone using HTTPS (recommended for beginners):
+git clone https://github.com/vinsac/MyNodeOne.git
+# OR using SSH: git clone git@github.com:vinsac/MyNodeOne.git
+
+cd MyNodeOne
 sudo ./scripts/mynodeone
 ```
 

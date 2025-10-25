@@ -97,6 +97,18 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
   sudo apt install -y git
   ```
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
+
+- **SSH Server installed** (required for worker nodes and remote management)
+  ```bash
+  # Install OpenSSH Server:
+  sudo apt install -y openssh-server
+  
+  # Verify it's running:
+  sudo systemctl status ssh
+  ```
+  - **Why needed:** Control plane uses SSH to configure worker nodes
+  - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
+
 - **Tailscale installed**
   ```bash
   # Install curl (if not already installed):
@@ -107,8 +119,16 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
   
   # Connect to your Tailscale network:
   sudo tailscale up
+  # This will:
+  # 1. Open a browser window (or show a URL)
+  # 2. Ask you to log in with Google, Microsoft, or GitHub
+  # 3. Approve this device on your Tailscale network
+  # 4. Assign a 100.x.x.x IP address to this machine
   ```
-  - Sign up for free at https://tailscale.com
+  - **First time?** Sign up for free at https://tailscale.com before running this
+  - **No browser?** Copy the URL shown and open it on another device
+  - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
+
 - **4GB RAM** (8GB+ recommended)
 - **20GB disk** (100GB+ recommended)
 - **Internet connection**

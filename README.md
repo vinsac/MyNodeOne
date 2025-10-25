@@ -204,6 +204,18 @@ Enables:
   sudo apt install -y git
   ```
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
+
+- **SSH Server installed** (required for worker nodes and remote management)
+  ```bash
+  # Install OpenSSH Server:
+  sudo apt install -y openssh-server
+  
+  # Verify it's running:
+  sudo systemctl status ssh
+  ```
+  - **Why needed:** Control plane uses SSH to configure worker nodes
+  - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
+
 - **Tailscale installed** on all machines
   ```bash
   # Install curl (if not already installed):
@@ -214,8 +226,16 @@ Enables:
   
   # Connect to your Tailscale network:
   sudo tailscale up
+  # This will:
+  # 1. Open a browser window (or show a URL)
+  # 2. Ask you to log in with Google, Microsoft, or GitHub
+  # 3. Approve this device on your Tailscale network
+  # 4. Assign a 100.x.x.x IP address to this machine
   ```
-  - For more details, see [docs/networking.md](docs/networking.md) or visit https://tailscale.com
+  - **First time?** Sign up for free at https://tailscale.com before running this
+  - **No browser?** Copy the URL shown and open it on another device
+  - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
+
 - **Root/sudo access**
 
 > **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.

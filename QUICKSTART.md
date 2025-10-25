@@ -33,7 +33,18 @@ Before starting, you need:
    ```
    - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
-3. **Tailscale installed** on your machine
+3. **SSH Server installed** (required for worker nodes and remote management)
+   ```bash
+   # Install OpenSSH Server:
+   sudo apt install -y openssh-server
+   
+   # Verify it's running:
+   sudo systemctl status ssh
+   ```
+   - **Why needed:** Control plane uses SSH to configure worker nodes
+   - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
+
+4. **Tailscale installed** on your machine
    ```bash
    # Install curl (if not already installed):
    sudo apt install -y curl
@@ -43,16 +54,22 @@ Before starting, you need:
    
    # Connect to your Tailscale network:
    sudo tailscale up
+   # This will:
+   # 1. Open a browser window (or show a URL)
+   # 2. Ask you to log in with Google, Microsoft, or GitHub
+   # 3. Approve this device on your Tailscale network
+   # 4. Assign a 100.x.x.x IP address to this machine
    ```
-   - Sign up for a free account at https://tailscale.com
-   - For more details, see [docs/networking.md](docs/networking.md)
+   - **First time?** Sign up for free at https://tailscale.com before running this
+   - **No browser?** Copy the URL shown and open it on another device
+   - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
 
-4. **Optional: VPS server(s)** with public IP
+5. **Optional: VPS server(s)** with public IP
    - Any provider (Contabo, DigitalOcean, Hetzner, etc.)
    - Any number (0, 1, 2, or more)
    - Only needed if you want public internet access
 
-5. **Optional: Management laptop/desktop**
+6. **Optional: Management laptop/desktop**
    - Your daily driver for deploying apps
    - Any OS with kubectl installed
 

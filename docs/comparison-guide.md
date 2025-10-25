@@ -655,7 +655,7 @@ Ask yourself:
 
 **Author:** Vinay Sachdeva  
 **License:** MIT  
-**Repository:** https://github.com/vinsac/mynodeone  
+**Repository:** https://github.com/vinsac/MyNodeOne  
 **Version:** 1.0.0  
 **Last Updated:** October 25, 2025
 

@@ -83,7 +83,7 @@ MyNodeOne v1.0.0 is the first production-ready release of MyNodeOne - your priva
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/vinsac/mynodeone.git
+git clone https://github.com/vinsac/MyNodeOne.git
 cd mynodeone
 
 # 2. Run ONE command
@@ -259,7 +259,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **License:** MIT License  
 **Copyright:** 2024 Vinay Sachdeva  
-**Repository:** https://github.com/vinsac/mynodeone  
+**Repository:** https://github.com/vinsac/MyNodeOne  
 **Author:** [Vinay Sachdeva](https://github.com/vinsac)
 
 ---
@@ -267,14 +267,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## 🔗 Resources
 
 ### Documentation
-- **GitHub:** https://github.com/vinsac/mynodeone
+- **GitHub:** https://github.com/vinsac/MyNodeOne
 - **Quick Start:** [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 - **Guide:** [START-HERE.md](START-HERE.md)
 - **FAQ:** [FAQ.md](FAQ.md)
 
 ### Community
-- **Issues:** https://github.com/vinsac/mynodeone/issues
-- **Discussions:** https://github.com/vinsac/mynodeone/discussions
+- **Issues:** https://github.com/vinsac/MyNodeOne/issues
+- **Discussions:** https://github.com/vinsac/MyNodeOne/discussions
 
 ---
 

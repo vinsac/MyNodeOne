@@ -395,7 +395,7 @@ MIT License - Use it however you want!
 **Version:** 1.0.0  
 **Author:** Vinay Sachdeva  
 **License:** MIT  
-**Repository:** https://github.com/vinsac/mynodeone  
+**Repository:** https://github.com/vinsac/MyNodeOne  
 
 **Development:** Built with assistance from AI tools for enhanced code quality and comprehensive documentation.
 

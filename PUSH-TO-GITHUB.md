@@ -92,13 +92,13 @@ git push origin v1.0.0
 ## ✅ After Pushing
 
 ### Verify on GitHub
-1. Go to: https://github.com/vinsac/mynodeone
+1. Go to: https://github.com/vinsac/MyNodeOne
 2. Check that v1.0.0 tag is visible
 3. Check that main branch is updated
 4. Verify README looks correct
 
 ### Create GitHub Release (Optional but Recommended)
-1. Go to: https://github.com/vinsac/mynodeone/releases
+1. Go to: https://github.com/vinsac/MyNodeOne/releases
 2. Click "Draft a new release"
 3. Select tag: v1.0.0
 4. Release title: "MyNodeOne v1.0.0 - First Stable Release"
@@ -148,7 +148,7 @@ Then your MyNodeOne v1.0.0 will be live on GitHub! 🚀
 
 ---
 
-**Repository:** https://github.com/vinsac/mynodeone  
+**Repository:** https://github.com/vinsac/MyNodeOne  
 **Version:** 1.0.0  
 **Release Date:** October 25, 2025  
 **Author:** Vinay Sachdeva  

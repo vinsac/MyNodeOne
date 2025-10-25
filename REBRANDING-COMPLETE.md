@@ -126,7 +126,7 @@ git push origin main
 
 ```bash
 # Update your local remote URL
-git remote set-url origin https://github.com/vinsac/mynodeone.git
+git remote set-url origin https://github.com/vinsac/MyNodeOne.git
 
 # Verify
 git remote -v
@@ -148,7 +148,7 @@ git remote -v
 **Option A: Using GitHub Pages (Free, Easiest)**
 
 1. **Enable GitHub Pages:**
-   - Go to https://github.com/vinsac/mynodeone/settings/pages
+   - Go to https://github.com/vinsac/MyNodeOne/settings/pages
    - Source: Deploy from branch → `main` → `/website` (or root)
    - Save
 
@@ -190,7 +190,7 @@ At your domain registrar:
 1. Go to DNS settings
 2. Add URL redirect:
    - From: `mynodeone.com`
-   - To: `https://github.com/vinsac/mynodeone`
+   - To: `https://github.com/vinsac/MyNodeOne`
    - Type: 301 Permanent
    - Include www: Yes
 
@@ -201,7 +201,7 @@ At your domain registrar:
 3. Add Page Rule:
    - URL: `mynodeone.com/*`
    - Forwarding URL: 301 Permanent Redirect
-   - Destination: `https://github.com/vinsac/mynodeone/$1`
+   - Destination: `https://github.com/vinsac/MyNodeOne/$1`
 
 ---
 
@@ -218,7 +218,7 @@ sudo ./scripts/nodezero
 
 **After:**
 ```bash
-git clone https://github.com/vinsac/mynodeone.git
+git clone https://github.com/vinsac/MyNodeOne.git
 cd mynodeone
 sudo ./scripts/mynodeone
 ```
@@ -226,7 +226,7 @@ sudo ./scripts/mynodeone
 ### Domain Options:
 
 **Primary (GitHub):**
-- https://github.com/vinsac/mynodeone
+- https://github.com/vinsac/MyNodeOne
 
 **Secondary (Your Domain):**
 - https://mynodeone.com → redirects to GitHub
@@ -238,7 +238,7 @@ sudo ./scripts/mynodeone
 ### GitHub Redirects (Automatic)
 
 GitHub automatically redirects for a while:
-- `github.com/vinsac/nodezero` → `github.com/vinsac/mynodeone`
+- `github.com/vinsac/nodezero` → `github.com/vinsac/MyNodeOne`
 
 But encourage users to update their bookmarks and clones.
 
@@ -248,7 +248,7 @@ Users who already cloned need to update:
 
 ```bash
 # Inside their existing repo
-git remote set-url origin https://github.com/vinsac/mynodeone.git
+git remote set-url origin https://github.com/vinsac/MyNodeOne.git
 git pull
 ```
 
@@ -268,7 +268,7 @@ We've rebranded **NodeZero** to **MyNodeOne**!
 ## What Changed
 
 - **Name:** NodeZero → MyNodeOne
-- **Repo:** github.com/vinsac/nodezero → github.com/vinsac/mynodeone
+- **Repo:** github.com/vinsac/nodezero → github.com/vinsac/MyNodeOne
 - **Domain:** mynodeone.com (coming soon!)
 - **Script:** `./scripts/nodezero` → `./scripts/mynodeone`
 
@@ -283,7 +283,7 @@ mission of giving YOU your own node/server in the cloud.
 If you already cloned the repo, update your remote:
 
 \`\`\`bash
-git remote set-url origin https://github.com/vinsac/mynodeone.git
+git remote set-url origin https://github.com/vinsac/MyNodeOne.git
 git pull
 \`\`\`
 
@@ -325,7 +325,7 @@ After completing all steps, verify:
 
 ```bash
 # Update remote URL
-git remote set-url origin https://github.com/vinsac/mynodeone.git
+git remote set-url origin https://github.com/vinsac/MyNodeOne.git
 
 # Try push again
 git push origin main

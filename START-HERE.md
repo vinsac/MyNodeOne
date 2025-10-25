@@ -33,28 +33,24 @@ Use regular computers you already own:
 
 ---
 
-## 🚀 Quick Setup (3 Steps)
+## 🎯 Ready to Install?
 
-### Step 1: Clone Repository
-```bash
-# Clone using HTTPS (easier, no SSH key needed):
-git clone https://github.com/vinsac/MyNodeOne.git
+### If you're ready RIGHT NOW:
+→ Go to **[QUICKSTART.md](QUICKSTART.md)** for step-by-step installation instructions!
 
-# OR clone using SSH (requires SSH key setup):
-git clone git@github.com:vinsac/MyNodeOne.git
+**That guide will tell you:**
+- ✅ Exactly which machine to use
+- ✅ Where to open terminal
+- ✅ What commands to run
+- ✅ What to expect at each step
 
-cd MyNodeOne
-```
+**Time:** 30 minutes from start to running cluster!
 
-### Step 2: Run Installation
-```bash
-sudo ./scripts/mynodeone
-```
+---
 
-### Step 3: Follow Prompts
-Answer a few questions, wait 30 minutes, and you're done!
+## 📚 Want to Learn First?
 
-**That's it!** You now have a production-ready private cloud.
+If you want to understand before installing, read the sections below.
 
 ---
 
@@ -62,16 +58,14 @@ Answer a few questions, wait 30 minutes, and you're done!
 
 > **Lost?** Check the **[NAVIGATION-GUIDE.md](NAVIGATION-GUIDE.md)** for a complete map of all documentation.
 
-### Brand New? Start Here:
-1. **[README.md](README.md)** - Project overview (5 min read)
-2. **This file** - You're reading it! ✓
+### Brand New? Read in This Order:
+1. **This file** - You're reading it! ✓ (understand what MyNodeOne is)
+2. **[ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md)** - If new to terminal (10 min)
 3. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - Understand your options (15 min)
-4. **[QUICKSTART.md](QUICKSTART.md)** - Detailed walkthrough (20 min)
+4. **[QUICKSTART.md](QUICKSTART.md)** - Install step-by-step (30 min actual install)
 
-### Installing Now?
-1. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
-2. Run: `sudo ./scripts/mynodeone`
-3. Have **[QUICKSTART.md](QUICKSTART.md)** open for reference
+### Ready to Install Now?
+→ **[QUICKSTART.md](QUICKSTART.md)** - Complete installation guide with all commands
 
 ### Already Installed?
 1. **[docs/operations.md](docs/operations.md)** - Daily management
@@ -97,62 +91,19 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
 
 ## 💻 What Do You Need?
 
-### Minimum Setup
+### Minimum Requirements
 - **1 machine** with Ubuntu 24.04 LTS
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
-- **Git installed**
-  ```bash
-  # Update package list
-  sudo apt update
-  
-  # (Optional) Upgrade system packages - RECOMMENDED for fresh installations
-  # WARNING: Skip this on existing/production machines to avoid breaking changes
-  # sudo apt upgrade -y
-  
-  # Install git
-  sudo apt install -y git
-  ```
-  - For assistance with git installation, consult ChatGPT, Gemini, or search online.
-
-- **SSH Server installed** (required for worker nodes and remote management)
-  ```bash
-  # Install OpenSSH Server:
-  sudo apt install -y openssh-server
-  
-  # Verify it's running:
-  sudo systemctl status ssh
-  ```
-  - **Why needed:** Control plane uses SSH to configure worker nodes
-  - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
-
-- **Tailscale installed**
-  ```bash
-  # Install curl (if not already installed):
-  sudo apt install -y curl
-  
-  # Install Tailscale:
-  curl -fsSL https://tailscale.com/install.sh | sh
-  
-  # Connect to your Tailscale network:
-  sudo tailscale up
-  # This will:
-  # 1. Open a browser window (or show a URL)
-  # 2. Ask you to log in with Google, Microsoft, or GitHub
-  # 3. Approve this device on your Tailscale network
-  # 4. Assign a 100.x.x.x IP address to this machine
-  ```
-  - **First time?** Sign up for free at https://tailscale.com before running this
-  - **No browser?** Copy the URL shown and open it on another device
-  - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
-
 - **4GB RAM** (8GB+ recommended)
 - **20GB disk** (100GB+ recommended)
 - **Internet connection**
+- **Basic software** (git, SSH, Tailscale) - [QUICKSTART.md](QUICKSTART.md) shows how to install these
 
 That's it! Start with what you have, scale later.
 
-### Optional (For Public Access)
-- **VPS with public IP** ($5-15/month)
+### Optional Additions
+- **VPS with public IP** ($5-15/month) - for public internet access
+- **More machines** - add workers later as you grow
 
 > **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
 

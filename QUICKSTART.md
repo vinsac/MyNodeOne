@@ -91,9 +91,23 @@ Before starting, you need:
 
 > **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
 
-## Step 1: Interactive Setup (5 minutes per machine)
+## 📍 Step 1: Prepare Your Machine (5 minutes)
 
-Run this wizard **on each machine** (control plane, workers, VPS, laptop):
+### Which Machine?
+**Run these commands on your control plane machine** (the most powerful one you have).
+
+### Where to Run Commands?
+**Open terminal on your Ubuntu machine:**
+- Press `Ctrl + Alt + T` (or see [ABSOLUTE-BEGINNERS-GUIDE.md](ABSOLUTE-BEGINNERS-GUIDE.md))
+
+### What Directory?
+**Your home directory is fine!** When you open terminal, you're usually at `/home/yourusername/` - perfect!
+
+---
+
+## 🔽 Step 2: Download MyNodeOne (30 seconds)
+
+**Run these commands in your terminal:**
 
 ```bash
 # Clone the repo (choose one method):
@@ -104,173 +118,84 @@ git clone https://github.com/vinsac/MyNodeOne.git
 # Option 2: SSH (requires SSH key setup)
 git clone git@github.com:vinsac/MyNodeOne.git
 
-# Then proceed:
+# Go into the folder:
 cd MyNodeOne
 
-# Run the interactive wizard
-./scripts/interactive-setup.sh
+# You should now see: yourusername@machine:~/MyNodeOne$
 ```
 
-### What the Wizard Does
-
-The wizard will:
-
-1. **Detect your environment**
-   - OS version
-   - Hostname
-   - RAM/CPU
-   - Public IP (if applicable)
-   - GPU (if present)
-
-2. **Install Tailscale** (if needed)
-   - Downloads and installs
-   - Opens browser for auth
-   - Connects to your network
-
-3. **Ask a few questions**
-   - What type of node is this?
-   - What should we call it?
-   - Where is it located?
-   - Storage preferences
-   - Workload types
-
-4. **Save configuration**
-   - Stores in `~/.mynodeone/config.env`
-   - All scripts automatically use it
-   - No manual editing needed!
-
-### Example Session
-
-```
-    _   __          __     ______                
-   / | / /___  ____/ /__  /__  (_)___  _________
-  /  |/ / __ \/ __  / _ \   / / / _ \/ ___/ __ \
- / /|  / /_/ / /_/ /  __/  / /_/  __/ /  / /_/ /
-/_/ |_/\____/\__,_/\___/  /___/\___/_/   \____/ 
-
-Welcome to MyNodeOne Interactive Setup!
-
-? Ready to start? [Y/n] y
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Environment Detection
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ℹ Operating System: ubuntu 24.04
-ℹ Hostname: myserver
-ℹ Resources: 256GB RAM, 32 CPU cores
-✓ Tailscale connected: 100.103.104.109
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Node Configuration
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-What type of node is this?
-
-1) Control Plane (First node, runs Kubernetes master)
-2) Worker Node (Additional compute node)
-3) VPS Edge Node (Public-facing reverse proxy)
-4) Management Workstation (Your laptop/desktop for admin)
-
-? Select node type (1-4): 1
-✓ Node type: Control Plane
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Cluster Configuration
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-? Give your cluster a name [mynodeone]: 
-? What should we call this node? [myserver]: 
-? Where is this node located? (e.g., home, office, datacenter) [home]: 
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Saving Configuration
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✓ Configuration saved to: /home/user/.mynodeone/config.env
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Next Steps
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Your control plane is configured! Next:
-
-1. Run the bootstrap script:
-   sudo ./scripts/bootstrap-control-plane.sh
-
-2. After bootstrap completes, save the join token displayed
-
-3. Configure your VPS edge nodes (if any)
-
-4. Add worker nodes as needed
-
-✓ Setup complete! 🎉
-```
+**What just happened?**
+- Created a `MyNodeOne` folder in your home directory
+- Downloaded all MyNodeOne code into it
+- Changed into that folder
 
 ---
 
-## 🎯 Choosing Your Control Plane Machine
+## 🚀 Step 3: Run Installation Wizard (30 minutes)
 
-If you have **multiple machines**, choose your control plane wisely:
+**Run this ONE command:**
 
-**Recommended characteristics:**
-- ✅ **Most RAM/CPU** - Control plane runs cluster management + your workloads
-- ✅ **Most reliable** - Should stay running 24/7
-- ✅ **Best network** - Central location with good connectivity
-- ✅ **Most storage** - Will host monitoring data, logs, and system databases
+```bash
+sudo ./scripts/mynodeone
+```
 
-**Examples:**
-- **Home setup:** Your most powerful desktop/server (not a laptop that moves around)
-- **Multiple servers:** The one with 32GB+ RAM vs others with 8-16GB
-- **Mixed hardware:** Intel NUC with 32GB RAM > Raspberry Pi with 8GB RAM
+**What happens next:**
+- Asks for your password (it's invisible when you type - normal!)
+- Shows welcome screen
+- Asks questions about your setup
+- Installs everything automatically
+- Takes 20-45 minutes
 
-**Single machine?** No problem - it will be both control plane and worker!
+**Just answer the questions and wait!**
+
+**That's it!** The command installs:
+- K3s Kubernetes
+- Storage (Longhorn + MinIO)
+- Monitoring (Prometheus, Grafana, Loki)
+- GitOps (ArgoCD)
+- SSL automation (Cert-Manager + Traefik)
+- Security (firewall, fail2ban)
+
+**After completion:**
+- Cluster is ready!
+- Credentials saved to `/root/mynodeone-*.txt`
+- Access monitoring at `https://grafana.mynodeone.local`
 
 ---
 
-## Step 2: Bootstrap Control Plane (20 minutes)
+## 🔗 Step 4: Add More Machines (Optional)
 
-On your **first machine** (the one you configured as "Control Plane"):
+### Want to Add Worker Nodes?
 
-```bash
-sudo ./scripts/bootstrap-control-plane.sh
-```
-
-**What happens:**
-- Installs K3s Kubernetes
-- Sets up storage (Longhorn + MinIO)
-- Deploys monitoring (Prometheus + Grafana + Loki)
-- Installs ArgoCD for GitOps
-- Configures SSL automation
-
-**Important:** Save these after completion:
-- `/root/mynodeone-join-token.txt` - For adding workers
-- `/root/mynodeone-argocd-credentials.txt` - For ArgoCD UI
-- `/root/mynodeone-minio-credentials.txt` - For S3 storage
-
-## Step 3: Add Worker Nodes (10 minutes each, optional)
-
-For **each additional compute node**:
+On each additional machine:
 
 ```bash
-# On the new worker machine
-./scripts/interactive-setup.sh  # Select option 2 (Worker Node)
-sudo ./scripts/add-worker-node.sh
+# 1. Install prerequisites (git, SSH, Tailscale) - see Prerequisites section above
+# 2. Download MyNodeOne
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+# 3. Run installer
+sudo ./scripts/mynodeone
+# 4. Select "Worker Node" when asked
+# 5. Provide the join token from your control plane (saved in /root/mynodeone-join-token.txt)
 ```
 
-The script will ask for the join token from Step 2.
+### Want Public Internet Access?
 
-## Step 4: Configure VPS Edge Nodes (10 minutes each, optional)
+**Add VPS Edge Nodes:**
 
-Only if you want public internet access to your apps:
+On each VPS:
 
 ```bash
-# On each VPS
-./scripts/interactive-setup.sh  # Select option 3 (VPS Edge Node)
-sudo ./scripts/setup-edge-node.sh
+# Same process as above, but select "VPS Edge Node"
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+sudo ./scripts/mynodeone
 ```
 
-**Then point your DNS:**
+### Configure VPS Edge Nodes
+
+**Then point your DNS to your VPS:**
 ```
 Type  Name  Value           TTL
 A     @     <your-vps-ip>   3600

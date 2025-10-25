@@ -95,28 +95,18 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 - ARM64: Raspberry Pi 4/5, Apple Silicon (M1/M2)
 - Any Ubuntu 24.04 LTS compatible machine
 
-## Quick Start
+## 🚀 Ready to Install?
 
-```bash
-# Clone repository (choose one method):
+**→ Go to [QUICKSTART.md](QUICKSTART.md) for complete step-by-step installation!**
 
-# Option 1: HTTPS (easier, no SSH key needed)
-git clone https://github.com/vinsac/MyNodeOne.git
+**That guide includes:**
+- ✅ Prerequisites (what to install first)
+- ✅ Which machine to use
+- ✅ Where to run commands
+- ✅ Complete installation process
+- ✅ How to add more machines
 
-# Option 2: SSH (requires SSH key setup)
-git clone git@github.com:vinsac/MyNodeOne.git
-
-# Then proceed:
-cd MyNodeOne
-
-# Run ONE command (handles everything)
-sudo ./scripts/mynodeone
-
-# Follow interactive prompts
-# Done in 30 minutes!
-```
-
-For detailed guide, see [QUICKSTART.md](QUICKSTART.md)
+**Time:** 30 minutes from start to finish!
 
 ## 🔒 Security Hardening
 

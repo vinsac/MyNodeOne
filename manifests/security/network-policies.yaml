@@ -1,0 +1,128 @@
+# Default Network Policies for NodeZero
+# These implement a "default deny" strategy with explicit allow rules
+
+---
+# Default deny all ingress and egress traffic in default namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow DNS queries (required for service discovery)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Allow all pods in default namespace to communicate with each other
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+---
+# Allow ingress from Traefik to all pods (for HTTP/HTTPS traffic)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-traefik
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+
+---
+# Template for application-specific network policy
+# Copy and customize for each application
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-network-policy-template
+  namespace: default
+  annotations:
+    description: "Template - customize for your application"
+spec:
+  podSelector:
+    matchLabels:
+      app: your-app-name  # Change this
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from specific apps
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend  # Example: allow from frontend
+      ports:
+        - protocol: TCP
+          port: 8080  # Your app port
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow traffic to specific services
+    - to:
+        - podSelector:
+            matchLabels:
+              app: database  # Example: allow to database
+      ports:
+        - protocol: TCP
+          port: 5432  # Database port
+    # Allow HTTPS to internet (for API calls, etc.)
+    - ports:
+        - protocol: TCP
+          port: 443

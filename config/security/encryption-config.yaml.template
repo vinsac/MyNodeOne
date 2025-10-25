@@ -1,0 +1,26 @@
+# Kubernetes Secrets Encryption Configuration
+# This encrypts secrets at rest in etcd
+#
+# SETUP INSTRUCTIONS:
+# 1. Generate encryption key:
+#    head -c 32 /dev/urandom | base64
+# 2. Replace <GENERATED_KEY> below with the output
+# 3. Copy to /etc/rancher/k3s/encryption-config.yaml
+# 4. Restart K3s
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+    providers:
+      # aescbc provider for encryption
+      - aescbc:
+          keys:
+            - name: key1
+              secret: <GENERATED_KEY>  # Replace with base64-encoded 32-byte key
+      # identity provider for reading unencrypted secrets (during migration)
+      - identity: {}
+
+# After all secrets are encrypted, you can remove the identity provider
+# and only use aescbc for maximum security

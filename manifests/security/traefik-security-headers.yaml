@@ -1,0 +1,114 @@
+# Traefik Security Headers Middleware
+# Adds security headers to all HTTP responses
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+  namespace: traefik
+spec:
+  headers:
+    # Security headers
+    frameDeny: true
+    browserXssFilter: true
+    contentTypeNosniff: true
+    forceSTSHeader: true
+    stsIncludeSubdomains: true
+    stsPreload: true
+    stsSeconds: 31536000  # 1 year
+    
+    # Custom headers
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
+    
+    customResponseHeaders:
+      X-Robots-Tag: "none,noarchive,nosnippet,notranslate,noimageindex"
+      Server: ""  # Hide server version
+      X-Powered-By: ""  # Hide technology stack
+    
+    # Content Security Policy (customize based on your needs)
+    contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    
+    # Referrer Policy
+    referrerPolicy: "strict-origin-when-cross-origin"
+    
+    # Permissions Policy (formerly Feature Policy)
+    customResponseHeaders:
+      Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+
+---
+# Rate limiting middleware
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: traefik
+spec:
+  rateLimit:
+    average: 100  # Average rate limit (requests per second)
+    burst: 50     # Burst size
+    period: 1s    # Time period
+
+---
+# IP whitelist middleware (example)
+# Uncomment and customize if you want to restrict access by IP
+# apiVersion: traefik.containo.us/v1alpha1
+# kind: Middleware
+# metadata:
+#   name: ip-whitelist
+#   namespace: traefik
+# spec:
+#   ipWhiteList:
+#     sourceRange:
+#       - "192.168.1.0/24"  # Your trusted network
+#       - "10.0.0.0/8"      # Private network
+#       - "100.64.0.0/10"   # Tailscale CGNAT range
+
+---
+# Compress responses
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: compress
+  namespace: traefik
+spec:
+  compress: {}
+
+---
+# Chain multiple middlewares together
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: secure-chain
+  namespace: traefik
+spec:
+  chain:
+    middlewares:
+      - name: security-headers
+      - name: rate-limit
+      - name: compress
+
+---
+# Example IngressRoute using security middleware
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: example-secure-route
+  namespace: default
+  annotations:
+    description: "Template - shows how to use security middlewares"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`example.com`)
+      kind: Rule
+      services:
+        - name: example-service
+          port: 80
+      middlewares:
+        - name: secure-chain
+          namespace: traefik
+  tls:
+    certResolver: default

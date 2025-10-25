@@ -1,0 +1,89 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# Don't generate audit events for all requests in RequestReceived stage.
+omitStages:
+  - "RequestReceived"
+rules:
+  # Log pod changes at RequestResponse level
+  - level: RequestResponse
+    resources:
+    - group: ""
+      resources: ["pods"]
+    verbs: ["create", "delete", "update", "patch"]
+
+  # Log service account changes
+  - level: RequestResponse
+    resources:
+    - group: ""
+      resources: ["serviceaccounts"]
+    verbs: ["create", "delete", "update", "patch"]
+
+  # Log Secret access at Metadata level (don't log actual secret data)
+  - level: Metadata
+    resources:
+    - group: ""
+      resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+
+  # Log Secret changes at RequestResponse level
+  - level: RequestResponse
+    resources:
+    - group: ""
+      resources: ["secrets"]
+    verbs: ["create", "delete", "update", "patch"]
+
+  # Log ConfigMap changes
+  - level: RequestResponse
+    resources:
+    - group: ""
+      resources: ["configmaps"]
+    verbs: ["create", "delete", "update", "patch"]
+
+  # Log RBAC changes
+  - level: RequestResponse
+    resources:
+    - group: "rbac.authorization.k8s.io"
+      resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["create", "delete", "update", "patch"]
+
+  # Log authentication failures
+  - level: Metadata
+    omitStages:
+      - "RequestReceived"
+    verbs: ["create", "update", "patch"]
+    resources:
+    - group: "authentication.k8s.io"
+
+  # Log all requests to certain namespaces at Metadata level
+  - level: Metadata
+    namespaces: ["kube-system", "kube-public"]
+
+  # Don't log requests to certain non-resource URL paths
+  - level: None
+    nonResourceURLs:
+    - /healthz*
+    - /version
+    - /swagger*
+    - /metrics
+    - /livez*
+    - /readyz*
+
+  # Don't log watch requests by the "system:kube-proxy" on endpoints or services
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
+    resources:
+    - group: ""
+      resources: ["endpoints", "services"]
+
+  # Don't log authenticated requests to certain non-resource URL paths.
+  - level: None
+    userGroups: ["system:authenticated"]
+    nonResourceURLs:
+    - "/api*"
+    - "/version"
+
+  # Log all other requests at Metadata level
+  - level: Metadata
+    omitStages:
+      - "RequestReceived"

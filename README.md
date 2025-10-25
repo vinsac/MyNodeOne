@@ -59,6 +59,36 @@ sudo ./scripts/nodezero
 
 For detailed guide, see [NEW-QUICKSTART.md](NEW-QUICKSTART.md)
 
+## 🔒 Security Hardening
+
+NodeZero includes comprehensive security features:
+
+**Built-in (Automatic):**
+- ✅ Firewall (UFW) on all nodes
+- ✅ SSH brute-force protection (fail2ban)
+- ✅ Strong random passwords (32 chars)
+- ✅ Secure credential storage (chmod 600)
+- ✅ Encrypted network traffic (Tailscale/WireGuard)
+
+**Optional Hardening (One Command):**
+```bash
+# After installation, enable additional security
+sudo ./scripts/enable-security-hardening.sh
+```
+
+Enables:
+- Kubernetes audit logging
+- Secrets encryption at rest
+- Pod Security Standards (restricted)
+- Network policies (default deny)
+- Resource quotas
+- Security headers (HSTS, CSP)
+
+**Documentation:**
+- [SECURITY-AUDIT.md](SECURITY-AUDIT.md) - Complete security review
+- [docs/security-best-practices.md](docs/security-best-practices.md) - Production security guide  
+- [docs/password-management.md](docs/password-management.md) - Password management strategy
+
 ## Architecture
 
 ```

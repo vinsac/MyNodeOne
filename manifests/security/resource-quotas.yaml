@@ -1,0 +1,85 @@
+# Default Resource Quotas for NodeZero
+# Prevents resource exhaustion attacks and ensures fair resource allocation
+
+---
+# Resource quota for default namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: default-quota
+  namespace: default
+spec:
+  hard:
+    # Limit total CPU and memory
+    requests.cpu: "20"
+    requests.memory: "40Gi"
+    limits.cpu: "40"
+    limits.memory: "80Gi"
+    
+    # Limit number of objects
+    pods: "50"
+    services: "20"
+    configmaps: "50"
+    secrets: "50"
+    persistentvolumeclaims: "20"
+    
+    # Limit storage
+    requests.storage: "100Gi"
+
+---
+# Limit range for default namespace
+# Ensures all pods have resource limits/requests
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limit-range
+  namespace: default
+spec:
+  limits:
+    # Default limits for containers
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "2"
+        memory: "4Gi"
+      min:
+        cpu: "10m"
+        memory: "16Mi"
+    
+    # Default limits for pods
+    - type: Pod
+      max:
+        cpu: "4"
+        memory: "8Gi"
+    
+    # Default limits for PVCs
+    - type: PersistentVolumeClaim
+      max:
+        storage: "50Gi"
+      min:
+        storage: "1Gi"
+
+---
+# Template for custom namespace quotas
+# Copy and customize for each namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: custom-namespace-quota-template
+  namespace: your-namespace  # Change this
+  annotations:
+    description: "Template - customize for your namespace"
+spec:
+  hard:
+    # Adjust based on namespace needs
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    pods: "30"
+    services: "10"

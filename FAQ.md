@@ -479,16 +479,44 @@ Both are needed and complement each other.
 
 ## Application Questions
 
+### Can I run Virtual Machines (VMs) on MyNodeOne?
+
+**No, MyNodeOne is container-only** (Kubernetes-based). It does NOT support VMs out of the box.
+
+**Why containers instead of VMs?**
+- ⚡ **Faster:** Start in seconds (vs minutes for VMs)
+- 💾 **Lighter:** 10-100MB (vs GBs for VMs)  
+- 🔄 **Modern:** Better for cloud-native apps, CI/CD, microservices
+- 📦 **Portable:** Works everywhere (dev, test, prod)
+
+**"But I need VMs for dev services!"**
+
+Most dev services work BETTER as containers:
+- ✅ **Databases:** PostgreSQL, MySQL, MongoDB, Redis → All have official Docker images
+- ✅ **Dev Tools:** GitLab, Jenkins, VS Code Server → Run as containers
+- ✅ **Message Queues:** RabbitMQ, Kafka → Official images available
+- ✅ **Testing:** Selenium, test databases → Faster as containers
+
+**When you ACTUALLY need VMs:**
+- ❌ Windows applications (use Proxmox instead)
+- ❌ Legacy apps that can't containerize (use Proxmox)
+- ❌ Testing different OS kernels (use Proxmox)
+- ⚠️ **Advanced:** You can add KubeVirt to run VMs on Kubernetes (not included by default)
+
+**Bottom line:** If you primarily need VMs, use Proxmox. If you're running modern apps/services, MyNodeOne's containers are faster and better!
+
 ### What apps can I run on MyNodeOne?
 
 Anything that runs in Docker/containers:
 - Web apps (React, Vue, Angular, etc.)
 - APIs (Node.js, Python, Go, Java, etc.)
 - Databases (PostgreSQL, MySQL, MongoDB, Redis)
-- CMS (WordPress, Ghost, Strapi)
-- E-commerce (WooCommerce, Magento)
-- Analytics (Plausible, Matomo)
-- And literally anything else!
+- Message queues (RabbitMQ, Kafka)
+- ML/AI models
+- Game servers
+- WordPress, Ghost, etc.
+
+If it has a Docker image, it runs on MyNodeOne!
 
 ### How do I deploy my first app?
 

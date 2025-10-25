@@ -1,0 +1,68 @@
+# NodeZero .gitignore
+
+# Sensitive files
+*credentials*.txt
+*token*.txt
+*.key
+*.pem
+*.crt
+acme.json
+
+# Kubeconfig
+kubeconfig
+*.kubeconfig
+
+# Secrets
+secrets/
+.secrets/
+*.secret
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Backup files
+*.bak
+*.backup
+
+# Node modules (if using JavaScript tooling)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python (if using Python tooling)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Test coverage
+coverage/
+*.cover
+.coverage
+
+# Build artifacts
+dist/
+build/
+*.tar.gz
+*.zip

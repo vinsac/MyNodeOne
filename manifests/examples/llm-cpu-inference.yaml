@@ -1,0 +1,187 @@
+# LLM on CPU Example - Run local language models
+# This example uses llama.cpp for efficient CPU inference
+# Deploy with: kubectl apply -f llm-cpu-inference.yaml
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-workloads
+  labels:
+    name: ai-workloads
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-models
+  namespace: ai-workloads
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 50Gi  # Adjust based on model size
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-cpp-server
+  namespace: ai-workloads
+spec:
+  replicas: 1  # Usually 1 for LLMs due to resource requirements
+  selector:
+    matchLabels:
+      app: llama-cpp-server
+  template:
+    metadata:
+      labels:
+        app: llama-cpp-server
+    spec:
+      containers:
+      - name: llama-cpp
+        image: ghcr.io/ggerganov/llama.cpp:server
+        command:
+        - /app/server
+        args:
+        - --model
+        - /models/model.gguf  # Update with your model filename
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8080"
+        - --threads
+        - "16"  # Adjust based on your CPU cores
+        - --ctx-size
+        - "4096"
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        resources:
+          requests:
+            memory: "8Gi"  # Minimum for 7B models
+            cpu: "4000m"
+          limits:
+            memory: "32Gi"  # 13B models need ~16-24GB, 70B needs more
+            cpu: "16000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: llm-models
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-cpp-server
+  namespace: ai-workloads
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: llama-cpp-server
+
+---
+# Optional: Expose via ingress for API access
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: llama-cpp-api
+  namespace: ai-workloads
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`llm.yourdomain.com`)  # Update with your domain
+      kind: Rule
+      services:
+        - name: llama-cpp-server
+          port: 80
+      middlewares:
+        - name: auth-basic  # Protect with authentication
+  tls:
+    certResolver: letsencrypt
+
+---
+# Basic Auth middleware for API protection
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: auth-basic
+  namespace: ai-workloads
+spec:
+  basicAuth:
+    secret: llm-auth
+
+---
+# Create secret with: kubectl create secret generic llm-auth \
+#   --from-literal=users=admin:$(openssl passwd -apr1 yourpassword) \
+#   -n ai-workloads
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-auth
+  namespace: ai-workloads
+type: Opaque
+stringData:
+  # Generate with: echo $(htpasswd -nb admin yourpassword) | base64
+  # Or: openssl passwd -apr1 yourpassword
+  users: |
+    admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/
+
+---
+# Job to download a model (run once)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-llama-model
+  namespace: ai-workloads
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: downloader
+        image: alpine:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          apk add --no-cache wget
+          cd /models
+          
+          # Example: Download Llama 2 7B GGUF model
+          # Update with your preferred model
+          echo "Downloading model..."
+          wget https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf -O model.gguf
+          
+          echo "Model downloaded successfully!"
+          ls -lh /models/
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: llm-models

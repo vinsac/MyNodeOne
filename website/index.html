@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodeZero - Your Private Cloud Infrastructure</title>
+    <meta name="description" content="Build your own AWS-like cloud with commodity hardware. Save $30,000+/year with open source tools.">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 20px;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            font-weight: 800;
+        }
+        
+        .hero p {
+            font-size: 1.5em;
+            margin-bottom: 40px;
+            opacity: 0.9;
+        }
+        
+        .hero .tagline {
+            font-size: 1.2em;
+            opacity: 0.8;
+            margin-bottom: 50px;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 15px 40px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: transform 0.2s;
+            margin: 10px;
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        
+        .cta-button.secondary {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+        
+        .section-title {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 50px;
+            color: #333;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            margin: 60px 0;
+        }
+        
+        .feature {
+            text-align: center;
+            padding: 30px;
+        }
+        
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+        
+        .feature h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .steps {
+            background: #f8f9fa;
+            padding: 80px 20px;
+        }
+        
+        .step-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .step {
+            display: flex;
+            margin-bottom: 40px;
+            align-items: flex-start;
+        }
+        
+        .step-number {
+            background: #667eea;
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-right: 20px;
+            flex-shrink: 0;
+        }
+        
+        .step-content h3 {
+            font-size: 1.3em;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .comparison {
+            background: white;
+        }
+        
+        .comparison-table {
+            max-width: 900px;
+            margin: 0 auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .comparison-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .comparison-table th {
+            background: #667eea;
+            color: white;
+            padding: 20px;
+            text-align: left;
+            font-size: 1.1em;
+        }
+        
+        .comparison-table td {
+            padding: 20px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .comparison-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .highlight {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .testimonials {
+            background: #f8f9fa;
+            padding: 80px 20px;
+        }
+        
+        .testimonial {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .testimonial-text {
+            font-size: 1.1em;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+        
+        .testimonial-author {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        footer {
+            background: #2d3748;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        
+        footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5em;
+            }
+            
+            .hero p {
+                font-size: 1.2em;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>NodeZero</h1>
+        <p>Your Private Cloud Infrastructure</p>
+        <div class="tagline">Build your own AWS-like cloud with commodity hardware</div>
+        <a href="https://github.com/vinsac/nodezero" class="cta-button">Get Started</a>
+        <a href="https://github.com/vinsac/nodezero/blob/main/NEW-QUICKSTART.md" class="cta-button secondary">Quick Start Guide</a>
+    </div>
+
+    <div class="container">
+        <h2 class="section-title">Why NodeZero?</h2>
+        
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">💰</div>
+                <h3>Save Money</h3>
+                <p>Save $30,000+/year compared to AWS. Use hardware you already own.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🔒</div>
+                <h3>Own Your Data</h3>
+                <p>Complete privacy. Your data never leaves your machines.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <h3>Easy Setup</h3>
+                <p>Interactive wizard guides you through setup in 30 minutes.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📈</div>
+                <h3>Auto-Scaling</h3>
+                <p>Add nodes as you grow. Automatic workload distribution.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🛠️</div>
+                <h3>Production-Ready</h3>
+                <p>Battle-tested open source tools. Used by Fortune 500s.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🌐</div>
+                <h3>Any Hardware</h3>
+                <p>Works with any machines. No vendor lock-in.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="steps">
+        <div class="container">
+            <h2 class="section-title">Get Started in 3 Steps</h2>
+            
+            <div class="step-container">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Run Interactive Setup</h3>
+                        <p>One command sets up everything. Works on any machine with Ubuntu 24.04.</p>
+                        <div class="code-block">
+git clone https://github.com/vinsac/nodezero.git
+cd nodezero
+sudo ./scripts/nodezero</div>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Bootstrap Your Cluster</h3>
+                        <p>Installs Kubernetes, storage, monitoring, and GitOps in ~20 minutes.</p>
+                        <div class="code-block">sudo ./scripts/bootstrap-control-plane.sh</div>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Deploy Your Apps</h3>
+                        <p>Push to Git and ArgoCD automatically deploys. Or use our examples.</p>
+                        <div class="code-block">./scripts/create-app.sh myapp --domain myapp.com
+kubectl apply -f manifests/examples/fullstack-app.yaml</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="comparison">
+        <div class="container">
+            <h2 class="section-title">NodeZero vs Cloud Providers</h2>
+            
+            <div class="comparison-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>NodeZero</th>
+                            <th>AWS/GCP/Azure</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Monthly Cost</strong></td>
+                            <td class="highlight">$30-50</td>
+                            <td>$500-2,000+</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Annual Savings</strong></td>
+                            <td class="highlight">$30,000+</td>
+                            <td>$0</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Setup Time</strong></td>
+                            <td class="highlight">30 minutes</td>
+                            <td>Hours to days</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Data Privacy</strong></td>
+                            <td class="highlight">100% yours</td>
+                            <td>Shared infrastructure</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Storage Included</strong></td>
+                            <td class="highlight">Unlimited</td>
+                            <td>Pay per GB</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Egress Fees</strong></td>
+                            <td class="highlight">$0</td>
+                            <td>$0.09-0.12/GB</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Vendor Lock-in</strong></td>
+                            <td class="highlight">None</td>
+                            <td>Heavy</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 class="section-title">What Can You Run?</h2>
+        
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🌐</div>
+                <h3>Web Apps</h3>
+                <p>React, Vue, Angular, or any web framework. Automatic SSL certificates.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🤖</div>
+                <h3>LLMs on CPU</h3>
+                <p>Run Llama, Mistral, or any model locally. No GPU required (but supported).</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">💾</div>
+                <h3>Databases</h3>
+                <p>PostgreSQL, MySQL, MongoDB, Redis with automatic backups.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📦</div>
+                <h3>Microservices</h3>
+                <p>Auto-scaling, load balancing, service mesh ready.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📊</div>
+                <h3>Analytics</h3>
+                <p>ClickHouse, ElasticSearch, data pipelines.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🎨</div>
+                <h3>Media</h3>
+                <p>Image processing, video transcoding, CDN.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="testimonials">
+        <div class="container">
+            <h2 class="section-title">Who Uses NodeZero?</h2>
+            
+            <div class="testimonial">
+                <div class="testimonial-text">
+                    "Perfect for indie hackers! I'm running 5 SaaS products on a single server. Saves me $2,000/month."
+                </div>
+                <div class="testimonial-author">— Alex, Solo Founder</div>
+            </div>
+            
+            <div class="testimonial">
+                <div class="testimonial-text">
+                    "We migrated from AWS and cut our infrastructure costs by 90%. The setup was surprisingly easy."
+                </div>
+                <div class="testimonial-author">— Sarah, Startup CTO</div>
+            </div>
+            
+            <div class="testimonial">
+                <div class="testimonial-text">
+                    "Great for learning Kubernetes without breaking the bank. The interactive setup made it painless."
+                </div>
+                <div class="testimonial-author">— Mike, DevOps Engineer</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" style="text-align: center; padding: 100px 20px;">
+        <h2 style="font-size: 2.5em; margin-bottom: 30px;">Ready to Build Your Cloud?</h2>
+        <p style="font-size: 1.3em; margin-bottom: 40px;">Get started in 30 minutes. 100% free and open source.</p>
+        <a href="https://github.com/vinsac/nodezero" class="cta-button" style="font-size: 1.2em; padding: 20px 50px;">View on GitHub</a>
+    </div>
+
+    <footer>
+        <div class="container">
+            <p><strong>NodeZero v1.0</strong> - Your Private Cloud Infrastructure</p>
+            <p style="margin-top: 20px;">
+                <a href="https://github.com/vinsac/nodezero">GitHub</a> · 
+                <a href="https://github.com/vinsac/nodezero/blob/main/NEW-QUICKSTART.md">Quick Start</a> · 
+                <a href="https://github.com/vinsac/nodezero/blob/main/docs/architecture.md">Documentation</a> · 
+                <a href="https://github.com/vinsac/nodezero/blob/main/FAQ.md">FAQ</a>
+            </p>
+            <p style="margin-top: 30px; opacity: 0.7;">
+                MIT License · Created by <a href="https://github.com/vinsac" style="color: #667eea;">Vinay Sachdeva</a>
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

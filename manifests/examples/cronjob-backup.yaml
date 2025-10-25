@@ -1,0 +1,102 @@
+# CronJob Example - Database Backup
+# Automatically backs up PostgreSQL database to MinIO
+# Deploy with: kubectl apply -f cronjob-backup.yaml
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backups
+  labels:
+    name: backups
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backup-credentials
+  namespace: backups
+type: Opaque
+stringData:
+  # PostgreSQL credentials
+  POSTGRES_HOST: postgres.databases.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: admin
+  POSTGRES_PASSWORD: change-this-password
+  POSTGRES_DB: myapp
+  # MinIO S3 credentials
+  AWS_ACCESS_KEY_ID: minio-access-key
+  AWS_SECRET_ACCESS_KEY: minio-secret-key
+  AWS_ENDPOINT_URL: http://minio.minio.svc.cluster.local:9000
+  S3_BUCKET: backups
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: backups
+spec:
+  # Run daily at 2 AM
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:16-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              
+              # Install AWS CLI
+              apk add --no-cache aws-cli
+              
+              # Create backup filename with timestamp
+              BACKUP_FILE="postgres-backup-$(date +%Y%m%d-%H%M%S).sql.gz"
+              
+              # Create backup
+              echo "Creating backup: $BACKUP_FILE"
+              PGPASSWORD=$POSTGRES_PASSWORD pg_dump \
+                -h $POSTGRES_HOST \
+                -p $POSTGRES_PORT \
+                -U $POSTGRES_USER \
+                -d $POSTGRES_DB \
+                | gzip > /tmp/$BACKUP_FILE
+              
+              # Upload to MinIO
+              echo "Uploading to S3..."
+              aws --endpoint-url $AWS_ENDPOINT_URL \
+                s3 cp /tmp/$BACKUP_FILE s3://$S3_BUCKET/postgres/$BACKUP_FILE
+              
+              # Cleanup old backups (keep last 30 days)
+              echo "Cleaning up old backups..."
+              CUTOFF_DATE=$(date -d '30 days ago' +%Y%m%d)
+              aws --endpoint-url $AWS_ENDPOINT_URL \
+                s3 ls s3://$S3_BUCKET/postgres/ \
+                | awk '{print $4}' \
+                | while read file; do
+                  FILE_DATE=$(echo $file | grep -oP '\d{8}' | head -1)
+                  if [ "$FILE_DATE" -lt "$CUTOFF_DATE" ]; then
+                    echo "Deleting old backup: $file"
+                    aws --endpoint-url $AWS_ENDPOINT_URL s3 rm s3://$S3_BUCKET/postgres/$file
+                  fi
+                done
+              
+              echo "Backup completed successfully!"
+            envFrom:
+            - secretRef:
+                name: backup-credentials
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "200m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"

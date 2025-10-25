@@ -1,0 +1,58 @@
+# NodeZero Configuration File
+# Copy this to nodezero.conf and customize for your setup
+
+# Cluster Configuration
+CLUSTER_NAME="nodezero"
+CLUSTER_DOMAIN="cluster.local"
+
+# Control Plane Node
+CONTROL_PLANE_NODE="toronto-0001"
+CONTROL_PLANE_IP="100.103.104.109"  # Tailscale IP
+
+# Network Configuration
+TAILSCALE_NETWORK="100.x.x.x/8"
+VPS_EDGE_IPS="45.8.133.192,31.220.87.37"
+
+# Storage Configuration
+LONGHORN_DATA_PATH="/mnt/longhorn"
+LONGHORN_REPLICA_COUNT="1"  # Increase to 2 or 3 when adding more nodes
+MINIO_STORAGE_SIZE="1Ti"
+
+# Monitoring Configuration
+PROMETHEUS_RETENTION="30d"
+PROMETHEUS_STORAGE_SIZE="100Gi"
+GRAFANA_STORAGE_SIZE="10Gi"
+LOKI_STORAGE_SIZE="100Gi"
+
+# Resource Limits
+DEFAULT_CPU_REQUEST="100m"
+DEFAULT_MEMORY_REQUEST="128Mi"
+DEFAULT_CPU_LIMIT="1000m"
+DEFAULT_MEMORY_LIMIT="512Mi"
+
+# SSL/TLS Configuration
+LETSENCRYPT_EMAIL="vinaysachdeva27@gmail.com"
+LETSENCRYPT_SERVER="production"  # or "staging" for testing
+
+# Backup Configuration
+BACKUP_SCHEDULE="0 2 * * *"  # Daily at 2 AM
+BACKUP_RETENTION_DAYS="30"
+
+# Node Labels
+NODE_LOCATION_LABEL="toronto"
+NODE_STORAGE_ENABLED="true"
+
+# Feature Flags
+ENABLE_AUTOSCALING="true"
+ENABLE_MONITORING="true"
+ENABLE_GITOPS="true"
+ENABLE_BACKUP="true"
+
+# Advanced Configuration
+K3S_VERSION="v1.28.5+k3s1"
+HELM_VERSION="3.x"
+KUBERNETES_API_PORT="6443"
+MAX_PODS_PER_NODE="250"
+
+# Custom Configuration
+# Add your own variables below

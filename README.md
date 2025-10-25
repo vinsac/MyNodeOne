@@ -203,12 +203,16 @@ Enables:
   ```
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
-- **SSH Server installed** (required for worker nodes and remote management)
+- **SSH Server installed** (required on ALL machines - control plane AND workers)
   
   **In the same terminal, run:**
   ```bash
   # Install OpenSSH Server:
   sudo apt install -y openssh-server
+  
+  # Start and enable SSH:
+  sudo systemctl start ssh
+  sudo systemctl enable ssh
   
   # Verify it's running:
   sudo systemctl status ssh
@@ -216,10 +220,10 @@ Enables:
   
   **How to know if it's running:**
   - ✅ Look for `Active: active (running)` in **green** text = Good!
-  - ❌ Look for `Active: inactive` or **red** text = Problem
+  - ❌ Look for `Active: inactive` or **red** text = Run start/enable commands above
   - Press `q` to exit the status screen
   
-  - **Why needed:** Control plane uses SSH to configure worker nodes
+  - **Why needed on ALL nodes:** Control plane uses SSH to remotely configure worker nodes
   - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 
 - **Tailscale installed** on all machines

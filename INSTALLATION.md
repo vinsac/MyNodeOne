@@ -55,12 +55,18 @@ Before starting, you need:
    ```
    - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
-3. **SSH Server installed** (required for worker nodes and remote management)
+3. **SSH Server installed** (required on ALL machines - control plane AND workers)
    
    **In the same terminal, run:**
    ```bash
    # Install OpenSSH Server:
    sudo apt install -y openssh-server
+   
+   # Start SSH service (if not already running):
+   sudo systemctl start ssh
+   
+   # Enable SSH to start on boot:
+   sudo systemctl enable ssh
    
    # Verify it's running:
    sudo systemctl status ssh
@@ -84,9 +90,11 @@ Before starting, you need:
    ```
    Look for: `Active: inactive` or any **red** text
    
+   **If you see "inactive (dead)":** Go back and run the start/enable commands above
+   
    **Press `q` to exit the status screen**
    
-   - **Why needed:** Control plane uses SSH to configure worker nodes
+   - **Why needed on ALL nodes:** Control plane uses SSH to remotely configure worker nodes. Each node needs SSH server so others can connect to it.
    - For SSH troubleshooting, consult ChatGPT, Gemini, or search online.
 
 4. **Tailscale installed** on your machine

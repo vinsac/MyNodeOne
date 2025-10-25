@@ -185,11 +185,26 @@ Enables:
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
 - **Git installed**
   ```bash
-  # Install git on Ubuntu:
-  sudo apt update && sudo apt install -y git
+  # Update package list
+  sudo apt update
+  
+  # (Optional) Upgrade system packages - RECOMMENDED for fresh installations
+  # WARNING: Skip this on existing/production machines to avoid breaking changes
+  # sudo apt upgrade -y
+  
+  # Install git
+  sudo apt install -y git
   ```
   - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 - **Tailscale installed** on all machines
+  ```bash
+  # Install Tailscale:
+  curl -fsSL https://tailscale.com/install.sh | sh
+  
+  # Connect to your Tailscale network:
+  sudo tailscale up
+  ```
+  - For more details, see [docs/networking.md](docs/networking.md) or visit https://tailscale.com
 - **Root/sudo access**
 
 > **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.

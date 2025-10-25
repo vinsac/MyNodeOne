@@ -21,14 +21,28 @@ Before starting, you need:
 
 2. **Git installed** on your machine
    ```bash
-   # Install git on Ubuntu:
-   sudo apt update && sudo apt install -y git
+   # Update package list
+   sudo apt update
+   
+   # (Optional) Upgrade system packages - RECOMMENDED for fresh installations
+   # WARNING: Skip this on existing/production machines to avoid breaking changes
+   # sudo apt upgrade -y
+   
+   # Install git
+   sudo apt install -y git
    ```
    - For assistance with git installation, consult ChatGPT, Gemini, or search online.
 
-3. **Tailscale account** (free)
-   - Sign up at https://tailscale.com
-   - No configuration needed - scripts handle it
+3. **Tailscale installed** on your machine
+   ```bash
+   # Install Tailscale:
+   curl -fsSL https://tailscale.com/install.sh | sh
+   
+   # Connect to your Tailscale network:
+   sudo tailscale up
+   ```
+   - Sign up for a free account at https://tailscale.com
+   - For more details, see [docs/networking.md](docs/networking.md)
 
 4. **Optional: VPS server(s)** with public IP
    - Any provider (Contabo, DigitalOcean, Hetzner, etc.)

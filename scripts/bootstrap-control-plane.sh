@@ -42,6 +42,9 @@ source "$CONFIG_FILE"
 # K3s version
 K3S_VERSION="v1.28.5+k3s1"
 
+# Set kubeconfig for K3s (so kubectl and helm work)
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
 # Helper functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"

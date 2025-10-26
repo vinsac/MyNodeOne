@@ -188,6 +188,58 @@ check_dependencies() {
     return 0
 }
 
+check_architecture() {
+    print_info "Detecting system architecture..."
+    
+    local arch=$(uname -m)
+    case $arch in
+        x86_64)
+            print_success "Architecture: x86_64 (AMD64)"
+            ;;
+        aarch64)
+            print_success "Architecture: aarch64 (ARM64)"
+            ;;
+        armv7l)
+            print_success "Architecture: armv7l (ARM)"
+            ;;
+        *)
+            print_warning "Architecture: $arch (may not be fully tested)"
+            ;;
+    esac
+}
+
+check_distro() {
+    print_info "Checking Linux distribution..."
+    
+    if [ -f /etc/os-release ]; then
+        source /etc/os-release
+        
+        if [[ "$ID" == "ubuntu" ]]; then
+            if [[ "$VERSION_ID" == "24.04" ]]; then
+                print_success "Ubuntu 24.04 LTS detected (recommended)"
+            elif [[ "$VERSION_ID" == "22.04" ]]; then
+                print_success "Ubuntu 22.04 LTS detected (supported)"
+            else
+                print_warning "Ubuntu $VERSION_ID detected (not officially tested)"
+                if ! prompt_confirm "Continue anyway?"; then
+                    exit 1
+                fi
+            fi
+        else
+            print_warning "Non-Ubuntu distribution detected: $NAME $VERSION_ID"
+            echo "MyNodeOne is optimized for Ubuntu 24.04 LTS."
+            if ! prompt_confirm "Continue anyway?"; then
+                exit 1
+            fi
+        fi
+    else
+        print_warning "Cannot detect distribution"
+        if ! prompt_confirm "Continue anyway?"; then
+            exit 1
+        fi
+    fi
+}
+
 check_system_resources() {
     print_info "Validating system resources..."
     

@@ -260,8 +260,9 @@ sudo ./scripts/mynodeone
 
 **After completion:**
 - Cluster is ready!
-- Credentials saved to `/root/mynodeone-*.txt`
-- Access monitoring at `https://grafana.mynodeone.local`
+- **IMPORTANT:** Credentials will be displayed in terminal - save them immediately!
+- Access services via Tailscale IPs (100.x.x.x addresses shown in output)
+- Run `sudo ./scripts/show-credentials.sh` to view all service URLs and credentials
 
 ---
 

@@ -368,12 +368,20 @@ git push
 
 ### Access Web UIs
 
-All accessible via Tailscale network from your vivobook:
+All accessible via Tailscale network (using LoadBalancer IPs):
 
-- **ArgoCD** (GitOps): https://argocd.mynodeone.local
-- **Grafana** (Monitoring): https://grafana.mynodeone.local
-- **MinIO Console** (S3): https://minio.mynodeone.local
-- **Traefik Dashboard**: https://traefik.mynodeone.local
+```bash
+# View all service URLs and credentials
+sudo ./scripts/show-credentials.sh
+```
+
+**Services are accessible at Tailscale IPs (100.x.x.x):**
+- **Grafana** (Monitoring): http://100.x.x.x (shown in installation output)
+- **ArgoCD** (GitOps): https://100.x.x.x
+- **MinIO Console** (S3): http://100.x.x.x:9001
+- **Longhorn UI** (Storage): http://100.x.x.x
+
+See [ACCESS_INFORMATION.md](ACCESS_INFORMATION.md) for complete access details and credentials.
 
 ### CLI Tools
 
@@ -397,8 +405,11 @@ kubectl top pods -A
 ### Object Storage (S3-compatible)
 
 ```bash
-# Access MinIO
-mc alias set mynodeone http://minio.mynodeone.local accesskey secretkey
+# Get MinIO credentials
+sudo ./scripts/show-credentials.sh
+
+# Access MinIO (replace with your IP from show-credentials.sh)
+mc alias set mynodeone http://100.x.x.x:9000 <access-key> <secret-key>
 
 # Create bucket
 mc mb mynodeone/my-bucket
@@ -427,7 +438,12 @@ spec:
 
 ## Monitoring
 
-Access Grafana at https://grafana.mynodeone.local
+Access Grafana at the URL shown during installation (Tailscale IP).
+
+```bash
+# View Grafana URL and credentials
+sudo ./scripts/show-credentials.sh
+```
 
 Pre-configured dashboards:
 - Cluster overview

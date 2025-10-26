@@ -706,27 +706,94 @@ display_credentials() {
     echo
     
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  📝 SECURITY ACTION REQUIRED"
+    echo "  📝 CRITICAL SECURITY STEP"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "⚠️  DO THIS NOW (Takes 5 minutes):"
+    echo "⚠️  IMPORTANT: Save these credentials NOW!"
     echo
-    echo "1️⃣  Install a password manager on YOUR LAPTOP (not this machine):"
+    echo "🔐 SAVE TO PASSWORD MANAGER:"
+    echo "   Install on YOUR LAPTOP (not this machine):"
     echo "   • 1Password (https://1password.com) - Paid, best UX"
     echo "   • Bitwarden (https://bitwarden.com) - Free & Open Source"
     echo "   • KeePassXC (https://keepassxc.org) - Free, Offline"
     echo
-    echo "2️⃣  Copy credentials above to your password manager"
-    echo
-    echo "3️⃣  After saving, DELETE credential files:"
-    echo "   sudo rm /root/mynodeone-*-credentials.txt"
-    echo
-    echo "4️⃣  Change default passwords (first login to each service)"
-    echo
-    echo "📖 Full security guide:"
-    echo "   cat $PROJECT_ROOT/SECURITY_CREDENTIALS_GUIDE.md"
+    echo "📋 ACTION: Copy ALL credentials above to your password manager NOW"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    # In unattended mode, don't prompt - just wait briefly
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        log_warn "UNATTENDED mode: Credentials displayed above. Save them before they're deleted!"
+        sleep 10
+        delete_credential_files
+    else
+        echo
+        echo "⏱️  Take your time to save the credentials above."
+        echo
+        read -p "Have you saved ALL credentials to your password manager? [y/N]: " -r
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            delete_credential_files
+        else
+            echo
+            log_error "Installation cannot proceed without confirming credential storage!"
+            log_error "For security, credential files MUST be deleted."
+            echo
+            echo "Options:"
+            echo "  1. Save credentials now and re-run this confirmation"
+            echo "  2. View credentials again: sudo $SCRIPT_DIR/show-credentials.sh"
+            echo "  3. Credentials are in: /root/mynodeone-*-credentials.txt"
+            echo
+            read -p "Try again - Have you saved credentials? [y/N]: " -r
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                delete_credential_files
+            else
+                log_error "Please save credentials and manually delete files:"
+                echo "  sudo rm /root/mynodeone-*-credentials.txt"
+                echo
+                log_warn "WARNING: Leaving credential files on disk is a security risk!"
+                return 1
+            fi
+        fi
+    fi
+    
+    echo
+    echo "📖 Next steps:"
+    echo "   • Change default passwords (first login to each service)"
+    echo "   • Full security guide: cat $PROJECT_ROOT/SECURITY_CREDENTIALS_GUIDE.md"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+delete_credential_files() {
+    log_info "Securely deleting credential files..."
+    
+    local files_deleted=0
+    
+    if [ -f /root/mynodeone-argocd-credentials.txt ]; then
+        shred -vfz -n 3 /root/mynodeone-argocd-credentials.txt 2>/dev/null || rm -f /root/mynodeone-argocd-credentials.txt
+        files_deleted=$((files_deleted + 1))
+    fi
+    
+    if [ -f /root/mynodeone-minio-credentials.txt ]; then
+        shred -vfz -n 3 /root/mynodeone-minio-credentials.txt 2>/dev/null || rm -f /root/mynodeone-minio-credentials.txt
+        files_deleted=$((files_deleted + 1))
+    fi
+    
+    if [ -f /root/mynodeone-grafana-credentials.txt ]; then
+        shred -vfz -n 3 /root/mynodeone-grafana-credentials.txt 2>/dev/null || rm -f /root/mynodeone-grafana-credentials.txt
+        files_deleted=$((files_deleted + 1))
+    fi
+    
+    # Keep join token as it's needed for adding nodes
+    # Don't delete: /root/mynodeone-join-token.txt
+    
+    if [ $files_deleted -gt 0 ]; then
+        log_success "✅ Credential files securely deleted ($files_deleted files)"
+        log_info "Join token kept at: /root/mynodeone-join-token.txt (needed for adding nodes)"
+    else
+        log_warn "No credential files found to delete"
+    fi
 }
 
 print_summary() {

@@ -126,14 +126,28 @@ sudo /home/canada-pc-0001/MyNodeOne/scripts/show-credentials.sh
 # 3. MinIO: admin + password (from file)
 ```
 
-#### 2. Delete Credential Files (After Saving)
+#### 2. Credential Files Automatically Deleted ✅
 
-**Once saved to password manager:**
+**IMPORTANT:** As of the latest version, the installation script **automatically deletes** credential files after you confirm you've saved them to your password manager.
+
+**What happens:**
+1. Installation displays all credentials in terminal
+2. You're prompted: "Have you saved ALL credentials to your password manager? [y/N]"
+3. When you confirm 'y', files are **securely deleted** using `shred` command
+4. Join token is kept (needed for adding worker nodes)
+
+**Why automatic deletion:**
+- Ensures credentials aren't left on disk
+- More secure by default
+- Non-technical users don't need to remember to delete
+- Uses secure deletion (shred) instead of simple rm
+
+**If you skipped saving credentials:**
 ```bash
-# Delete credential files
-sudo rm /root/mynodeone-argocd-credentials.txt
-sudo rm /root/mynodeone-minio-credentials.txt
-# Keep join token if you plan to add worker nodes
+# View them again (before they're deleted)
+sudo /path/to/MyNodeOne/scripts/show-credentials.sh
+
+# Note: This only works if installation hasn't completed yet
 ```
 
 #### 3. Change Default Passwords
@@ -278,9 +292,9 @@ When installing MyNodeOne on fresh machines:
   - [ ] Audit logging will be enabled ✅
 
 - [ ] **After Installation:**
-  - [ ] Run `sudo ./scripts/show-credentials.sh`
-  - [ ] Save all credentials to password manager
-  - [ ] Delete credential files: `sudo rm /root/mynodeone-*-credentials.txt`
+  - [ ] Save all credentials displayed in terminal to password manager
+  - [ ] Confirm credential deletion when prompted (files auto-deleted securely)
+  - [ ] Verify credentials were saved correctly
   - [ ] Change default Grafana password
   - [ ] Create new MinIO access keys
   - [ ] Change ArgoCD password
@@ -295,7 +309,7 @@ When installing MyNodeOne on fresh machines:
 
 ## 📊 Security Comparison
 
-### Current State (Debugging Cluster)
+### Current State (Existing Cluster)
 ```
 ✅ Network Isolation (Tailscale)
 ✅ Firewall (UFW)
@@ -303,11 +317,11 @@ When installing MyNodeOne on fresh machines:
 ✅ Pod Security Standards
 ✅ Audit Logging
 ✅ File Permissions (600)
-⚠️ Secrets Encryption (Disabled)
-⚠️ Credential files on disk
+⚠️ Secrets Encryption (May be disabled from debugging)
+⚠️ Credential files may still exist
 ```
 
-### Recommended State (Fresh Production Cluster)
+### Fresh Installation State (New Clusters)
 ```
 ✅ Network Isolation (Tailscale)
 ✅ Firewall (UFW)
@@ -315,11 +329,21 @@ When installing MyNodeOne on fresh machines:
 ✅ Pod Security Standards
 ✅ Audit Logging
 ✅ File Permissions (600)
-✅ Secrets Encryption (Enabled from start)
-✅ Credential files deleted
+✅ Secrets Encryption (Auto-prompted during install)
+✅ Credential files auto-deleted after user confirms saving
+✅ User prompted to use password manager
+✅ Secure deletion (shred) used
+✅ Join token kept for worker node addition
+```
+
+### Production Best Practices State
+```
+✅ All fresh installation features
 ✅ Passwords changed from defaults
 ✅ 2FA enabled where possible
-✅ Regular credential rotation
+✅ Regular credential rotation (90 days)
+✅ Backup encryption enabled
+✅ Regular security audits
 ```
 
 ---

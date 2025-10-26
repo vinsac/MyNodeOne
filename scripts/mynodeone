@@ -85,7 +85,11 @@ prompt_confirm() {
     local default="${2:-n}"
     local response
     
-    if [ "$default" = "y" ]; then
+    # If UNATTENDED mode is enabled, use default answer
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        response="$default"
+        echo -e "${BLUE}ℹ${NC} $prompt [using default: $default]"
+    elif [ "$default" = "y" ]; then
         read -p "$(echo -e ${GREEN}?${NC}) $prompt [Y/n]: " response
         response="${response:-y}"
     else
@@ -121,6 +125,13 @@ EOF
     echo
     echo -e "${YELLOW}Note: This script requires sudo/root access.${NC}"
     echo
+    
+    # Skip confirmation prompt in unattended mode
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        echo -e "${BLUE}ℹ${NC} UNATTENDED mode enabled, proceeding automatically..."
+        echo
+        return
+    fi
     
     if ! prompt_confirm "Ready to start?" "y"; then
         echo "Setup cancelled."
@@ -296,6 +307,16 @@ check_existing_installation() {
         echo
         echo "Existing configuration found at: $HOME/.mynodeone/config.env"
         echo
+        
+        # In unattended mode, auto-select reinstall
+        if [ "${UNATTENDED:-0}" = "1" ]; then
+            print_info "UNATTENDED mode: Auto-selecting reinstall option"
+            # Backup existing config
+            cp "$HOME/.mynodeone/config.env" "$HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+            print_info "Config backed up. Proceeding with reinstall..."
+            return 0
+        fi
+        
         echo "Options:"
         echo "  1) Reconfigure (update configuration, keep existing setup)"
         echo "  2) Reinstall (remove everything, fresh start)"
@@ -449,6 +470,23 @@ detect_disks() {
 select_disks_for_setup() {
     print_header "Disk Selection"
     
+    # In unattended mode, use all detected disks automatically
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        if [ ${#UNMOUNTED_DISKS[@]} -gt 0 ]; then
+            echo -e "${BLUE}ℹ${NC} UNATTENDED mode: Using all detected disks (${#UNMOUNTED_DISKS[@]} disks)"
+            SELECTED_DISKS=("${UNMOUNTED_DISKS[@]}")
+            for disk in "${SELECTED_DISKS[@]}"; do
+                SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+                echo "  ✓ $disk ($SIZE)"
+            done
+            echo
+            setup_disks
+        else
+            echo -e "${BLUE}ℹ${NC} UNATTENDED mode: No additional disks detected, skipping"
+        fi
+        return
+    fi
+    
     # Let user choose which disks to use
     echo "You can choose to use:"
     echo "  1) All detected disks (${#UNMOUNTED_DISKS[@]} disks)"
@@ -597,7 +635,13 @@ setup_disks() {
     echo "========================================================"
     echo
     
-    read -p "$(echo -e ${GREEN}?${NC}) Select option (1-5): " DISK_OPTION
+    # In unattended mode, automatically select Longhorn (option 1)
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        DISK_OPTION="1"
+        echo -e "${BLUE}ℹ${NC} UNATTENDED mode: Auto-selecting Longhorn storage (option 1)"
+    else
+        read -p "$(echo -e ${GREEN}?${NC}) Select option (1-5): " DISK_OPTION
+    fi
     
     case $DISK_OPTION in
         1)
@@ -632,6 +676,12 @@ warn_data_loss() {
     echo
     echo -e "${YELLOW}Formatting $disk will PERMANENTLY ERASE ALL DATA on it!${NC}"
     echo
+    
+    # In unattended mode, skip all prompts and proceed
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        echo -e "${BLUE}ℹ${NC} UNATTENDED mode: Auto-confirming disk format for $disk"
+        return 0
+    fi
     
     # Check if disk has filesystem
     if blkid "$disk" &> /dev/null; then
@@ -668,7 +718,7 @@ warn_data_loss() {
     fi
     
     echo
-    if ! prompt_confirm "Final confirmation - ERASE ALL DATA on $disk?"; then
+    if ! prompt_confirm "Final confirmation - ERASE ALL DATA on $disk?" "y"; then
         print_info "Skipping $disk"
         return 1
     fi
@@ -870,6 +920,17 @@ setup_longhorn_disks() {
     
     # Save to config
     STORAGE_PATH="$LONGHORN_DIR"
+    
+    # Update config file with LONGHORN_PATH
+    local cfg_file="$HOME/.mynodeone/config.env"
+    if [ -f "$cfg_file" ]; then
+        # Remove old LONGHORN_PATH line if exists
+        sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
+        # Add new LONGHORN_PATH
+        echo "LONGHORN_PATH=\"$LONGHORN_DIR\"" >> "$cfg_file"
+        print_info "Updated config with LONGHORN_PATH=$LONGHORN_DIR"
+    fi
+    
     print_success "Longhorn storage configured at: $STORAGE_PATH"
 }
 
@@ -1176,6 +1237,9 @@ show_documentation_info() {
 }
 
 main() {
+    # Export UNATTENDED so child scripts inherit it
+    export UNATTENDED="${UNATTENDED:-0}"
+    
     welcome
     check_root
     
@@ -1198,7 +1262,7 @@ main() {
     print_info "This wizard will help you configure your node..."
     echo
     
-    if ! prompt_confirm "Ready to start the configuration wizard?"; then
+    if ! prompt_confirm "Ready to start the configuration wizard?" "y"; then
         print_info "Installation cancelled."
         exit 0
     fi
@@ -1224,10 +1288,16 @@ main() {
             echo
             print_info "Found ${#UNMOUNTED_DISKS[@]} disk(s) available for storage."
             echo
-            if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?"; then
+            if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?" "y"; then
                 select_disks_for_setup
             else
                 print_info "Skipping disk setup. You can configure storage later."
+                # Set default LONGHORN_PATH for later use
+                local cfg_file="$HOME/.mynodeone/config.env"
+                if [ -f "$cfg_file" ]; then
+                    sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
+                    echo "LONGHORN_PATH=\"/var/lib/longhorn\"" >> "$cfg_file"
+                fi
             fi
         else
             print_warning "No additional disks detected for storage setup."
@@ -1250,9 +1320,17 @@ main() {
             echo "  sudo ./scripts/add-storage-disk.sh"
             echo
             
-            if prompt_confirm "Proceed with single-disk setup?"; then
+            if prompt_confirm "Proceed with single-disk setup?" "y"; then
                 print_success "Single-disk configuration accepted."
                 print_info "Longhorn will use /var/lib/longhorn for storage."
+                
+                # Update config file with LONGHORN_PATH
+                local cfg_file="$HOME/.mynodeone/config.env"
+                if [ -f "$cfg_file" ]; then
+                    sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
+                    echo "LONGHORN_PATH=\"/var/lib/longhorn\"" >> "$cfg_file"
+                    print_info "Updated config with LONGHORN_PATH=/var/lib/longhorn"
+                fi
             else
                 print_error "Installation cancelled."
                 echo
@@ -1270,7 +1348,7 @@ main() {
     echo
     
     # Proceed with installation
-    if prompt_confirm "Proceed with installation?"; then
+    if prompt_confirm "Proceed with installation?" "y"; then
         case "$NODE_TYPE" in
             control-plane)
                 print_info "Running control plane bootstrap..."

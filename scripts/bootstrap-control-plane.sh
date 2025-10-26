@@ -417,6 +417,9 @@ install_longhorn() {
     helm repo add longhorn https://charts.longhorn.io
     helm repo update
     
+    # Set default LONGHORN_PATH if not defined
+    LONGHORN_PATH="${LONGHORN_PATH:-/mnt/longhorn-disks}"
+    
     helm upgrade --install longhorn longhorn/longhorn \
         --namespace longhorn-system \
         --version 1.5.3 \
@@ -508,6 +511,9 @@ install_minio() {
     # Install MinIO
     helm repo add minio https://charts.min.io/
     helm repo update
+    
+    # Set default storage size if not defined
+    MINIO_STORAGE_SIZE="${MINIO_STORAGE_SIZE:-100Gi}"
     
     helm upgrade --install minio minio/minio \
         --namespace minio \

@@ -231,10 +231,16 @@ main() {
     check_requirements
     
     log_warn "This will restart K3s multiple times. Temporary disruption expected."
-    read -p "Continue? [y/N]: " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Cancelled by user"
-        exit 0
+    
+    # Skip prompt in unattended mode
+    if [ "${UNATTENDED:-0}" != "1" ]; then
+        read -p "Continue? [y/N]: " -r
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Cancelled by user"
+            exit 0
+        fi
+    else
+        log_info "UNATTENDED mode: Auto-proceeding with security hardening"
     fi
     
     enable_audit_logging

@@ -52,7 +52,11 @@ prompt_input() {
     local default="${3:-}"
     local value=""
     
-    if [ -n "$default" ]; then
+    # If UNATTENDED mode is enabled, use default value
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        value="$default"
+        echo -e "${BLUE}ℹ${NC} $prompt [using default: $default]"
+    elif [ -n "$default" ]; then
         read -p "$(echo -e ${GREEN}?${NC}) $prompt [${default}]: " value
         value="${value:-$default}"
     else
@@ -88,7 +92,11 @@ prompt_confirm() {
     local default="${2:-n}"
     local response
     
-    if [ "$default" = "y" ]; then
+    # If UNATTENDED mode is enabled, use default answer
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        response="$default"
+        echo -e "${BLUE}ℹ${NC} $prompt [using default: $default]"
+    elif [ "$default" = "y" ]; then
         read -p "$(echo -e ${GREEN}?${NC}) $prompt [Y/n]: " response
         response="${response:-y}"
     else
@@ -172,7 +180,7 @@ EOF
     echo -e "${YELLOW}Note: This wizard should be run on each machine (control plane, workers, VPS).${NC}"
     echo
     
-    if ! prompt_confirm "Ready to start?"; then
+    if ! prompt_confirm "Ready to start?" "y"; then
         echo "Setup cancelled."
         exit 0
     fi
@@ -232,6 +240,17 @@ configure_node_type() {
     echo "3) VPS Edge Node (Public-facing reverse proxy)"
     echo "4) Management Workstation (Your laptop/desktop for admin)"
     echo
+    
+    # In unattended mode, default to control-plane
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        NODE_TYPE_NUM="1"
+        NODE_TYPE="control-plane"
+        NODE_ROLE="Control Plane"
+        echo -e "${BLUE}ℹ${NC} Select node type (1-4) [using default: 1]"
+        print_success "Node type: $NODE_ROLE"
+        echo
+        return
+    fi
     
     while true; do
         prompt_input "Select node type (1-4)" NODE_TYPE_NUM
@@ -346,7 +365,7 @@ configure_storage() {
         print_info "The disk setup wizard will guide you through everything!"
         echo
         
-        if prompt_confirm "Ready to proceed?"; then
+        if prompt_confirm "Ready to proceed?" "y"; then
             # Just continue, storage setup happens in main script
             true
         else

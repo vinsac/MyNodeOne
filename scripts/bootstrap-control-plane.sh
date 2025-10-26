@@ -662,49 +662,99 @@ EOF
     log_warn "IMPORTANT: This token grants cluster access. Store securely!"
 }
 
+display_credentials() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔐 IMPORTANT: YOUR SERVICE CREDENTIALS"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "⚠️  SAVE THESE CREDENTIALS NOW - They won't be shown again!"
+    echo
+    
+    # Get IPs
+    GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "$TAILSCALE_IP:30080")
+    
+    # Get passwords
+    GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "See file below")
+    
+    echo "📊 GRAFANA (Monitoring Dashboard):"
+    echo "   URL: http://$GRAFANA_IP"
+    echo "   Username: admin"
+    echo "   Password: $GRAFANA_PASS"
+    echo
+    
+    echo "🚀 ARGOCD (GitOps):"
+    echo "   URL: https://$ARGOCD_IP"
+    if [ -f /root/mynodeone-argocd-credentials.txt ]; then
+        cat /root/mynodeone-argocd-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
+    fi
+    echo
+    
+    echo "💾 MINIO (S3 Storage):"
+    echo "   Console: http://$MINIO_CONSOLE_IP:9001"
+    if [ -f /root/mynodeone-minio-credentials.txt ]; then
+        cat /root/mynodeone-minio-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
+    fi
+    echo
+    
+    echo "📦 LONGHORN (Storage Dashboard):"
+    echo "   URL: http://$LONGHORN_IP"
+    echo "   Authentication: None (protected by Tailscale VPN)"
+    echo
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  📝 SECURITY ACTION REQUIRED"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "⚠️  DO THIS NOW (Takes 5 minutes):"
+    echo
+    echo "1️⃣  Install a password manager on YOUR LAPTOP (not this machine):"
+    echo "   • 1Password (https://1password.com) - Paid, best UX"
+    echo "   • Bitwarden (https://bitwarden.com) - Free & Open Source"
+    echo "   • KeePassXC (https://keepassxc.org) - Free, Offline"
+    echo
+    echo "2️⃣  Copy credentials above to your password manager"
+    echo
+    echo "3️⃣  After saving, DELETE credential files:"
+    echo "   sudo rm /root/mynodeone-*-credentials.txt"
+    echo
+    echo "4️⃣  Change default passwords (first login to each service)"
+    echo
+    echo "📖 Full security guide:"
+    echo "   cat $PROJECT_ROOT/SECURITY_CREDENTIALS_GUIDE.md"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 print_summary() {
-    log_success "MyNodeOne control plane bootstrap complete! 🎉"
-    echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  MyNodeOne Control Plane Summary"
+    echo "  🎉 MyNodeOne Control Plane Installed Successfully!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    echo "Cluster Information:"
-    echo "  Name: $CLUSTER_NAME"
-    echo "  Node: $NODE_NAME"
-    echo "  IP: $TAILSCALE_IP"
     echo
     echo "Installed Components:"
-    echo "  ✓ K3s (Kubernetes)"
+    echo "  ✓ K3s Kubernetes"
     echo "  ✓ Helm"
-    echo "  ✓ cert-manager"
-    echo "  ✓ Traefik (Ingress)"
+    echo "  ✓ cert-manager (Certificate Management)"
     echo "  ✓ MetalLB (Load Balancer)"
-    echo "  ✓ Longhorn (Block Storage)"
+    echo "  ✓ Traefik (Ingress Controller)"
+    echo "  ✓ Longhorn (Distributed Storage)"
     echo "  ✓ MinIO (Object Storage)"
     echo "  ✓ Prometheus + Grafana + Loki (Monitoring)"
     echo "  ✓ ArgoCD (GitOps)"
     echo
-    echo "Access Points (via Tailscale):"
     
-    GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending...")
-    ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending...")
-    MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending...")
+    # Display credentials prominently
+    display_credentials
     
-    # Get Longhorn IP
-    LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "$TAILSCALE_IP:30080")
-    
-    echo "  Grafana: http://$GRAFANA_IP"
-    echo "  ArgoCD: https://$ARGOCD_IP"
-    echo "  MinIO Console: http://$MINIO_CONSOLE_IP:9001"
-    echo "  Longhorn UI: http://$LONGHORN_IP"
     echo
-    echo "📄 Important Files (Credentials & Configuration):"
-    echo "  • Kubeconfig: ~/.kube/config"
-    echo "  • Cluster Join Token: /root/mynodeone-join-token.txt"
-    echo "  • ArgoCD Credentials: /root/mynodeone-argocd-credentials.txt"
-    echo "  • MinIO Credentials: /root/mynodeone-minio-credentials.txt"
-    echo "  • Service Access Info: $PROJECT_ROOT/ACCESS_INFORMATION.md"
+    echo "📄 Additional Resources:"
+    echo "  • View credentials anytime: sudo $SCRIPT_DIR/show-credentials.sh"
+    echo "  • Quick start guide: $PROJECT_ROOT/QUICK_START.md"
+    echo "  • Full documentation: $PROJECT_ROOT/ACCESS_INFORMATION.md"
+    echo "  • Security guide: $PROJECT_ROOT/SECURITY_CREDENTIALS_GUIDE.md"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
@@ -826,6 +876,54 @@ print_summary() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+offer_security_hardening() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔒 Recommended: Enable Security Hardening"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "Would you like to enable additional security features?"
+    echo
+    echo "This will configure:"
+    echo "  ✅ Secrets encryption at rest (encrypts passwords in etcd)"
+    echo "  ✅ Enhanced audit logging"
+    echo "  ✅ Pod Security Standards (restrict unsafe containers)"
+    echo
+    echo "⚠️  Note: This will restart K3s once (takes ~30 seconds)"
+    echo
+    echo "Recommended: YES for production, OPTIONAL for testing"
+    echo
+    
+    # Skip prompt in unattended mode - auto-enable for production
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        log_info "UNATTENDED mode: Auto-enabling security hardening"
+        bash "$SCRIPT_DIR/enable-security-hardening.sh"
+        return
+    fi
+    
+    read -p "Enable security hardening? [Y/n]: " -r
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        echo
+        log_info "Enabling security hardening..."
+        if bash "$SCRIPT_DIR/enable-security-hardening.sh"; then
+            log_success "Security hardening enabled!"
+            echo
+            echo "✅ Secrets are now encrypted at rest"
+            echo "✅ Pod Security Standards enforced"
+            echo "✅ Enhanced audit logging active"
+        else
+            log_warn "Security hardening had issues. You can enable it later with:"
+            echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
+        fi
+    else
+        echo
+        log_info "Skipping security hardening. You can enable it anytime with:"
+        echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
+        echo
+        log_warn "⚠️  Without encryption, secrets are stored as base64 (not encrypted)"
+    fi
+}
+
 offer_demo_app() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -887,6 +985,9 @@ main() {
     
     echo
     print_summary
+    
+    # Offer security hardening
+    offer_security_hardening
     
     # Offer to deploy demo app
     offer_demo_app

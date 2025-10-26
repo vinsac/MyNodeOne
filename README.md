@@ -499,11 +499,16 @@ kubectl apply -f my-app-ingress.yaml
 - **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** - Find what you need quickly
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
-### Application Deployment
-- **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete app deployment guide ⭐ NEW
-- **scripts/manage-apps.sh** - One-click app deployment script ⭐ NEW
-- **scripts/deploy-demo-app.sh** - Deploy demo application ⭐ NEW
+### Security & Credentials 🔒
+- **[SECURITY_CREDENTIALS_GUIDE.md](SECURITY_CREDENTIALS_GUIDE.md)** - Credential management & security best practices ⭐ NEW
 - **scripts/show-credentials.sh** - Display all service credentials ⭐ NEW
+- **⚠️ IMPORTANT:** Credentials displayed during installation - save to password manager!
+
+### Application Deployment
+- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Deploy demo app (for non-technical users) ⭐ NEW
+- **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete app deployment guide ⭐ NEW
+- **scripts/manage-apps.sh** - One-click app deployment (PostgreSQL, MySQL, Redis) ⭐ NEW
+- **scripts/deploy-demo-app.sh** - Standalone demo app deployment ⭐ NEW
 
 ### User Guides
 - **[docs/comparison-guide.md](docs/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐

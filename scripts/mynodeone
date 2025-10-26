@@ -1136,6 +1136,9 @@ main() {
     check_dependencies || exit 1
     check_architecture
     check_distro
+    check_network || exit 1
+    check_system_resources || exit 1
+    check_existing_installation
     
     system_cleanup
     

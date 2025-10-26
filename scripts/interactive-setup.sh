@@ -369,24 +369,63 @@ configure_apps() {
     if [ "$NODE_TYPE" = "control-plane" ]; then
         print_header "Application Configuration"
         
-        echo "Do you plan to run any of these workloads?"
+        echo "We'll optimize your cluster based on what you plan to run."
+        echo
+        print_info "This helps us:"
+        echo "  • Allocate appropriate resources"
+        echo "  • Install helpful operators and tools"
+        echo "  • Set up performance optimizations"
+        echo
+        print_warning "Not sure? Just say YES to everything - you can always adjust later!"
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo
         
-        if prompt_confirm "Large Language Models (LLMs)?"; then
+        # LLM Configuration
+        echo "💬 Large Language Models (LLMs)"
+        echo "   Examples: ChatGPT-like models, text generation, AI assistants"
+        echo "   Uses: Ollama, llama.cpp, or external APIs (OpenAI, Anthropic)"
+        echo
+        if prompt_confirm "Plan to run LLMs or AI models?"; then
             ENABLE_LLM=true
             if [ "$HAS_GPU" = true ]; then
-                print_info "GPU detected! We'll configure GPU support."
+                print_success "GPU detected! We'll configure GPU-accelerated LLM support."
+                print_info "You'll be able to run larger models faster."
             else
                 print_info "No GPU detected. We'll configure CPU-based LLM support."
+                print_info "This works for smaller models (7B-13B parameters)."
+                print_info "Tip: You can add a GPU later for better performance!"
             fi
         else
             ENABLE_LLM=false
+            print_info "Skipping LLM setup. You can enable this later if needed."
         fi
         
-        if prompt_confirm "Databases (PostgreSQL, MySQL, etc.)?"; then
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        
+        # Database Configuration
+        echo "🗄️  Databases (PostgreSQL, MySQL, MongoDB, Redis, etc.)"
+        echo "   Examples: WordPress database, app backend, analytics storage"
+        echo "   Uses: Most web applications need a database"
+        echo
+        print_info "Saying YES will:"
+        echo "  • Install database operators (easy deployment)"
+        echo "  • Configure persistent storage (your data is safe)"
+        echo "  • Set up backup automation"
+        echo "  • Optimize for database workloads"
+        echo
+        print_warning "Recommendation: Say YES unless you're 100% sure you won't need databases."
+        echo "               (Most applications need a database!)"
+        echo
+        if prompt_confirm "Plan to run databases?"; then
             ENABLE_DATABASES=true
+            print_success "Database support enabled!"
+            print_info "You'll be able to easily deploy PostgreSQL, MySQL, MongoDB, Redis, etc."
         else
             ENABLE_DATABASES=false
+            print_info "Skipping database setup. You can enable this later if needed."
         fi
         
         echo

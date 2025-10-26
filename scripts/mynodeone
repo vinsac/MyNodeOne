@@ -716,13 +716,30 @@ setup_longhorn_disks() {
             continue
         fi
         
-        # Format as ext4 (show errors, don't hide them)
-        print_info "Formatting $disk as ext4..."
+        # Format as ext4 with optimization for large disks
+        print_info "Formatting $disk as ext4 (optimized for large storage)..."
         CRITICAL_OPERATION=true
-        if ! mkfs.ext4 -F "$disk"; then
-            print_error "Failed to format $disk"
-            CRITICAL_OPERATION=false
-            continue
+        
+        # Get disk size in GB
+        DISK_SIZE_GB=$(lsblk -b -n -d -o SIZE "$disk" | awk '{print int($1/1024/1024/1024)}')
+        
+        # Optimize formatting based on disk size
+        if [ "$DISK_SIZE_GB" -gt 1000 ]; then
+            # Large disk (>1TB): Reduce reserved blocks from 5% to 1%
+            # For 18TB: Saves 720GB! (5% = 900GB, 1% = 180GB)
+            print_info "  Large disk detected (${DISK_SIZE_GB}GB) - optimizing for maximum usable space..."
+            if ! mkfs.ext4 -F -m 1 -T largefile4 "$disk"; then
+                print_error "Failed to format $disk"
+                CRITICAL_OPERATION=false
+                continue
+            fi
+        else
+            # Normal disk: Standard formatting
+            if ! mkfs.ext4 -F "$disk"; then
+                print_error "Failed to format $disk"
+                CRITICAL_OPERATION=false
+                continue
+            fi
         fi
         CRITICAL_OPERATION=false
         
@@ -787,11 +804,26 @@ setup_minio_disks() {
             continue
         fi
         
-        # Format as ext4 (show errors)
-        print_info "Formatting $disk as ext4..."
-        if ! mkfs.ext4 -F "$disk"; then
-            print_error "Failed to format $disk"
-            continue
+        # Format as ext4 with optimization for large disks
+        print_info "Formatting $disk as ext4 (optimized for large storage)..."
+        
+        # Get disk size in GB
+        DISK_SIZE_GB=$(lsblk -b -n -d -o SIZE "$disk" | awk '{print int($1/1024/1024/1024)}')
+        
+        # Optimize formatting based on disk size
+        if [ "$DISK_SIZE_GB" -gt 1000 ]; then
+            # Large disk (>1TB): Reduce reserved blocks from 5% to 1%
+            print_info "  Large disk detected (${DISK_SIZE_GB}GB) - optimizing for maximum usable space..."
+            if ! mkfs.ext4 -F -m 1 -T largefile4 "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
+        else
+            # Normal disk: Standard formatting
+            if ! mkfs.ext4 -F "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
         fi
         
         UUID=$(blkid -s UUID -o value "$disk")
@@ -898,8 +930,20 @@ setup_raid_array() {
     print_info "Creating RAID $RAID_TYPE array..."
     mdadm --create /dev/md0 --level=$RAID_TYPE --raid-devices=${#UNMOUNTED_DISKS[@]} "${UNMOUNTED_DISKS[@]}"
     
-    # Format
-    mkfs.ext4 -F /dev/md0
+    # Format RAID array with optimization
+    print_info "Formatting RAID array..."
+    
+    # Get total RAID size in GB
+    RAID_SIZE_GB=$(lsblk -b -n -d -o SIZE /dev/md0 2>/dev/null | awk '{print int($1/1024/1024/1024)}')
+    
+    if [ -n "$RAID_SIZE_GB" ] && [ "$RAID_SIZE_GB" -gt 1000 ]; then
+        # Large RAID (>1TB): Optimize for large storage
+        print_info "  Large RAID array detected (${RAID_SIZE_GB}GB) - optimizing..."
+        mkfs.ext4 -F -m 1 -T largefile4 /dev/md0
+    else
+        # Normal RAID: Standard formatting
+        mkfs.ext4 -F /dev/md0
+    fi
     
     # Mount
     mkdir -p /mnt/raid0
@@ -954,11 +998,26 @@ setup_individual_mounts() {
             continue
         fi
         
-        # Format as ext4 (show errors)
-        print_info "Formatting $disk as ext4..."
-        if ! mkfs.ext4 -F "$disk"; then
-            print_error "Failed to format $disk"
-            continue
+        # Format as ext4 with optimization for large disks
+        print_info "Formatting $disk as ext4 (optimized for large storage)..."
+        
+        # Get disk size in GB
+        DISK_SIZE_GB=$(lsblk -b -n -d -o SIZE "$disk" | awk '{print int($1/1024/1024/1024)}')
+        
+        # Optimize formatting based on disk size
+        if [ "$DISK_SIZE_GB" -gt 1000 ]; then
+            # Large disk (>1TB): Reduce reserved blocks from 5% to 1%
+            print_info "  Large disk detected (${DISK_SIZE_GB}GB) - optimizing for maximum usable space..."
+            if ! mkfs.ext4 -F -m 1 -T largefile4 "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
+        else
+            # Normal disk: Standard formatting
+            if ! mkfs.ext4 -F "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
         fi
         
         UUID=$(blkid -s UUID -o value "$disk")

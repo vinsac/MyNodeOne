@@ -681,30 +681,28 @@ prepare_disk_for_format() {
     
     print_info "Preparing $disk for formatting..."
     
-    # Step 1: Unmount all partitions on this disk
+    # Unmount any mounted partitions on this disk
     print_info "Unmounting any mounted partitions on $disk..."
     
-    # Get disk name without /dev/ prefix
-    local disk_name=$(basename "$disk")
-    
-    # Find and unmount all partitions
-    local unmount_failed=false
-    while IFS= read -r partition; do
-        if [ -n "$partition" ]; then
-            print_info "  Unmounting $partition..."
-            if ! umount "$partition" 2>/dev/null; then
-                # Try force unmount
-                if ! umount -f "$partition" 2>/dev/null; then
-                    # Try lazy unmount as last resort
-                    if ! umount -l "$partition" 2>/dev/null; then
-                        print_warning "  Could not unmount $partition (may not be mounted)"
-                    fi
-                fi
-            fi
+    # First, unmount all partitions
+    for part in $(lsblk -ln -o NAME "$disk" | grep -v "^$(basename $disk)$"); do
+        PART_DEV="/dev/$part"
+        if mountpoint -q "$PART_DEV" 2>/dev/null || grep -q "$PART_DEV" /proc/mounts; then
+            print_info "  Unmounting partition $PART_DEV..."
+            umount -f "$PART_DEV" 2>/dev/null || umount -l "$PART_DEV" 2>/dev/null || true
         fi
-    done < <(lsblk -ln -o NAME,TYPE "$disk" | awk '$2=="part" {print "/dev/"$1}')
+    done
     
-    # Step 2: Wipe filesystem signatures and partition table
+    # Also unmount the disk itself if mounted
+    if mountpoint -q "$disk" 2>/dev/null || grep -q "$disk" /proc/mounts; then
+        print_info "  Unmounting disk $disk..."
+        umount -f "$disk" 2>/dev/null || umount -l "$disk" 2>/dev/null || true
+    fi
+    
+    # Wait for unmounts to complete
+    sleep 2
+    
+    # Wipe filesystem signatures and partition table
     print_info "Wiping filesystem signatures and partition table..."
     
     # Wipe all filesystem, raid, and partition-table signatures
@@ -791,11 +789,20 @@ setup_longhorn_disks() {
         fi
         CRITICAL_OPERATION=false
         
+        # Wait for kernel to recognize new filesystem
+        print_info "Waiting for filesystem to be recognized..."
+        sleep 3
+        
+        # Rescan the disk
+        blockdev --rereadpt "$disk" 2>/dev/null || true
+        
         # Get UUID
         UUID=$(blkid -s UUID -o value "$disk")
         
         if [ -z "$UUID" ]; then
-            print_error "Failed to get UUID for $disk"
+            print_error "Failed to get UUID for $disk after formatting"
+            print_error "The disk was formatted but the system can't read it yet."
+            print_info "→ Try rebooting your system and run the installer again"
             continue
         fi
         
@@ -811,18 +818,53 @@ setup_longhorn_disks() {
             print_warning "Already in /etc/fstab"
         fi
         
-        # Mount using fstab entry (by UUID)
-        if mount -a 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
-            print_success "Mounted $disk at $MOUNT_POINT"
+        # Mount directly by UUID (don't use mount -a as it tries ALL fstab entries)
+        print_info "Mounting $disk..."
+        MOUNT_ERROR=$(mount UUID="$UUID" "$MOUNT_POINT" 2>&1)
+        
+        if mountpoint -q "$MOUNT_POINT"; then
+            print_success "✓ Mounted $disk at $MOUNT_POINT"
+            print_success "  Disk is ready for use!"
         else
-            print_error "Failed to mount $disk - trying direct mount"
-            # Fallback: try mounting directly
-            if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null; then
-                print_success "Mounted $disk at $MOUNT_POINT (direct mount)"
-            else
-                print_error "Failed to mount $disk - check system logs: journalctl -xe"
-                continue
-            fi
+            print_error ""
+            print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            print_error "⚠️  MOUNT FAILED: $disk could not be mounted"
+            print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            print_error ""
+            print_error "What happened:"
+            print_error "  • The disk was formatted successfully ✓"
+            print_error "  • But the system can't mount it right now ✗"
+            print_error ""
+            print_error "Technical details:"
+            print_error "  $MOUNT_ERROR"
+            print_error ""
+            print_error "What to do:"
+            print_error ""
+            print_error "  OPTION 1 (Recommended): Reboot and retry"
+            print_error "    Sometimes the system needs a reboot to recognize new disks."
+            print_error "    "
+            print_error "    $ sudo reboot"
+            print_error "    # After reboot, run the installer again"
+            print_error "    "
+            print_error ""
+            print_error "  OPTION 2: Check disk health"
+            print_error "    The disk might have hardware issues."
+            print_error "    "
+            print_error "    $ sudo smartctl -a $disk"
+            print_error "    # Look for errors or bad sectors"
+            print_error "    "
+            print_error ""
+            print_error "  OPTION 3: Manual mount"
+            print_error "    Try mounting manually to see detailed errors:"
+            print_error "    "
+            print_error "    $ sudo mount UUID=$UUID $MOUNT_POINT"
+            print_error "    $ dmesg | tail -20   # Check kernel messages"
+            print_error "    "
+            print_error ""
+            print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            print_error ""
+            print_warning "Continuing with other disks..."
+            continue
         fi
     done
     
@@ -898,17 +940,13 @@ setup_minio_disks() {
             print_warning "Already in /etc/fstab"
         fi
         
-        # Mount using fstab entry (by UUID)
-        if mount -a 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
-            print_success "Mounted $disk at $MOUNT_POINT"
+        # Mount directly by UUID
+        print_info "Mounting $disk..."
+        if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
+            print_success "✓ Mounted $disk at $MOUNT_POINT"
         else
-            print_error "Failed to mount $disk - trying direct mount"
-            if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null; then
-                print_success "Mounted $disk at $MOUNT_POINT (direct mount)"
-            else
-                print_error "Failed to mount $disk - check: journalctl -xe"
-                continue
-            fi
+            print_error "✗ Failed to mount $disk (try rebooting)"
+            continue
         fi
     done
     
@@ -1098,17 +1136,13 @@ setup_individual_mounts() {
             print_warning "Already in /etc/fstab"
         fi
         
-        # Mount using fstab entry (by UUID)
-        if mount -a 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
-            print_success "Mounted $disk at $MOUNT_POINT"
+        # Mount directly by UUID
+        print_info "Mounting $disk..."
+        if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
+            print_success "✓ Mounted $disk at $MOUNT_POINT"
         else
-            print_error "Failed to mount $disk - trying direct mount"
-            if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null; then
-                print_success "Mounted $disk at $MOUNT_POINT (direct mount)"
-            else
-                print_error "Failed to mount $disk - check: journalctl -xe"
-                continue
-            fi
+            print_error "✗ Failed to mount $disk (try rebooting)"
+            continue
         fi
     done
     

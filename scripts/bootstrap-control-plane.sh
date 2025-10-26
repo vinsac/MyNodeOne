@@ -251,9 +251,26 @@ EOF
         sleep 2
     done
     
+    # Wait for THIS node to register (can take 10-30 seconds)
+    log_info "Waiting for node '$NODE_NAME' to register with Kubernetes..."
+    WAIT_COUNT=0
+    until kubectl get node "$NODE_NAME" &> /dev/null; do
+        sleep 3
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+        if [ $WAIT_COUNT -gt 20 ]; then
+            log_error "Node $NODE_NAME did not register after 60 seconds"
+            log_info "Current nodes:"
+            kubectl get nodes
+            exit 1
+        fi
+        echo -n "."
+    done
+    echo ""
+    log_success "Node $NODE_NAME is registered!"
+    
     # Label this node as control plane and worker
     kubectl label node "$NODE_NAME" node-role.kubernetes.io/worker=true --overwrite
-    kubectl label node "$NODE_NAME" mynodeone.io/location=toronto --overwrite
+    kubectl label node "$NODE_NAME" mynodeone.io/location=$LOCATION --overwrite
     kubectl label node "$NODE_NAME" mynodeone.io/storage=true --overwrite
     
     log_success "K3s installed successfully"

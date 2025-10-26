@@ -313,31 +313,98 @@ detect_disks() {
     print_info "Scanning for available disks..."
     echo
     
-    # List all block devices
-    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE | grep -E "disk|part"
+    # ===================================================================
+    # CRITICAL SAFETY: Identify the OS disk (where root / is mounted)
+    # ===================================================================
+    
+    # Find the device where root (/) is mounted
+    ROOT_DEVICE=$(df / | tail -1 | awk '{print $1}')
+    
+    # Extract the base disk name (remove partition number)
+    # Examples: /dev/sda1 -> /dev/sda, /dev/nvme0n1p1 -> /dev/nvme0n1
+    if [[ "$ROOT_DEVICE" =~ ^/dev/(sd[a-z])[0-9]+$ ]]; then
+        OS_DISK="/dev/${BASH_REMATCH[1]}"
+    elif [[ "$ROOT_DEVICE" =~ ^/dev/(nvme[0-9]+n[0-9]+)p[0-9]+$ ]]; then
+        OS_DISK="/dev/${BASH_REMATCH[1]}"
+    elif [[ "$ROOT_DEVICE" =~ ^/dev/(mmcblk[0-9]+)p[0-9]+$ ]]; then
+        OS_DISK="/dev/${BASH_REMATCH[1]}"
+    else
+        # Fallback: just remove the last digit
+        OS_DISK=$(echo "$ROOT_DEVICE" | sed 's/[0-9]*$//')
+    fi
+    
+    print_info "OS (Ubuntu) is installed on: $OS_DISK"
+    print_warning "This disk will be EXCLUDED from storage setup for safety"
     echo
     
-    # Detect unmounted disks
-    UNMOUNTED_DISKS=()
-    while IFS= read -r line; do
-        DISK=$(echo "$line" | awk '{print $1}')
-        MOUNTPOINT=$(echo "$line" | awk '{print $4}')
-        
-        if [ -z "$MOUNTPOINT" ] && [[ "$DISK" =~ ^sd[b-z]$|^nvme[1-9]n[0-9]$ ]]; then
-            UNMOUNTED_DISKS+=("/dev/$DISK")
+    # List all block devices with highlighting
+    echo "Current disk layout:"
+    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE | grep -E "disk|part" | while read -r line; do
+        if echo "$line" | grep -q "$(basename "$OS_DISK")"; then
+            echo -e "${RED}$line${NC} ${YELLOW}← OS DISK (PROTECTED)${NC}"
+        else
+            echo "$line"
         fi
-    done < <(lsblk -n -o NAME,MOUNTPOINT | grep -v "^loop")
+    done
+    echo
+    
+    # ===================================================================
+    # SAFE DISK DETECTION: Only show disks that are:
+    # 1. NOT the OS disk
+    # 2. Have NO mounted partitions
+    # 3. Are actual disks (not loop devices, not partitions)
+    # ===================================================================
+    
+    UNMOUNTED_DISKS=()
+    
+    # Get list of all disks (not partitions)
+    while IFS= read -r disk_name; do
+        DISK="/dev/$disk_name"
+        
+        # Skip the OS disk - CRITICAL!
+        if [ "$DISK" = "$OS_DISK" ]; then
+            continue
+        fi
+        
+        # Check if this disk has ANY mounted partitions
+        HAS_MOUNTED_PARTS=false
+        while IFS= read -r part_mount; do
+            PART=$(echo "$part_mount" | awk '{print $1}')
+            MOUNT=$(echo "$part_mount" | awk '{print $2}')
+            
+            # If partition starts with this disk name and has a mountpoint
+            if [[ "$PART" =~ ^${disk_name} ]] && [ -n "$MOUNT" ]; then
+                HAS_MOUNTED_PARTS=true
+                break
+            fi
+        done < <(lsblk -n -o NAME,MOUNTPOINT)
+        
+        # Only add if no mounted partitions
+        if [ "$HAS_MOUNTED_PARTS" = false ]; then
+            UNMOUNTED_DISKS+=("$DISK")
+        fi
+    done < <(lsblk -n -d -o NAME,TYPE | grep "disk" | awk '{print $1}')
     
     if [ ${#UNMOUNTED_DISKS[@]} -eq 0 ]; then
-        print_info "No unmounted disks detected."
+        print_info "No additional unmounted disks detected (only OS disk found)."
+        print_info "If you have additional disks, ensure they are physically connected and powered on."
         return
     fi
     
-    print_warning "Found ${#UNMOUNTED_DISKS[@]} unmounted disk(s):"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    print_warning "Found ${#UNMOUNTED_DISKS[@]} SAFE disk(s) for storage:"
     for disk in "${UNMOUNTED_DISKS[@]}"; do
         SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
-        echo "  • $disk ($SIZE)"
+        MODEL=$(lsblk -n -o MODEL "$disk" | head -1 | xargs)
+        echo "  ✓ $disk ($SIZE) ${MODEL:+- $MODEL}"
     done
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    
+    echo -e "${YELLOW}⚠️  IMPORTANT SAFETY INFORMATION:${NC}"
+    echo "  • OS disk ($OS_DISK) is EXCLUDED for safety"
+    echo "  • Only disks with NO mounted partitions are shown"
+    echo "  • Formatting will ERASE ALL DATA on selected disks"
     echo
     
     if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?"; then
@@ -487,6 +554,13 @@ setup_longhorn_disks() {
     for disk in "${UNMOUNTED_DISKS[@]}"; do
         print_info "Processing $disk..."
         
+        # CRITICAL SAFETY CHECK: Never format OS disk
+        if [ "$disk" = "$OS_DISK" ]; then
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "This disk contains your Ubuntu installation. Skipping."
+            continue
+        fi
+        
         # Warn about data loss
         if ! warn_data_loss "$disk"; then
             continue
@@ -544,6 +618,13 @@ setup_minio_disks() {
     
     for disk in "${UNMOUNTED_DISKS[@]}"; do
         print_info "Processing $disk..."
+        
+        # CRITICAL SAFETY CHECK: Never format OS disk
+        if [ "$disk" = "$OS_DISK" ]; then
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "This disk contains your Ubuntu installation. Skipping."
+            continue
+        fi
         
         # Warn about data loss
         if ! warn_data_loss "$disk"; then
@@ -698,6 +779,13 @@ setup_individual_mounts() {
     
     for disk in "${UNMOUNTED_DISKS[@]}"; do
         print_info "Processing $disk..."
+        
+        # CRITICAL SAFETY CHECK: Never format OS disk
+        if [ "$disk" = "$OS_DISK" ]; then
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "This disk contains your Ubuntu installation. Skipping."
+            continue
+        fi
         
         # Warn about data loss
         if ! warn_data_loss "$disk"; then

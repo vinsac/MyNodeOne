@@ -1138,7 +1138,8 @@ show_documentation_info() {
     
     echo "📚 Documentation is available at:"
     echo
-    echo "  • Quick Start: $PROJECT_ROOT/NEW-QUICKSTART.md"
+    echo "  • Installation Guide: $PROJECT_ROOT/INSTALLATION.md"
+    echo "  • Getting Started: $PROJECT_ROOT/GETTING-STARTED.md"
     echo "  • Architecture: $PROJECT_ROOT/docs/architecture.md"
     echo "  • Operations: $PROJECT_ROOT/docs/operations.md"
     echo "  • FAQ: $PROJECT_ROOT/FAQ.md"
@@ -1148,8 +1149,9 @@ show_documentation_info() {
     echo "  • ArgoCD (GitOps): https://<control-plane-ip>:8080"
     echo "  • MinIO (S3 Storage): http://<control-plane-ip>:9000"
     echo
-    echo "📖 For detailed explanations of each option, see:"
-    echo "  $PROJECT_ROOT/docs/getting-started.md"
+    echo "📖 For detailed storage and setup options, see:"
+    echo "  • Storage Options: $PROJECT_ROOT/docs/storage-guide.md"
+    echo "  • Setup Options: $PROJECT_ROOT/docs/setup-options-guide.md"
     echo
 }
 

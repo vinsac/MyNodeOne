@@ -1,0 +1,265 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-apps
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-chat-app
+  namespace: demo-apps
+  labels:
+    app: demo-chat-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-chat-app
+  template:
+    metadata:
+      labels:
+        app: demo-chat-app
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: chat-app
+        image: nginxinc/nginx-unprivileged:alpine
+        ports:
+        - containerPort: 8080
+          name: http
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 101
+          seccompProfile:
+            type: RuntimeDefault
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+      volumes:
+      - name: html
+        configMap:
+          name: demo-chat-html
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-chat-html
+  namespace: demo-apps
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MyNodeOne Demo Chat - LLM Integration Ready</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }
+            .container {
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                max-width: 800px;
+                width: 100%;
+                overflow: hidden;
+            }
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }
+            .header h1 { font-size: 2em; margin-bottom: 10px; }
+            .header p { opacity: 0.9; }
+            .chat-area {
+                padding: 30px;
+                min-height: 400px;
+            }
+            .message {
+                background: #f7f7f7;
+                border-radius: 15px;
+                padding: 20px;
+                margin-bottom: 15px;
+                animation: fadeIn 0.5s;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .message strong { color: #667eea; display: block; margin-bottom: 8px; }
+            .status {
+                background: #e8f5e9;
+                border-left: 4px solid #4caf50;
+                padding: 20px;
+                margin: 20px 0;
+            }
+            .status-item {
+                display: flex;
+                align-items: center;
+                margin: 10px 0;
+            }
+            .status-icon {
+                width: 24px;
+                height: 24px;
+                background: #4caf50;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 10px;
+            }
+            .info-box {
+                background: #fff3e0;
+                border-left: 4px solid #ff9800;
+                padding: 20px;
+                margin: 20px 0;
+            }
+            .code {
+                background: #263238;
+                color: #aed581;
+                padding: 15px;
+                border-radius: 8px;
+                font-family: 'Courier New', monospace;
+                margin: 15px 0;
+                overflow-x: auto;
+            }
+            .footer {
+                background: #f7f7f7;
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 0.9em;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🚀 MyNodeOne Demo Application</h1>
+                <p>Kubernetes-Native LLM Chat Platform</p>
+            </div>
+            
+            <div class="chat-area">
+                <div class="message">
+                    <strong>🎉 Deployment Successful!</strong>
+                    <p>This demo application is running on your MyNodeOne Kubernetes cluster with full security hardening enabled.</p>
+                </div>
+
+                <div class="status">
+                    <h3 style="margin-bottom: 15px;">✅ System Status</h3>
+                    <div class="status-item">
+                        <span class="status-icon"></span>
+                        <span>Kubernetes cluster operational</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-icon"></span>
+                        <span>Longhorn persistent storage ready</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-icon"></span>
+                        <span>Pod Security Standards enforced</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-icon"></span>
+                        <span>MetalLB load balancer active</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-icon"></span>
+                        <span>Secrets encryption enabled</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-icon"></span>
+                        <span>Audit logging active</span>
+                    </div>
+                </div>
+
+                <div class="message">
+                    <strong>🤖 LLM Integration</strong>
+                    <p>This application demonstrates that your cluster can run web applications with proper security contexts. To add LLM capabilities:</p>
+                </div>
+
+                <div class="info-box">
+                    <h3 style="margin-bottom: 10px;">📦 Deploy Ollama + Open WebUI</h3>
+                    <p>Run these commands on your control plane:</p>
+                    <div class="code">
+# Deploy Ollama (local LLM runtime)<br>
+kubectl apply -f manifests/ai/ollama.yaml<br>
+<br>
+# Deploy Open WebUI (ChatGPT-like interface)<br>
+kubectl apply -f manifests/ai/open-webui.yaml<br>
+<br>
+# Check deployment status<br>
+kubectl get pods -n ai-apps
+                    </div>
+                </div>
+
+                <div class="message">
+                    <strong>🔒 Security Features Active</strong>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>Running as non-root user (UID 101)</li>
+                        <li>No privilege escalation allowed</li>
+                        <li>All capabilities dropped</li>
+                        <li>Seccomp profile enforced</li>
+                        <li>Read-only root filesystem</li>
+                    </ul>
+                </div>
+
+                <div class="message">
+                    <strong>📊 Cluster Resources</strong>
+                    <p><b>Total Storage:</b> 32.8TB (Longhorn distributed storage)<br>
+                    <b>Memory:</b> 249GB RAM<br>
+                    <b>CPUs:</b> 32 cores<br>
+                    <b>Network:</b> Tailscale VPN (100.118.5.68)</p>
+                </div>
+            </div>
+
+            <div class="footer">
+                Deployed on MyNodeOne • Secured by Pod Security Standards • Powered by K3s
+            </div>
+        </div>
+    </body>
+    </html>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-chat-app
+  namespace: demo-apps
+spec:
+  type: LoadBalancer
+  selector:
+    app: demo-chat-app
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

@@ -27,13 +27,15 @@ Learn how to:
 
 ## 🎯 Overview: What You'll Do
 
-**MyNodeOne installation has 3 simple steps:**
+**MyNodeOne installation has these simple steps:**
 
-1. **Prepare Your Control Plane Machine** ← Start here! (this section)
-2. **Download MyNodeOne** (Step 1 below)
-3. **Run the Installation Wizard** (Step 2 below)
+1. **Prepare Your Control Plane Machine** ← Start here! (Prerequisites section below)
+2. **Download MyNodeOne** (Step 1)
+3. **Run the Installation Wizard** (Step 2)
+4. **Apply Security Hardening** (Step 3) ← RECOMMENDED, do this right after!
+5. **Add More Machines** (Step 4) ← Optional, add workers/VPS later
 
-The wizard will ask if you want to add more machines (workers/VPS) - you can add them later!
+The core installation (Steps 1-3) gets your control plane running. Step 4 (security) is highly recommended before Step 5 (adding more machines).
 
 ---
 
@@ -263,7 +265,52 @@ sudo ./scripts/mynodeone
 
 ---
 
+## 🔒 Step 3: Apply Security Hardening (5 minutes, RECOMMENDED)
+
+> **⚠️ IMPORTANT: Do this RIGHT AFTER control plane installation, BEFORE adding worker nodes!**
+> 
+> **Why now?** Security policies apply cluster-wide. Setting them up first ensures all nodes start with proper security from the beginning.
+
+**Run this command on your control plane machine:**
+
+```bash
+sudo ./scripts/enable-security-hardening.sh
+```
+
+**This enables advanced security features:**
+- ✅ Kubernetes audit logging (track all API activity)
+- ✅ Secrets encryption at rest (encrypt etcd database)
+- ✅ Pod Security Standards (restrict container privileges)
+- ✅ Network policies (default deny, explicit allow)
+- ✅ Resource quotas (prevent resource exhaustion)
+- ✅ Security headers (HSTS, CSP, X-Frame-Options)
+
+**Already Enabled Automatically:**
+- ✅ Firewall on all nodes (ufw)
+- ✅ fail2ban SSH protection (blocks brute force)
+- ✅ Strong 32-char random passwords
+- ✅ Encrypted network (Tailscale WireGuard)
+
+**Takes:** ~3-5 minutes  
+**Required:** No, but HIGHLY recommended for production use  
+**Skip if:** Learning/testing only
+
+> 💡 **Password Management:** After installation completes:
+> 1. Copy all credentials from `/root/mynodeone-*.txt` to a password manager (Bitwarden/1Password)
+> 2. **DO NOT** self-host password manager on MyNodeOne (circular dependency risk)
+> 3. Delete credential files: `sudo rm /root/mynodeone-*.txt`
+> 
+> See `docs/password-management.md` for detailed guide.
+
+**After hardening is complete, you can now safely add worker nodes!**
+
+---
+
 ## 🔗 Step 4: Add More Machines (Optional)
+
+**Before adding more machines:**
+- ✅ Complete Step 3 (Security Hardening) on your control plane first!
+- ✅ This ensures security policies apply to all nodes from the start
 
 ### Want to Add Worker Nodes?
 
@@ -279,6 +326,11 @@ sudo ./scripts/mynodeone
 # 4. Select "Worker Node" when asked
 # 5. Provide the join token from your control plane (saved in /root/mynodeone-join-token.txt)
 ```
+
+**After each worker joins:**
+- The control plane automatically applies security policies to it
+- Network policies, pod security standards, and resource quotas are enforced
+- No additional security configuration needed on workers!
 
 ### Want Public Internet Access?
 
@@ -326,7 +378,31 @@ sed -i 's/127.0.0.1/<control-plane-tailscale-ip>/g' ~/.kube/config
 kubectl get nodes
 ```
 
-## Step 6: Deploy Your First App
+## Step 6: Access Your Services
+
+### Via Tailscale (Internal)
+
+From any device on your Tailscale network:
+
+```bash
+# Get service IPs
+kubectl get svc -A | grep LoadBalancer
+
+# Access in browser (from any machine on Tailscale)
+# Grafana:  http://<grafana-ip>
+# ArgoCD:   https://<argocd-ip>
+# MinIO:    http://<minio-ip>
+```
+
+### Via Public Internet (if you configured VPS)
+
+Just visit your domain: `https://yourdomain.com`
+
+SSL certificates are issued automatically!
+
+---
+
+## Step 7: Deploy Your First App
 
 ### Option A: Deploy Example LLM (CPU)
 
@@ -364,59 +440,6 @@ git push
 # ArgoCD auto-deploys!
 ```
 
-## 🔒 Security Hardening (Recommended)
-
-After installation, enable additional security features:
-
-```bash
-sudo ./scripts/enable-security-hardening.sh
-```
-
-This adds:
-- ✅ Kubernetes audit logging
-- ✅ Secrets encryption at rest
-- ✅ Pod Security Standards (restricted)
-- ✅ Network policies (default deny)
-- ✅ Resource quotas
-- ✅ Security headers (HSTS, CSP)
-
-**Already Enabled (Automatic):**
-- ✅ Firewall on all nodes
-- ✅ fail2ban SSH protection
-- ✅ Strong 32-char random passwords
-- ✅ Encrypted network (Tailscale)
-
-**Important: Password Management**
-
-1. Save all credentials to a password manager (Bitwarden/1Password)
-2. **DO NOT** self-host password manager on MyNodeOne
-3. Delete credential files after saving: `sudo rm /root/mynodeone-*.txt`
-
-See `docs/password-management.md` for detailed guide.
-
----
-
-## Access Your Services
-
-### Via Tailscale (Internal)
-
-From your management workstation:
-
-```bash
-# Get service IPs
-kubectl get svc -A | grep LoadBalancer
-
-# Access in browser
-# Grafana:  http://<grafana-ip>
-# ArgoCD:   https://<argocd-ip>
-# MinIO:    http://<minio-ip>
-```
-
-### Via Public Internet (if you configured VPS)
-
-Just visit your domain: `https://yourdomain.com`
-
-SSL certificates are issued automatically!
 
 ## Common Scenarios
 

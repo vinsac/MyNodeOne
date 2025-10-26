@@ -367,22 +367,8 @@ detect_disks() {
         fi
         
         # Check if this disk has ANY mounted partitions
-        HAS_MOUNTED_PARTS=false
-        while IFS= read -r part_mount; do
-            PART=$(echo "$part_mount" | awk '{print $1}')
-            MOUNT=$(echo "$part_mount" | awk '{print $2}')
-            
-            # If partition starts with this disk name and has a mountpoint
-            if [[ "$PART" =~ ^${disk_name} ]] && [ -n "$MOUNT" ]; then
-                HAS_MOUNTED_PARTS=true
-                break
-            fi
-        done < <(lsblk -n -o NAME,MOUNTPOINT)
-        
-        # Only add if no mounted partitions
-        if [ "$HAS_MOUNTED_PARTS" = false ]; then
-            UNMOUNTED_DISKS+=("$DISK")
-        fi
+        # Note: We'll allow disks with mounted partitions but will unmount them before formatting
+        UNMOUNTED_DISKS+=("$DISK")
     done < <(lsblk -n -d -o NAME,TYPE | grep "disk" | awk '{print $1}')
     
     if [ ${#UNMOUNTED_DISKS[@]} -eq 0 ]; then
@@ -642,6 +628,66 @@ warn_data_loss() {
     return 0
 }
 
+prepare_disk_for_format() {
+    local disk="$1"
+    
+    print_info "Preparing $disk for formatting..."
+    
+    # Step 1: Unmount all partitions on this disk
+    print_info "Unmounting any mounted partitions on $disk..."
+    
+    # Get disk name without /dev/ prefix
+    local disk_name=$(basename "$disk")
+    
+    # Find and unmount all partitions
+    local unmount_failed=false
+    while IFS= read -r partition; do
+        if [ -n "$partition" ]; then
+            print_info "  Unmounting $partition..."
+            if ! umount "$partition" 2>/dev/null; then
+                # Try force unmount
+                if ! umount -f "$partition" 2>/dev/null; then
+                    # Try lazy unmount as last resort
+                    if ! umount -l "$partition" 2>/dev/null; then
+                        print_warning "  Could not unmount $partition (may not be mounted)"
+                    fi
+                fi
+            fi
+        fi
+    done < <(lsblk -ln -o NAME,TYPE "$disk" | awk '$2=="part" {print "/dev/"$1}')
+    
+    # Step 2: Wipe filesystem signatures and partition table
+    print_info "Wiping filesystem signatures and partition table..."
+    
+    # Wipe all filesystem, raid, and partition-table signatures
+    if command -v wipefs &> /dev/null; then
+        if wipefs -a "$disk" 2>/dev/null; then
+            print_success "  Disk signatures wiped successfully"
+        else
+            print_warning "  wipefs failed, trying dd method..."
+            # Fallback: zero out first 1MB and last 1MB
+            dd if=/dev/zero of="$disk" bs=1M count=1 2>/dev/null
+            print_success "  Disk cleared with dd"
+        fi
+    else
+        # wipefs not available, use dd
+        print_info "  Using dd to clear disk..."
+        dd if=/dev/zero of="$disk" bs=1M count=1 2>/dev/null
+        print_success "  Disk cleared with dd"
+    fi
+    
+    # Step 3: Inform kernel of partition table changes
+    if command -v partprobe &> /dev/null; then
+        partprobe "$disk" 2>/dev/null
+    fi
+    
+    # Wait a moment for changes to take effect
+    sleep 1
+    
+    print_success "Disk $disk prepared and ready for formatting"
+    return 0
+}
+
 setup_longhorn_disks() {
     print_info "Setting up disks for Longhorn..."
     
@@ -661,6 +707,12 @@ setup_longhorn_disks() {
         
         # Warn about data loss
         if ! warn_data_loss "$disk"; then
+            continue
+        fi
+        
+        # Prepare disk for formatting (unmount partitions, wipe signatures)
+        if ! prepare_disk_for_format "$disk"; then
+            print_error "Failed to prepare $disk for formatting"
             continue
         fi
         
@@ -726,6 +778,12 @@ setup_minio_disks() {
         
         # Warn about data loss
         if ! warn_data_loss "$disk"; then
+            continue
+        fi
+        
+        # Prepare disk for formatting (unmount partitions, wipe signatures)
+        if ! prepare_disk_for_format "$disk"; then
+            print_error "Failed to prepare $disk for formatting"
             continue
         fi
         
@@ -887,6 +945,12 @@ setup_individual_mounts() {
         
         # Warn about data loss
         if ! warn_data_loss "$disk"; then
+            continue
+        fi
+        
+        # Prepare disk for formatting (unmount partitions, wipe signatures)
+        if ! prepare_disk_for_format "$disk"; then
+            print_error "Failed to prepare $disk for formatting"
             continue
         fi
         

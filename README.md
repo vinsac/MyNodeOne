@@ -115,23 +115,27 @@ MyNodeOne includes comprehensive security features:
 **Built-in (Automatic):**
 - ✅ Firewall (UFW) on all nodes
 - ✅ SSH brute-force protection (fail2ban)
-- ✅ Strong random passwords (32 chars)
+- ✅ Strong random passwords (32 characters)
 - ✅ Secure credential storage (chmod 600)
 - ✅ Encrypted network traffic (Tailscale/WireGuard)
 
-**Optional Hardening (One Command):**
+**Additional Hardening (RECOMMENDED for Production):**
 ```bash
-# After installation, enable additional security
+# Run RIGHT AFTER control plane installation, BEFORE adding workers
 sudo ./scripts/enable-security-hardening.sh
 ```
 
-Enables:
-- Kubernetes audit logging
-- Secrets encryption at rest
-- Pod Security Standards (restricted)
-- Network policies (default deny)
-- Resource quotas
-- Security headers (HSTS, CSP)
+**⚠️ Important:** Apply this on your control plane **BEFORE** adding worker nodes! Security policies will then automatically apply to all workers.
+
+**Enables:**
+- ✅ Kubernetes audit logging (track all API activity)
+- ✅ Secrets encryption at rest (encrypt etcd database)
+- ✅ Pod Security Standards (restrict container privileges)
+- ✅ Network policies (default deny, explicit allow)
+- ✅ Resource quotas (prevent resource exhaustion)
+- ✅ Security headers (HSTS, CSP, X-Frame-Options)
+
+**Takes:** 3-5 minutes | **Required:** No, but HIGHLY recommended | **Skip if:** Learning/testing only
 
 **Documentation:**
 - [SECURITY-AUDIT.md](SECURITY-AUDIT.md) - Complete security review

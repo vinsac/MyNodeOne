@@ -25,6 +25,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Get project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Load configuration
 CONFIG_FILE="$HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -270,7 +274,7 @@ EOF
     
     # Label this node as control plane and worker
     kubectl label node "$NODE_NAME" node-role.kubernetes.io/worker=true --overwrite
-    kubectl label node "$NODE_NAME" mynodeone.io/location=$LOCATION --overwrite
+    kubectl label node "$NODE_NAME" mynodeone.io/location=${NODE_LOCATION:-unknown} --overwrite
     kubectl label node "$NODE_NAME" mynodeone.io/storage=true --overwrite
     
     log_success "K3s installed successfully"
@@ -689,12 +693,117 @@ print_summary() {
     echo "  ArgoCD Credentials: /root/mynodeone-argocd-credentials.txt"
     echo "  MinIO Credentials: /root/mynodeone-minio-credentials.txt"
     echo
-    echo "Next Steps:"
-    echo "  1. Add worker nodes: sudo ./scripts/add-worker-node.sh"
-    echo "  2. Configure VPS edge nodes: sudo ./scripts/setup-edge-node.sh"
-    echo "  3. Deploy your first app: ./scripts/create-app.sh my-app"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "Check cluster status: kubectl get nodes,pods -A"
+    echo "🎯 WHAT TO DO NEXT:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "Your control plane is running! Here's what to do next:"
+    echo
+    
+    # Show VPS setup if configured
+    if [ "${VPS_COUNT:-0}" -gt 0 ]; then
+        echo "📡 STEP 1: Configure Your VPS Edge Node(s)"
+        echo "   You said you have $VPS_COUNT VPS node(s) for public internet access."
+        echo
+        echo "   On EACH VPS machine, run:"
+        echo "   ┌─────────────────────────────────────────────────────────────┐"
+        echo "   │ cd ~/MyNodeOne                                              │"
+        echo "   │ sudo ./scripts/mynodeone                                    │"
+        echo "   │ # Select 'VPS Edge Node' when asked                        │"
+        echo "   └─────────────────────────────────────────────────────────────┘"
+        echo
+        echo "   This will:"
+        echo "     • Install Tailscale and join your VPN"
+        echo "     • Set up reverse proxy (Caddy with auto-HTTPS)"
+        echo "     • Configure domains for public access"
+        echo
+    fi
+    
+    echo "📊 STEP ${VPS_COUNT:+2}: Verify Your Cluster is Healthy"
+    echo "   Check that all components are running:"
+    echo "   ┌─────────────────────────────────────────────────────────────┐"
+    echo "   │ kubectl get nodes                                           │"
+    echo "   │ kubectl get pods -A                                         │"
+    echo "   └─────────────────────────────────────────────────────────────┘"
+    echo
+    echo "   All pods should be 'Running' or 'Completed' within 5-10 minutes."
+    echo
+    
+    echo "🌐 STEP ${VPS_COUNT:+3}: Access Web Dashboards"
+    echo "   These are available via Tailscale (100.x.x.x addresses):"
+    echo
+    echo "   📊 Grafana (Metrics & Logs):"
+    echo "      http://$GRAFANA_IP"
+    echo "      Username: admin"
+    echo "      Password: admin (change on first login!)"
+    echo
+    echo "   🚀 ArgoCD (GitOps Deployments):"
+    echo "      https://$ARGOCD_IP"
+    echo "      Credentials in: /root/mynodeone-argocd-credentials.txt"
+    echo
+    echo "   💾 MinIO Console (S3 Storage):"
+    echo "      http://$MINIO_CONSOLE_IP"
+    echo "      Credentials in: /root/mynodeone-minio-credentials.txt"
+    echo
+    echo "   📦 Longhorn UI (Block Storage):"
+    echo "      http://$TAILSCALE_IP:30080"
+    echo
+    
+    echo "🚀 STEP ${VPS_COUNT:+4}: Deploy Your First Application"
+    echo "   Example: Deploy a test web app"
+    echo "   ┌─────────────────────────────────────────────────────────────┐"
+    echo "   │ # Create a simple nginx deployment                          │"
+    echo "   │ kubectl create deployment nginx --image=nginx               │"
+    echo "   │ kubectl expose deployment nginx --port=80 --type=LoadBalancer│"
+    echo "   │                                                              │"
+    echo "   │ # Check the external IP assigned                            │"
+    echo "   │ kubectl get svc nginx                                       │"
+    echo "   │                                                              │"
+    echo "   │ # Access via browser: http://<EXTERNAL-IP>                  │"
+    echo "   └─────────────────────────────────────────────────────────────┘"
+    echo
+    
+    # Show LLM-specific guidance if enabled
+    if [ "${RUN_LLMS:-false}" = "true" ]; then
+        echo "🤖 BONUS: Run LLMs (You enabled AI support!)"
+        echo "   Deploy Ollama for local LLM hosting:"
+        echo "   ┌─────────────────────────────────────────────────────────────┐"
+        echo "   │ # Install Ollama on Kubernetes                              │"
+        echo "   │ kubectl create namespace ollama                             │"
+        echo "   │ # See: docs/ollama-deployment.md for full guide             │"
+        echo "   └─────────────────────────────────────────────────────────────┘"
+        echo
+    fi
+    
+    # Show database guidance if enabled
+    if [ "${RUN_DATABASES:-false}" = "true" ]; then
+        echo "🗄️  BONUS: Deploy Databases (You enabled database support!)"
+        echo "   Easy database deployment with operators:"
+        echo "   ┌─────────────────────────────────────────────────────────────┐"
+        echo "   │ # PostgreSQL example                                        │"
+        echo "   │ kubectl create namespace postgres                           │"
+        echo "   │ # See: docs/database-examples.md for guides                 │"
+        echo "   └─────────────────────────────────────────────────────────────┘"
+        echo
+    fi
+    
+    echo "📚 MORE RESOURCES:"
+    echo "   • Getting Started Guide: $PROJECT_ROOT/GETTING-STARTED.md"
+    echo "   • Operations Guide: $PROJECT_ROOT/docs/operations.md"
+    echo "   • FAQ: $PROJECT_ROOT/FAQ.md"
+    echo "   • Troubleshooting: $PROJECT_ROOT/docs/troubleshooting.md"
+    echo
+    echo "💡 HELPFUL COMMANDS:"
+    echo "   kubectl get all -A              # See everything"
+    echo "   kubectl logs -n <ns> <pod>      # View pod logs"
+    echo "   kubectl describe node <name>    # Node details"
+    echo "   k9s                              # Terminal UI (if installed)"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "🎉 CONGRATULATIONS! Your MyNodeOne cluster is ready!"
+    echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 

@@ -408,7 +408,105 @@ detect_disks() {
     echo
     
     if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?"; then
+        select_disks_for_setup
+    fi
+}
+
+select_disks_for_setup() {
+    print_header "Disk Selection"
+    
+    # Let user choose which disks to use
+    echo "You can choose to use:"
+    echo "  1) All detected disks (${#UNMOUNTED_DISKS[@]} disks)"
+    echo "  2) Select specific disks individually"
+    echo "  3) Skip disk setup (configure later)"
+    echo
+    
+    read -p "$(echo -e ${GREEN}?${NC}) Select option (1-3): " SELECTION_OPTION
+    
+    case $SELECTION_OPTION in
+        1)
+            # Use all disks
+            SELECTED_DISKS=("${UNMOUNTED_DISKS[@]}")
+            print_success "All ${#SELECTED_DISKS[@]} disks selected"
+            echo
+            for disk in "${SELECTED_DISKS[@]}"; do
+                SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+                echo "  ✓ $disk ($SIZE)"
+            done
+            echo
+            setup_disks
+            ;;
+        2)
+            # Let user select specific disks
+            select_individual_disks
+            ;;
+        3)
+            print_info "Skipping disk setup. You can configure storage later."
+            return
+            ;;
+        *)
+            print_error "Invalid option"
+            select_disks_for_setup
+            ;;
+    esac
+}
+
+select_individual_disks() {
+    print_header "Individual Disk Selection"
+    
+    SELECTED_DISKS=()
+    
+    echo "Select which disks you want to use for MyNodeOne storage."
+    echo "You can choose one, some, or all disks."
+    echo
+    
+    for disk in "${UNMOUNTED_DISKS[@]}"; do
+        SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+        MODEL=$(lsblk -n -o MODEL "$disk" | head -1 | xargs)
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Disk: $disk"
+        echo "Size: $SIZE"
+        [ -n "$MODEL" ] && echo "Model: $MODEL"
+        echo
+        
+        if prompt_confirm "Use this disk for storage?"; then
+            SELECTED_DISKS+=("$disk")
+            print_success "✓ $disk added to selection"
+        else
+            print_info "✗ $disk skipped"
+        fi
+        echo
+    done
+    
+    if [ ${#SELECTED_DISKS[@]} -eq 0 ]; then
+        print_warning "No disks selected!"
+        echo
+        if prompt_confirm "Go back to disk selection menu?"; then
+            select_disks_for_setup
+        else
+            print_info "Skipping disk setup."
+        fi
+        return
+    fi
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_success "Selected ${#SELECTED_DISKS[@]} disk(s) for storage:"
+    for disk in "${SELECTED_DISKS[@]}"; do
+        SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+        echo "  ✓ $disk ($SIZE)"
+    done
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    if prompt_confirm "Proceed with these selected disks?"; then
+        # Replace UNMOUNTED_DISKS with SELECTED_DISKS for setup
+        UNMOUNTED_DISKS=("${SELECTED_DISKS[@]}")
         setup_disks
+    else
+        print_info "Cancelled. Going back to selection menu."
+        select_disks_for_setup
     fi
 }
 

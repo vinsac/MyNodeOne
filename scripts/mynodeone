@@ -1050,88 +1050,8 @@ setup_individual_mounts() {
     print_success "Individual disks mounted at: $STORAGE_PATH"
 }
 
-select_node_type() {
-    print_header "Node Type Selection"
-    
-    echo "What type of node do you want to set up?"
-    echo
-    echo "1) Control Plane Node"
-    echo "   First node in your cluster. Runs Kubernetes master."
-    echo "   Minimum: 4GB RAM, 20GB disk"
-    echo "   Recommended: 8GB+ RAM, 100GB+ disk"
-    echo
-    echo "2) Worker Node"
-    echo "   Additional compute node. Runs your applications."
-    echo "   Minimum: 2GB RAM, 20GB disk"
-    echo "   Recommended: 8GB+ RAM, 100GB+ disk"
-    echo
-    echo "3) VPS Edge Node"
-    echo "   Public-facing reverse proxy on a VPS."
-    echo "   Requires: Public IP, 1GB+ RAM"
-    echo
-    echo "4) Management Workstation"
-    echo "   Your laptop/desktop for managing the cluster."
-    echo "   Requires: kubectl installed"
-    echo
-    
-    while true; do
-        read -p "$(echo -e ${GREEN}?${NC}) Select node type (1-4): " NODE_TYPE_NUM
-        
-        case $NODE_TYPE_NUM in
-            1)
-                NODE_TYPE="control-plane"
-                break
-                ;;
-            2)
-                NODE_TYPE="worker"
-                break
-                ;;
-            3)
-                NODE_TYPE="edge"
-                break
-                ;;
-            4)
-                NODE_TYPE="management"
-                break
-                ;;
-            *)
-                print_error "Invalid selection. Please choose 1-4."
-                ;;
-        esac
-    done
-    
-    print_success "Selected: $NODE_TYPE"
-}
-
-run_setup() {
-    case $NODE_TYPE in
-        control-plane|worker|edge)
-            # Run interactive setup first
-            print_info "Running configuration wizard..."
-            bash "$SCRIPT_DIR/interactive-setup.sh"
-            
-            # Then run the appropriate installation script
-            case $NODE_TYPE in
-                control-plane)
-                    print_info "Running control plane bootstrap..."
-                    bash "$SCRIPT_DIR/bootstrap-control-plane.sh"
-                    ;;
-                worker)
-                    print_info "Running worker node setup..."
-                    bash "$SCRIPT_DIR/add-worker-node.sh"
-                    ;;
-                edge)
-                    print_info "Running edge node setup..."
-                    bash "$SCRIPT_DIR/setup-edge-node.sh"
-                    ;;
-            esac
-            ;;
-        management)
-            # Just run interactive setup
-            bash "$SCRIPT_DIR/interactive-setup.sh"
-            ;;
-    esac
-}
+# Functions removed - interactive-setup.sh now handles node type selection
+# The old flow was confusing (asked twice for node type)
 
 show_documentation_info() {
     print_header "Documentation & Help"
@@ -1162,29 +1082,84 @@ main() {
     # Pre-flight checks
     print_header "Pre-Flight Checks"
     check_dependencies || exit 1
-    check_network || exit 1
-    check_system_resources || exit 1
-    check_existing_installation
+    check_architecture
+    check_distro
     
     system_cleanup
-    detect_disks
-    select_node_type
+    
+    # Show documentation FIRST so users know what's coming
     show_documentation_info
     
+    # Run interactive setup wizard to get configuration
+    print_header "Configuration Wizard"
+    print_info "This wizard will help you configure your node..."
     echo
-    if prompt_confirm "Ready to proceed with installation?" "y"; then
-        run_setup
+    
+    if ! prompt_confirm "Ready to start the configuration wizard?"; then
+        print_info "Installation cancelled."
+        exit 0
+    fi
+    
+    # Call interactive setup - it handles node type selection
+    bash "$SCRIPT_DIR/interactive-setup.sh"
+    
+    # Load the configuration created by interactive setup
+    CONFIG_FILE="$HOME/.mynodeone/config.env"
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    else
+        print_error "Configuration file not found. Setup may have failed."
+        exit 1
+    fi
+    
+    # Now do disk detection if this is a storage node
+    if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
+        detect_disks
+    fi
+    
+    echo
+    print_success "Configuration complete!"
+    echo
+    
+    # Proceed with installation
+    if prompt_confirm "Proceed with installation?"; then
+        case "$NODE_TYPE" in
+            control-plane)
+                print_info "Running control plane bootstrap..."
+                bash "$SCRIPT_DIR/bootstrap-control-plane.sh"
+                ;;
+            worker)
+                print_info "Running worker node setup..."
+                bash "$SCRIPT_DIR/add-worker-node.sh"
+                ;;
+            edge)
+                print_info "Running edge node setup..."
+                bash "$SCRIPT_DIR/setup-edge-node.sh"
+                ;;
+            management)
+                print_success "Management workstation configured!"
+                print_info "Follow the instructions above to set up kubectl."
+                exit 0
+                ;;
+            *)
+                print_error "Unknown node type: $NODE_TYPE"
+                exit 1
+                ;;
+        esac
         
+        echo
         print_header "Installation Complete!"
         print_success "Your MyNodeOne node has been set up successfully! 🎉"
         echo
         echo "Next steps:"
-        echo "  1. Review the credentials in /root/mynodeone-*-credentials.txt"
+        echo "  1. Review credentials in /root/mynodeone-*-credentials.txt"
         echo "  2. Check status: kubectl get nodes"
-        echo "  3. Deploy an application: kubectl apply -f manifests/examples/"
+        echo "  3. Deploy apps: kubectl apply -f manifests/examples/"
         echo
     else
-        print_info "Installation cancelled."
+        print_info "Installation cancelled. Configuration saved in $CONFIG_FILE"
+        print_info "Run this script again to install."
+        exit 0
     fi
 }
 

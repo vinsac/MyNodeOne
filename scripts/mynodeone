@@ -434,20 +434,16 @@ detect_disks() {
     for disk in "${UNMOUNTED_DISKS[@]}"; do
         SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
         MODEL=$(lsblk -n -o MODEL "$disk" | head -1 | xargs)
-        echo "  ✓ $disk ($SIZE) ${MODEL:+- $MODEL}"
+        echo "  $disk ($SIZE) ${MODEL:+- $MODEL}"
     done
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
     
-    echo -e "${YELLOW}⚠️  IMPORTANT SAFETY INFORMATION:${NC}"
-    echo "  • OS disk ($OS_DISK) is EXCLUDED for safety"
-    echo "  • Only disks with NO mounted partitions are shown"
-    echo "  • Formatting will ERASE ALL DATA on selected disks"
+    echo -e "${YELLOW}    ⚠️  IMPORTANT SAFETY INFORMATION:${NC}"
+    echo "      • OS disk (/dev/nvme0n1) is EXCLUDED for safety"
+    echo "      • Only disks with NO mounted partitions are shown"
+    echo "      • Formatting will ERASE ALL DATA on selected disks"
     echo
-    
-    if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?"; then
-        select_disks_for_setup
-    fi
 }
 
 select_disks_for_setup() {
@@ -815,12 +811,18 @@ setup_longhorn_disks() {
             print_warning "Already in /etc/fstab"
         fi
         
-        # Mount
-        if mount "$MOUNT_POINT" 2>/dev/null; then
+        # Mount using fstab entry (by UUID)
+        if mount -a 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
             print_success "Mounted $disk at $MOUNT_POINT"
         else
-            print_error "Failed to mount $disk"
-            continue
+            print_error "Failed to mount $disk - trying direct mount"
+            # Fallback: try mounting directly
+            if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null; then
+                print_success "Mounted $disk at $MOUNT_POINT (direct mount)"
+            else
+                print_error "Failed to mount $disk - check system logs: journalctl -xe"
+                continue
+            fi
         fi
     done
     
@@ -896,11 +898,17 @@ setup_minio_disks() {
             print_warning "Already in /etc/fstab"
         fi
         
-        if mount "$MOUNT_POINT" 2>/dev/null; then
+        # Mount using fstab entry (by UUID)
+        if mount -a 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
             print_success "Mounted $disk at $MOUNT_POINT"
         else
-            print_error "Failed to mount $disk"
-            continue
+            print_error "Failed to mount $disk - trying direct mount"
+            if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null; then
+                print_success "Mounted $disk at $MOUNT_POINT (direct mount)"
+            else
+                print_error "Failed to mount $disk - check: journalctl -xe"
+                continue
+            fi
         fi
     done
     
@@ -1090,11 +1098,17 @@ setup_individual_mounts() {
             print_warning "Already in /etc/fstab"
         fi
         
-        if mount "$MOUNT_POINT" 2>/dev/null; then
+        # Mount using fstab entry (by UUID)
+        if mount -a 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
             print_success "Mounted $disk at $MOUNT_POINT"
         else
-            print_error "Failed to mount $disk"
-            continue
+            print_error "Failed to mount $disk - trying direct mount"
+            if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null; then
+                print_success "Mounted $disk at $MOUNT_POINT (direct mount)"
+            else
+                print_error "Failed to mount $disk - check: journalctl -xe"
+                continue
+            fi
         fi
     done
     

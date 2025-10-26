@@ -1183,7 +1183,37 @@ main() {
             fi
         else
             print_warning "No additional disks detected for storage setup."
-            print_info "Storage will use the OS disk (not recommended for production)."
+            echo
+            print_info "Single-disk configuration detected."
+            print_info "Storage will be configured automatically using: /var/lib/longhorn"
+            echo
+            echo "This is SAFE and works well for:"
+            echo "  ✅ Home labs and learning"
+            echo "  ✅ Development environments"
+            echo "  ✅ Personal projects and small applications"
+            echo "  ✅ Machines with 500GB+ free space"
+            echo
+            echo "Limitations:"
+            echo "  ⚠️  Storage limited to OS disk free space"
+            echo "  ⚠️  Performance may be lower (OS + apps share I/O)"
+            echo "  ⚠️  No redundancy (if disk fails, data is lost)"
+            echo
+            print_info "You can add more disks later! Just plug them in and run:"
+            echo "  sudo ./scripts/add-storage-disk.sh"
+            echo
+            
+            if prompt_confirm "Proceed with single-disk setup?"; then
+                print_success "Single-disk configuration accepted."
+                print_info "Longhorn will use /var/lib/longhorn for storage."
+            else
+                print_error "Installation cancelled."
+                echo
+                echo "Options:"
+                echo "  1. Add additional disks to this machine"
+                echo "  2. Re-run installer after adding disks"
+                echo "  3. See docs/single-disk-setup.md for more information"
+                exit 0
+            fi
         fi
     fi
     

@@ -115,6 +115,40 @@ Enables:
 - Perfect for learning, development, or small projects
 - Can still run 10-20 services easily
 
+### What if I only have one disk (no additional storage)?
+
+**No problem!** MyNodeOne works perfectly on single-disk machines:
+
+**Common scenario:**
+- Most laptops, mini PCs, and home machines have just one disk
+- The OS is installed on this disk
+- No additional storage disks available
+
+**What MyNodeOne does automatically:**
+- ✅ Detects single-disk configuration
+- ✅ Automatically configures storage on OS disk at `/var/lib/longhorn`
+- ✅ Installation continues seamlessly
+- ✅ No manual configuration needed
+
+**Performance:**
+- ✅ Works great for home labs, development, and learning
+- ✅ Handles personal websites, databases, and most applications
+- ✅ Especially good with SSDs (fast enough for most uses)
+- ⚠️ Shared I/O with OS (not ideal for high-traffic production)
+
+**Capacity:**
+- Uses free space on your OS disk
+- Recommended: 500GB+ total disk with 100GB+ free
+- Monitor with: `df -h /var/lib/longhorn`
+
+**Can I add disks later?**
+- ✅ Yes! Plug in additional disks anytime
+- ✅ Run: `sudo ./scripts/add-storage-disk.sh`
+- ✅ Longhorn automatically uses new disks
+- ✅ Zero downtime migration
+
+**See:** [docs/single-disk-setup.md](docs/single-disk-setup.md) for complete guide
+
 ### How much does hardware cost?
 
 **$0 to $1000 depending on what you have:**

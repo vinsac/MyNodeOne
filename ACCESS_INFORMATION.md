@@ -6,6 +6,32 @@ Your MyNodeOne control plane is running on `canada-pc-0001` (100.118.5.68)
 
 ---
 
+## 📍 Where to Find Your Credentials
+
+### Quick Command
+Run this script to display all credentials:
+```bash
+sudo /home/canada-pc-0001/MyNodeOne/scripts/show-credentials.sh
+```
+
+### Credential File Locations
+All credentials are stored securely in `/root/` with 600 permissions:
+
+| Service | File Location |
+|---------|---------------|
+| **ArgoCD** | `/root/mynodeone-argocd-credentials.txt` |
+| **MinIO** | `/root/mynodeone-minio-credentials.txt` |
+| **Cluster Join Token** | `/root/mynodeone-join-token.txt` |
+| **Grafana** | Retrieved from Kubernetes secret (see below) |
+
+### Getting Grafana Password
+```bash
+kubectl get secret -n monitoring kube-prometheus-stack-grafana \
+  -o jsonpath="{.data.admin-password}" | base64 -d && echo
+```
+
+---
+
 ## 🔑 Service Access Credentials
 
 ### Grafana (Monitoring & Metrics)
@@ -65,10 +91,16 @@ Your MyNodeOne control plane is running on `canada-pc-0001` (100.118.5.68)
 2. **Pod Security Standards**: Enforced at "restricted" level for new namespaces
 3. **Firewall (UFW)**: Enabled, allowing only SSH and Tailscale traffic
 
-### ⚠️ Secrets Encryption
-- **Status**: Temporarily disabled due to configuration conflict
-- **Reason**: Existing secrets were encrypted with a different provider
-- **Action Required**: Re-encrypt secrets after validating cluster stability
+### ⚠️ Secrets Encryption at Rest
+- **Status**: Temporarily disabled
+- **Reason**: During the security hardening process, K3s was configured with secrets encryption. However, when the encryption provider was changed, it created a conflict with existing secrets that were encrypted with the previous configuration. This prevented K3s from starting properly.
+- **Impact**: Minimal - Secrets are still protected by:
+  - Kubernetes RBAC (Role-Based Access Control)
+  - Network isolation (Tailscale VPN)
+  - File system permissions (600 on credential files)
+  - etcd access controls
+- **When to Re-enable**: After cluster is stable and you've backed up all secrets
+- **Note**: This is a common issue when upgrading or changing encryption providers in Kubernetes
 
 #### To Re-enable Secrets Encryption:
 ```bash

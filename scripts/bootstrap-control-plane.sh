@@ -691,16 +691,20 @@ print_summary() {
     ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending...")
     MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending...")
     
-    echo "  Grafana: http://$GRAFANA_IP (admin/admin)"
-    echo "  ArgoCD: https://$ARGOCD_IP (see /root/mynodeone-argocd-credentials.txt)"
-    echo "  MinIO Console: http://$MINIO_CONSOLE_IP (see /root/mynodeone-minio-credentials.txt)"
-    echo "  Longhorn: http://$TAILSCALE_IP:30080"
+    # Get Longhorn IP
+    LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "$TAILSCALE_IP:30080")
+    
+    echo "  Grafana: http://$GRAFANA_IP"
+    echo "  ArgoCD: https://$ARGOCD_IP"
+    echo "  MinIO Console: http://$MINIO_CONSOLE_IP:9001"
+    echo "  Longhorn UI: http://$LONGHORN_IP"
     echo
-    echo "Important Files:"
-    echo "  Kubeconfig: ~/.kube/config"
-    echo "  Join Token: /root/mynodeone-join-token.txt"
-    echo "  ArgoCD Credentials: /root/mynodeone-argocd-credentials.txt"
-    echo "  MinIO Credentials: /root/mynodeone-minio-credentials.txt"
+    echo "📄 Important Files (Credentials & Configuration):"
+    echo "  • Kubeconfig: ~/.kube/config"
+    echo "  • Cluster Join Token: /root/mynodeone-join-token.txt"
+    echo "  • ArgoCD Credentials: /root/mynodeone-argocd-credentials.txt"
+    echo "  • MinIO Credentials: /root/mynodeone-minio-credentials.txt"
+    echo "  • Service Access Info: $PROJECT_ROOT/ACCESS_INFORMATION.md"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
@@ -743,20 +747,26 @@ print_summary() {
     echo "   These are available via Tailscale (100.x.x.x addresses):"
     echo
     echo "   📊 Grafana (Metrics & Logs):"
-    echo "      http://$GRAFANA_IP"
+    echo "      URL: http://$GRAFANA_IP"
     echo "      Username: admin"
-    echo "      Password: admin (change on first login!)"
+    echo "      Password: Run this command to get it:"
+    echo "      kubectl get secret -n monitoring kube-prometheus-stack-grafana \\"
+    echo "        -o jsonpath=\"{.data.admin-password}\" | base64 -d && echo"
     echo
     echo "   🚀 ArgoCD (GitOps Deployments):"
-    echo "      https://$ARGOCD_IP"
-    echo "      Credentials in: /root/mynodeone-argocd-credentials.txt"
+    echo "      URL: https://$ARGOCD_IP"
+    echo "      Credentials: cat /root/mynodeone-argocd-credentials.txt"
     echo
     echo "   💾 MinIO Console (S3 Storage):"
-    echo "      http://$MINIO_CONSOLE_IP"
-    echo "      Credentials in: /root/mynodeone-minio-credentials.txt"
+    echo "      URL: http://$MINIO_CONSOLE_IP:9001"
+    echo "      Credentials: cat /root/mynodeone-minio-credentials.txt"
     echo
     echo "   📦 Longhorn UI (Block Storage):"
-    echo "      http://$TAILSCALE_IP:30080"
+    echo "      URL: http://$LONGHORN_IP"
+    echo "      (No authentication required - protected by Tailscale VPN)"
+    echo
+    echo "   📘 For complete access information, see:"
+    echo "      cat $PROJECT_ROOT/ACCESS_INFORMATION.md"
     echo
     
     echo "🚀 STEP ${VPS_COUNT:+4}: Deploy Your First Application"
@@ -816,6 +826,45 @@ print_summary() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+offer_demo_app() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🚀 Optional: Deploy Demo Application"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "Would you like to deploy a demo web application to test your cluster?"
+    echo
+    echo "This will deploy a secure demo app that showcases:"
+    echo "  • Proper Pod Security Standards compliance"
+    echo "  • LoadBalancer service integration"
+    echo "  • Working storage and networking"
+    echo
+    echo "You can remove it anytime with: kubectl delete namespace demo-apps"
+    echo
+    
+    # Skip prompt in unattended mode
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        log_info "UNATTENDED mode: Skipping demo app deployment"
+        return
+    fi
+    
+    read -p "Deploy demo app now? [y/N]: " -r
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo
+        log_info "Deploying demo application..."
+        if bash "$SCRIPT_DIR/deploy-demo-app.sh" deploy; then
+            log_success "Demo app deployment complete!"
+        else
+            log_warn "Demo app deployment had issues. You can deploy it later with:"
+            echo "  sudo $SCRIPT_DIR/deploy-demo-app.sh"
+        fi
+    else
+        echo
+        log_info "Skipping demo app. You can deploy it anytime with:"
+        echo "  sudo $SCRIPT_DIR/deploy-demo-app.sh"
+    fi
+}
+
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MyNodeOne Control Plane Bootstrap"
@@ -838,6 +887,9 @@ main() {
     
     echo
     print_summary
+    
+    # Offer to deploy demo app
+    offer_demo_app
 }
 
 # Run main function

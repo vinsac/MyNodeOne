@@ -493,9 +493,17 @@ kubectl apply -f my-app-ingress.yaml
 
 ### Getting Started
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** - Entry point for new users ⭐
+- **[QUICK_START.md](QUICK_START.md)** - 5-minute quick start guide ⭐ NEW
 - **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step installation guide
+- **[ACCESS_INFORMATION.md](ACCESS_INFORMATION.md)** - Service credentials and access ⭐ NEW
 - **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** - Find what you need quickly
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
+
+### Application Deployment
+- **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete app deployment guide ⭐ NEW
+- **scripts/manage-apps.sh** - One-click app deployment script ⭐ NEW
+- **scripts/deploy-demo-app.sh** - Deploy demo application ⭐ NEW
+- **scripts/show-credentials.sh** - Display all service credentials ⭐ NEW
 
 ### User Guides
 - **[docs/comparison-guide.md](docs/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐

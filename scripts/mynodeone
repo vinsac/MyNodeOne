@@ -1164,9 +1164,24 @@ main() {
         exit 1
     fi
     
-    # Now do disk detection if this is a storage node
+    # Now do disk detection and setup if this is a storage node
     if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
         detect_disks
+        
+        # Now let user configure disks interactively
+        if [ ${#UNMOUNTED_DISKS[@]} -gt 0 ]; then
+            echo
+            print_info "Found ${#UNMOUNTED_DISKS[@]} disk(s) available for storage."
+            echo
+            if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?"; then
+                select_disks_for_setup
+            else
+                print_info "Skipping disk setup. You can configure storage later."
+            fi
+        else
+            print_warning "No additional disks detected for storage setup."
+            print_info "Storage will use the OS disk (not recommended for production)."
+        fi
     fi
     
     echo

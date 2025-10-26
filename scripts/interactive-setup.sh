@@ -277,7 +277,17 @@ configure_cluster_info() {
     prompt_input "What should we call this node?" NODE_NAME "$HOSTNAME"
     
     # Location/region label
-    prompt_input "Where is this node located? (e.g., toronto, newyork, home)" NODE_LOCATION "home"
+    echo
+    echo "ℹ Location helps you identify nodes in multi-location clusters."
+    echo "  Examples:"
+    echo "    • Home server: 'home', 'basement', 'office'"
+    echo "    • Data center: 'toronto', 'newyork', 'aws-us-east'"
+    echo "    • VPS provider: 'digitalocean-nyc', 'linode-ca', 'hetzner-de'"
+    echo
+    echo "  💡 Tip: Use the city name or provider location for VPS nodes"
+    echo "          (e.g., 'digitalocean-toronto' or just 'toronto')"
+    echo
+    prompt_input "Where is this node located?" NODE_LOCATION "home"
     
     if [ "$NODE_TYPE" = "worker" ]; then
         echo

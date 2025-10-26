@@ -307,32 +307,41 @@ configure_cluster_info() {
 }
 
 configure_storage() {
+    # Storage configuration is handled by the main mynodeone script
+    # after this wizard completes. The main script will:
+    # - Detect available disks
+    # - Let you choose which disks to use
+    # - Let you choose storage type (Longhorn/MinIO/RAID/Individual)
+    # - Automatically format and mount disks
+    # 
+    # We don't ask for storage details here to avoid confusing users
+    # before disks are actually set up.
+    
     if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
         print_header "Storage Configuration"
         
-        print_info "MyNodeOne uses Longhorn for distributed storage."
-        print_info "Longhorn can use any mounted disk or directory."
+        echo "Storage setup will happen after this configuration wizard."
+        echo
+        echo "The main installer will:"
+        echo "  1. Detect your available disks"
+        echo "  2. Let you choose which disks to use"
+        echo "  3. Let you choose storage type:"
+        echo "     • Longhorn (recommended for most users)"
+        echo "     • MinIO (S3-compatible object storage)"
+        echo "     • RAID array (manual redundancy)"
+        echo "     • Individual mounts (no redundancy)"
+        echo "  4. Automatically format and mount your disks"
+        echo
+        print_info "You don't need to configure storage paths now."
+        print_info "The disk setup wizard will guide you through everything!"
         echo
         
-        # Detect available disks
-        print_info "Available disks:"
-        lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | grep -E "disk|part"
-        echo
-        
-        prompt_input "Path for Longhorn storage" LONGHORN_PATH "/mnt/longhorn"
-        
-        if [ ! -d "$LONGHORN_PATH" ]; then
-            print_warning "Directory $LONGHORN_PATH does not exist."
-            if prompt_confirm "Create it now?"; then
-                sudo mkdir -p "$LONGHORN_PATH"
-                print_success "Created $LONGHORN_PATH"
-            fi
-        fi
-        
-        if [ "$NODE_TYPE" = "control-plane" ]; then
-            echo
-            print_info "MinIO (S3-compatible object storage) configuration:"
-            prompt_input "Storage size for MinIO" MINIO_STORAGE_SIZE "500Gi"
+        if prompt_confirm "Ready to proceed?"; then
+            # Just continue, storage setup happens in main script
+            true
+        else
+            print_info "You can run this wizard again anytime."
+            exit 0
         fi
         
         echo
@@ -417,18 +426,14 @@ SSL_EMAIL="$SSL_EMAIL"
 EOF
     fi
 
-    if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
-        cat >> "$CONFIG_FILE" <<EOF
-
-# Storage
-LONGHORN_PATH="$LONGHORN_PATH"
-EOF
-    fi
-
     if [ "$NODE_TYPE" = "control-plane" ]; then
         cat >> "$CONFIG_FILE" <<EOF
-MINIO_STORAGE_SIZE="$MINIO_STORAGE_SIZE"
+
+# Network
 NUM_VPS="$NUM_VPS"
+
+# Storage - will be configured by main installer
+# LONGHORN_PATH and storage type will be set during disk setup
 
 # Features
 ENABLE_LLM="$ENABLE_LLM"
@@ -445,20 +450,23 @@ EOF
 }
 
 show_next_steps() {
-    print_header "Next Steps"
+    print_header "Configuration Complete"
     
     case $NODE_TYPE in
         control-plane)
-            echo "Your control plane is configured! Next:"
+            echo "✅ Your control plane configuration is saved!"
             echo
-            echo "1. Run the bootstrap script:"
-            echo -e "   ${CYAN}sudo ./scripts/bootstrap-control-plane.sh${NC}"
+            print_info "The installer will now continue automatically with:"
             echo
-            echo "2. After bootstrap completes, save the join token displayed"
+            echo "  1. Disk detection and setup (if you have additional disks)"
+            echo "  2. Control plane installation (K3s, Longhorn, monitoring)"
+            echo "  3. Generate join tokens for worker nodes"
             echo
-            echo "3. Configure your VPS edge nodes (if any)"
-            echo
-            echo "4. Add worker nodes as needed"
+            if [ "$NUM_VPS" -gt 0 ]; then
+                print_info "After installation, you'll need to:"
+                echo "  • Configure your $NUM_VPS VPS edge node(s)"
+                echo "  • Run this setup wizard on each VPS"
+            fi
             ;;
         worker)
             echo "Your worker node is configured! Next:"

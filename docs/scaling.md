@@ -306,12 +306,12 @@ Configure Traefik geo-routing (advanced):
 # /etc/traefik/dynamic/geo-routing.yml
 http:
   routers:
-    app-na:
-      rule: "Host(`myapp.com`) && ClientIP(`<NA-IP-Range>`)"
-      service: toronto-backend
+    app-us:
+      rule: "Host(`myapp.com`) && ClientIP(`<US-IP-Range>`)"
+      service: us-backend
     app-eu:
       rule: "Host(`myapp.com`) && ClientIP(`<EU-IP-Range>`)"
-      service: europe-backend
+      service: eu-backend
 ```
 
 ## Monitoring at Scale

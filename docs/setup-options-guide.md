@@ -26,7 +26,7 @@ Complete guide to understanding each setup option and choosing the right one for
 - ✅ Your most powerful/reliable machine
 
 **Example hardware:**
-- Home server (Ryzen 9950X, 256GB RAM like toronto-0001)
+- Home server or gaming PC (16GB+ RAM recommended)
 - Mini PC (Intel NUC, Beelink, etc.)
 - Old desktop/workstation
 
@@ -54,7 +54,7 @@ Complete guide to understanding each setup option and choosing the right one for
 - ✅ To separate workloads
 
 **Example hardware:**
-- Second home server (toronto-0002)
+- Second machine (old PC, mini PC, etc.)
 - Raspberry Pi 4/5
 - Old laptop
 - Another mini PC
@@ -111,7 +111,7 @@ Complete guide to understanding each setup option and choosing the right one for
 - ✅ For viewing monitoring dashboards
 
 **Example:**
-- Your laptop (vinay-vivobook)
+- Your laptop or desktop
 - Your desktop PC
 - Any workstation with Tailscale
 

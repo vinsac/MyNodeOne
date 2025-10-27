@@ -47,13 +47,13 @@ Internet → VPS (Public IP) → Tailscale → Toronto Nodes
 
 #### Node Types
 
-**Control Plane Node (toronto-0001)**
+**Control Plane Node (Example: control-plane)**
 - Runs K3s server
 - Hosts cluster state (etcd)
 - Schedules workloads
 - Also acts as worker node
 
-**Worker Nodes (toronto-000x)**
+**Worker Nodes (Example: worker-001, worker-002)**
 - Run application workloads
 - Can be added/removed dynamically
 - Automatically discovered via Tailscale
@@ -72,11 +72,11 @@ Internet → VPS (Public IP) → Tailscale → Toronto Nodes
   - Creates snapshots and backups
   - Provides PersistentVolumes to Kubernetes
 - **Configuration**:
-  - Uses 2x18TB HDDs on Toronto nodes
+  - Uses available storage on your nodes
   - Replication factor: Adjusts based on node count
-  - Default: 1 replica (toronto-0001 only)
-  - With toronto-0002: 2 replicas
-  - With toronto-0003: 3 replicas
+  - Default: 1 replica (single node)
+  - With 2 nodes: 2 replicas
+  - With 3 nodes: 3 replicas
 
 #### MinIO - Object Storage
 - **Purpose**: S3-compatible object storage
@@ -179,7 +179,7 @@ Application Pods (replicated)
 ### Internal Service Access
 
 ```
-Developer (vivobook: 100.122.30.88)
+Developer (laptop: 100.x.x.x)
   │
   │ Tailscale
   ↓
@@ -221,30 +221,30 @@ Longhorn StorageClass
   ↓
 Replicated Volume (2x18TB HDDs)
   │
-  ├─→ toronto-0001: Replica 1
-  ├─→ toronto-0002: Replica 2 (when added)
-  └─→ toronto-0003: Replica 3 (when added)
+  ├─→ Node 1: Replica 1
+  ├─→ Node 2: Replica 2 (when added)
+  └─→ Node 3: Replica 3 (when added)
 ```
 
 ## Scaling Scenarios
 
 ### Scenario 1: Single Node (Current)
-- toronto-0001: Control plane + worker
+- Your first node: Control plane + worker
 - Storage: Local only, no replication
 - HA: None (downtime if node fails)
 - Suitable for: Development, testing, low-traffic apps
 
-### Scenario 2: Three Nodes (In 2 months)
-- toronto-0001: Control plane + worker
-- toronto-0002: Worker
-- toronto-0003: Worker
+### Scenario 2: Three Nodes (Future)
+- Node 1: Control plane + worker
+- Node 2: Worker
+- Node 3: Worker
 - Storage: 3x replication (high durability)
 - HA: Apps survive 1 node failure
 - Suitable for: Production apps, higher traffic
 
 ### Scenario 3: Multiple Regions (Future)
-- Toronto cluster (toronto-000x)
-- Montreal cluster (montreal-000x)
+- Home cluster (node-001, node-002)
+- Office cluster (node-003, node-004)
 - Cross-region replication
 - Geo-routing via VPS edge nodes
 
@@ -269,7 +269,7 @@ Replicated Volume (2x18TB HDDs)
 
 ## Resource Allocation
 
-### toronto-0001 (256GB RAM, Ryzen 9950X)
+### Example Control Plane (16-32GB RAM, 4-8 cores)
 
 **Control Plane** (~4GB RAM)
 - K3s server
@@ -352,8 +352,8 @@ Replicated Volume (2x18TB HDDs)
 ## Limitations & Trade-offs
 
 ### Single Point of Failure (Current)
-- If toronto-0001 dies, everything is down
-- Mitigation: Add toronto-0002, toronto-0003
+- If your only node dies, everything is down
+- Mitigation: Add worker nodes for redundancy
 
 ### Home ISP Dependencies
 - Upload speed limits (500 Mbps is good though)

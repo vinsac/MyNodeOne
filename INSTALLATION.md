@@ -298,12 +298,8 @@ sudo ./scripts/enable-security-hardening.sh
 **Required:** No, but HIGHLY recommended for production use  
 **Skip if:** Learning/testing only
 
-> 💡 **Password Management:** After installation completes:
-> 1. Copy all credentials from `/root/mynodeone-*.txt` to a password manager (Bitwarden/1Password)
-> 2. **DO NOT** self-host password manager on MyNodeOne (circular dependency risk)
-> 3. Delete credential files: `sudo rm /root/mynodeone-*.txt`
-> 
-> See `docs/password-management.md` for detailed guide.
+> 💡 **Important:** Security hardening is now **prompted during installation**!  
+> The installation wizard will ask if you want to enable it. You can also run it manually anytime.
 
 **After hardening is complete, you can now safely add worker nodes!**
 

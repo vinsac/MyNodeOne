@@ -359,7 +359,7 @@ All scripts are configured to use Tailscale by default. No additional setup need
 │  192.168.1.0/24 │
 │                 │
 │  ┌───────────┐  │      ┌──────────┐
-│  │toronto-001│──┼──────│ Internet │
+│  │  Node-1   │──┼──────│ Internet │
 │  │100.x.x.x  │  │      └─────┬────┘
 │  └───────────┘  │            │
 └─────────────────┘            │
@@ -369,7 +369,7 @@ All scripts are configured to use Tailscale by default. No additional setup need
 │  192.168.2.0/24 │      │  Relay   │      │  Public IP   │
 │                 │      └─────┬────┘      │              │
 │  ┌───────────┐  │            │           │ ┌──────────┐ │
-│  │toronto-002│──┼────────────┴───────────┼─│ VPS-Edge │ │
+│  │  Node-2   │──┼────────────┴───────────┼─│ VPS-Edge │ │
 │  │100.y.y.y  │  │                        │ │100.z.z.z │ │
 │  └───────────┘  │                        │ └──────────┘ │
 └─────────────────┘                        └──────────────┘

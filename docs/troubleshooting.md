@@ -64,7 +64,7 @@ Events:
 kubectl scale deployment/<deployment-name> --replicas=1
 
 # Or increase node resources
-# Or add toronto-0002 node
+# Or add a worker node
 ```
 
 #### No Node Available
@@ -517,7 +517,7 @@ docker logs traefik
 cat /etc/traefik/dynamic/mynodeone-routes.yml
 
 # Test Tailscale connectivity to Toronto
-ping <toronto-tailscale-ip>
+ping <control-plane-tailscale-ip>
 ```
 
 **Common Causes & Solutions**:
@@ -606,7 +606,7 @@ sudo iotop
 
 ```bash
 # 1. Check control plane node
-ssh <toronto-0001-tailscale-ip>
+ssh <control-plane-tailscale-ip>
 sudo systemctl status k3s
 
 # 2. Restart K3s

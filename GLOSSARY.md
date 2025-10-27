@@ -39,7 +39,7 @@
 
 **Example:** Like a project manager coordinating team members.
 
-**Your Setup:** This is your first/main computer (like toronto-0001).
+**Your Setup:** This is your first/main computer (your control plane).
 
 ---
 
@@ -48,7 +48,7 @@
 
 **Example:** Like extra employees helping with the workload.
 
-**Your Setup:** These are computers you add later (toronto-0002, toronto-0003).
+**Your Setup:** These are computers you add later (worker-001, worker-002, etc.).
 
 ---
 

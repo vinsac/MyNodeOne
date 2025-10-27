@@ -186,10 +186,14 @@ fetch_kubeconfig() {
     
     # Better approach: Copy file to temp location with sudo, then scp it
     log_info "Copying kubeconfig to temporary location on control plane..."
+    echo "Note: You'll be prompted for the sudo password on the control plane."
+    echo
     
-    if ssh "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml" 2>/dev/null; then
+    # Use -t to allocate pseudo-terminal for sudo password prompt, but keep it simple
+    if ssh -t "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml"; then
+        echo
         log_info "Downloading kubeconfig via SCP..."
-        if scp "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" ~/.kube/config 2>/dev/null; then
+        if scp -q "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" ~/.kube/config; then
             # Clean up temp file on remote
             ssh "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "rm -f /tmp/k3s-config.yaml" 2>/dev/null || true
             chmod 600 ~/.kube/config
@@ -199,6 +203,7 @@ fetch_kubeconfig() {
             exit 1
         fi
     else
+        echo
         log_error "Failed to access kubeconfig on control plane"
         echo
         echo "Troubleshooting:"

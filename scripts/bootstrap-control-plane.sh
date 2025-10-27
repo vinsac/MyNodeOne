@@ -1000,56 +1000,27 @@ offer_security_hardening() {
     fi
 }
 
-offer_local_dns() {
+setup_local_dns_automatic() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🌐 Optional: Setup Local DNS (.local domains)"
+    echo "  🌐 Setting up Local DNS (.local domains)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "Would you like to set up easy-to-remember domain names?"
-    echo
-    echo "Instead of IP addresses (e.g., http://100.118.5.203), you can use:"
-    echo "  • http://grafana.mynodeone.local"
-    echo "  • http://argocd.mynodeone.local"
-    echo "  • http://minio.mynodeone.local"
-    echo
-    echo "This also creates a setup script for your laptop!"
-    echo
-    echo "Recommended: YES (makes services easier to access)"
+    log_info "Configuring easy-to-remember domain names for services..."
     echo
     
-    # Skip prompt in unattended mode
-    if [ "${UNATTENDED:-0}" = "1" ]; then
-        log_info "UNATTENDED mode: Setting up local DNS automatically"
+    if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
+        log_success "Local DNS setup complete!"
         echo
-        if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
-            log_success "Local DNS setup complete!"
-            echo
-            echo "✅ You can now use .local domain names"
-            echo "📄 Laptop setup script created: $PROJECT_ROOT/setup-client-dns.sh"
-        else
-            log_warn "Local DNS setup had issues. You can set it up later with:"
-            echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
-        fi
-        return
-    fi
-    
-    read -p "Set up local DNS? [Y/n]: " -r
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        echo "✅ You can now use .local domain names on this server"
+        echo "📄 Client setup script created: $PROJECT_ROOT/setup-client-dns.sh"
         echo
-        log_info "Setting up local DNS..."
-        if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
-            log_success "Local DNS setup complete!"
-            echo
-            echo "✅ You can now use .local domain names"
-            echo "📄 Laptop setup script created: $PROJECT_ROOT/setup-client-dns.sh"
-        else
-            log_warn "Local DNS setup had issues. You can set it up later with:"
-            echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
-        fi
+        log_info "To access services from your laptop/desktop:"
+        echo "  1. Ensure Tailscale is installed and connected"
+        echo "  2. Copy setup-client-dns.sh to that device"
+        echo "  3. Run: sudo bash setup-client-dns.sh"
     else
-        echo
-        log_info "Skipping local DNS. You can set it up anytime with:"
+        log_warn "Local DNS setup had issues. You can set it up later with:"
         echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
     fi
 }
@@ -1198,8 +1169,8 @@ main() {
     # Offer security hardening
     offer_security_hardening
     
-    # Offer local DNS setup
-    offer_local_dns
+    # Setup local DNS automatically
+    setup_local_dns_automatic
     
     # Offer to deploy demo app
     offer_demo_app

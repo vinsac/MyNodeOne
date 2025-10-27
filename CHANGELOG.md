@@ -1,5 +1,28 @@
 # MyNodeOne Changelog
 
+## Version 1.0.1 (October 26, 2025)
+
+### Repository Organization & Documentation Improvements
+
+**Repository cleanup and professional restructuring:**
+- 🗂️ Organized documentation into logical folders (`docs/guides/`, `docs/reference/`)
+- 🗑️ Removed temporary audit files from repository
+- 📝 Updated all documentation links to reflect new structure
+- ✨ Root directory now contains only essential files (professional GitHub layout)
+- 📚 Clear separation between how-to guides, reference docs, and technical documentation
+
+**Documentation fixes for non-technical users:**
+- 🎮 Added gaming PC as explicit use case
+- 🔧 Replaced all personal machine names (toronto-*, vivobook) with generic examples
+- 💾 Updated hardware requirements to realistic specs (16GB+ instead of 256GB)
+- 🔐 Fixed credential flow documentation to match automatic deletion
+- 🌐 Added local DNS setup (.local domains) as optional feature
+- 💻 Created automated laptop setup script (no manual kubeconfig copying needed)
+- 🤖 Added LLM chat application deployment script
+- ✅ All examples now use generic, relatable names
+
+---
+
 ## Version 1.0.0 (October 25, 2025)
 
 **First stable release!** 🎉

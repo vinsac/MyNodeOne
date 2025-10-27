@@ -184,23 +184,33 @@ fetch_kubeconfig() {
     echo "You may be prompted for the sudo password on the control plane."
     echo
     
-    if ssh -t "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.tmp 2>/dev/null; then
-        mv ~/.kube/config.tmp ~/.kube/config
-        chmod 600 ~/.kube/config
-        log_success "Kubeconfig retrieved successfully"
+    # Better approach: Copy file to temp location with sudo, then scp it
+    log_info "Copying kubeconfig to temporary location on control plane..."
+    
+    if ssh "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml" 2>/dev/null; then
+        log_info "Downloading kubeconfig via SCP..."
+        if scp "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" ~/.kube/config 2>/dev/null; then
+            # Clean up temp file on remote
+            ssh "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "rm -f /tmp/k3s-config.yaml" 2>/dev/null || true
+            chmod 600 ~/.kube/config
+            log_success "Kubeconfig retrieved successfully"
+        else
+            log_error "Failed to download kubeconfig via SCP"
+            exit 1
+        fi
     else
-        log_error "Failed to retrieve kubeconfig from /etc/rancher/k3s/k3s.yaml"
+        log_error "Failed to access kubeconfig on control plane"
         echo
         echo "Troubleshooting:"
         echo "  • Ensure K3s is installed on control plane"
         echo "  • Check file exists: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP 'sudo ls -l /etc/rancher/k3s/k3s.yaml'"
         echo "  • Verify user '$CONTROL_PLANE_USER' has sudo access"
+        echo "  • Try manually: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP 'sudo cat /etc/rancher/k3s/k3s.yaml'"
         echo
         echo "Manual steps to fix:"
         echo "  1. SSH to control plane: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP"
-        echo "  2. Copy kubeconfig: sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config"
-        echo "  3. Fix permissions: sudo chown $CONTROL_PLANE_USER:$CONTROL_PLANE_USER ~/.kube/config"
-        echo "  4. Exit and run: scp $CONTROL_PLANE_USER@$CONTROL_PLANE_IP:~/.kube/config ~/.kube/config"
+        echo "  2. Copy kubeconfig: sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s.yaml && sudo chmod 644 /tmp/k3s.yaml"
+        echo "  3. Exit and run: scp $CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s.yaml ~/.kube/config"
         exit 1
     fi
     

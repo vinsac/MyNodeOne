@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -177,7 +181,11 @@ EOF
     echo "This wizard will help you configure MyNodeOne for your hardware."
     echo "We'll detect your environment and ask a few questions."
     echo
-    echo -e "${YELLOW}Note: This wizard should be run on each machine (control plane, workers, VPS).${NC}"
+    echo -e "${YELLOW}Note: This wizard should be run on each machine you want to set up:${NC}"
+    echo -e "${YELLOW}      • Control plane (master node)${NC}"
+    echo -e "${YELLOW}      • Worker nodes (additional compute)${NC}"
+    echo -e "${YELLOW}      • VPS edge nodes (public access)${NC}"
+    echo -e "${YELLOW}      • Management laptop/desktop (for kubectl access)${NC}"
     echo
     
     if ! prompt_confirm "Ready to start?" "y"; then

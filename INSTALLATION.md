@@ -358,24 +358,23 @@ A     www   <your-vps-ip>   3600
 On your **laptop/desktop** for deploying apps:
 
 ```bash
-./scripts/interactive-setup.sh  # Select option 4 (Management Workstation)
+# Single command setup - handles everything automatically!
+sudo ./scripts/mynodeone
+# Select option 4 (Management Workstation) when prompted
 ```
 
-**Then install kubectl:**
-```bash
-# Download kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+**What this does automatically:**
+- ✅ Installs kubectl
+- ✅ Sets up SSH keys (optional)
+- ✅ Copies kubeconfig from control plane via SSH
+- ✅ Configures cluster connection
+- ✅ Tests the connection
 
-# Copy kubeconfig from control plane
-scp user@<control-plane-tailscale-ip>:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+**Prerequisites for management laptop:**
+- Tailscale installed and connected
+- SSH access to control plane (you'll be prompted for the IP)
 
-# Edit and replace 127.0.0.1 with control plane IP
-sed -i 's/127.0.0.1/<control-plane-tailscale-ip>/g' ~/.kube/config
-
-# Test connection
-kubectl get nodes
-```
+**Power users:** You can also run `./scripts/setup-laptop.sh` directly for more control.
 
 ## Step 6: Access Your Services
 
@@ -519,8 +518,8 @@ sudo tailscale up
 ### Configuration not found
 
 ```bash
-# Re-run the interactive wizard
-./scripts/interactive-setup.sh
+# Re-run the setup wizard
+sudo ./scripts/mynodeone
 ```
 
 ### Can't reach control plane
@@ -577,4 +576,4 @@ ssh <control-plane-ip> "sudo systemctl status k3s"
 
 ---
 
-**Ready?** Start with `./scripts/interactive-setup.sh` on your first machine! 🚀
+**Ready?** Start with `sudo ./scripts/mynodeone` on your first machine! 🚀

@@ -24,7 +24,7 @@ kubectl top pods -A
 
 ### Accessing Web UIs
 
-All web UIs are accessible via Tailscale from your vivobook:
+All web UIs are accessible via Tailscale from your laptop:
 
 ```bash
 # Get service IPs
@@ -34,7 +34,7 @@ kubectl get svc -A | grep LoadBalancer
 # Grafana: http://<grafana-ip>
 # ArgoCD: https://<argocd-ip>
 # MinIO Console: http://<minio-console-ip>
-# Longhorn: http://<toronto-node-ip>:30080
+# Longhorn: http://<control-plane-ip>:30080
 ```
 
 ### Viewing Logs
@@ -135,7 +135,7 @@ kubectl autoscale deployment/<deployment-name> --min=2 --max=10 --cpu-percent=80
 #### Install MinIO Client
 
 ```bash
-# On vivobook
+# On your laptop
 wget https://dl.min.io/client/mc/release/linux-amd64/mc
 chmod +x mc
 sudo mv mc /usr/local/bin/
@@ -143,7 +143,7 @@ sudo mv mc /usr/local/bin/
 # Configure
 MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 mc alias set mynodeone http://$MINIO_ENDPOINT:9000 <access-key> <secret-key>
-# Get credentials from /root/mynodeone-minio-credentials.txt on toronto-0001
+# Get credentials from /root/mynodeone-minio-credentials.txt on control plane
 ```
 
 #### Common MinIO Operations
@@ -176,9 +176,9 @@ mc du mynodeone/my-bucket
 #### Access Longhorn UI
 
 ```bash
-# Get Toronto node IP
-TORONTO_IP=$(kubectl get node toronto-0001 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-echo "Longhorn UI: http://$TORONTO_IP:30080"
+# Get control plane node IP
+CONTROL_PLANE_IP=$(kubectl get nodes -l node-role.kubernetes.io/control-plane -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+echo "Longhorn UI: http://$CONTROL_PLANE_IP:30080"
 ```
 
 #### Common Longhorn Operations
@@ -291,7 +291,7 @@ rate({namespace="default"} |= "error" [1m])
 ### Updating K3s
 
 ```bash
-# On control plane (toronto-0001)
+# On control plane
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.28.6+k3s1" sh -s - server
 
 # On worker nodes

@@ -7,7 +7,7 @@ MyNodeOne is designed to scale with your needs:
 - **Horizontal Scaling**: Add more nodes to the cluster
 - **Application Scaling**: Increase replicas, optimize code
 
-## Adding Your Second Node (toronto-0002)
+## Adding Your Second Node (Example: node-002)
 
 ### Prerequisites
 
@@ -27,7 +27,7 @@ sudo tailscale up
 #### 2. Run the worker node script
 
 ```bash
-# On toronto-0002
+# On your second machine (worker node)
 git clone <mynodeone-repo-url>
 cd mynodeone
 sudo ./scripts/add-worker-node.sh
@@ -43,17 +43,17 @@ The script will:
 #### 3. Apply node labels (on control plane)
 
 ```bash
-# On toronto-0001
-kubectl label node toronto-0002 node-role.kubernetes.io/worker=true
-kubectl label node toronto-0002 mynodeone.io/location=toronto
-kubectl label node toronto-0002 mynodeone.io/storage=true
+# On control plane
+kubectl label node node-002 node-role.kubernetes.io/worker=true
+kubectl label node node-002 mynodeone.io/location=home
+kubectl label node node-002 mynodeone.io/storage=true
 ```
 
 #### 4. Verify
 
 ```bash
 kubectl get nodes
-# Should show both toronto-0001 and toronto-0002
+# Should show both control-plane and node-002
 
 kubectl top nodes
 # Check resource usage
@@ -80,18 +80,18 @@ kubectl -n longhorn-system patch settings.longhorn.io default-replica-count \
 - Pods distributed across nodes
 - Better resource utilization
 
-## Adding Third Node (toronto-0003)
+## Adding Third Node (Example: node-003)
 
-Same process as toronto-0002!
+Same process as node-002!
 
 ```bash
-# On toronto-0003
+# On your third machine
 sudo ./scripts/add-worker-node.sh
 
 # On control plane
-kubectl label node toronto-0003 node-role.kubernetes.io/worker=true
-kubectl label node toronto-0003 mynodeone.io/location=toronto
-kubectl label node toronto-0003 mynodeone.io/storage=true
+kubectl label node node-003 node-role.kubernetes.io/worker=true
+kubectl label node node-003 mynodeone.io/location=home
+kubectl label node node-003 mynodeone.io/storage=true
 
 # Update Longhorn for 3 replicas
 kubectl -n longhorn-system patch settings.longhorn.io default-replica-count \
@@ -248,7 +248,7 @@ kubectl get pvc <pvc-name> -w
 
 #### Single Instance → Distributed
 
-When you add toronto-0002:
+When you add your second node:
 
 ```bash
 # Uninstall standalone MinIO
@@ -346,10 +346,10 @@ helm install thanos bitnami/thanos \
 
 ### Current Capacity (1 node)
 
-**toronto-0001:**
-- 256 GB RAM
-- 32 cores (Ryzen 9950X)
-- 4 TB NVMe + 36 TB HDD
+**Your control plane (example specs):**
+- 16+ GB RAM
+- 4+ CPU cores
+- 100+ GB storage
 
 **Estimated Capacity:**
 - 50-100 small apps (100MB RAM each)
@@ -359,9 +359,9 @@ helm install thanos bitnami/thanos \
 
 ### With 3 Nodes
 
-If all nodes are similar to toronto-0001:
-- **Total**: 768 GB RAM, 96 cores, 108 TB storage
-- **Usable** (with overhead): ~650 GB RAM, 85 cores, 90 TB storage
+If all nodes have similar specs (e.g., 16GB RAM, 4 cores each):
+- **Total**: 48 GB RAM, 12 cores
+- **Usable** (with overhead): ~40 GB RAM, 10 cores
 
 **Workload Estimates:**
 - 150-300 small apps
@@ -455,7 +455,7 @@ Reserve nodes for specific workloads:
 
 ```bash
 # Taint node for GPU workloads only
-kubectl taint nodes toronto-0003 gpu=true:NoSchedule
+kubectl taint nodes node-003 gpu=true:NoSchedule
 
 # Pods with this toleration can schedule on tainted node
 ```
@@ -593,8 +593,8 @@ When you have nodes in multiple locations:
 
 ```bash
 # Label nodes by region
-kubectl label node toronto-0001 region=toronto
-kubectl label node montreal-0001 region=montreal
+kubectl label node control-plane region=home
+kubectl label node node-002 region=office
 
 # Deploy apps across regions
 ```

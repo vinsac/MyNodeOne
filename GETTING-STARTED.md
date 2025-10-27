@@ -92,7 +92,9 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
 ## 💻 What Do You Need?
 
 ### Minimum Requirements
-- **1 machine** with Ubuntu 24.04 LTS
+- **1 machine** with Ubuntu LTS
+  - **Recommended:** Ubuntu 24.04 LTS (best tested)
+  - **Also works:** Ubuntu 22.04 LTS, Ubuntu 20.04 LTS
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
 - **4GB RAM** (8GB+ recommended)
 - **20GB disk** (100GB+ recommended)

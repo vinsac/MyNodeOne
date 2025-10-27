@@ -36,8 +36,15 @@ MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.
 MINIO_API_IP=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
 LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
 
-# Get credentials
-GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "Not available")
+# Get credentials from Kubernetes secrets (secure)
+GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "Run on control plane with kubectl access")
+
+# Get ArgoCD credentials from Kubernetes
+ARGOCD_PASS=$(kubectl get secret -n argocd argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d 2>/dev/null || echo "Not available")
+
+# Get MinIO credentials from Kubernetes
+MINIO_USER=$(kubectl get secret -n minio minio -o jsonpath="{.data.rootUser}" 2>/dev/null | base64 -d 2>/dev/null || echo "admin")
+MINIO_PASS=$(kubectl get secret -n minio minio -o jsonpath="{.data.rootPassword}" 2>/dev/null | base64 -d 2>/dev/null || echo "Not available")
 
 echo -e "${GREEN}📊 Grafana (Monitoring)${NC}"
 echo "  URL: http://$GRAFANA_IP"
@@ -47,23 +54,15 @@ echo
 
 echo -e "${GREEN}🚀 ArgoCD (GitOps)${NC}"
 echo "  URL: https://$ARGOCD_IP"
-if [ -f /root/mynodeone-argocd-credentials.txt ]; then
-    echo "  Credentials file: /root/mynodeone-argocd-credentials.txt"
-    echo -e "${YELLOW}  Run: cat /root/mynodeone-argocd-credentials.txt${NC}"
-else
-    echo "  Credentials file not found"
-fi
+echo "  Username: admin"
+echo "  Password: $ARGOCD_PASS"
 echo
 
 echo -e "${GREEN}💾 MinIO (S3 Storage)${NC}"
 echo "  Console URL: http://$MINIO_CONSOLE_IP:9001"
 echo "  API URL: http://$MINIO_API_IP:9000"
-if [ -f /root/mynodeone-minio-credentials.txt ]; then
-    echo "  Credentials file: /root/mynodeone-minio-credentials.txt"
-    echo -e "${YELLOW}  Run: cat /root/mynodeone-minio-credentials.txt${NC}"
-else
-    echo "  Credentials file not found"
-fi
+echo "  Username: $MINIO_USER"
+echo "  Password: $MINIO_PASS"
 echo
 
 echo -e "${GREEN}📦 Longhorn (Block Storage)${NC}"
@@ -71,36 +70,47 @@ echo "  URL: http://$LONGHORN_IP"
 echo "  Authentication: None (protected by Tailscale VPN)"
 echo
 
-print_header "Credential Files Location"
+print_header "Security Status"
 
-echo "All credential files are stored in /root/ with 600 permissions:"
+echo "✅ Passwords displayed above are retrieved from Kubernetes secrets (encrypted if secrets encryption enabled)"
 echo
+echo "📁 Checking for old credential files on disk:"
+echo
+
+FILES_FOUND=0
 if [ -f /root/mynodeone-argocd-credentials.txt ]; then
-    echo "  ✓ /root/mynodeone-argocd-credentials.txt"
-else
-    echo "  ✗ /root/mynodeone-argocd-credentials.txt (not found)"
+    echo -e "  ${YELLOW}⚠️  /root/mynodeone-argocd-credentials.txt (SHOULD BE DELETED)${NC}"
+    FILES_FOUND=$((FILES_FOUND + 1))
 fi
 
 if [ -f /root/mynodeone-minio-credentials.txt ]; then
-    echo "  ✓ /root/mynodeone-minio-credentials.txt"
-else
-    echo "  ✗ /root/mynodeone-minio-credentials.txt (not found)"
+    echo -e "  ${YELLOW}⚠️  /root/mynodeone-minio-credentials.txt (SHOULD BE DELETED)${NC}"
+    FILES_FOUND=$((FILES_FOUND + 1))
+fi
+
+if [ -f /root/mynodeone-grafana-credentials.txt ]; then
+    echo -e "  ${YELLOW}⚠️  /root/mynodeone-grafana-credentials.txt (SHOULD BE DELETED)${NC}"
+    FILES_FOUND=$((FILES_FOUND + 1))
 fi
 
 if [ -f /root/mynodeone-join-token.txt ]; then
-    echo "  ✓ /root/mynodeone-join-token.txt"
-else
-    echo "  ✗ /root/mynodeone-join-token.txt (not found)"
+    echo -e "  ${GREEN}✓${NC} /root/mynodeone-join-token.txt (kept for adding worker nodes)"
 fi
-echo
+
+if [ $FILES_FOUND -gt 0 ]; then
+    echo
+    echo -e "${YELLOW}⚠️  WARNING: Credential files found on disk! For security, delete them:${NC}"
+    echo -e "   ${YELLOW}sudo rm /root/mynodeone-*-credentials.txt${NC}"
+    echo
+fi
 
 print_header "Security Recommendations"
 
-echo "1. Save these credentials in a secure password manager"
-echo "2. Change default passwords after first login"
-echo "3. Delete credential files after saving securely:"
-echo -e "   ${YELLOW}sudo rm /root/mynodeone-*-credentials.txt${NC}"
-echo "4. Regularly rotate credentials"
+echo "1. ✅ Use show-credentials.sh to view passwords (reads from Kubernetes, not files)"
+echo "2. 📋 Save credentials to password manager (1Password, Bitwarden, KeePassXC)"
+echo "3. 🗑️  Delete credential files if they still exist (see above)"
+echo "4. 🔄 Change default passwords after first login"
+echo "5. 🔁 Regularly rotate credentials (90-day schedule recommended)"
 echo
 
 print_header "Access Documentation"

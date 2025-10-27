@@ -429,7 +429,11 @@ Absolutely! MyNodeOne is MIT licensed. Use it for your startup, business, or per
 
 ### What OS do I need?
 
-Ubuntu 24.04 LTS (Desktop or Server edition). Other Linux distributions may work but are untested.
+**Recommended:** Ubuntu 24.04 LTS (Desktop or Server edition) - best tested and fully supported
+
+**Also compatible:** Ubuntu 22.04 LTS, Ubuntu 20.04 LTS
+
+**Other Linux distributions:** May work but are untested. MyNodeOne is optimized for Ubuntu.
 
 ### Can I run MyNodeOne on just one machine?
 

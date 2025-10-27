@@ -16,11 +16,14 @@
 
 **Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build an enterprise-grade private cloud using:
 
+- 🎮 **Your gaming PC** when you're not gaming (perfect control plane!)
 - 🖥️ **Old laptops** gathering dust
 - 💻 **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
 - 🏠 **Home servers** you already have
 - 🛒 **Used enterprise hardware** from eBay ($200-$500)
 - ⚡ **Mix and match** - use whatever you have!
+
+**Popular Setup:** Gaming PC as control plane + old laptop as worker node = Powerful private cloud!
 
 **No expensive enterprise gear required. No monthly cloud bills. Just your hardware, your data, your control.**
 
@@ -51,7 +54,7 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 
 > **Networking:** MyNodeOne uses **Tailscale by default** for secure mesh networking. Zero configuration required!
 
-## 🆕 What's New in Version 1.0
+## ✨ Core Features (Version 1.0)
 
 ✅ **One Command Setup** - `sudo ./scripts/mynodeone` does everything  
 ✅ **System Cleanup** - Automatic removal of bloat and unused packages  
@@ -187,7 +190,8 @@ sudo ./scripts/enable-security-hardening.sh
 
 > 💡 **Understanding Command Output:** Not sure if a command worked? Copy the output and ask ChatGPT, Gemini, or Claude: "Did this command succeed?" They can instantly help you understand what you're seeing!
 
-- **Ubuntu 24.04 LTS** (Desktop or Server)
+- **Ubuntu 24.04 LTS** (Desktop or Server) - **Recommended**
+  - Also compatible: Ubuntu 22.04 LTS, Ubuntu 20.04 LTS
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
 - **Git installed**
   
@@ -349,20 +353,33 @@ This sets up:
 - SSL certificate management
 - Routing to your nodes via Tailscale
 
-### 4. Deploy Your First App
+### 4. Deploy Your First App (Demo)
+
+**Option A: During Installation** - When prompted, say 'yes' to deploy demo app
+
+**Option B: After Installation** - Run this command on your control plane:
 
 ```bash
-# Create app repository
-./scripts/create-app.sh my-awesome-app
-
-# Push your code
-cd my-awesome-app
-git add .
-git commit -m "Initial commit"
-git push
-
-# ArgoCD automatically deploys it!
+# Deploy demo application to verify cluster works
+sudo ./scripts/deploy-demo-app.sh deploy
 ```
+
+This deploys a secure web app that shows:
+- ✅ Cluster is operational
+- ✅ LoadBalancer working (gets Tailscale IP)
+- ✅ Security features active
+- ✅ Storage and networking functional
+
+**Access the demo:**
+- URL will be shown after deployment (e.g., http://100.x.x.x)
+- Open in browser on any device connected to Tailscale
+
+**Remove when done:**
+```bash
+sudo ./scripts/deploy-demo-app.sh remove
+```
+
+**See [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md) for detailed instructions**
 
 ## Management
 
@@ -509,22 +526,28 @@ kubectl apply -f my-app-ingress.yaml
 
 ### Getting Started
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** - Entry point for new users ⭐
-- **[QUICK_START.md](QUICK_START.md)** - 5-minute quick start guide ⭐ NEW
 - **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step installation guide
-- **[ACCESS_INFORMATION.md](ACCESS_INFORMATION.md)** - Service credentials and access ⭐ NEW
-- **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** - Find what you need quickly
+- **[POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md)** - What to do after installation ⭐ **READ THIS FIRST!**
+- **[QUICK_START.md](QUICK_START.md)** - 5-minute quick reference
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
-### Security & Credentials 🔒
-- **[SECURITY_CREDENTIALS_GUIDE.md](SECURITY_CREDENTIALS_GUIDE.md)** - Credential management & security best practices ⭐ NEW
-- **scripts/show-credentials.sh** - Display all service credentials ⭐ NEW
-- **⚠️ IMPORTANT:** Credentials displayed during installation - save to password manager!
+### For Non-Technical Users 👋
+- **[POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md)** - Complete guide for beginners ⭐ **START HERE**
+- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Deploy your first app (step-by-step)
+- **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** - Never used command line? Start here!
+- **[GLOSSARY.md](GLOSSARY.md)** - Understand the technical terms
 
 ### Application Deployment
-- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Deploy demo app (for non-technical users) ⭐ NEW
-- **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete app deployment guide ⭐ NEW
-- **scripts/manage-apps.sh** - One-click app deployment (PostgreSQL, MySQL, Redis) ⭐ NEW
-- **scripts/deploy-demo-app.sh** - Standalone demo app deployment ⭐ NEW
+- **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete deployment guide
+- **scripts/manage-apps.sh** - One-click app deployment (PostgreSQL, MySQL, Redis)
+- **scripts/deploy-demo-app.sh** - Deploy demo application
+- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Detailed demo app instructions
+
+### Security & Credentials 🔒
+- **[SECURITY_CREDENTIALS_GUIDE.md](SECURITY_CREDENTIALS_GUIDE.md)** - Security best practices
+- **[ACCESS_INFORMATION.md](ACCESS_INFORMATION.md)** - Service URLs and credentials
+- **scripts/show-credentials.sh** - View all credentials (reads from Kubernetes securely)
+- **⚠️ IMPORTANT:** Credentials auto-deleted after you save them during installation
 
 ### User Guides
 - **[docs/comparison-guide.md](docs/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐

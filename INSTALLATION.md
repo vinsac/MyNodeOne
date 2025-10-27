@@ -56,7 +56,9 @@ The core installation (Steps 1-3) gets your control plane running. Step 4 (secur
 ### What You Need on Your Control Plane Machine
 
 **Hardware:**
-- ✅ At least ONE machine with Ubuntu 24.04 LTS installed
+- ✅ At least ONE machine with Ubuntu installed
+  - **Recommended:** Ubuntu 24.04 LTS (best tested)
+  - **Also works:** Ubuntu 22.04 LTS, Ubuntu 20.04 LTS
   - **New to Ubuntu?** For installation instructions, refer to the [official Ubuntu installation guide](https://ubuntu.com/tutorials/install-ubuntu-desktop) or search "how to install Ubuntu 24.04" on ChatGPT, Gemini, or your preferred AI assistant.
   - Can be named anything (e.g., `node-001`, `server-alpha`, `homelab-01`)
   - Minimum 4GB RAM (8GB+ recommended for control plane)

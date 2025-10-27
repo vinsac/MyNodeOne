@@ -817,11 +817,19 @@ print_summary() {
     display_credentials
     
     echo
+    echo "📄 What To Do Next:"
+    echo "  🎯 READ THIS FIRST: $PROJECT_ROOT/POST_INSTALLATION_GUIDE.md"
+    echo "  • Shows exactly what to do after installation"
+    echo "  • How to access from your laptop"
+    echo "  • Deploying your first app"
+    echo "  • Monitoring and managing the cluster"
+    echo
     echo "📄 Additional Resources:"
     echo "  • View credentials anytime: sudo $SCRIPT_DIR/show-credentials.sh"
-    echo "  • Quick start guide: $PROJECT_ROOT/QUICK_START.md"
-    echo "  • Full documentation: $PROJECT_ROOT/ACCESS_INFORMATION.md"
+    echo "  • Demo app guide: $PROJECT_ROOT/DEMO_APP_GUIDE.md"
+    echo "  • Deploy apps easily: $PROJECT_ROOT/APP_DEPLOYMENT_GUIDE.md"
     echo "  • Security guide: $PROJECT_ROOT/SECURITY_CREDENTIALS_GUIDE.md"
+    echo "  • Quick reference: $PROJECT_ROOT/ACCESS_INFORMATION.md"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo

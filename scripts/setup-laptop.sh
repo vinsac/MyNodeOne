@@ -364,7 +364,7 @@ print_summary() {
     echo "  • Use VS Code/Cursor with Kubernetes extensions"
     echo
     echo "📚 Next Steps:"
-    echo "  • Read POST_INSTALLATION_GUIDE.md for detailed examples"
+    echo "  • Read docs/guides/POST_INSTALLATION_GUIDE.md for detailed examples"
     echo "  • Try AI-assisted development with Cursor or Windsurf"
     echo "  • Deploy your first application!"
     echo

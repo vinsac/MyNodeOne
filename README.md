@@ -527,26 +527,26 @@ kubectl apply -f my-app-ingress.yaml
 ### Getting Started
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** - Entry point for new users ⭐
 - **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step installation guide
-- **[POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md)** - What to do after installation ⭐ **READ THIS FIRST!**
-- **[QUICK_START.md](QUICK_START.md)** - 5-minute quick reference
+- **[POST_INSTALLATION_GUIDE.md](docs/guides/POST_INSTALLATION_GUIDE.md)** - What to do after installation ⭐ **READ THIS FIRST!**
+- **[QUICK_START.md](docs/guides/QUICK_START.md)** - 5-minute quick reference
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
 ### For Non-Technical Users 👋
-- **[POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md)** - Complete guide for beginners ⭐ **START HERE**
-- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Deploy your first app (step-by-step)
-- **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** - Never used command line? Start here!
-- **[GLOSSARY.md](GLOSSARY.md)** - Understand the technical terms
+- **[POST_INSTALLATION_GUIDE.md](docs/guides/POST_INSTALLATION_GUIDE.md)** - Complete guide for beginners ⭐ **START HERE**
+- **[DEMO_APP_GUIDE.md](docs/guides/DEMO_APP_GUIDE.md)** - Deploy your first app (step-by-step)
+- **[TERMINAL-BASICS.md](docs/guides/TERMINAL-BASICS.md)** - Never used command line? Start here!
+- **[GLOSSARY.md](docs/reference/GLOSSARY.md)** - Understand the technical terms
 
 ### Application Deployment
-- **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete deployment guide
+- **[APP_DEPLOYMENT_GUIDE.md](docs/guides/APP_DEPLOYMENT_GUIDE.md)** - Complete deployment guide
 - **scripts/manage-apps.sh** - One-click app deployment (PostgreSQL, MySQL, Redis)
 - **scripts/deploy-demo-app.sh** - Deploy demo application
 - **scripts/deploy-llm-chat.sh** - Deploy local AI chat (Open WebUI + Ollama) ⭐ NEW
-- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Detailed demo app instructions
+- **[DEMO_APP_GUIDE.md](docs/guides/DEMO_APP_GUIDE.md)** - Detailed demo app instructions
 
 ### Security & Credentials 🔒
-- **[SECURITY_CREDENTIALS_GUIDE.md](SECURITY_CREDENTIALS_GUIDE.md)** - Security best practices
-- **[ACCESS_INFORMATION.md](ACCESS_INFORMATION.md)** - Service URLs and credentials
+- **[SECURITY_CREDENTIALS_GUIDE.md](docs/guides/SECURITY_CREDENTIALS_GUIDE.md)** - Security best practices
+- **[ACCESS_INFORMATION.md](docs/reference/ACCESS_INFORMATION.md)** - Service URLs and credentials
 - **scripts/show-credentials.sh** - View all credentials (reads from Kubernetes securely)
 - **⚠️ IMPORTANT:** Credentials auto-deleted after you save them during installation
 

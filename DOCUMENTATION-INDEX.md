@@ -42,25 +42,33 @@ Quick reference for finding what you need in the MyNodeOne repository.
 mynodeone/
 │
 ├── 🚀 GETTING-STARTED.md              ← Entry point for new users
-├── 🌱 TERMINAL-BASICS.md ← Never used terminal? Start here!
-├── 📖 README.md                  ← Project overview
-├── ⚡ INSTALLATION.md               ← Step-by-step installation
-├── 🗺️ DOCUMENTATION-INDEX.md        ← This file
-├── 📊 REPO-STRUCTURE.md          ← Repository layout
-├── 📚 GLOSSARY.md                ← Simple term definitions
-├── ❓ FAQ.md                     ← 50+ questions
-├── 🤝 CONTRIBUTING.md            ← How to contribute
+├── 📖 README.md                       ← Project overview
+├── ⚡ INSTALLATION.md                  ← Step-by-step installation
+├── 🗺️ DOCUMENTATION-INDEX.md         ← This file
+├── ❓ FAQ.md                          ← 50+ questions
+├── 🤝 CONTRIBUTING.md                 ← How to contribute
 │
 ├── scripts/                      ← Automation
 │   └── 🎯 mynodeone               ← Main installer
 │
-├── docs/                         ← User guides
-│   ├── setup-options-guide.md    ← For beginners
-│   ├── networking.md             ← Tailscale (default)
-│   ├── architecture.md           ← How it works
-│   ├── operations.md             ← Daily management
-│   ├── troubleshooting.md        ← Fix problems
-│   └── scaling.md                ← Add nodes
+├── docs/
+│   ├── guides/                   ← Step-by-step guides
+│   │   ├── POST_INSTALLATION_GUIDE.md  ← What to do after install ⭐
+│   │   ├── TERMINAL-BASICS.md          ← Terminal for beginners
+│   │   ├── QUICK_START.md              ← 5-minute reference
+│   │   ├── APP_DEPLOYMENT_GUIDE.md     ← Deploy applications
+│   │   ├── DEMO_APP_GUIDE.md           ← First app walkthrough
+│   │   └── SECURITY_CREDENTIALS_GUIDE.md ← Security best practices
+│   ├── reference/                ← Reference documentation
+│   │   ├── GLOSSARY.md                 ← Term definitions
+│   │   └── ACCESS_INFORMATION.md       ← Service URLs
+│   ├── setup-options-guide.md    ← Setup options explained
+│   ├── networking.md             ← Tailscale guide
+│   ├── architecture.md           ← System architecture
+│   ├── operations.md             ← Daily operations
+│   ├── troubleshooting.md        ← Problem solving
+│   ├── scaling.md                ← Add nodes
+│   └── RELEASE-NOTES-v1.0.md     ← Version 1.0 notes
 │
 ├── manifests/examples/           ← Ready apps
 ├── website/                      ← Docs website
@@ -73,14 +81,15 @@ mynodeone/
 ## 🎓 Reading Order by Experience Level
 
 ### Complete Beginner (Never used Kubernetes)
-1. [TERMINAL-BASICS.md](TERMINAL-BASICS.md) - 10 min (if new to terminal) ⭐
+1. [TERMINAL-BASICS.md](docs/guides/TERMINAL-BASICS.md) - 10 min (if new to terminal) ⭐
 2. [GETTING-STARTED.md](GETTING-STARTED.md) - 5 min
 3. [README.md](README.md) - 5 min
 4. [docs/setup-options-guide.md](docs/setup-options-guide.md) - 15 min
 5. [INSTALLATION.md](INSTALLATION.md) - 20 min
 6. Install: `sudo ./scripts/mynodeone`
-7. [docs/operations.md](docs/operations.md) - After install
-8. [FAQ.md](FAQ.md) - When questions arise
+7. [POST_INSTALLATION_GUIDE.md](docs/guides/POST_INSTALLATION_GUIDE.md) - After install ⭐
+8. [docs/operations.md](docs/operations.md) - Daily operations
+9. [FAQ.md](FAQ.md) - When questions arise
 
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](README.md) - 5 min

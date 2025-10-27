@@ -558,18 +558,33 @@ show_next_steps() {
             echo "3. Configure application routes in: /etc/traefik/dynamic/"
             ;;
         management)
-            echo "Your management workstation is configured! Next:"
             echo
-            echo "1. Install kubectl (if not already installed):"
-            echo -e "   ${CYAN}curl -LO https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl${NC}"
-            echo -e "   ${CYAN}sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl${NC}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  Setting up Management Workstation (Laptop/Desktop)"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo
-            echo "2. Copy kubeconfig from control plane:"
-            echo -e "   ${CYAN}scp <control-plane-ip>:/etc/rancher/k3s/k3s.yaml ~/.kube/config${NC}"
-            echo -e "   ${CYAN}# Edit ~/.kube/config and replace 127.0.0.1 with your control plane Tailscale IP${NC}"
+            echo "Running automated setup script..."
             echo
-            echo "3. Test connection:"
-            echo -e "   ${CYAN}kubectl get nodes${NC}"
+            
+            # Run the dedicated laptop setup script
+            if [ -f "$SCRIPT_DIR/setup-laptop.sh" ]; then
+                bash "$SCRIPT_DIR/setup-laptop.sh"
+            else
+                echo "❌ setup-laptop.sh not found"
+                echo
+                echo "Manual setup instructions:"
+                echo
+                echo "1. Install kubectl:"
+                echo -e "   ${CYAN}curl -LO https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl${NC}"
+                echo -e "   ${CYAN}sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl${NC}"
+                echo
+                echo "2. Copy kubeconfig from control plane:"
+                echo -e "   ${CYAN}scp <control-plane-ip>:/etc/rancher/k3s/k3s.yaml ~/.kube/config${NC}"
+                echo -e "   ${CYAN}# Edit ~/.kube/config and replace 127.0.0.1 with your control plane Tailscale IP${NC}"
+                echo
+                echo "3. Test connection:"
+                echo -e "   ${CYAN}kubectl get nodes${NC}"
+            fi
             ;;
     esac
     

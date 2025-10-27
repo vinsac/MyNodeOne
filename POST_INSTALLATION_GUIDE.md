@@ -57,7 +57,17 @@ kubectl get svc -A
 
 #### Easy Way: Automated Setup (Recommended)
 
-**1. Download the setup script to your laptop:**
+**Option A: Using interactive setup** (if you have MyNodeOne repo on laptop):
+
+```bash
+cd MyNodeOne
+sudo ./scripts/mynodeone
+
+# Choose option 4: "Management Workstation"
+# This automatically runs setup-laptop.sh
+```
+
+**Option B: Direct script** (quick method):
 
 ```bash
 # If you have the MyNodeOne repo on your laptop
@@ -65,7 +75,7 @@ cd MyNodeOne
 sudo bash scripts/setup-laptop.sh
 ```
 
-**Or download directly:**
+**Option C: Download directly** (no repo needed):
 
 ```bash
 # Download setup script
@@ -74,6 +84,8 @@ wget https://raw.githubusercontent.com/vinsac/MyNodeOne/main/scripts/setup-lapto
 # Run it
 sudo bash setup-laptop.sh
 ```
+
+**All three options do the same thing** - they run the automated laptop setup script.
 
 **2. Follow the prompts:**
 - Enter control plane Tailscale IP (e.g., 100.118.5.201)

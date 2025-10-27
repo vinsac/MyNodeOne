@@ -999,6 +999,51 @@ offer_security_hardening() {
     fi
 }
 
+offer_local_dns() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🌐 Optional: Setup Local DNS (.local domains)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "Would you like to set up easy-to-remember domain names?"
+    echo
+    echo "Instead of IP addresses (e.g., http://100.118.5.203), you can use:"
+    echo "  • http://grafana.mynodeone.local"
+    echo "  • http://argocd.mynodeone.local"
+    echo "  • http://minio.mynodeone.local"
+    echo
+    echo "This also creates a setup script for your laptop!"
+    echo
+    echo "Recommended: YES (makes services easier to access)"
+    echo
+    
+    # Skip prompt in unattended mode
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        log_info "UNATTENDED mode: Setting up local DNS automatically"
+        bash "$SCRIPT_DIR/setup-local-dns.sh"
+        return
+    fi
+    
+    read -p "Set up local DNS? [Y/n]: " -r
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        echo
+        log_info "Setting up local DNS..."
+        if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
+            log_success "Local DNS setup complete!"
+            echo
+            echo "✅ You can now use .local domain names"
+            echo "📄 Laptop setup script created: $PROJECT_ROOT/setup-client-dns.sh"
+        else
+            log_warn "Local DNS setup had issues. You can set it up later with:"
+            echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
+        fi
+    else
+        echo
+        log_info "Skipping local DNS. You can set it up anytime with:"
+        echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
+    fi
+}
+
 offer_demo_app() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1038,6 +1083,48 @@ offer_demo_app() {
     fi
 }
 
+offer_llm_chat() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🤖 Optional: Deploy LLM Chat Application"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "Would you like to deploy a local AI chat application?"
+    echo
+    echo "This deploys Open WebUI + Ollama for:"
+    echo "  • 100% local AI chat (no cloud API needed)"
+    echo "  • Your data stays on your cluster"
+    echo "  • ChatGPT-like interface"
+    echo "  • Multiple LLM models available"
+    echo
+    echo "Requirements: 4GB+ RAM available, 50GB+ storage"
+    echo
+    echo "You can remove it anytime with: kubectl delete namespace llm-chat"
+    echo
+    
+    # Skip prompt in unattended mode
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        log_info "UNATTENDED mode: Skipping LLM chat deployment"
+        return
+    fi
+    
+    read -p "Deploy LLM chat app now? [y/N]: " -r
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo
+        log_info "Deploying LLM chat application..."
+        if bash "$SCRIPT_DIR/deploy-llm-chat.sh"; then
+            log_success "LLM chat deployment complete!"
+        else
+            log_warn "LLM chat deployment had issues. You can deploy it later with:"
+            echo "  sudo $SCRIPT_DIR/deploy-llm-chat.sh"
+        fi
+    else
+        echo
+        log_info "Skipping LLM chat. You can deploy it anytime with:"
+        echo "  sudo $SCRIPT_DIR/deploy-llm-chat.sh"
+    fi
+}
+
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MyNodeOne Control Plane Bootstrap"
@@ -1064,8 +1151,14 @@ main() {
     # Offer security hardening
     offer_security_hardening
     
+    # Offer local DNS setup
+    offer_local_dns
+    
     # Offer to deploy demo app
     offer_demo_app
+    
+    # Offer to deploy LLM chat app
+    offer_llm_chat
 }
 
 # Run main function

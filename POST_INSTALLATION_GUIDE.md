@@ -53,8 +53,54 @@ kubectl get svc -A
 - AI-assisted coding and deployment
 - Don't need to keep control plane machine nearby
 - More comfortable for development
+- **No need to manually copy files!** - Automated setup script
 
-#### Step 1: Install kubectl on Your Laptop
+#### Easy Way: Automated Setup (Recommended)
+
+**1. Download the setup script to your laptop:**
+
+```bash
+# If you have the MyNodeOne repo on your laptop
+cd MyNodeOne
+sudo bash scripts/setup-laptop.sh
+```
+
+**Or download directly:**
+
+```bash
+# Download setup script
+wget https://raw.githubusercontent.com/vinsac/MyNodeOne/main/scripts/setup-laptop.sh
+
+# Run it
+sudo bash setup-laptop.sh
+```
+
+**2. Follow the prompts:**
+- Enter control plane Tailscale IP (e.g., 100.118.5.201)
+- Enter SSH username (default: your current username)
+- Optionally set up SSH key for passwordless access
+- Script will:
+  - ✅ Install kubectl
+  - ✅ Fetch kubeconfig automatically via SSH
+  - ✅ Test cluster connection
+  - ✅ Optionally set up .local domain names
+  - ✅ Optionally install k9s and helm
+
+**3. Done!** Start using kubectl from your laptop.
+
+**What the script does:**
+- Connects to control plane via SSH over Tailscale
+- No need to access control plane manually
+- No need for sudo password on control plane (uses user's kubeconfig)
+- If user kubeconfig not available, safely prompts for sudo
+- Sets up everything automatically
+
+#### Manual Way (If Script Doesn't Work)
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+**Step 1: Install kubectl**
 
 **On Ubuntu/Debian:**
 ```bash
@@ -66,58 +112,41 @@ sudo apt update && sudo apt install -y kubectl
 brew install kubectl
 ```
 
-**On Windows:**
-```powershell
-# Using winget
-winget install Kubernetes.kubectl
-
-# Or download from https://kubernetes.io/docs/tasks/tools/
+**On Windows (in WSL):**
+```bash
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
 ```
 
-#### Step 2: Copy Kubeconfig from Control Plane
+**Step 2: Get kubeconfig via SSH (no control plane access needed!)**
 
-**On your control plane machine:**
 ```bash
-# Display your kubeconfig
-cat ~/.kube/config
-```
-
-**On your laptop, create the config file:**
-
-**Linux/macOS:**
-```bash
-# Create directory
-mkdir -p ~/.kube
-
-# Copy the output from control plane and paste it
-nano ~/.kube/config  # Or use any text editor
-
-# Set permissions
+# SSH to control plane and copy kubeconfig
+ssh your-user@100.x.x.x "cat ~/.kube/config" > ~/.kube/config
 chmod 600 ~/.kube/config
 ```
 
-**Windows:**
-```powershell
-# Create directory
-mkdir $HOME\.kube
-
-# Copy the output and paste it
-notepad $HOME\.kube\config
+**If that doesn't work:**
+```bash
+# If kubeconfig requires sudo
+ssh -t your-user@100.x.x.x "sudo cat /root/.kube/config" > ~/.kube/config
+chmod 600 ~/.kube/config
 ```
 
-#### Step 3: Verify Connection
+**Step 3: Test connection**
 
 ```bash
-# Test connection from your laptop
 kubectl get nodes
-
-# If successful, you'll see your cluster nodes!
 ```
+
+</details>
 
 **Troubleshooting:**
 - ❌ "connection refused" → Make sure Tailscale is running on your laptop
-- ❌ "authentication failed" → Check kubeconfig was copied correctly
-- ❌ "server not found" → Verify the server IP in kubeconfig matches your control plane's Tailscale IP
+- ❌ "cannot connect to control plane" → Check Tailscale IP: `tailscale status`
+- ❌ "authentication failed" → Re-run setup-laptop.sh
+- ❌ "Permission denied (publickey)" → Setup script will configure SSH key
 
 ---
 
@@ -326,7 +355,52 @@ kubectl get svc
 
 **Full guide:** [APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)
 
-### Method 4: GitOps with ArgoCD (Advanced)
+### Method 4: Deploy Local AI Chat (LLM)
+
+**Purpose:** Run ChatGPT-like AI chat 100% locally on your cluster
+
+```bash
+# Deploy Open WebUI + Ollama
+sudo ./scripts/deploy-llm-chat.sh
+```
+
+**What this does:**
+- Deploys Open WebUI (ChatGPT-like interface)
+- Deploys Ollama (runs LLM models)
+- Prompts to download an AI model
+- Gets a LoadBalancer IP for access
+
+**Access it:**
+- URL shown after deployment (e.g., `http://100.x.x.x`)
+- Or if DNS enabled: `http://chat.mynodeone.local`
+- Create account (first user = admin)
+- Start chatting!
+
+**Available models:**
+- tinyllama (637MB) - Fast, basic
+- phi3:mini (2.3GB) - Balanced
+- llama3.2 (2GB) - High quality
+- Many more available
+
+**Why this is cool:**
+- ✅ 100% local - no cloud APIs
+- ✅ Your data never leaves your cluster
+- ✅ No API costs
+- ✅ Works offline
+- ✅ Multiple models available
+- ✅ ChatGPT-like interface
+
+**Requirements:**
+- 4GB+ RAM available
+- 50GB+ storage for models
+- Patience for model downloads
+
+**Remove when done:**
+```bash
+kubectl delete namespace llm-chat
+```
+
+### Method 5: GitOps with ArgoCD (Advanced)
 
 **Purpose:** Deploy apps automatically when you push to Git
 

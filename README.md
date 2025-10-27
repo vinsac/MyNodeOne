@@ -541,6 +541,7 @@ kubectl apply -f my-app-ingress.yaml
 - **[APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)** - Complete deployment guide
 - **scripts/manage-apps.sh** - One-click app deployment (PostgreSQL, MySQL, Redis)
 - **scripts/deploy-demo-app.sh** - Deploy demo application
+- **scripts/deploy-llm-chat.sh** - Deploy local AI chat (Open WebUI + Ollama) ⭐ NEW
 - **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - Detailed demo app instructions
 
 ### Security & Credentials 🔒

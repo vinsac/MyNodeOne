@@ -108,7 +108,7 @@ spec:
           name: http
         volumeMounts:
         - name: data
-          mountPath: /root/.ollama
+          mountPath: /home/ollama/.ollama
         resources:
           requests:
             memory: "2Gi"
@@ -125,6 +125,8 @@ spec:
         env:
         - name: OLLAMA_HOST
           value: "0.0.0.0:11434"
+        - name: HOME
+          value: "/home/ollama"
       volumes:
       - name: data
         persistentVolumeClaim:

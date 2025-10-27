@@ -722,11 +722,12 @@ display_credentials() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    # In unattended mode, don't prompt - just wait briefly
+    # In unattended mode, keep credentials for display at the end
     if [ "${UNATTENDED:-0}" = "1" ]; then
-        log_warn "UNATTENDED mode: Credentials displayed above. Save them before they're deleted!"
-        sleep 10
-        delete_credential_files
+        log_info "UNATTENDED mode: Credentials will be displayed at the end of installation"
+        log_info "They will remain visible so you can copy them to your password manager"
+        # Don't delete yet - will delete after final display
+        return
     else
         echo
         echo "⏱️  Take your time to save the credentials above."
@@ -818,7 +819,7 @@ print_summary() {
     
     echo
     echo "📄 What To Do Next:"
-    echo "  🎯 READ THIS FIRST: $PROJECT_ROOT/POST_INSTALLATION_GUIDE.md"
+    echo "  🎯 READ THIS FIRST: $PROJECT_ROOT/docs/guides/POST_INSTALLATION_GUIDE.md"
     echo "  • Shows exactly what to do after installation"
     echo "  • How to access from your laptop"
     echo "  • Deploying your first app"
@@ -826,10 +827,10 @@ print_summary() {
     echo
     echo "📄 Additional Resources:"
     echo "  • View credentials anytime: sudo $SCRIPT_DIR/show-credentials.sh"
-    echo "  • Demo app guide: $PROJECT_ROOT/DEMO_APP_GUIDE.md"
-    echo "  • Deploy apps easily: $PROJECT_ROOT/APP_DEPLOYMENT_GUIDE.md"
-    echo "  • Security guide: $PROJECT_ROOT/SECURITY_CREDENTIALS_GUIDE.md"
-    echo "  • Quick reference: $PROJECT_ROOT/ACCESS_INFORMATION.md"
+    echo "  • Demo app guide: $PROJECT_ROOT/docs/guides/DEMO_APP_GUIDE.md"
+    echo "  • Deploy apps easily: $PROJECT_ROOT/docs/guides/APP_DEPLOYMENT_GUIDE.md"
+    echo "  • Security guide: $PROJECT_ROOT/docs/guides/SECURITY_CREDENTIALS_GUIDE.md"
+    echo "  • Quick reference: $PROJECT_ROOT/docs/reference/ACCESS_INFORMATION.md"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
@@ -1020,7 +1021,16 @@ offer_local_dns() {
     # Skip prompt in unattended mode
     if [ "${UNATTENDED:-0}" = "1" ]; then
         log_info "UNATTENDED mode: Setting up local DNS automatically"
-        bash "$SCRIPT_DIR/setup-local-dns.sh"
+        echo
+        if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
+            log_success "Local DNS setup complete!"
+            echo
+            echo "✅ You can now use .local domain names"
+            echo "📄 Laptop setup script created: $PROJECT_ROOT/setup-client-dns.sh"
+        else
+            log_warn "Local DNS setup had issues. You can set it up later with:"
+            echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
+        fi
         return
     fi
     
@@ -1125,6 +1135,43 @@ offer_llm_chat() {
     fi
 }
 
+display_final_credentials_unattended() {
+    echo
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "  🔐 FINAL STEP: SAVE YOUR CREDENTIALS"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_warn "UNATTENDED MODE: Installation complete! Now save these credentials:"
+    echo
+    
+    # Display all credentials again
+    display_credentials
+    
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "📋 IMPORTANT: Copy ALL credentials above to your password manager NOW!"
+    echo
+    echo "Recommended password managers:"
+    echo "  • 1Password (https://1password.com)"
+    echo "  • Bitwarden (https://bitwarden.com)"
+    echo "  • KeePassXC (https://keepassxc.org)"
+    echo
+    echo "⚠️  After you save them, delete the credential files for security:"
+    echo "   sudo rm /root/mynodeone-*-credentials.txt"
+    echo
+    echo "💡 You can view credentials anytime with:"
+    echo "   sudo $SCRIPT_DIR/show-credentials.sh"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+}
+
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MyNodeOne Control Plane Bootstrap"
@@ -1159,6 +1206,11 @@ main() {
     
     # Offer to deploy LLM chat app
     offer_llm_chat
+    
+    # In unattended mode, display credentials at the end
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        display_final_credentials_unattended
+    fi
 }
 
 # Run main function

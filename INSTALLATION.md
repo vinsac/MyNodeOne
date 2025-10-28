@@ -369,11 +369,17 @@ sudo ./scripts/mynodeone
 ```
 
 **What this does automatically:**
+- ✅ Configures Tailscale to accept subnet routes (enables service access)
 - ✅ Installs kubectl
 - ✅ Sets up SSH keys (optional)
 - ✅ Copies kubeconfig from control plane via SSH
-- ✅ Configures cluster connection
+- ✅ Configures .local domain names
 - ✅ Tests the connection
+
+**What "accept subnet routes" means:**
+- **Simple:** Your laptop needs permission to reach cluster service IPs
+- **Technical:** Configures Tailscale to accept advertised routes from control plane
+- **Result:** You can access services at http://grafana.mynodeone.local etc.
 
 **Prerequisites for management laptop:**
 - Tailscale installed and connected

@@ -101,10 +101,17 @@ sudo bash setup-laptop.sh
 **3. Done!** Start using kubectl from your laptop.
 
 **What the script does:**
-- Connects to control plane via SSH over Tailscale
-- No need to access control plane manually
-- No need for sudo password on control plane (uses user's kubeconfig)
-- If user kubeconfig not available, safely prompts for sudo
+- ✅ Checks and configures Tailscale to accept subnet routes (automatic!)
+- ✅ Connects to control plane via SSH over Tailscale
+- ✅ Installs kubectl if not present
+- ✅ Fetches kubeconfig from control plane
+- ✅ Configures .local domain names in /etc/hosts
+- ✅ Tests cluster connection
+- ✅ No need to access control plane manually
+
+**What "accept subnet routes" means:**
+- **Simple:** Your laptop needs permission to reach the cluster's service IPs
+- **Technical:** Configures Tailscale client to accept advertised routes from control plane
 - Sets up everything automatically
 
 #### Manual Way (If Script Doesn't Work)
@@ -691,18 +698,48 @@ kubectl logs <pod-name> -n <namespace>
 
 ### Can't Access Services
 
-**Checklist:**
-- ✅ Is Tailscale running on your laptop?
+**Most Common Issue: Tailscale Not Accepting Routes**
+
+If you get "connection timeout" or can't reach services at 100.x.x.x IPs:
+
+```bash
+# Check if routes are being accepted
+tailscale status --self
+
+# If you see "accept-routes is false" warning:
+sudo tailscale up --accept-routes
+
+# Test connectivity
+curl -I http://grafana.mynodeone.local
+```
+
+**What This Means:**
+- **Simple:** Your laptop needs permission to reach cluster service IPs
+- **Technical:** Control plane advertises subnet routes; laptop must accept them
+- **Fix:** Run `sudo tailscale up --accept-routes` on your laptop
+
+**Full Checklist:**
+- ✅ Is Tailscale running on your laptop? `tailscale status`
+- ✅ Is laptop accepting routes? Should NOT show "accept-routes is false" warning
+- ✅ Was subnet route approved in Tailscale admin? Check at https://login.tailscale.com/admin/machines
 - ✅ Are you using the correct IP from `show-credentials.sh`?
-- ✅ Is the service showing an EXTERNAL-IP?
+- ✅ Is the service showing an EXTERNAL-IP? `kubectl get svc -A`
 - ✅ Try from control plane first (to isolate network issues)
 
 ```bash
 # Check service has IP
-kubectl get svc -A
+kubectl get svc -A | grep LoadBalancer
 
 # If pending, check MetalLB
 kubectl get pods -n metallb-system
+
+# Check Tailscale health
+tailscale status --self
+# Should NOT show "accept-routes is false" warning
+
+# Test from control plane (SSH in)
+ssh user@control-plane-ip
+curl -I http://100.118.5.203  # Should work from control plane
 ```
 
 ### Cluster Slow or Unresponsive

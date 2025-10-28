@@ -106,6 +106,83 @@ sudo tailscale up --accept-routes
 sudo tailscale up --advertise-exit-node
 ```
 
+---
+
+## MyNodeOne-Specific: Subnet Routes
+
+### What Are Subnet Routes?
+
+**Simple Explanation:**
+Subnet routes tell your laptop how to reach services running on your cluster. Think of it like telling your laptop: "To reach 100.118.5.x addresses, go through the control plane machine."
+
+**Technical Explanation:**
+MetalLB assigns LoadBalancer IPs in a specific range (e.g., 100.118.5.200-250). These IPs only exist on the control plane's network. Subnet routes advertise this range through Tailscale, making services accessible from any device on your Tailscale network.
+
+### How MyNodeOne Uses Them
+
+**Control Plane (Automatic):**
+```bash
+# MyNodeOne automatically runs this during installation:
+sudo tailscale up --advertise-routes=100.118.5.0/24 --accept-routes
+
+# This tells Tailscale: "I have services at these IPs, share them with the network"
+```
+
+**Management Laptop (Automatic):**
+```bash
+# MyNodeOne laptop setup automatically runs:
+sudo tailscale up --accept-routes
+
+# This tells Tailscale: "I trust routes from other machines, let me access them"
+```
+
+### Why Both Steps Are Needed
+
+1. **Control plane advertises** the subnet (100.118.5.0/24)
+2. **You approve** the route in Tailscale admin console  
+3. **Laptop accepts** routes from control plane
+
+**Without step 3**, your laptop can talk to the control plane (100.118.5.68) but NOT the services (100.118.5.200+).
+
+### Verification
+
+```bash
+# On laptop - check if accepting routes
+tailscale status --self
+# Should NOT show "accept-routes is false" warning
+
+# Test connectivity to service
+curl -I http://100.118.5.203
+# Should connect (redirect to /login)
+
+# Test .local domain
+curl -I http://grafana.mynodeone.local
+# Should work if DNS configured
+```
+
+### Troubleshooting
+
+**Problem: "Connection timeout" when accessing services**
+
+```bash
+# Check Tailscale health
+tailscale status --self
+
+# If you see "accept-routes is false" warning:
+sudo tailscale up --accept-routes
+
+# Verify subnet route is approved in admin:
+# https://login.tailscale.com/admin/machines
+# → Find control plane → Edit route settings → Enable subnet
+```
+
+**Problem: Services work from control plane but not laptop**
+- Laptop needs `--accept-routes` enabled
+- Subnet route must be approved in Tailscale admin
+- MyNodeOne setup scripts handle both automatically
+
+---
+
 ### Web Admin Console
 
 Access at: **https://login.tailscale.com/admin**

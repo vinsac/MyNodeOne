@@ -107,6 +107,67 @@ test_ssh_connection() {
     fi
 }
 
+configure_tailscale_routes() {
+    print_header "Configuring Tailscale Network Access"
+    
+    log_info "Checking Tailscale configuration..."
+    
+    # Check if Tailscale is installed
+    if ! command -v tailscale &> /dev/null; then
+        log_error "Tailscale is not installed on this laptop"
+        echo
+        echo "Please install Tailscale first:"
+        echo "  curl -fsSL https://tailscale.com/install.sh | sh"
+        echo "  sudo tailscale up"
+        echo
+        echo "Then re-run this script."
+        exit 1
+    fi
+    
+    # Check if Tailscale is connected
+    if ! tailscale status &> /dev/null; then
+        log_error "Tailscale is not running or not connected"
+        echo
+        echo "Please connect to Tailscale:"
+        echo "  sudo tailscale up"
+        echo
+        echo "Then re-run this script."
+        exit 1
+    fi
+    
+    # Check if accepting routes
+    if tailscale status --self 2>&1 | grep -q "accept-routes is false"; then
+        log_info "Configuring Tailscale to accept subnet routes..."
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  What This Means (Simple Explanation)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        echo "Your control plane advertises service IPs to your laptop"
+        echo "through Tailscale. To access these services, your laptop"
+        echo "needs permission to 'accept' these routes."
+        echo
+        echo "This is like telling your laptop: 'Trust the paths from"
+        echo "the control plane to reach services at 100.x.x.x addresses.'"
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        
+        sudo tailscale up --accept-routes
+        
+        if tailscale status --self 2>&1 | grep -q "accept-routes is false"; then
+            log_error "Failed to configure Tailscale route acceptance"
+            exit 1
+        fi
+        
+        log_success "Tailscale configured to accept subnet routes"
+        echo
+        echo "✅ Your laptop can now access LoadBalancer services!"
+    else
+        log_success "Tailscale is already configured correctly"
+    fi
+}
+
 setup_ssh_key() {
     if [ "$SSH_NEEDS_PASSWORD" = true ]; then
         print_header "SSH Key Setup (Optional but Recommended)"
@@ -400,6 +461,7 @@ main() {
     echo
     
     check_requirements
+    configure_tailscale_routes
     get_control_plane_info
     test_ssh_connection
     setup_ssh_key

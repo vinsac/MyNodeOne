@@ -472,6 +472,62 @@ EOF
     log_success "MetalLB installed"
 }
 
+configure_tailscale_subnet_routes() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🌐 Configuring Tailscale Network Routes"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "Setting up subnet routes for LoadBalancer access..."
+    echo
+    
+    # Get the MetalLB subnet (same as Tailscale subnet)
+    TAILSCALE_SUBNET=$(echo "$TAILSCALE_IP" | cut -d. -f1-3)
+    
+    # Enable IP forwarding (required for subnet routes)
+    log_info "Enabling IP forwarding..."
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null
+    
+    # Make IP forwarding permanent
+    if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf 2>/dev/null; then
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+        echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+        log_success "IP forwarding enabled (persistent)"
+    fi
+    
+    # Advertise MetalLB subnet to Tailscale network
+    log_info "Advertising subnet ${TAILSCALE_SUBNET}.0/24 to Tailscale..."
+    if tailscale up --advertise-routes=${TAILSCALE_SUBNET}.0/24 --accept-routes 2>/dev/null; then
+        log_success "Subnet route advertised to Tailscale"
+    else
+        log_warn "Could not advertise subnet automatically. This is not critical."
+    fi
+    
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ⚠️  ACTION REQUIRED: Approve Subnet Route in Tailscale"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "To enable direct access to services from other devices:"
+    echo
+    echo "1. Go to: https://login.tailscale.com/admin/machines"
+    echo "2. Find this machine in the list"
+    echo "3. Click '...' menu → 'Edit route settings'"
+    echo "4. Toggle ON the subnet route: ${TAILSCALE_SUBNET}.0/24"
+    echo "5. Click 'Save'"
+    echo
+    echo "Once approved, you can access services directly at:"
+    echo "  • http://grafana.mynodeone.local"
+    echo "  • https://argocd.mynodeone.local"
+    echo "  • http://minio.mynodeone.local:9001"
+    echo
+    log_info "This step takes 30 seconds in Tailscale admin console"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+}
+
 install_traefik() {
     log_info "Installing Traefik ingress controller..."
     
@@ -812,11 +868,18 @@ print_summary() {
     echo "  ✓ MinIO (Object Storage)"
     echo "  ✓ Prometheus + Grafana + Loki (Monitoring)"
     echo "  ✓ ArgoCD (GitOps)"
+    echo "  ✓ Tailscale Subnet Routes (Network Access)"
     echo
     
     # Display credentials prominently
     display_credentials
     
+    echo
+    echo "⚠️  IMPORTANT: Approve Tailscale Subnet Route"
+    echo "   To access services from your laptop, approve the subnet route:"
+    echo "   → https://login.tailscale.com/admin/machines"
+    echo "   → Find this machine → Edit route settings → Enable subnet"
+    echo "   (Takes 30 seconds, enables .local domain access)"
     echo
     echo "📄 What To Do Next:"
     echo "  🎯 READ THIS FIRST: $PROJECT_ROOT/docs/guides/POST_INSTALLATION_GUIDE.md"
@@ -1156,6 +1219,7 @@ main() {
     install_helm
     install_cert_manager
     install_metallb
+    configure_tailscale_subnet_routes
     install_traefik
     install_longhorn
     install_minio

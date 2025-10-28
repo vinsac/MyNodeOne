@@ -69,3 +69,8 @@ build/
 
 # Generated client DNS setup script (created during installation)
 setup-client-dns.sh
+
+# Internal working documents (not for repo)
+AUDIT_*.md
+*_FIXES_SUMMARY.md
+*_AUDIT.md

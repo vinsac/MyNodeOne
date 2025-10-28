@@ -263,7 +263,7 @@ sudo ./scripts/mynodeone
 **After completion:**
 - Cluster is ready!
 - **IMPORTANT:** Credentials will be displayed in terminal - save them immediately!
-- **⚠️ ACTION REQUIRED:** Approve Tailscale subnet route (takes 30 seconds)
+- **⚠️ ACTION REQUIRED:** Approve the Tailscale subnet route (takes 30 seconds)
   - Go to https://login.tailscale.com/admin/machines
   - Find your control plane machine → Edit route settings
   - Enable the subnet route (e.g., `100.118.5.0/24`)
@@ -369,7 +369,7 @@ sudo ./scripts/mynodeone
 ```
 
 **What this does automatically:**
-- ✅ Configures Tailscale to accept subnet routes (enables service access)
+- ✅ Configures Tailscale to accept subnet routes (enables LoadBalancer access)
 - ✅ Installs kubectl
 - ✅ Sets up SSH keys (optional)
 - ✅ Copies kubeconfig from control plane via SSH
@@ -377,7 +377,7 @@ sudo ./scripts/mynodeone
 - ✅ Tests the connection
 
 **What "accept subnet routes" means:**
-- **Simple:** Your laptop needs permission to reach cluster service IPs
+- **Simple:** Your laptop needs permission to reach cluster LoadBalancer IPs
 - **Technical:** Configures Tailscale to accept advertised routes from control plane
 - **Result:** You can access services at http://grafana.mynodeone.local etc.
 
@@ -404,7 +404,7 @@ http://open-webui.mynodeone.local    # LLM chat interface
 **Or use direct LoadBalancer IPs:**
 
 ```bash
-# Get service IPs
+# Get LoadBalancer IPs
 kubectl get svc -A | grep LoadBalancer
 
 # Access in browser (from any machine on Tailscale)

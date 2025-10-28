@@ -27,7 +27,7 @@ kubectl top pods -A
 All web UIs are accessible via Tailscale from your laptop:
 
 ```bash
-# Get service IPs
+# Get LoadBalancer IPs  
 kubectl get svc -A | grep LoadBalancer
 
 # Access via browser (replace with actual IPs)

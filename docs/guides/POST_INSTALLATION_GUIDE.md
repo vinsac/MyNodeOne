@@ -110,7 +110,7 @@ sudo bash setup-laptop.sh
 - ✅ No need to access control plane manually
 
 **What "accept subnet routes" means:**
-- **Simple:** Your laptop needs permission to reach the cluster's service IPs
+- **Simple:** Your laptop needs permission to reach the cluster's LoadBalancer IPs
 - **Technical:** Configures Tailscale client to accept advertised routes from control plane
 - Sets up everything automatically
 
@@ -502,7 +502,7 @@ https://login.tailscale.com/admin/machines
 
 **3. Click the "..." menu → "Edit route settings"**
 
-**4. Toggle ON the subnet route** (e.g., `100.118.5.0/24`)
+**4. Toggle ON the subnet route:** `100.118.5.0/24` (or your subnet)
 
 **5. Click "Save"**
 
@@ -510,7 +510,7 @@ https://login.tailscale.com/admin/machines
 
 ### Easy-to-Remember Domain Names (.local)
 
-**After approving the subnet route**, you can access services using friendly domain names:
+**After approving the Tailscale subnet route**, you can access services using friendly domain names:
 
 ```bash
 # Access from any device on Tailscale:
@@ -714,14 +714,14 @@ curl -I http://grafana.mynodeone.local
 ```
 
 **What This Means:**
-- **Simple:** Your laptop needs permission to reach cluster service IPs
+- **Simple:** Your laptop needs permission to reach cluster LoadBalancer IPs
 - **Technical:** Control plane advertises subnet routes; laptop must accept them
 - **Fix:** Run `sudo tailscale up --accept-routes` on your laptop
 
 **Full Checklist:**
 - ✅ Is Tailscale running on your laptop? `tailscale status`
 - ✅ Is laptop accepting routes? Should NOT show "accept-routes is false" warning
-- ✅ Was subnet route approved in Tailscale admin? Check at https://login.tailscale.com/admin/machines
+- ✅ Was the subnet route approved in Tailscale admin? Check at https://login.tailscale.com/admin/machines
 - ✅ Are you using the correct IP from `show-credentials.sh`?
 - ✅ Is the service showing an EXTERNAL-IP? `kubectl get svc -A`
 - ✅ Try from control plane first (to isolate network issues)

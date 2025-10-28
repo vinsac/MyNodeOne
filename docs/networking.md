@@ -96,7 +96,7 @@ tailscale logout
 # Use auth key (for automation)
 sudo tailscale up --authkey=tskey-auth-xxxxx
 
-# Advertise routes (subnet routing)
+# Advertise subnet routes (makes internal networks accessible)
 sudo tailscale up --advertise-routes=192.168.1.0/24
 
 # Accept routes from others
@@ -113,7 +113,7 @@ sudo tailscale up --advertise-exit-node
 ### What Are Subnet Routes?
 
 **Simple Explanation:**
-Subnet routes tell your laptop how to reach services running on your cluster. Think of it like telling your laptop: "To reach 100.118.5.x addresses, go through the control plane machine."
+Subnet routes tell your laptop how to reach services running on your cluster. Think of it like telling your laptop: "To reach LoadBalancer IPs at 100.118.5.x, route through the control plane machine."
 
 **Technical Explanation:**
 MetalLB assigns LoadBalancer IPs in a specific range (e.g., 100.118.5.200-250). These IPs only exist on the control plane's network. Subnet routes advertise this range through Tailscale, making services accessible from any device on your Tailscale network.
@@ -171,14 +171,14 @@ tailscale status --self
 # If you see "accept-routes is false" warning:
 sudo tailscale up --accept-routes
 
-# Verify subnet route is approved in admin:
+# Verify the subnet route is approved in admin:
 # https://login.tailscale.com/admin/machines
 # → Find control plane → Edit route settings → Enable subnet
 ```
 
 **Problem: Services work from control plane but not laptop**
 - Laptop needs `--accept-routes` enabled
-- Subnet route must be approved in Tailscale admin
+- The subnet route must be approved in Tailscale admin
 - MyNodeOne setup scripts handle both automatically
 
 ---

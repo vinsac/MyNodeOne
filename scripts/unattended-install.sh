@@ -5,6 +5,15 @@
 # 
 # This script automates the installation by providing default answers
 # to all interactive prompts.
+#
+# IMPORTANT POST-INSTALLATION STEP:
+# After installation completes, you must manually approve the Tailscale
+# subnet route to enable LoadBalancer access:
+#   1. Go to https://login.tailscale.com/admin/machines
+#   2. Find this machine → Edit route settings
+#   3. Enable the subnet route (e.g., 100.118.5.0/24)
+#   4. Click Save
+# This takes 30 seconds and enables .local domain access.
 ###############################################################################
 
 set -euo pipefail

@@ -263,6 +263,11 @@ sudo ./scripts/mynodeone
 **After completion:**
 - Cluster is ready!
 - **IMPORTANT:** Credentials will be displayed in terminal - save them immediately!
+- **⚠️ ACTION REQUIRED:** Approve Tailscale subnet route (takes 30 seconds)
+  - Go to https://login.tailscale.com/admin/machines
+  - Find your control plane machine → Edit route settings
+  - Enable the subnet route (e.g., `100.118.5.0/24`)
+  - This enables `.local` domain access from your laptop
 - Access services via Tailscale IPs (100.x.x.x addresses shown in output)
 - Run `sudo ./scripts/show-credentials.sh` to view all service URLs and credentials
 
@@ -380,7 +385,17 @@ sudo ./scripts/mynodeone
 
 ### Via Tailscale (Internal)
 
-From any device on your Tailscale network:
+**After approving the Tailscale subnet route**, you can access services using easy-to-remember domain names:
+
+```bash
+# Access services via .local domains (if subnet route approved):
+http://grafana.mynodeone.local       # Monitoring dashboard
+https://argocd.mynodeone.local       # GitOps platform
+http://minio.mynodeone.local:9001    # Object storage console
+http://open-webui.mynodeone.local    # LLM chat interface
+```
+
+**Or use direct LoadBalancer IPs:**
 
 ```bash
 # Get service IPs
@@ -391,6 +406,11 @@ kubectl get svc -A | grep LoadBalancer
 # ArgoCD:   https://<argocd-ip>
 # MinIO:    http://<minio-ip>
 ```
+
+**Note:** The `.local` domains only work after:
+1. ✅ Control plane installation completed
+2. ✅ Tailscale subnet route approved in admin console
+3. ✅ Management laptop DNS configured (automatic during setup)
 
 ### Via Public Internet (if you configured VPS)
 

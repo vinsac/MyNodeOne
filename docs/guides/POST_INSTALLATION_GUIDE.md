@@ -475,64 +475,74 @@ AI: [Shows you the commands]
 
 ## 🌐 Accessing Services From Anywhere
 
-### Current Setup: Tailscale VPN
+### Current Setup: Tailscale VPN + Subnet Routes
 
 **What you have now:**
-- All services accessible at `100.x.x.x` addresses (Tailscale IPs)
-- Only accessible when connected to Tailscale
-- Secure by default (encrypted mesh network)
+- All services accessible via LoadBalancer IPs (100.x.x.x addresses)
+- Secure by default (Tailscale encrypted mesh network)
+- **Subnet routes configured** during control plane installation
+
+### ⚠️ Important: Approve Tailscale Subnet Route (One-Time, 30 Seconds)
+
+During control plane installation, MyNodeOne automatically configured Tailscale to advertise the LoadBalancer IP range. **You just need to approve it once:**
+
+**1. Go to Tailscale Admin Console:**
+```
+https://login.tailscale.com/admin/machines
+```
+
+**2. Find your control plane machine in the list**
+
+**3. Click the "..." menu → "Edit route settings"**
+
+**4. Toggle ON the subnet route** (e.g., `100.118.5.0/24`)
+
+**5. Click "Save"**
+
+✅ **Done!** Now all devices on your Tailscale network can access services directly.
+
+### Easy-to-Remember Domain Names (.local)
+
+**After approving the subnet route**, you can access services using friendly domain names:
+
+```bash
+# Access from any device on Tailscale:
+http://grafana.mynodeone.local       # Monitoring dashboard
+https://argocd.mynodeone.local       # GitOps platform  
+http://minio.mynodeone.local:9001    # Object storage console
+http://open-webui.mynodeone.local    # LLM chat interface
+```
+
+**How this works:**
+- ✅ Control plane configures `.local` domains during installation
+- ✅ Management laptop setup automatically adds DNS entries to `/etc/hosts`
+- ✅ No manual configuration needed on your laptop
+- ✅ Works immediately after subnet route approval
+
+**For additional devices (phones, tablets):**
+
+**Option A: Use Direct IPs** (Simplest)
+```bash
+# Just use the LoadBalancer IPs shown in credentials
+http://100.118.5.203  # Grafana
+```
+
+**Option B: Add .local domains manually**
+Edit `/etc/hosts` on that device:
+```bash
+# Linux/macOS/Android (with Termux)
+sudo nano /etc/hosts
+
+# Add these lines (get IPs from: sudo ./scripts/show-credentials.sh):
+100.118.5.203  grafana.mynodeone.local
+100.118.5.204  argocd.mynodeone.local
+100.118.5.202  minio.mynodeone.local
+```
 
 **To access from any device:**
 1. Install Tailscale on that device
 2. Login to your Tailscale account
-3. Access services via their IPs
-
-### Option: Local DNS Names (mynodeone.local)
-
-**Want easier-to-remember URLs instead of IP addresses?**
-
-Currently, services are accessed via IPs like `http://100.118.5.203`. You can optionally set up local DNS names like `grafana.mynodeone.local`.
-
-**Two approaches:**
-
-#### Approach 1: Edit Hosts File (Simple, Per-Device)
-
-**On each device where you want friendly names:**
-
-**Linux/macOS:**
-```bash
-sudo nano /etc/hosts
-
-# Add these lines (replace IPs with yours from show-credentials.sh):
-100.118.5.203  grafana.mynodeone.local
-100.118.5.204  argocd.mynodeone.local
-100.118.5.202  minio.mynodeone.local
-100.118.5.205  longhorn.mynodeone.local
-```
-
-**Windows:**
-```powershell
-# Run as Administrator
-notepad C:\Windows\System32\drivers\etc\hosts
-
-# Add same lines as above
-```
-
-**Pros:** Simple, no additional software  
-**Cons:** Must update on each device, IPs can change
-
-#### Approach 2: Pi-hole or Local DNS Server (Advanced)
-
-Deploy Pi-hole on your cluster or use your router's DNS:
-- Automatically works for all devices on network
-- Can use wildcard DNS (*.mynodeone.local)
-- Centralized management
-
-**Guide for Pi-hole on Kubernetes:**
-- https://github.com/MoJo2600/pihole-kubernetes
-- Ask ChatGPT: "How do I set up Pi-hole on Kubernetes?"
-
-**Note:** `.local` domains require mDNS/Avahi or DNS server configuration. For most users, remembering a few Tailscale IPs is simpler than maintaining local DNS.
+3. Access services via IPs or .local domains (if configured)
 
 ### Future: Add Public Domain (Optional)
 

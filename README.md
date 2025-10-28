@@ -321,6 +321,15 @@ This will:
 - Deploy MinIO for object storage
 - Install monitoring stack (Prometheus, Grafana, Loki)
 - Deploy ArgoCD for GitOps
+- Configure Tailscale subnet routes automatically
+
+**⚠️ IMPORTANT:** After installation completes, **approve the Tailscale subnet route** (30 seconds):
+1. Go to https://login.tailscale.com/admin/machines
+2. Find your control plane machine → Edit route settings
+3. Enable the subnet route (shown in output)
+4. Click Save
+
+This enables `.local` domain access from your laptop (e.g., `http://grafana.mynodeone.local`).
 
 ### 2. Add Worker Nodes (Additional Nodes)
 

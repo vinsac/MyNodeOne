@@ -41,6 +41,13 @@ If you're new to MyNodeOne, start with **[GETTING-STARTED.md](GETTING-STARTED.md
 
 ## 📚 Documentation Quick Links
 
+### 🎯 Use Cases & Solutions
+- **[USE-CASES.md](USE-CASES.md)** - Overview of all use cases
+- **[Enterprise SaaS](use-cases/enterprise-saas.md)** - Save $100K+/year on compliance infrastructure
+- **[Dev/Test/QA](use-cases/devtest-qa.md)** - Unlimited development environments
+- **Personal Cloud** - Replace $500/year in subscriptions (see BEGINNER-GUIDE.md)
+- Coming soon: Small SaaS, API Products, Data Analytics, Internal Tools, Education
+
 ### 🚀 For Everyone
 - **[QUICK-START.md](QUICK-START.md)** - Install your first app in 10 minutes
 - **[ACCESS-CHEAT-SHEET.md](ACCESS-CHEAT-SHEET.md)** - All your app URLs (print this!)

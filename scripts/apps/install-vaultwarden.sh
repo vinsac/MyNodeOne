@@ -184,7 +184,7 @@ echo ""
 # Configure DNS automatically
 echo "🌐 Configuring local DNS..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if bash "$SCRIPT_DIR/../configure-app-dns.sh" > /dev/null 2>&1; then
+if bash "$SCRIPT_DIR/../configure-app-dns.sh" vaultwarden > /dev/null 2>&1; then
     echo ""
     echo "✓ DNS configured! Access Vaultwarden at:"
     echo "   http://vaultwarden.mynodeone.local"
@@ -194,4 +194,110 @@ else
     echo ""
     echo "⚠️  DNS auto-configuration skipped"
     echo ""
+fi
+
+# Check if VPS edge node is configured
+if [[ -f ~/.mynodeone/config.env ]]; then
+    source ~/.mynodeone/config.env
+    
+    if [[ -n "${VPS_EDGE_IP:-}" ]] || [[ "${NODE_TYPE:-}" == "vps-edge" ]]; then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  🌍 Internet Access via VPS Edge Node"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "Do you want to make Vaultwarden accessible from the internet?"
+        echo ""
+        echo "⚠️  SECURITY NOTE:"
+        echo "  • Internet-accessible password manager requires HTTPS"
+        echo "  • You MUST use a domain with valid SSL certificate"
+        echo "  • Never access via HTTP from internet (man-in-the-middle risk)"
+        echo ""
+        echo "This will:"
+        echo "  • Set up proxy on control plane"
+        echo "  • Configure VPS with automatic HTTPS (Let's Encrypt)"
+        echo "  • Enable secure access from anywhere"
+        echo ""
+        read -p "Configure internet access? [y/N]: " configure_internet
+        
+        if [[ "$configure_internet" =~ ^[Yy]$ ]]; then
+            echo ""
+            
+            # Step 1: Setup proxy on control plane
+            if [[ -x "$SCRIPT_DIR/../setup-app-proxy.sh" ]]; then
+                echo "📡 Setting up app proxy on control plane..."
+                bash "$SCRIPT_DIR/../setup-app-proxy.sh" vaultwarden vaultwarden --skip-systemd || {
+                    echo "⚠️  Proxy setup incomplete. You can set it up later:"
+                    echo "   sudo ./scripts/setup-app-proxy.sh vaultwarden vaultwarden"
+                }
+            fi
+            
+            # Step 2: Configure VPS route
+            read -p "Enter your domain (e.g., example.com): " user_domain
+            read -p "Enter subdomain for Vaultwarden (e.g., vault or passwords): " subdomain
+            
+            if [[ -n "$user_domain" ]] && [[ -n "$subdomain" ]]; then
+                echo ""
+                echo "📡 Configuring VPS route with HTTPS..."
+                echo ""
+                
+                # Get proxy port
+                PROXY_PORT=8082  # Default for vaultwarden
+                if [[ -f ~/.mynodeone/proxy-ports.env ]]; then
+                    source ~/.mynodeone/proxy-ports.env
+                    PROXY_PORT="${vaultwarden_PROXY_PORT:-8082}"
+                fi
+                
+                # Run VPS route configuration
+                if [[ -x "$SCRIPT_DIR/../configure-vps-route.sh" ]]; then
+                    bash "$SCRIPT_DIR/../configure-vps-route.sh" vaultwarden "$PROXY_PORT" "$subdomain" "$user_domain" && {
+                        echo ""
+                        echo "✅ VPS configured!"
+                        echo ""
+                        echo "📝 Next steps:"
+                        echo "  1. Add DNS A record: $subdomain.$user_domain → VPS_IP"
+                        echo "  2. Wait 5-15 minutes for SSL certificate"
+                        echo "  3. Access: https://$subdomain.$user_domain"
+                        echo "  4. In Bitwarden app/extension, set server URL to: https://$subdomain.$user_domain"
+                        echo ""
+                        echo "⚠️  IMPORTANT: Always use HTTPS (not HTTP) for password manager!"
+                        echo ""
+                    } || {
+                        echo ""
+                        echo "⚠️  VPS route configuration incomplete"
+                        echo ""
+                        echo "To configure manually later, run:"
+                        echo "  sudo ./scripts/configure-vps-route.sh vaultwarden $PROXY_PORT $subdomain $user_domain"
+                    }
+                else
+                    echo "⚠️  VPS route script not found"
+                    echo ""
+                    echo "To configure manually:"
+                    echo "  1. Setup proxy: sudo ./scripts/setup-app-proxy.sh vaultwarden vaultwarden"
+                    echo "  2. Configure VPS: sudo ./scripts/configure-vps-route.sh vaultwarden 80 $subdomain $user_domain"
+                fi
+            else
+                echo ""
+                echo "⚠️  Domain and subdomain required. Skipped."
+                echo ""
+                echo "To configure later, run:"
+                echo "  sudo ./scripts/setup-app-proxy.sh vaultwarden vaultwarden"
+                echo "  sudo ./scripts/configure-vps-route.sh vaultwarden 80 <subdomain> <domain>"
+            fi
+            
+            echo ""
+            echo "📖 For DNS setup instructions, see:"
+            echo "   docs/guides/DNS-SETUP-GUIDE.md"
+            echo ""
+        else
+            echo ""
+            echo "⚠️  Internet access configuration skipped"
+            echo ""
+            echo "To configure later:"
+            echo "  1. Setup proxy: sudo ./scripts/setup-app-proxy.sh vaultwarden vaultwarden"
+            echo "  2. Configure VPS route: sudo ./scripts/configure-vps-route.sh vaultwarden 80 <subdomain> <domain>"
+            echo "  3. Setup DNS: See docs/guides/DNS-SETUP-GUIDE.md"
+            echo ""
+        fi
+    fi
 fi

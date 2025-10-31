@@ -164,7 +164,7 @@ spec:
         - name: REDIS_HOSTNAME
           value: immich-redis
         ports:
-        - containerPort: 3001
+        - containerPort: 2283
         volumeMounts:
         - name: photos
           mountPath: /usr/src/app/upload
@@ -189,7 +189,7 @@ spec:
   type: LoadBalancer
   ports:
   - port: 80
-    targetPort: 3001
+    targetPort: 2283
     name: http
   selector:
     app: immich-server

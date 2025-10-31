@@ -41,6 +41,12 @@ If you're new to MyNodeOne, start with **[GETTING-STARTED.md](docs/guides/GETTIN
 
 ## 📚 Documentation Quick Links
 
+### 🌐 Deployment Options
+- **[HYBRID-SETUP-GUIDE.md](docs/guides/HYBRID-SETUP-GUIDE.md)** - Home + VPS (Recommended!) 🌟
+- **[VPS-INSTALLATION.md](docs/guides/VPS-INSTALLATION.md)** - Cloud-only deployment
+- **[DNS-SETUP-GUIDE.md](docs/guides/DNS-SETUP-GUIDE.md)** - Domain setup with screenshots
+- **[TAILSCALE-HEADLESS-SETUP.md](docs/guides/TAILSCALE-HEADLESS-SETUP.md)** - VPN for servers without UI
+
 ### 🎯 Use Cases & Solutions
 - **[USE-CASES.md](docs/use-cases/README.md)** - Overview of all use cases
 - **[Enterprise SaaS](docs/use-cases/enterprise-saas.md)** - Save $100K+/year on compliance infrastructure
@@ -56,6 +62,7 @@ If you're new to MyNodeOne, start with **[GETTING-STARTED.md](docs/guides/GETTIN
 ### 👶 For Non-Technical Users
 - **[BEGINNER-GUIDE.md](docs/guides/BEGINNER-GUIDE.md)** - Step-by-step guide, no experience needed
 - **[MOBILE-ACCESS-GUIDE.md](docs/guides/MOBILE-ACCESS-GUIDE.md)** - How to use apps on your phone
+- **[VPS-QUICK-START.md](docs/guides/VPS-QUICK-START.md)** - VPS setup in 5 minutes
 - Access dashboard: `http://mynodeone.local` (after installation)
 - Interactive app store: `sudo ./scripts/app-store.sh`
 

@@ -693,6 +693,17 @@ EOF
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
+deploy_dashboard() {
+    log_info "Deploying MyNodeOne Dashboard..."
+    
+    # Deploy the dashboard
+    if bash "$SCRIPT_DIR/../website/deploy-dashboard.sh" > /dev/null 2>&1; then
+        log_success "Dashboard deployed - accessible at http://mynodeone.local"
+    else
+        log_warn "Dashboard deployment had issues, but continuing..."
+    fi
+}
+
 create_cluster_token() {
     log_info "Generating node join token..."
     
@@ -728,6 +739,7 @@ display_credentials() {
     echo
     
     # Get IPs
+    DASHBOARD_IP=$(kubectl get svc -n mynodeone-dashboard dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
@@ -735,6 +747,11 @@ display_credentials() {
     
     # Get passwords
     GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "See file below")
+    
+    echo "🏠 MYNODEONE DASHBOARD:"
+    echo "   URL: http://$DASHBOARD_IP (also at http://mynodeone.local)"
+    echo "   Features: Cluster status, one-click apps, script browser"
+    echo
     
     echo "📊 GRAFANA (Monitoring Dashboard):"
     echo "   URL: http://$GRAFANA_IP"
@@ -1225,6 +1242,7 @@ main() {
     install_minio
     install_monitoring
     install_argocd
+    deploy_dashboard
     create_cluster_token
     
     echo

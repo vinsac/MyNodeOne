@@ -41,7 +41,7 @@ The core installation (Steps 1-3) gets your control plane running. Step 4 (secur
 
 ## Prerequisites: Prepare Your Control Plane Machine
 
-> 🎯 **Start with Your Control Plane (Master Node)**
+> 🎯 **Start with Your Control Plane (First Node)**
 > 
 > **What is it?** Your control plane is the "brain" of your cluster - it manages everything.
 > 

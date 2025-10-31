@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyNodeOne Dashboard - Your Personal Cloud</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            font-size: 1.3em;
+            opacity: 0.95;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .card-icon {
+            font-size: 2.5em;
+            margin-right: 15px;
+        }
+        
+        .card-title {
+            font-size: 1.5em;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .service-list {
+            list-style: none;
+        }
+        
+        .service-item {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .service-name {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .service-link {
+            color: #667eea;
+            text-decoration: none;
+            padding: 6px 15px;
+            background: white;
+            border-radius: 5px;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+        
+        .service-link:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .app-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .app-card:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+            transform: scale(1.05);
+        }
+        
+        .app-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .app-name {
+            font-weight: 600;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+        
+        .app-description {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+        
+        .install-button {
+            margin-top: 10px;
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        
+        .app-card:hover .install-button {
+            background: white;
+            color: #667eea;
+        }
+        
+        .install-button:hover {
+            opacity: 0.9;
+        }
+        
+        .scripts-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .script-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .script-icon {
+            font-size: 2em;
+            margin-right: 15px;
+        }
+        
+        .script-info {
+            flex: 1;
+        }
+        
+        .script-name {
+            font-weight: 600;
+            font-size: 1.1em;
+            color: #333;
+        }
+        
+        .script-desc {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .script-command {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .status-running {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .quick-links {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .quick-link {
+            flex: 1;
+            min-width: 200px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            text-align: center;
+            text-decoration: none;
+            color: #667eea;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+        
+        .quick-link:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            padding: 20px;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .app-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 MyNodeOne Dashboard</h1>
+            <p>Your Personal Cloud Infrastructure Control Center</p>
+        </div>
+        
+        <div class="dashboard">
+            <!-- Cluster Status Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">💻</div>
+                    <div class="card-title">Cluster Status</div>
+                </div>
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 3em; color: #28a745; margin-bottom: 10px;">✓</div>
+                    <div style="font-size: 1.3em; font-weight: 600; color: #333;">Running</div>
+                    <div style="margin-top: 15px; color: #666;">
+                        <div>Control Plane: <span style="color: #28a745; font-weight: 600;">Active</span></div>
+                        <div>Worker Nodes: <span style="font-weight: 600;">Check below</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Installed Services Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">🛠️</div>
+                    <div class="card-title">Core Services</div>
+                </div>
+                <ul class="service-list">
+                    <li class="service-item">
+                        <span class="service-name">Grafana</span>
+                        <a href="http://grafana.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <span class="service-name">ArgoCD</span>
+                        <a href="https://argocd.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <span class="service-name">MinIO Console</span>
+                        <a href="http://minio.mynodeone.local:9001" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <span class="service-name">Longhorn UI</span>
+                        <a href="http://longhorn.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Quick Actions Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">⚡</div>
+                    <div class="card-title">Quick Actions</div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button onclick="alert('Run: sudo ./scripts/add-worker-node.sh')" 
+                            style="padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
+                        ➕ Add Worker Node
+                    </button>
+                    <button onclick="alert('Run: sudo ./scripts/cluster-status.sh')" 
+                            style="padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
+                        📊 Check Cluster Status
+                    </button>
+                    <button onclick="alert('Run: sudo ./scripts/show-credentials.sh')" 
+                            style="padding: 12px; background: #ffc107; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
+                        🔑 View Credentials
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- One-Click Apps Section -->
+        <div class="card" style="grid-column: 1 / -1;">
+            <div class="card-header">
+                <div class="card-icon">📦</div>
+                <div class="card-title">One-Click App Installation</div>
+            </div>
+            <p style="color: #666; margin-bottom: 10px;">Install popular self-hosted applications with a single command</p>
+            <p style="color: #667eea; font-weight: 600; margin-bottom: 20px;">
+                ✨ Each app gets its own easy-to-remember address like <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">jellyfin.mynodeone.local</code>
+            </p>
+            
+            <div class="app-grid">
+                <div class="app-card" onclick="showInstallCommand('plex')">
+                    <div class="app-icon">🎬</div>
+                    <div class="app-name">Plex</div>
+                    <div class="app-description">Media server (Netflix-like)</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('jellyfin')">
+                    <div class="app-icon">📺</div>
+                    <div class="app-name">Jellyfin</div>
+                    <div class="app-description">Open source Plex alternative</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('immich')">
+                    <div class="app-icon">📸</div>
+                    <div class="app-name">Immich</div>
+                    <div class="app-description">Google Photos alternative</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('nextcloud')">
+                    <div class="app-icon">☁️</div>
+                    <div class="app-name">Nextcloud</div>
+                    <div class="app-description">Cloud storage & collaboration</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('mattermost')">
+                    <div class="app-icon">💬</div>
+                    <div class="app-name">Mattermost</div>
+                    <div class="app-description">Team chat (Slack alternative)</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('vaultwarden')">
+                    <div class="app-icon">🔐</div>
+                    <div class="app-name">Vaultwarden</div>
+                    <div class="app-description">Password manager (Bitwarden)</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('paperless')">
+                    <div class="app-icon">📄</div>
+                    <div class="app-name">Paperless-ngx</div>
+                    <div class="app-description">Document management</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('minecraft')">
+                    <div class="app-icon">🎮</div>
+                    <div class="app-name">Minecraft Server</div>
+                    <div class="app-description">Game server</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('homepage')">
+                    <div class="app-icon">🏠</div>
+                    <div class="app-name">Homepage</div>
+                    <div class="app-description">Dashboard for services</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('uptime-kuma')">
+                    <div class="app-icon">📊</div>
+                    <div class="app-name">Uptime Kuma</div>
+                    <div class="app-description">Monitoring tool</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('gitea')">
+                    <div class="app-icon">🦊</div>
+                    <div class="app-name">Gitea</div>
+                    <div class="app-description">Self-hosted Git (GitHub)</div>
+                    <button class="install-button">Install</button>
+                </div>
+                
+                <div class="app-card" onclick="showInstallCommand('audiobookshelf')">
+                    <div class="app-icon">🎧</div>
+                    <div class="app-name">Audiobookshelf</div>
+                    <div class="app-description">Audiobooks & podcasts</div>
+                    <button class="install-button">Install</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Available Scripts Section -->
+        <div class="scripts-section">
+            <h2 style="margin-bottom: 20px; color: #333;">🔧 Available Management Scripts</h2>
+            
+            <div class="script-item">
+                <div class="script-icon">🚀</div>
+                <div class="script-info">
+                    <div class="script-name">bootstrap-control-plane.sh</div>
+                    <div class="script-desc">Initial setup - Install Kubernetes, storage, monitoring, and GitOps</div>
+                </div>
+                <div class="script-command">sudo ./scripts/bootstrap-control-plane.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">➕</div>
+                <div class="script-info">
+                    <div class="script-name">add-worker-node.sh</div>
+                    <div class="script-desc">Add more machines to your cluster for increased capacity</div>
+                </div>
+                <div class="script-command">sudo ./scripts/add-worker-node.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🌐</div>
+                <div class="script-info">
+                    <div class="script-name">setup-edge-node.sh</div>
+                    <div class="script-desc">Configure VPS as edge node for public access</div>
+                </div>
+                <div class="script-command">sudo ./scripts/setup-edge-node.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">💻</div>
+                <div class="script-info">
+                    <div class="script-name">setup-laptop.sh</div>
+                    <div class="script-desc">Configure management laptop with kubectl and access</div>
+                </div>
+                <div class="script-command">sudo ./scripts/setup-laptop.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">📊</div>
+                <div class="script-info">
+                    <div class="script-name">cluster-status.sh</div>
+                    <div class="script-desc">Check cluster health, nodes, pods, and resources</div>
+                </div>
+                <div class="script-command">./scripts/cluster-status.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🔑</div>
+                <div class="script-info">
+                    <div class="script-name">show-credentials.sh</div>
+                    <div class="script-desc">Display service URLs and login credentials</div>
+                </div>
+                <div class="script-command">sudo ./scripts/show-credentials.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🛠️</div>
+                <div class="script-info">
+                    <div class="script-name">create-app.sh</div>
+                    <div class="script-desc">Scaffold new application with manifests and configuration</div>
+                </div>
+                <div class="script-command">./scripts/create-app.sh myapp</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🤖</div>
+                <div class="script-info">
+                    <div class="script-name">deploy-llm-chat.sh</div>
+                    <div class="script-desc">Deploy local AI chat (Open WebUI + Ollama)</div>
+                </div>
+                <div class="script-command">sudo ./scripts/deploy-llm-chat.sh</div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🔒</div>
+                <div class="script-info">
+                    <div class="script-name">enable-security-hardening.sh</div>
+                    <div class="script-desc">Apply production security policies and encryption</div>
+                </div>
+                <div class="script-command">sudo ./scripts/enable-security-hardening.sh</div>
+            </div>
+        </div>
+        
+        <!-- Documentation Links -->
+        <div class="quick-links">
+            <a href="https://github.com/vinsac/MyNodeOne" class="quick-link">📖 Documentation</a>
+            <a href="https://github.com/vinsac/MyNodeOne/blob/main/FAQ.md" class="quick-link">❓ FAQ</a>
+            <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/troubleshooting.md" class="quick-link">🔧 Troubleshooting</a>
+            <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/architecture.md" class="quick-link">🏗️ Architecture</a>
+        </div>
+        
+        <div class="footer">
+            <p><strong>MyNodeOne v1.0</strong> - Your Personal Cloud Infrastructure</p>
+            <p style="margin-top: 10px; opacity: 0.8;">Built with ❤️ by Vinay Sachdeva</p>
+        </div>
+    </div>
+    
+    <script>
+        function showInstallCommand(appName) {
+            const command = `sudo ./scripts/apps/install-${appName}.sh`;
+            const appUrls = {
+                'plex': 'http://plex.mynodeone.local',
+                'jellyfin': 'http://jellyfin.mynodeone.local',
+                'immich': 'http://immich.mynodeone.local',
+                'nextcloud': 'http://nextcloud.mynodeone.local',
+                'mattermost': 'http://mattermost.mynodeone.local',
+                'vaultwarden': 'http://vaultwarden.mynodeone.local',
+                'paperless': 'http://paperless.mynodeone.local',
+                'minecraft': 'minecraft.mynodeone.local:25565',
+                'homepage': 'http://homepage.mynodeone.local',
+                'uptime-kuma': 'http://uptime-kuma.mynodeone.local',
+                'gitea': 'http://gitea.mynodeone.local',
+                'audiobookshelf': 'http://audiobookshelf.mynodeone.local'
+            };
+            
+            const accessUrl = appUrls[appName] || 'Check installation output for URL';
+            
+            const message = `To install ${appName}, run this command in your terminal:\n\n${command}\n\nAfter installation, access at:\n${accessUrl}\n\nNote: SSH into your control plane first!`;
+            alert(message);
+        }
+        
+        // Auto-refresh cluster status every 30 seconds
+        setInterval(() => {
+            console.log('Cluster status check - implement API call here');
+        }, 30000);
+    </script>
+</body>
+</html>

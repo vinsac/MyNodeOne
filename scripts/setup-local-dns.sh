@@ -46,12 +46,18 @@ get_service_ips() {
     MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     MINIO_API_IP=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    DASHBOARD_IP=$(kubectl get svc -n mynodeone-dashboard dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     
     # Validate we got IPs
     if [ -z "$GRAFANA_IP" ] || [ -z "$ARGOCD_IP" ] || [ -z "$MINIO_CONSOLE_IP" ]; then
         log_error "Could not retrieve all service IPs. Ensure services are running:"
         kubectl get svc -A | grep LoadBalancer
         exit 1
+    fi
+    
+    # Use dashboard IP for mynodeone.local if available, otherwise use Grafana
+    if [ -z "$DASHBOARD_IP" ]; then
+        DASHBOARD_IP="$GRAFANA_IP"
     fi
     
     log_success "Service IPs retrieved"
@@ -138,7 +144,7 @@ address=/argocd.mynodeone.local/${ARGOCD_IP}
 address=/minio.mynodeone.local/${MINIO_CONSOLE_IP}
 address=/minio-api.mynodeone.local/${MINIO_API_IP}
 address=/longhorn.mynodeone.local/${LONGHORN_IP}
-address=/mynodeone.local/${GRAFANA_IP}
+address=/mynodeone.local/${DASHBOARD_IP}
 
 # Upstream DNS servers
 server=8.8.8.8
@@ -185,6 +191,7 @@ update_hosts_file() {
     cat >> /etc/hosts <<EOF
 
 # MyNodeOne services
+${DASHBOARD_IP}      mynodeone.local
 ${GRAFANA_IP}        grafana.mynodeone.local
 ${ARGOCD_IP}         argocd.mynodeone.local
 ${MINIO_CONSOLE_IP}  minio.mynodeone.local
@@ -212,6 +219,7 @@ ARGOCD_IP="ARGOCD_IP_PLACEHOLDER"
 MINIO_CONSOLE_IP="MINIO_CONSOLE_IP_PLACEHOLDER"
 MINIO_API_IP="MINIO_API_IP_PLACEHOLDER"
 LONGHORN_IP="LONGHORN_IP_PLACEHOLDER"
+DASHBOARD_IP="DASHBOARD_IP_PLACEHOLDER"
 
 echo "Setting up mynodeone.local domains..."
 
@@ -239,6 +247,7 @@ sudo sed -i.tmp '/# MyNodeOne services/,/# End MyNodeOne services/d' "$HOSTS_FIL
 # Add new entries
 echo "" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "# MyNodeOne services" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${DASHBOARD_IP}      mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "${GRAFANA_IP}        grafana.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "${ARGOCD_IP}         argocd.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "${MINIO_CONSOLE_IP}  minio.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
@@ -250,10 +259,11 @@ echo ""
 echo "✅ Local DNS configured!"
 echo ""
 echo "You can now access services at:"
-echo "  • Grafana:  http://grafana.mynodeone.local"
-echo "  • ArgoCD:   https://argocd.mynodeone.local"
-echo "  • MinIO:    http://minio.mynodeone.local:9001"
-echo "  • Longhorn: http://longhorn.mynodeone.local"
+echo "  • Dashboard: http://mynodeone.local"
+echo "  • Grafana:   http://grafana.mynodeone.local"
+echo "  • ArgoCD:    https://argocd.mynodeone.local"
+echo "  • MinIO:     http://minio.mynodeone.local:9001"
+echo "  • Longhorn:  http://longhorn.mynodeone.local"
 echo ""
 SCRIPT_EOF
     
@@ -263,6 +273,7 @@ SCRIPT_EOF
     sed -i "s/MINIO_CONSOLE_IP_PLACEHOLDER/$MINIO_CONSOLE_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
     sed -i "s/MINIO_API_IP_PLACEHOLDER/$MINIO_API_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
     sed -i "s/LONGHORN_IP_PLACEHOLDER/$LONGHORN_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
+    sed -i "s/DASHBOARD_IP_PLACEHOLDER/$DASHBOARD_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
     
     chmod +x "$PROJECT_ROOT/setup-client-dns.sh"
     
@@ -276,10 +287,11 @@ print_summary() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     echo "🎯 On this control plane, you can now access:"
-    echo "  • Grafana:  http://grafana.mynodeone.local"
-    echo "  • ArgoCD:   https://argocd.mynodeone.local"
-    echo "  • MinIO:    http://minio.mynodeone.local:9001"
-    echo "  • Longhorn: http://longhorn.mynodeone.local"
+    echo "  • Dashboard: http://mynodeone.local"
+    echo "  • Grafana:   http://grafana.mynodeone.local"
+    echo "  • ArgoCD:    https://argocd.mynodeone.local"
+    echo "  • MinIO:     http://minio.mynodeone.local:9001"
+    echo "  • Longhorn:  http://longhorn.mynodeone.local"
     echo
     echo "💻 On other devices (laptop, desktop):"
     echo "  1. Ensure Tailscale is installed and connected"

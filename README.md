@@ -39,6 +39,26 @@ If you're new to MyNodeOne, start with **[GETTING-STARTED.md](GETTING-STARTED.md
 
 ---
 
+## 📚 Documentation Quick Links
+
+### 🚀 For Everyone
+- **[QUICK-START.md](QUICK-START.md)** - Install your first app in 10 minutes
+- **[ACCESS-CHEAT-SHEET.md](ACCESS-CHEAT-SHEET.md)** - All your app URLs (print this!)
+- **[APP-STORE.md](APP-STORE.md)** - Browse 10+ one-click apps (Jellyfin, Immich, etc.)
+
+### 👶 For Non-Technical Users
+- **[BEGINNER-GUIDE.md](BEGINNER-GUIDE.md)** - Step-by-step guide, no experience needed
+- **[MOBILE-ACCESS-GUIDE.md](MOBILE-ACCESS-GUIDE.md)** - How to use apps on your phone
+- Access dashboard: `http://mynodeone.local` (after installation)
+- Interactive app store: `sudo ./scripts/app-store.sh`
+
+### 🔧 For Technical Users
+- **[INSTALLATION.md](INSTALLATION.md)** - Full installation documentation
+- **[docs/architecture.md](docs/architecture.md)** - System architecture details
+- **[FAQ.md](FAQ.md)** - Frequently asked questions
+
+---
+
 ## What is MyNodeOne?
 
 MyNodeOne is a production-ready, scalable private cloud infrastructure that lets you run containerized applications across multiple machines with enterprise-grade features:
@@ -57,10 +77,11 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 ## ✨ Core Features (Version 1.0)
 
 ✅ **One Command Setup** - `sudo ./scripts/mynodeone` does everything  
+✅ **Local Dashboard** - Access at `http://mynodeone.local` after installation  
+✅ **One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Vaultwarden, etc.)  
 ✅ **System Cleanup** - Automatic removal of bloat and unused packages  
 ✅ **Disk Auto-Detection** - Finds and configures external drives automatically  
 ✅ **Fully Generic** - Works with ANY hardware, names, IPs  
-✅ **Web Documentation** - Deploy docs website to your cluster  
 ✅ **LLM Support** - Run language models on CPU  
 ✅ **Complete Networking Guide** - Tailscale + alternatives fully explained  
 
@@ -166,10 +187,10 @@ sudo ./scripts/enable-security-hardening.sh
     ┌────────────┴────────────────┐
     │                             │
 ┌───┴────────────┐    ┌───────────┴──────┐    ┌──────────────┐
-│  Control Node  │    │   Worker Node    │    │ Worker Node  │
+│ Control Plane  │    │   Worker Node    │    │ Worker Node  │
 │  (Any Name)    │    │   (Any Name)     │    │  (Any Name)  │
 │                │    │                  │    │              │
-│ - K3s Master   │    │ - K3s Worker     │    │ - K3s Worker │
+│ - K3s Server   │    │ - K3s Worker     │    │ - K3s Worker │
 │ - Your RAM/CPU │    │ - Your RAM/CPU   │    │ - Your RAM   │
 │ - Your Storage │    │ - Your Storage   │    │ - Your Disk  │
 │ - Auto-Detected│    │ - Auto-Detected  │    │ - Detected   │
@@ -321,6 +342,7 @@ This will:
 - Deploy MinIO for object storage
 - Install monitoring stack (Prometheus, Grafana, Loki)
 - Deploy ArgoCD for GitOps
+- **Deploy local dashboard** at http://mynodeone.local
 - Configure Tailscale subnet routes automatically
 
 **⚠️ IMPORTANT:** After installation completes, **approve the Tailscale subnet route** (30 seconds):
@@ -390,6 +412,49 @@ sudo ./scripts/deploy-demo-app.sh remove
 
 **See [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md) for detailed instructions**
 
+## 🎯 One-Click App Installation
+
+MyNodeOne includes an **App Store** with ready-to-deploy applications:
+
+### Quick Access
+```bash
+# Interactive app store menu
+sudo ./scripts/app-store.sh
+
+# Or visit the dashboard
+# Open http://mynodeone.local in your browser
+```
+
+### Available Apps (10+ and growing!)
+
+**Media & Entertainment:**
+- 🎬 **Jellyfin** - Netflix-like media server
+- 🎮 **Minecraft** - Game server
+
+**Photos & Files:**
+- 📸 **Immich** - Google Photos alternative with AI
+- ☁️ **Nextcloud** - Cloud storage (coming soon)
+
+**Security:**
+- 🔐 **Vaultwarden** - Password manager (Bitwarden)
+- 🏠 **Homepage** - Beautiful dashboard
+
+**And more:** Plex, Gitea, Mattermost, Uptime Kuma, Paperless-ngx, Audiobookshelf
+
+**See [APP-STORE.md](APP-STORE.md) for complete guide and installation instructions**
+
+### Example: Install Jellyfin Media Server
+```bash
+# One command - fully automated
+sudo ./scripts/apps/install-jellyfin.sh
+
+# Result: Complete media server with:
+# ✅ Automatic storage configuration
+# ✅ LoadBalancer IP assigned
+# ✅ Ready to add your movies/TV shows
+# ✅ Mobile apps available for iOS/Android
+```
+
 ## Management
 
 ### Access Web UIs
@@ -401,11 +466,12 @@ All services accessible via Tailscale network (LoadBalancer IPs):
 sudo ./scripts/show-credentials.sh
 ```
 
-**Services are accessible at Tailscale IPs (100.x.x.x):**
-- **Grafana** (Monitoring): http://100.x.x.x (shown in installation output)
-- **ArgoCD** (GitOps): https://100.x.x.x
-- **MinIO Console** (S3): http://100.x.x.x:9001
-- **Longhorn UI** (Storage): http://100.x.x.x
+**Services are accessible at Tailscale IPs (100.x.x.x) or .local domains:**
+- **Dashboard**: http://mynodeone.local (main control center)
+- **Grafana** (Monitoring): http://grafana.mynodeone.local
+- **ArgoCD** (GitOps): https://argocd.mynodeone.local
+- **MinIO Console** (S3): http://minio.mynodeone.local:9001
+- **Longhorn UI** (Storage): http://longhorn.mynodeone.local
 
 See [ACCESS_INFORMATION.md](ACCESS_INFORMATION.md) for complete access details and credentials.
 

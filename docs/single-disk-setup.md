@@ -419,4 +419,4 @@ sudo ./scripts/add-storage-disk.sh
 3. **Monitor disk space** - keep 20% free
 4. **Add disks later** if needed - easy upgrade path
 
-**Questions?** See [FAQ.md](../FAQ.md) or open an issue on GitHub!
+**Questions?** See [FAQ.md](reference/FAQ.md) or open an issue on GitHub!

@@ -798,7 +798,7 @@ kubectl get pv,pvc -A
 - **Deployment Guide:** [APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)
 - **Demo App:** [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)
 - **Security:** [SECURITY_CREDENTIALS_GUIDE.md](SECURITY_CREDENTIALS_GUIDE.md)
-- **FAQ:** [FAQ.md](../../FAQ.md) - 50+ common questions answered
+- **FAQ:** [FAQ.md](../reference/FAQ.md) - 50+ common questions answered
 
 ### Community
 - GitHub Issues: https://github.com/vinsac/MyNodeOne/issues

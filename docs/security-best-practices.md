@@ -612,8 +612,8 @@ kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/
 - DO NOT post security issues in public GitHub issues
 
 **General Security Questions:**
-- Check [FAQ.md](../FAQ.md)
-- Review [SECURITY-AUDIT.md](../SECURITY-AUDIT.md)
+- Check [FAQ.md](reference/FAQ.md)
+- Review security documentation in docs/
 - Ask in GitHub Discussions
 
 ---

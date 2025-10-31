@@ -29,40 +29,40 @@
 
 ---
 
-## 👋 New Here? → **[GETTING-STARTED.md](GETTING-STARTED.md)**
+## 👋 New Here? → **[GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)**
 
-If you're new to MyNodeOne, start with **[GETTING-STARTED.md](GETTING-STARTED.md)** for a guided introduction.
+If you're new to MyNodeOne, start with **[GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)** for a guided introduction.
 
-**Never used terminal/command line?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
+**Never used terminal/command line?** → Read **[TERMINAL-BASICS.md](docs/TERMINAL-BASICS.md)** first!
 
-**Don't understand the technical terms?** → Check **[GLOSSARY.md](GLOSSARY.md)** for simple explanations!
+**Don't understand the technical terms?** → Check **[GLOSSARY.md](docs/GLOSSARY.md)** for simple explanations!
 
 ---
 
 ## 📚 Documentation Quick Links
 
 ### 🎯 Use Cases & Solutions
-- **[USE-CASES.md](USE-CASES.md)** - Overview of all use cases
-- **[Enterprise SaaS](use-cases/enterprise-saas.md)** - Save $100K+/year on compliance infrastructure
-- **[Dev/Test/QA](use-cases/devtest-qa.md)** - Unlimited development environments
-- **Personal Cloud** - Replace $500/year in subscriptions (see BEGINNER-GUIDE.md)
+- **[USE-CASES.md](docs/use-cases/README.md)** - Overview of all use cases
+- **[Enterprise SaaS](docs/use-cases/enterprise-saas.md)** - Save $100K+/year on compliance infrastructure
+- **[Dev/Test/QA](docs/use-cases/devtest-qa.md)** - Unlimited development environments
+- **Personal Cloud** - Replace $500/year in subscriptions (see docs/guides/BEGINNER-GUIDE.md)
 - Coming soon: Small SaaS, API Products, Data Analytics, Internal Tools, Education
 
 ### 🚀 For Everyone
-- **[QUICK-START.md](QUICK-START.md)** - Install your first app in 10 minutes
-- **[ACCESS-CHEAT-SHEET.md](ACCESS-CHEAT-SHEET.md)** - All your app URLs (print this!)
-- **[APP-STORE.md](APP-STORE.md)** - Browse 10+ one-click apps (Jellyfin, Immich, etc.)
+- **[QUICK-START.md](docs/guides/QUICK-START.md)** - Install your first app in 10 minutes
+- **[ACCESS-CHEAT-SHEET.md](docs/reference/ACCESS-CHEAT-SHEET.md)** - All your app URLs (print this!)
+- **[APP-STORE.md](docs/reference/APP-STORE.md)** - Browse 10+ one-click apps (Jellyfin, Immich, etc.)
 
 ### 👶 For Non-Technical Users
-- **[BEGINNER-GUIDE.md](BEGINNER-GUIDE.md)** - Step-by-step guide, no experience needed
-- **[MOBILE-ACCESS-GUIDE.md](MOBILE-ACCESS-GUIDE.md)** - How to use apps on your phone
+- **[BEGINNER-GUIDE.md](docs/guides/BEGINNER-GUIDE.md)** - Step-by-step guide, no experience needed
+- **[MOBILE-ACCESS-GUIDE.md](docs/guides/MOBILE-ACCESS-GUIDE.md)** - How to use apps on your phone
 - Access dashboard: `http://mynodeone.local` (after installation)
 - Interactive app store: `sudo ./scripts/app-store.sh`
 
 ### 🔧 For Technical Users
-- **[INSTALLATION.md](INSTALLATION.md)** - Full installation documentation
+- **[INSTALLATION.md](docs/guides/INSTALLATION.md)** - Full installation documentation
 - **[docs/architecture.md](docs/architecture.md)** - System architecture details
-- **[FAQ.md](FAQ.md)** - Frequently asked questions
+- **[FAQ.md](docs/reference/FAQ.md)** - Frequently asked questions
 
 ---
 

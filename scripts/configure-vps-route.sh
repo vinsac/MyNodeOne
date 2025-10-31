@@ -18,9 +18,14 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 
-# Check if running on control plane
-if [[ ! -f /etc/rancher/k3s/k3s.yaml ]]; then
-    error "This script must be run on the control plane (where apps are installed)"
+# Check if kubectl is available
+if ! command -v kubectl &> /dev/null; then
+    error "kubectl not found. This script requires kubectl access to the cluster."
+fi
+
+# Check if we can access the cluster
+if ! kubectl get nodes &> /dev/null; then
+    error "Cannot access Kubernetes cluster. Ensure kubectl is configured correctly."
 fi
 
 # Load configuration
@@ -62,10 +67,27 @@ echo "  Configure VPS Route for $APP_NAME"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Get control plane Tailscale IP
-CONTROL_PLANE_IP=$(tailscale ip -4)
-if [[ -z "$CONTROL_PLANE_IP" ]]; then
-    error "Could not determine control plane Tailscale IP. Is Tailscale running?"
+# Get service external IP (which should be the control plane's Tailscale IP)
+SERVICE_IP=$(kubectl get svc -n "$APP_NAME" "${APP_NAME}-server" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+
+# If service not found or no external IP, try to detect control plane IP
+if [[ -z "$SERVICE_IP" ]]; then
+    # Try to get from Tailscale if running on control plane
+    if command -v tailscale &> /dev/null; then
+        CONTROL_PLANE_IP=$(tailscale ip -4)
+    fi
+    
+    # If still not found, prompt user
+    if [[ -z "$CONTROL_PLANE_IP" ]]; then
+        warn "Could not automatically determine control plane IP"
+        echo ""
+        read -p "Enter control plane Tailscale IP: " CONTROL_PLANE_IP
+        if [[ -z "$CONTROL_PLANE_IP" ]]; then
+            error "Control plane IP required"
+        fi
+    fi
+else
+    CONTROL_PLANE_IP="$SERVICE_IP"
 fi
 
 info "Control plane IP: $CONTROL_PLANE_IP"
@@ -74,7 +96,7 @@ info "Port: $APP_PORT"
 info "Domain: ${SUBDOMAIN}.${DOMAIN}"
 
 # Check if VPS edge node is configured
-if [[ -z "$VPS_EDGE_IP" ]]; then
+if [[ -z "${VPS_EDGE_IP:-}" ]]; then
     warn "VPS edge node not found in config"
     echo ""
     read -p "Enter your VPS Tailscale IP: " VPS_EDGE_IP

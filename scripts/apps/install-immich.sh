@@ -88,8 +88,6 @@ spec:
       - name: postgres
         image: tensorchord/pgvecto-rs:pg14-v0.2.0
         env:
-        - name: POSTGRES_DB
-          value: immich
         - name: POSTGRES_USER
           value: immich
         - name: POSTGRES_PASSWORD
@@ -97,6 +95,10 @@ spec:
             secretKeyRef:
               name: immich-secrets
               key: DB_PASSWORD
+        - name: POSTGRES_DB
+          value: immich
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         ports:
         - containerPort: 5432
         volumeMounts:
@@ -300,7 +302,7 @@ fi
 if [[ -f ~/.mynodeone/config.env ]]; then
     source ~/.mynodeone/config.env
     
-    if [[ -n "$VPS_EDGE_IP" ]] || [[ "$NODE_TYPE" == "vps-edge" ]]; then
+    if [[ -n "${VPS_EDGE_IP:-}" ]] || [[ "${NODE_TYPE:-}" == "vps-edge" ]]; then
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  🌍 Internet Access via VPS Edge Node"

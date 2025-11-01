@@ -225,6 +225,26 @@ configure_firewall() {
     log_warn "SSH and Tailscale traffic allowed. All other incoming traffic blocked."
 }
 
+optimize_system_for_containers() {
+    log_info "Optimizing system for containerized applications..."
+    
+    # Increase inotify limits for file watching in containers
+    # Many apps (Jellyfin, Immich, etc.) use file watchers that hit default limits
+    log_info "Configuring inotify limits..."
+    sysctl -w fs.inotify.max_user_instances=1024 > /dev/null
+    sysctl -w fs.inotify.max_user_watches=524288 > /dev/null
+    
+    # Make changes permanent
+    if ! grep -q "fs.inotify.max_user_instances" /etc/sysctl.conf 2>/dev/null; then
+        echo "# Increased limits for containerized applications" >> /etc/sysctl.conf
+        echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf
+        echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf
+        log_success "inotify limits increased (persistent)"
+    fi
+    
+    log_success "System optimizations applied"
+}
+
 install_k3s() {
     log_info "Installing K3s server..."
     
@@ -1232,6 +1252,7 @@ main() {
     check_requirements
     install_dependencies
     configure_firewall
+    optimize_system_for_containers
     install_k3s
     install_helm
     install_cert_manager

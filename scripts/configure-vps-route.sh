@@ -67,8 +67,34 @@ echo "  Configure VPS Route for $APP_NAME"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Get service external IP (which should be the control plane's Tailscale IP)
-SERVICE_IP=$(kubectl get svc -n "$APP_NAME" "${APP_NAME}-server" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+# Auto-detect service from Kubernetes
+# Try multiple common service name patterns
+info "Auto-detecting service for $APP_NAME..."
+SERVICE_NAME=""
+for pattern in "${APP_NAME}-server" "${APP_NAME}" "${APP_NAME}-frontend"; do
+    if kubectl get svc -n "$APP_NAME" "$pattern" &>/dev/null 2>&1; then
+        SERVICE_NAME="$pattern"
+        break
+    fi
+done
+
+if [[ -z "$SERVICE_NAME" ]]; then
+    error "Could not find service for app '$APP_NAME'. Checked: ${APP_NAME}-server, ${APP_NAME}, ${APP_NAME}-frontend"
+fi
+
+info "Found service: $SERVICE_NAME"
+
+# Get service external IP and port
+SERVICE_IP=$(kubectl get svc -n "$APP_NAME" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+SERVICE_PORT=$(kubectl get svc -n "$APP_NAME" "$SERVICE_NAME" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo "")
+
+# Use detected port or fall back to manual
+if [[ -n "$SERVICE_PORT" ]]; then
+    info "Auto-detected service port: $SERVICE_PORT"
+    APP_PORT="$SERVICE_PORT"
+else
+    warn "Could not auto-detect port, using provided: $APP_PORT"
+fi
 
 # If service not found or no external IP, try to detect control plane IP
 if [[ -z "$SERVICE_IP" ]]; then

@@ -22,6 +22,13 @@ if [[ "${1:-}" == "--quiet" ]] || [[ "${1:-}" == "-q" ]]; then
     QUIET_MODE=true
 fi
 
+# Load cluster domain from config (default to mynodeone)
+CLUSTER_DOMAIN="mynodeone"
+if [ -f "$HOME/.mynodeone/config.env" ]; then
+    source "$HOME/.mynodeone/config.env"
+    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+fi
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -111,7 +118,7 @@ check_kubectl() {
 discover_services() {
     log_info "Discovering LoadBalancer services..."
     
-    # Get all LoadBalancer services with IPs
+    # Get all LoadBalancer services with IPs and custom subdomain annotations
     SERVICES=$(kubectl get svc -A -o json | jq -r '
         .items[] | 
         select(.spec.type == "LoadBalancer") | 
@@ -120,9 +127,10 @@ discover_services() {
         {
             namespace: .metadata.namespace,
             name: .metadata.name,
-            ip: .status.loadBalancer.ingress[0].ip
+            ip: .status.loadBalancer.ingress[0].ip,
+            subdomain: (.metadata.annotations["mynodeone.local/subdomain"] // "")
         } |
-        "\(.ip)|\(.name)|\(.namespace)"
+        "\(.ip)|\(.name)|\(.namespace)|\(.subdomain)"
     ')
     
     if [ -z "$SERVICES" ]; then
@@ -146,39 +154,45 @@ generate_dns_entries() {
     
     DNS_ENTRIES=""
     
-    while IFS='|' read -r ip name namespace; do
+    while IFS='|' read -r ip name namespace subdomain; do
         # Skip if empty
         [ -z "$ip" ] && continue
         
-        # Generate hostname based on service name and namespace
-        case "$name" in
-            *-server)
-                # App servers (e.g., immich-server, jellyfin-server)
-                APP_NAME="${name%-server}"
-                HOSTNAME="${APP_NAME}.mynodeone.local"
-                ;;
-            *-frontend)
-                # Frontends (e.g., longhorn-frontend)
-                APP_NAME="${name%-frontend}"
-                HOSTNAME="${APP_NAME}.mynodeone.local"
-                ;;
-            kube-prometheus-stack-grafana)
-                HOSTNAME="grafana.mynodeone.local"
-                ;;
-            argocd-server)
-                HOSTNAME="argocd.mynodeone.local"
-                ;;
-            minio-console)
-                HOSTNAME="minio.mynodeone.local"
-                ;;
-            minio)
-                HOSTNAME="minio-api.mynodeone.local"
-                ;;
-            *)
-                # Default: use service name
-                HOSTNAME="${name}.mynodeone.local"
-                ;;
-        esac
+        # Check if custom subdomain annotation exists
+        if [ -n "$subdomain" ]; then
+            # Use custom subdomain from annotation
+            HOSTNAME="${subdomain}.${CLUSTER_DOMAIN}.local"
+        else
+            # Generate hostname based on service name and namespace
+            case "$name" in
+                *-server)
+                    # App servers (e.g., immich-server, jellyfin-server)
+                    APP_NAME="${name%-server}"
+                    HOSTNAME="${APP_NAME}.${CLUSTER_DOMAIN}.local"
+                    ;;
+                *-frontend)
+                    # Frontends (e.g., longhorn-frontend)
+                    APP_NAME="${name%-frontend}"
+                    HOSTNAME="${APP_NAME}.${CLUSTER_DOMAIN}.local"
+                    ;;
+                kube-prometheus-stack-grafana)
+                    HOSTNAME="grafana.${CLUSTER_DOMAIN}.local"
+                    ;;
+                argocd-server)
+                    HOSTNAME="argocd.${CLUSTER_DOMAIN}.local"
+                    ;;
+                minio-console)
+                    HOSTNAME="minio.${CLUSTER_DOMAIN}.local"
+                    ;;
+                minio)
+                    HOSTNAME="minio-api.${CLUSTER_DOMAIN}.local"
+                    ;;
+                *)
+                    # Default: use service name
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
+                    ;;
+            esac
+        fi
         
         DNS_ENTRIES="${DNS_ENTRIES}${ip}    ${HOSTNAME}    # ${namespace}/${name}\n"
         
@@ -217,34 +231,39 @@ test_dns() {
     echo
     
     # Extract hostnames and test them
-    while IFS='|' read -r ip name namespace; do
+    while IFS='|' read -r ip name namespace subdomain; do
         [ -z "$ip" ] && continue
         
-        case "$name" in
-            *-server)
-                APP_NAME="${name%-server}"
-                HOSTNAME="${APP_NAME}.mynodeone.local"
-                ;;
-            *-frontend)
-                APP_NAME="${name%-frontend}"
-                HOSTNAME="${APP_NAME}.mynodeone.local"
-                ;;
-            kube-prometheus-stack-grafana)
-                HOSTNAME="grafana.mynodeone.local"
-                ;;
-            argocd-server)
-                HOSTNAME="argocd.mynodeone.local"
-                ;;
-            minio-console)
-                HOSTNAME="minio.mynodeone.local"
-                ;;
-            minio)
-                HOSTNAME="minio-api.mynodeone.local"
-                ;;
-            *)
-                HOSTNAME="${name}.mynodeone.local"
-                ;;
-        esac
+        # Check if custom subdomain annotation exists
+        if [ -n "$subdomain" ]; then
+            HOSTNAME="${subdomain}.${CLUSTER_DOMAIN}.local"
+        else
+            case "$name" in
+                *-server)
+                    APP_NAME="${name%-server}"
+                    HOSTNAME="${APP_NAME}.${CLUSTER_DOMAIN}.local"
+                    ;;
+                *-frontend)
+                    APP_NAME="${name%-frontend}"
+                    HOSTNAME="${APP_NAME}.${CLUSTER_DOMAIN}.local"
+                    ;;
+                kube-prometheus-stack-grafana)
+                    HOSTNAME="grafana.${CLUSTER_DOMAIN}.local"
+                    ;;
+                argocd-server)
+                    HOSTNAME="argocd.${CLUSTER_DOMAIN}.local"
+                    ;;
+                minio-console)
+                    HOSTNAME="minio.${CLUSTER_DOMAIN}.local"
+                    ;;
+                minio)
+                    HOSTNAME="minio-api.${CLUSTER_DOMAIN}.local"
+                    ;;
+                *)
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
+                    ;;
+            esac
+        fi
         
         RESOLVED_IP=$(getent hosts "$HOSTNAME" 2>/dev/null | awk '{print $1}' || echo "")
         
@@ -279,34 +298,39 @@ print_summary() {
     echo
     
     # Print accessible URLs
-    while IFS='|' read -r ip name namespace; do
+    while IFS='|' read -r ip name namespace subdomain; do
         [ -z "$ip" ] && continue
         
-        case "$name" in
-            *-server)
-                APP_NAME="${name%-server}"
-                HOSTNAME="${APP_NAME}.mynodeone.local"
-                ;;
-            *-frontend)
-                APP_NAME="${name%-frontend}"
-                HOSTNAME="${APP_NAME}.mynodeone.local"
-                ;;
-            kube-prometheus-stack-grafana)
-                HOSTNAME="grafana.mynodeone.local"
-                ;;
-            argocd-server)
-                HOSTNAME="argocd.mynodeone.local"
-                ;;
-            minio-console)
-                HOSTNAME="minio.mynodeone.local"
-                ;;
-            minio)
-                HOSTNAME="minio-api.mynodeone.local"
-                ;;
-            *)
-                HOSTNAME="${name}.mynodeone.local"
-                ;;
-        esac
+        # Check if custom subdomain annotation exists
+        if [ -n "$subdomain" ]; then
+            HOSTNAME="${subdomain}.${CLUSTER_DOMAIN}.local"
+        else
+            case "$name" in
+                *-server)
+                    APP_NAME="${name%-server}"
+                    HOSTNAME="${APP_NAME}.${CLUSTER_DOMAIN}.local"
+                    ;;
+                *-frontend)
+                    APP_NAME="${name%-frontend}"
+                    HOSTNAME="${APP_NAME}.${CLUSTER_DOMAIN}.local"
+                    ;;
+                kube-prometheus-stack-grafana)
+                    HOSTNAME="grafana.${CLUSTER_DOMAIN}.local"
+                    ;;
+                argocd-server)
+                    HOSTNAME="argocd.${CLUSTER_DOMAIN}.local"
+                    ;;
+                minio-console)
+                    HOSTNAME="minio.${CLUSTER_DOMAIN}.local"
+                    ;;
+                minio)
+                    HOSTNAME="minio-api.${CLUSTER_DOMAIN}.local"
+                    ;;
+                *)
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
+                    ;;
+            esac
+        fi
         
         # Determine protocol
         if [[ "$name" == "argocd"* ]]; then

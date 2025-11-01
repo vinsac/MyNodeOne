@@ -14,6 +14,13 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Load cluster domain from config
+CLUSTER_DOMAIN="mynodeone"
+if [ -f "$HOME/.mynodeone/config.env" ]; then
+    source "$HOME/.mynodeone/config.env"
+    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+fi
+
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  Installing Immich (Google Photos Alternative)${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -23,6 +30,26 @@ if ! command -v kubectl &> /dev/null; then
     echo -e "${YELLOW}Error: kubectl not found.${NC}"
     exit 1
 fi
+
+# Prompt for subdomain (used for both local and public access)
+echo "🌐 App Subdomain Configuration"
+echo ""
+echo "Choose a subdomain for Immich. This will be used for:"
+echo "  • Local access: <subdomain>.${CLUSTER_DOMAIN}.local"
+echo "  • Public access: <subdomain>.yourdomain.com (if VPS configured)"
+echo ""
+echo "Examples: photos, immich, pics, gallery"
+echo ""
+read -p "Enter subdomain [default: immich]: " APP_SUBDOMAIN
+APP_SUBDOMAIN="${APP_SUBDOMAIN:-immich}"
+
+# Sanitize subdomain (lowercase, alphanumeric and hyphens only)
+APP_SUBDOMAIN=$(echo "$APP_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+
+echo ""
+echo "✓ Subdomain: ${APP_SUBDOMAIN}"
+echo "  Local: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+echo ""
 
 NAMESPACE="immich"
 DB_PASSWORD=$(openssl rand -base64 32)
@@ -185,6 +212,8 @@ kind: Service
 metadata:
   name: immich-server
   namespace: $NAMESPACE
+  annotations:
+    mynodeone.local/subdomain: "$APP_SUBDOMAIN"
 spec:
   type: LoadBalancer
   ports:
@@ -254,7 +283,9 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  ✓ Immich installed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "📍 Access Immich at: http://$SERVICE_IP"
+echo "📍 Access Immich at:"
+echo "   • Direct IP: http://$SERVICE_IP"
+echo "   • Local domain: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local (after DNS update)"
 echo ""
 echo "🎯 First Time Setup:"
 echo "   1. Open the URL in your browser"
@@ -265,7 +296,7 @@ echo "      • Android: Search 'Immich' in Play Store"
 echo "   4. Configure auto-upload in mobile app"
 echo ""
 echo "📱 Mobile App Setup:"
-echo "   • Server URL: http://$SERVICE_IP (or http://immich.mynodeone.local)"
+echo "   • Server URL: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local (or http://$SERVICE_IP)"
 echo "   • Login with account created above"
 echo "   • Enable background upload"
 echo ""
@@ -288,10 +319,10 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
     echo "🌐 Updating local DNS entries..."
     if sudo bash "$SCRIPT_DIR/../update-laptop-dns.sh" --quiet 2>/dev/null; then
         echo ""
-        echo "✓ Local DNS updated! You can also access Immich at:"
-        echo "   http://immich.mynodeone.local"
+        echo "✓ Local DNS updated! Access Immich at:"
+        echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         echo ""
-        echo "📱 For mobile app, use: http://immich.mynodeone.local"
+        echo "📱 For mobile app, use: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         echo ""
     fi
 else
@@ -299,6 +330,7 @@ else
     echo ""
     echo "💡 To access via .local domain on any Tailscale-connected machine:"
     echo "   Run: sudo ./scripts/update-laptop-dns.sh"
+    echo "   Then access: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
     echo ""
 fi
 
@@ -312,47 +344,49 @@ if [[ -f ~/.mynodeone/config.env ]]; then
         echo "  🌍 Internet Access via VPS Edge Node"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        echo "Do you want to make Immich accessible from the internet?"
+        echo "Make Immich accessible from the internet?"
         echo ""
-        echo "This will:"
-        echo "  • Configure your VPS to route traffic to this app"
-        echo "  • Enable HTTPS with automatic SSL certificate"
-        echo "  • Allow access from anywhere via your domain"
+        echo "This will configure:"
+        echo "  • Public URL: https://${APP_SUBDOMAIN}.yourdomain.com"
+        echo "  • Automatic SSL certificate"
+        echo "  • VPS routing to your cluster"
         echo ""
-        read -p "Configure VPS route? [Y/n]: " configure_vps
+        echo "Using subdomain: ${APP_SUBDOMAIN} (same as local)"
+        echo ""
+        read -p "Configure public access? [Y/n]: " configure_vps
         
         if [[ "$configure_vps" != "n" ]] && [[ "$configure_vps" != "N" ]]; then
             echo ""
-            read -p "Enter your domain (e.g., example.com): " user_domain
-            read -p "Enter subdomain for Immich (e.g., photos): " subdomain
+            read -p "Enter your public domain (e.g., curiios.com): " user_domain
             
-            if [[ -n "$user_domain" ]] && [[ -n "$subdomain" ]]; then
+            if [[ -n "$user_domain" ]]; then
                 echo ""
                 echo "📡 Configuring VPS route..."
+                echo "   Public URL: https://${APP_SUBDOMAIN}.${user_domain}"
                 echo ""
                 
                 # Run VPS route configuration
                 if [[ -x "$SCRIPT_DIR/../configure-vps-route.sh" ]]; then
-                    bash "$SCRIPT_DIR/../configure-vps-route.sh" immich 80 "$subdomain" "$user_domain"
+                    bash "$SCRIPT_DIR/../configure-vps-route.sh" immich 80 "$APP_SUBDOMAIN" "$user_domain"
                 else
                     echo "⚠️  VPS route script not found"
                     echo ""
                     echo "To configure manually later, run:"
-                    echo "  sudo ./scripts/configure-vps-route.sh immich 80 $subdomain $user_domain"
+                    echo "  sudo ./scripts/configure-vps-route.sh immich 80 $APP_SUBDOMAIN $user_domain"
                 fi
             else
                 echo ""
-                echo "⚠️  Domain and subdomain required. Skipped."
+                echo "⚠️  Domain required. Skipped."
                 echo ""
                 echo "To configure later, run:"
-                echo "  sudo ./scripts/configure-vps-route.sh immich 80 <subdomain> <domain>"
+                echo "  sudo ./scripts/configure-vps-route.sh immich 80 $APP_SUBDOMAIN <domain>"
             fi
         else
             echo ""
             echo "⚠️  VPS route configuration skipped"
             echo ""
             echo "To configure later, run:"
-            echo "  sudo ./scripts/configure-vps-route.sh immich 80 <subdomain> <domain>"
+            echo "  sudo ./scripts/configure-vps-route.sh immich 80 $APP_SUBDOMAIN <domain>"
             echo ""
         fi
         

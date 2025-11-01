@@ -299,6 +299,17 @@ configure_cluster_info() {
     
     prompt_input "Give your cluster a name" CLUSTER_NAME "mynodeone"
     
+    echo
+    echo "ℹ️  The cluster domain is used for local .local addresses."
+    echo "  Examples:"
+    echo "    • mynodeone.local → Access apps at: photos.mynodeone.local"
+    echo "    • universe.local → Access apps at: photos.universe.local"
+    echo "    • myhome.local → Access apps at: photos.myhome.local"
+    echo
+    prompt_input "Local domain for your cluster (without .local)" CLUSTER_DOMAIN "mynodeone"
+    # Ensure no .local suffix
+    CLUSTER_DOMAIN="${CLUSTER_DOMAIN%.local}"
+    
     # For control plane, this is the node name
     # For workers, we'll ask for control plane IP
     prompt_input "What should we call this node?" NODE_NAME "$HOSTNAME"
@@ -481,6 +492,7 @@ save_configuration() {
 
 # Cluster
 CLUSTER_NAME="$CLUSTER_NAME"
+CLUSTER_DOMAIN="$CLUSTER_DOMAIN"
 NODE_NAME="$NODE_NAME"
 NODE_TYPE="$NODE_TYPE"
 NODE_LOCATION="$NODE_LOCATION"

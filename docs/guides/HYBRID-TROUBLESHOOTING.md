@@ -38,7 +38,8 @@ ssh root@VPS_IP 'docker logs traefik --tail 50'
 4. [Kubernetes Service Issues](#kubernetes-service-issues)
 5. [Socat Proxy Issues](#socat-proxy-issues)
 6. [Application-Specific Issues](#application-specific-issues)
-7. [Performance Issues](#performance-issues)
+7. [Browser-Specific Issues](#browser-specific-issues)
+8. [Performance Issues](#performance-issues)
 
 ---
 
@@ -139,29 +140,38 @@ ssh root@VPS 'docker logs traefik 2>&1 | grep -i acme'
 
 # Check acme.json file
 ssh root@VPS 'cat /etc/traefik/acme.json | jq .'
+
+# Check for "unable to parse email address" error
+ssh root@VPS 'tail -100 /var/log/traefik/traefik.log | grep -i "unable to parse email"'
 ```
 
 **Possible Causes:**
-1. Port 80 blocked (needed for HTTP-01 challenge)
-2. DNS not propagated
-3. Rate limit hit (Let's Encrypt: 5 certs/week per domain)
-4. Wrong email in Traefik config
+1. **Email not properly configured** (most common - see Issue 2.4)
+2. Port 80 blocked (needed for HTTP-01 challenge)
+3. DNS not propagated
+4. Rate limit hit (Let's Encrypt: 5 certs/week per domain)
+5. Global HTTP redirect blocking ACME challenge
 
 **Solutions:**
 ```bash
-# 1. Ensure port 80 is accessible
+# 1. Verify email is set correctly (not ${SSL_EMAIL})
+ssh root@VPS 'grep "email:" /etc/traefik/traefik.yml'
+# Should show: email: youremail@domain.com
+# NOT: email: ${SSL_EMAIL}
+
+# 2. Ensure port 80 is accessible
 ssh root@VPS 'sudo ufw status | grep 80'
 
-# 2. Test HTTP-01 challenge manually
+# 3. Test HTTP-01 challenge manually
 curl -I http://photos.yourdomain.com/.well-known/acme-challenge/test
 
-# 3. Check rate limits
+# 4. Check rate limits
 # Visit: https://crt.sh/?q=yourdomain.com
 
-# 4. Delete acme.json and retry
-ssh root@VPS 'rm /etc/traefik/acme.json && docker restart traefik'
+# 5. Delete acme.json and retry
+ssh root@VPS 'rm /etc/traefik/acme.json && touch /etc/traefik/acme.json && chmod 600 /etc/traefik/acme.json && cd /etc/traefik && docker compose restart'
 
-# 5. Wait 1-2 minutes for certificate generation
+# 6. Wait 1-2 minutes for certificate generation
 ```
 
 ---
@@ -208,6 +218,72 @@ ssh root@VPS 'rm /etc/traefik/acme.json && docker restart traefik'
 Wait 1-2 minutes for Let's Encrypt certificate to be issued.
 
 If still not working after 5 minutes, check Traefik logs.
+
+---
+
+### **Issue 2.4: SSL_EMAIL variable not expanding (CRITICAL)**
+
+**Symptoms:**
+```bash
+# Traefik logs show:
+"unable to parse email address"
+"Registering account for ${SSL_EMAIL}"
+```
+
+**Cause:** 
+Traefik's YAML config file doesn't support environment variable expansion. The literal string `${SSL_EMAIL}` is sent to Let's Encrypt, which rejects it.
+
+**Diagnosis:**
+```bash
+# Check if email is a variable or actual value
+ssh root@VPS 'grep email /etc/traefik/traefik.yml'
+
+# If you see: email: ${SSL_EMAIL}
+# This is WRONG! ❌
+
+# Should be: email: your-email@example.com
+# This is CORRECT! ✅
+```
+
+**Solution:**
+```bash
+# Fix: Use actual email address in traefik.yml
+ssh root@VPS << 'EOF'
+# Backup current config
+cp /etc/traefik/traefik.yml /etc/traefik/traefik.yml.backup
+
+# Update email (replace with your actual email)
+sed -i 's|email: ${SSL_EMAIL}|email: youremail@example.com|g' /etc/traefik/traefik.yml
+
+# Reset ACME data
+rm -f /etc/traefik/acme.json
+touch /etc/traefik/acme.json
+chmod 600 /etc/traefik/acme.json
+
+# Restart Traefik
+cd /etc/traefik
+docker compose restart
+
+# Wait 30 seconds then check
+sleep 30
+docker logs traefik --tail 20 | grep -i acme
+EOF
+```
+
+**Prevention:**
+When running VPS setup script, ensure `SSL_EMAIL` is set in your config:
+```bash
+# Check your config
+cat ~/.mynodeone/config.env | grep SSL_EMAIL
+
+# Should show:
+# SSL_EMAIL=your-email@example.com
+```
+
+**Why this happens:**
+- Docker Compose supports `${VARIABLE}` syntax
+- YAML config files do NOT (they're just text)
+- Solution: Use direct substitution in setup scripts (fixed in latest version)
 
 ---
 
@@ -667,9 +743,112 @@ ssh root@VPS 'cd /etc/traefik && docker compose restart'
 
 ---
 
-## 7. Performance Issues
+## 7. Browser-Specific Issues
 
-### **Issue 7.1: Slow loading times**
+### **Issue 7.1: Chrome shows red padlock but Firefox works**
+
+**Symptoms:**
+- Valid Let's Encrypt certificate
+- Firefox shows green padlock (secure)
+- Chrome shows red padlock or warning
+- Certificate details show correct issuer (Let's Encrypt)
+
+**Cause:**
+Chrome cached old certificate or security state.
+
+**Solution:**
+
+**Method 1: Restart Browser (Quickest)**
+```bash
+1. Close ALL Chrome windows completely
+2. Wait 5 seconds
+3. Restart Chrome
+4. Visit site again
+```
+
+**Method 2: Clear HSTS Cache**
+```bash
+1. In Chrome, go to: chrome://net-internals/#hsts
+2. Under "Delete domain security policies"
+3. Enter: yourdomain.com
+4. Click "Delete"
+5. Also delete: subdomain.yourdomain.com
+6. Reload page (Ctrl+Shift+R)
+```
+
+**Method 3: Clear Site Data**
+```bash
+1. Go to: chrome://settings/content/all
+2. Search for: yourdomain.com
+3. Click trash icon to delete all site data
+4. Restart Chrome
+5. Visit site again
+```
+
+**Method 4: Incognito Mode (Testing)**
+```bash
+1. Open Incognito window (Ctrl+Shift+N)
+2. Visit site
+3. If it works → Browser cache issue (use Method 1-3)
+4. If it doesn't → Real certificate issue
+```
+
+**Prevention:**
+- Update Chrome regularly: `chrome://settings/help`
+- Don't visit site during certificate generation
+- Wait 2-3 minutes after DNS changes
+
+---
+
+### **Issue 7.2: Browser shows "Not Secure" but certificate is valid**
+
+**Symptoms:**
+- SSL certificate is valid (verified with openssl)
+- Browser shows "Not Secure" or gray padlock
+- Mixed content warnings in console
+
+**Diagnosis:**
+```bash
+# Check browser console (F12 → Console)
+# Look for:
+# - "Mixed Content" warnings
+# - HTTP resources loaded on HTTPS page
+# - Insecure scripts/images/CSS
+```
+
+**Cause:**
+Application loading HTTP resources on HTTPS page.
+
+**Solution:**
+
+**For Immich/Apps:**
+```bash
+# Check if API is configured correctly
+# Immich should use relative URLs (e.g., /api/...) not absolute HTTP URLs
+
+# Check app environment variables
+kubectl get deployment -n immich immich-server -o yaml | grep -i url
+```
+
+**For Custom Apps:**
+```bash
+# Update app config to use HTTPS or relative URLs
+# Example: Change http://api.example.com to https://api.example.com
+# Or use: /api/endpoint instead of http://domain.com/api/endpoint
+```
+
+**Quick Test:**
+```bash
+# Check for mixed content in page
+curl -s https://yourdomain.com | grep -i 'http://' | grep -v 'http://www.w3.org'
+# Any results = mixed content issue
+```
+
+---
+
+## 8. Performance Issues
+
+### **Issue 8.1: Slow loading times**
 
 **Symptoms:**
 - Pages take 5-10+ seconds to load
@@ -713,7 +892,7 @@ http:
 
 ---
 
-### **Issue 7.2: High CPU usage on control plane**
+### **Issue 8.2: High CPU usage on control plane**
 
 **Diagnosis:**
 ```bash
@@ -737,7 +916,7 @@ kubectl set resources deployment immich-server -n immich \
 
 ---
 
-### **Issue 7.3: Database growing too large**
+### **Issue 8.3: Database growing too large**
 
 **Diagnosis:**
 ```bash

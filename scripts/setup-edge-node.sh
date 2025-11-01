@@ -128,7 +128,8 @@ install_traefik() {
     mkdir -p /var/log/traefik
     
     # Create Traefik static configuration
-    cat > /etc/traefik/traefik.yml <<'EOF'
+    # NOTE: Using direct substitution instead of heredoc to expand variables
+    cat > /etc/traefik/traefik.yml <<EOF
 # Traefik Static Configuration
 global:
   checkNewVersion: false
@@ -141,18 +142,9 @@ api:
 entryPoints:
   web:
     address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
-          permanent: true
   
   websecure:
     address: ":443"
-    http:
-      tls:
-        certResolver: letsencrypt
 
 certificatesResolvers:
   letsencrypt:

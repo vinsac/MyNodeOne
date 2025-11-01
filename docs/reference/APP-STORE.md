@@ -82,6 +82,14 @@ Want to share Jellyfin with family not on your network?
 
 ## 📦 Available Applications
 
+### 🤖 AI & Assistant
+- **LLM Chat (Open WebUI + Ollama)** ✅ - Private AI chat with local LLMs (ChatGPT alternative)
+  - 100% private - no data leaves your cluster
+  - Download models: phi3, llama3.2, mistral, and more
+  - Document upload & analysis
+  - Auto-installed during control plane setup
+  - High-performance optimized
+
 ### Media & Entertainment
 - **Jellyfin** ✅ - Open source media server (Netflix alternative)
 - **Plex** 🚧 - Premium media server with apps for every device
@@ -90,7 +98,7 @@ Want to share Jellyfin with family not on your network?
 
 ### Photos & Files
 - **Immich** ✅ - Self-hosted Google Photos alternative with AI features
-- **Nextcloud** 🚧 - Complete cloud storage and collaboration platform
+- **Nextcloud** ✅ - Complete cloud storage and collaboration platform
 - **Paperless-ngx** 🚧 - Document management with OCR
 
 ### Communication & Productivity
@@ -123,11 +131,17 @@ This launches an interactive menu where you can:
 
 Install any app directly:
 ```bash
+# AI Chat Assistant
+sudo ./scripts/apps/install-llm-chat.sh
+
 # Media server
 sudo ./scripts/apps/install-jellyfin.sh
 
 # Photo backup
 sudo ./scripts/apps/install-immich.sh
+
+# Cloud storage
+sudo ./scripts/apps/install-nextcloud.sh
 
 # Password manager
 sudo ./scripts/apps/install-vaultwarden.sh

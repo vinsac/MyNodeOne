@@ -256,8 +256,6 @@ spec:
               key: admin-password
         - name: NEXTCLOUD_TRUSTED_DOMAINS
           value: "${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local localhost"
-        - name: OVERWRITEPROTOCOL
-          value: "http"
         ports:
         - containerPort: 80
         volumeMounts:
@@ -402,17 +400,30 @@ if [[ "$configure_public" =~ ^[Yy]$ ]]; then
             echo ""
         fi
         
-        # Update trusted domains for public access
-        echo "📝 Adding public domain to trusted domains..."
-        kubectl set env deployment/nextcloud -n "$NAMESPACE" \
-            NEXTCLOUD_TRUSTED_DOMAINS="${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local ${APP_SUBDOMAIN}.${PUBLIC_DOMAIN} localhost" \
-            OVERWRITEHOST="${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}" \
-            OVERWRITEPROTOCOL="https"
+        # Update trusted domains for public access using occ commands
+        echo "📝 Configuring Nextcloud for public access..."
+        echo "   Waiting for Nextcloud to be ready..."
+        kubectl wait --for=condition=ready pod -l app=nextcloud -n "$NAMESPACE" --timeout=60s > /dev/null 2>&1
         
-        echo "✓ Trusted domains updated"
+        # Add public domain to trusted domains
+        kubectl exec -n "$NAMESPACE" deployment/nextcloud -- su -s /bin/bash www-data -c \
+            "php occ config:system:set trusted_domains 2 --value='${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}'" > /dev/null 2>&1
+        
+        # Set CLI URL for command-line operations
+        kubectl exec -n "$NAMESPACE" deployment/nextcloud -- su -s /bin/bash www-data -c \
+            "php occ config:system:set overwrite.cli.url --value='https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}'" > /dev/null 2>&1
+        
+        echo "✓ Trusted domains configured"
         echo ""
-        echo -e "${YELLOW}⚠️  Note: Nextcloud pod will restart to apply the new configuration.${NC}"
-        echo "   This may take 1-2 minutes."
+        echo -e "${YELLOW}⚠️  SSL Certificate Timing:${NC}"
+        echo "   • Let's Encrypt certificate takes 1-3 minutes to issue"
+        echo "   • You may see 'TRAEFIK DEFAULT CERT' initially"
+        echo "   • This is normal! Just wait 2-3 minutes and refresh"
+        echo ""
+        echo "   To verify certificate:"
+        echo "   echo | openssl s_client -servername ${APP_SUBDOMAIN}.${PUBLIC_DOMAIN} \\"
+        echo "     -connect ${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}:443 2>/dev/null | \\"
+        echo "     openssl x509 -noout -subject -issuer"
         echo ""
     fi
 fi

@@ -9,6 +9,28 @@
 
 set -euo pipefail
 
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load shared validation library
+source "$SCRIPT_DIR/lib/validation.sh"
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Installing Nextcloud (Cloud Storage)${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Validate prerequisites
+validate_prerequisites
+
+NAMESPACE="nextcloud"
+warn_if_namespace_exists "$NAMESPACE"
+
 echo "🚧 Nextcloud installation script - Coming soon!"
 echo ""
 echo "Nextcloud provides:"

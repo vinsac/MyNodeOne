@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load shared validation library
+source "$SCRIPT_DIR/lib/validation.sh"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -19,12 +25,11 @@ echo -e "${BLUE}  Installing Vaultwarden (Password Manager)${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-if ! command -v kubectl &> /dev/null; then
-    echo -e "${YELLOW}Error: kubectl not found.${NC}"
-    exit 1
-fi
+# Validate prerequisites
+validate_prerequisites
 
 NAMESPACE="vaultwarden"
+warn_if_namespace_exists "$NAMESPACE"
 ADMIN_TOKEN=$(openssl rand -base64 32)
 
 echo "📦 Creating namespace..."

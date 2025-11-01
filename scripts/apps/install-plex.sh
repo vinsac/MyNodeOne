@@ -9,7 +9,16 @@
 
 set -euo pipefail
 
-echo "🚧 Plex installation script - Coming soon!"
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load shared validation library
+source "$SCRIPT_DIR/lib/validation.sh"
+
+# Validate prerequisites (comment out until script is implemented)
+# validate_prerequisites
+
+echo "🚧 Plex Media Server installation script - Coming soon!"
 echo ""
 echo "Plex provides:"
 echo "  • Beautiful media library organization"

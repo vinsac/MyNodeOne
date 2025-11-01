@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load shared validation library
+source "$SCRIPT_DIR/lib/validation.sh"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
@@ -18,7 +24,11 @@ echo -e "${BLUE}  Installing Homepage Dashboard${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+# Validate prerequisites
+validate_prerequisites
+
 NAMESPACE="homepage"
+warn_if_namespace_exists "$NAMESPACE"
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -81,11 +91,8 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo ""
 echo "📍 Access Homepage at: http://$SERVICE_IP:3000"
 echo ""
-echo "💡 Customize your dashboard by editing the configuration!"
-echo ""
 
 # Configure DNS automatically
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if bash "$SCRIPT_DIR/../configure-app-dns.sh" > /dev/null 2>&1; then
     echo "✓ DNS configured! Access at: http://homepage.mynodeone.local"
     echo ""

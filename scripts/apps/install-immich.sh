@@ -282,19 +282,23 @@ echo "   • Restart: kubectl rollout restart deployment/immich-server -n $NAMES
 echo "   • Uninstall: kubectl delete namespace $NAMESPACE"
 echo ""
 
-# Configure DNS automatically
-echo "🌐 Configuring local DNS..."
+# Configure local DNS automatically (if kubectl is available)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if bash "$SCRIPT_DIR/../configure-app-dns.sh" > /dev/null 2>&1; then
-    echo ""
-    echo "✓ DNS configured! Access Immich at:"
-    echo "   http://immich.mynodeone.local"
-    echo ""
-    echo "📱 For mobile app, use: http://immich.mynodeone.local"
-    echo ""
+if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    echo "🌐 Updating local DNS entries..."
+    if sudo bash "$SCRIPT_DIR/../update-laptop-dns.sh" --quiet 2>/dev/null; then
+        echo ""
+        echo "✓ Local DNS updated! You can also access Immich at:"
+        echo "   http://immich.mynodeone.local"
+        echo ""
+        echo "📱 For mobile app, use: http://immich.mynodeone.local"
+        echo ""
+    fi
 else
+    # Not on a machine with kubectl configured
     echo ""
-    echo "⚠️  DNS auto-configuration skipped"
+    echo "💡 To access via .local domain on any Tailscale-connected machine:"
+    echo "   Run: sudo ./scripts/update-laptop-dns.sh"
     echo ""
 fi
 

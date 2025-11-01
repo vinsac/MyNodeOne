@@ -26,9 +26,31 @@ echo -e "${BLUE}  Installing Immich (Google Photos Alternative)${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+# Validate prerequisites
 if ! command -v kubectl &> /dev/null; then
-    echo -e "${YELLOW}Error: kubectl not found.${NC}"
+    echo -e "${YELLOW}Error: kubectl not found. Please install Kubernetes first.${NC}"
+    echo "Run: sudo ./scripts/bootstrap-control-plane.sh"
     exit 1
+fi
+
+# Check if cluster is accessible
+if ! kubectl get nodes &> /dev/null; then
+    echo -e "${YELLOW}Error: Cannot connect to Kubernetes cluster.${NC}"
+    echo "Please ensure:"
+    echo "  • K3s is running: systemctl status k3s"
+    echo "  • KUBECONFIG is set: export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+    exit 1
+fi
+
+# Check if Longhorn storage is available
+if ! kubectl get storageclass longhorn &> /dev/null; then
+    echo -e "${YELLOW}Warning: Longhorn storage class not found.${NC}"
+    echo "Installation may fail without persistent storage."
+    read -p "Continue anyway? [y/N]: " continue_without_storage
+    if [[ "$continue_without_storage" != "y" ]] && [[ "$continue_without_storage" != "Y" ]]; then
+        echo "Installation cancelled."
+        exit 1
+    fi
 fi
 
 # Prompt for subdomain (used for both local and public access)
@@ -45,6 +67,18 @@ APP_SUBDOMAIN="${APP_SUBDOMAIN:-immich}"
 
 # Sanitize subdomain (lowercase, alphanumeric and hyphens only)
 APP_SUBDOMAIN=$(echo "$APP_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+
+# Validate subdomain is not empty after sanitization
+if [ -z "$APP_SUBDOMAIN" ]; then
+    echo -e "${YELLOW}Error: Invalid subdomain. Using default: immich${NC}"
+    APP_SUBDOMAIN="immich"
+fi
+
+# Validate subdomain doesn't start with hyphen
+if [[ "$APP_SUBDOMAIN" == -* ]]; then
+    echo -e "${YELLOW}Error: Subdomain cannot start with hyphen. Using default: immich${NC}"
+    APP_SUBDOMAIN="immich"
+fi
 
 echo ""
 echo "✓ Subdomain: ${APP_SUBDOMAIN}"

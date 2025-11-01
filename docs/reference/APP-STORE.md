@@ -4,6 +4,22 @@
 
 MyNodeOne now includes a built-in **App Store** with one-click installations for popular self-hosted applications. Non-technical users can easily deploy powerful applications to their personal cloud without writing any code.
 
+## 📖 Installation Guide
+
+**NEW!** For comprehensive installation instructions, error handling, and troubleshooting:
+
+👉 **[Complete App Installation Guide](../guides/APP-INSTALLATION-GUIDE.md)**
+
+Covers:
+- ✅ Prerequisites and validation
+- ✅ Step-by-step installation
+- ✅ All edge cases and solutions
+- ✅ Error handling
+- ✅ Post-installation verification
+- ✅ Troubleshooting commands
+
+---
+
 ## 🌐 How Do You Access Apps?
 
 **Great News!** Every app gets an **easy-to-remember address** automatically:

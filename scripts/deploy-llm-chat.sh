@@ -77,7 +77,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 50Gi
+      storage: 200Gi
 ---
 apiVersion: apps/v1
 kind: Deployment

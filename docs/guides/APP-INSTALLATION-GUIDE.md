@@ -314,11 +314,42 @@ sudo ./scripts/configure-vps-route.sh immich 80 photos yourdomain.com
 
 **Result:** Works, but DNS may have issues. Recommend keeping under 63 characters.
 
+### **Edge Case 9: SSL Shows "TRAEFIK DEFAULT CERT"**
+
+**Symptom:** Immediately after installation, HTTPS shows invalid certificate
+
+**Cause:** Let's Encrypt needs 30-60 seconds to issue certificate (THIS IS NORMAL!)
+
+**Expected Timeline:**
+- **0-30 seconds:** "TRAEFIK DEFAULT CERT" (temporary)
+- **30-60 seconds:** Let's Encrypt HTTP-01 challenge
+- **60+ seconds:** Valid Let's Encrypt certificate
+
+**Solution: WAIT!** This is automatic.
+
+**If persists after 2 minutes:**
+```bash
+# Restart Traefik
+ssh root@<vps-ip> "docker restart traefik"
+
+# Wait 60 seconds
+sleep 60
+
+# Verify certificate
+echo | openssl s_client -servername <subdomain>.curiios.com \
+  -connect <subdomain>.curiios.com:443 2>/dev/null | \
+  openssl x509 -noout -issuer
+
+# Should show: issuer=C = US, O = Let's Encrypt
+```
+
+**Important:** Don't check certificate immediately after installation. Wait 2 minutes for Let's Encrypt to complete.
+
 ---
 
 ## 📊 Success Checklist
 
-After installation, verify:
+After installation, verify (in this order):
 
 - [ ] All pods show `Running` status
 - [ ] Service has LoadBalancer IP assigned
@@ -326,7 +357,10 @@ After installation, verify:
 - [ ] Local access works: `curl http://<subdomain>.mynodeone.local`
 - [ ] (If VPS) Public DNS resolves: `nslookup <subdomain>.yourdomain.com`
 - [ ] (If VPS) Public access works: `curl https://<subdomain>.yourdomain.com`
-- [ ] (If VPS) SSL certificate valid: Check browser (green padlock)
+- [ ] (If VPS) **WAIT 2 MINUTES** for Let's Encrypt certificate
+- [ ] (If VPS) SSL certificate valid: Check in browser (green padlock)
+
+**⏱️ Important:** SSL certificates take 30-60 seconds to issue. Don't check immediately after installation!
 
 ---
 

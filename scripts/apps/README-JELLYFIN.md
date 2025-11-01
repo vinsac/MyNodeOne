@@ -256,20 +256,34 @@ ssh root@<vps-ip> "cat /etc/traefik/dynamic/jellyfin.yml"
 
 ### **Issue: SSL Certificate Shows "TRAEFIK DEFAULT CERT"**
 
-**Symptom:** Browser shows invalid certificate
+**Symptom:** Browser shows invalid certificate immediately after installation
 
-**Cause:** Let's Encrypt certificate not issued yet
+**Cause:** Let's Encrypt certificate not issued yet (THIS IS NORMAL for new domains!)
 
-**Fix:** Wait 30-60 seconds for Traefik to request certificate
+**Expected Timeline:**
+- **0-30 seconds:** Shows "TRAEFIK DEFAULT CERT" (temporary)
+- **30-60 seconds:** Let's Encrypt completes HTTP-01 challenge
+- **60+ seconds:** Valid Let's Encrypt certificate active
 
-**Verify:**
+**Fix:** **Just wait!** This is automatic and takes 30-60 seconds.
+
+**If still showing default cert after 2 minutes:**
 ```bash
-echo | openssl s_client -servername media.curiios.com -connect media.curiios.com:443 2>/dev/null | openssl x509 -noout -subject -issuer
+# Restart Traefik to trigger new certificate request
+ssh root@<vps-ip> "docker restart traefik"
+
+# Wait 60 seconds, then verify
+sleep 60
+echo | openssl s_client -servername media.curiios.com \
+  -connect media.curiios.com:443 2>/dev/null | \
+  openssl x509 -noout -subject -issuer
 
 # Should show:
 # subject=CN = media.curiios.com
 # issuer=C = US, O = Let's Encrypt, CN = R12
 ```
+
+**Important:** Don't panic if you see "TRAEFIK DEFAULT CERT" right after installation. This is expected and will automatically resolve within 1-2 minutes as Let's Encrypt issues your certificate.
 
 ---
 

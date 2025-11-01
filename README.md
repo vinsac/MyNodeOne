@@ -39,6 +39,64 @@ If you're new to MyNodeOne, start with **[GETTING-STARTED.md](docs/guides/GETTIN
 
 ---
 
+## ⚙️ Configuration & Personalization
+
+**IMPORTANT:** MyNodeOne is designed to be used by multiple users/teams. All configuration is **user-specific** and stored in your config file.
+
+### 🔑 Your Configuration File
+
+When you run the setup script, it creates: `~/.mynodeone/config.env`
+
+This file contains **YOUR** settings:
+- **SSL_EMAIL** - Your email for Let's Encrypt certificates (e.g., `john@example.com`)
+- **DOMAIN** - Your domain name
+- **VPS_PUBLIC_IP** - Your VPS IP address
+- **CONTROL_PLANE_IP** - Your control plane Tailscale IP
+- And other personal settings...
+
+### ✅ Nothing is Hardcoded
+
+**All scripts use YOUR config file** - not hardcoded values.
+
+**Example:**
+```bash
+# When the setup script creates Traefik config, it uses:
+email: ${SSL_EMAIL}  # Expands to YOUR email from config
+
+# NOT:
+email: someone@example.com  # Never hardcoded!
+```
+
+**Each user gets their own:**
+- ✅ Email address in SSL certificates
+- ✅ Domain names
+- ✅ IP addresses
+- ✅ Credentials
+
+### 🔒 Multi-User/Multi-Team Friendly
+
+**Company A** can fork this repo and use it with their email/domain.  
+**Company B** can fork this repo and use it with their email/domain.  
+**Person C** can use it with their personal email/domain.
+
+**All from the same codebase** - no hardcoded values to change!
+
+### 📋 Verification
+
+Check what's in your config:
+```bash
+cat ~/.mynodeone/config.env
+```
+
+After setup, verify your settings were applied:
+```bash
+# Check VPS Traefik is using YOUR email
+ssh root@YOUR_VPS_IP 'grep email /etc/traefik/traefik.yml'
+# Should show: email: your-email@example.com
+```
+
+---
+
 ## 📚 Documentation Quick Links
 
 ### 🌐 Deployment Options

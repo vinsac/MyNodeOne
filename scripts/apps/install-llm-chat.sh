@@ -55,10 +55,11 @@ if check_namespace_exists "$NAMESPACE"; then
     echo "  1. Add public internet access (expose to web)"
     echo "  2. Upgrade to high performance (4-16Gi RAM, 2-6 CPU)"
     echo "  3. Upgrade to MAXIMUM performance (32-96Gi RAM, 8-24 CPU)"
-    echo "  4. Reinstall completely (deletes existing data!)"
-    echo "  5. Exit (keep current installation)"
+    echo "  4. Expand storage (increase model storage capacity)"
+    echo "  5. Reinstall completely (deletes existing data!)"
+    echo "  6. Exit (keep current installation)"
     echo ""
-    read -p "Choose option [1-5]: " INSTALL_OPTION
+    read -p "Choose option [1-6]: " INSTALL_OPTION
     
     case $INSTALL_OPTION in
         1)
@@ -78,8 +79,16 @@ if check_namespace_exists "$NAMESPACE"; then
             echo -e "${GREEN}Will upgrade to MAXIMUM performance resources...${NC}"
             ALREADY_INSTALLED=true
             UPGRADE_RESOURCES="max"
+            EXPAND_STORAGE=false
             ;;
         4)
+            echo ""
+            echo -e "${GREEN}Will expand Ollama storage...${NC}"
+            ALREADY_INSTALLED=true
+            UPGRADE_RESOURCES=false
+            EXPAND_STORAGE=true
+            ;;
+        5)
             echo ""
             echo -e "${RED}⚠️  WARNING: This will delete all your chat history and downloaded models!${NC}"
             read -p "Are you absolutely sure? Type 'yes' to confirm: " CONFIRM
@@ -91,6 +100,7 @@ if check_namespace_exists "$NAMESPACE"; then
                 sleep 10
                 ALREADY_INSTALLED=false
                 UPGRADE_RESOURCES=false
+                EXPAND_STORAGE=false
             else
                 echo "Cancelled. Exiting."
                 exit 0
@@ -453,6 +463,81 @@ if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}"
     echo ""
     echo "⏳ Pods will restart to apply changes..."
     sleep 5
+fi
+
+# Expand storage (if option 4 was chosen)
+if [ "${EXPAND_STORAGE:-false}" = true ]; then
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}  Expanding Ollama Storage${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Check current storage size
+    CURRENT_SIZE=$(kubectl get pvc ollama-data -n "$NAMESPACE" -o jsonpath='{.spec.resources.requests.storage}')
+    echo "📊 Current storage: $CURRENT_SIZE"
+    echo ""
+    
+    # Check current usage
+    OLLAMA_POD=$(kubectl get pods -n "$NAMESPACE" -l app=ollama -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$OLLAMA_POD" ]; then
+        echo "💾 Current usage:"
+        kubectl exec -n "$NAMESPACE" "$OLLAMA_POD" -- df -h /home/ollama/.ollama 2>/dev/null | tail -1 || echo "  (Could not retrieve usage)"
+        echo ""
+    fi
+    
+    # Suggest new size based on current
+    CURRENT_NUM=$(echo "$CURRENT_SIZE" | sed 's/Gi//')
+    if [ "$CURRENT_NUM" -lt 100 ]; then
+        SUGGESTED_SIZE="200Gi"
+    elif [ "$CURRENT_NUM" -lt 200 ]; then
+        SUGGESTED_SIZE="500Gi"
+    else
+        SUGGESTED_SIZE="$((CURRENT_NUM + 200))Gi"
+    fi
+    
+    echo "💡 Suggested sizes:"
+    echo "  • 200Gi  - Good for 8-10 large models (mistral, llama)"
+    echo "  • 500Gi  - Great for 15-20 large models + experimentation"
+    echo "  • 1Ti    - Excellent for model collectors and testing"
+    echo ""
+    read -p "Enter new storage size [default: $SUGGESTED_SIZE]: " NEW_SIZE
+    NEW_SIZE="${NEW_SIZE:-$SUGGESTED_SIZE}"
+    
+    echo ""
+    echo "🚀 Expanding storage to $NEW_SIZE..."
+    echo ""
+    
+    # Patch PVC
+    kubectl patch pvc ollama-data -n "$NAMESPACE" -p "{\"spec\":{\"resources\":{\"requests\":{\"storage\":\"$NEW_SIZE\"}}}}"
+    
+    echo "📉 Scaling down Ollama (volume must be detached for resize)..."
+    kubectl scale deployment ollama -n "$NAMESPACE" --replicas=0
+    
+    echo "⏳ Waiting for pod termination..."
+    sleep 15
+    
+    echo "📈 Scaling back up..."
+    kubectl scale deployment ollama -n "$NAMESPACE" --replicas=1
+    
+    echo "⏳ Waiting for pod to start..."
+    kubectl wait --for=condition=ready pod -l app=ollama -n "$NAMESPACE" --timeout=120s 2>/dev/null || sleep 30
+    
+    echo ""
+    echo "✓ Storage expansion complete!"
+    echo ""
+    
+    # Verify new size
+    OLLAMA_POD=$(kubectl get pods -n "$NAMESPACE" -l app=ollama -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$OLLAMA_POD" ]; then
+        echo "📊 New storage status:"
+        kubectl exec -n "$NAMESPACE" "$OLLAMA_POD" -- df -h /home/ollama/.ollama 2>/dev/null | tail -1 || echo "  Verifying..."
+        echo ""
+    fi
+    
+    echo "🎉 You can now download more models!"
+    echo ""
+    sleep 3
 fi
 
 # Configure VPS route (for both fresh install and existing)

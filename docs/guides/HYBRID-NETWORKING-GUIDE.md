@@ -288,6 +288,267 @@ spec:
 
 ---
 
+## 📊 Data Flow & Bandwidth (IMPORTANT!)
+
+### **🔴 Critical Understanding: All Traffic Flows Through VPS**
+
+**Question:** When I upload a photo to Immich, does it go through the VPS?  
+**Answer:** **YES! ALL traffic flows through the VPS in BOTH directions.**
+
+### **📤 Upload Example: Photo to Immich**
+
+```
+YOU → VPS → Control Plane → Immich
+
+Detailed Flow:
+1. Browser: Upload photo.jpg (5MB)
+   → HTTPS POST to photos.curiios.com
+   
+2. VPS (Traefik):
+   → Receives: 5MB upload (inbound to VPS)
+   → Decrypts HTTPS
+   → Routes to: http://100.118.5.68:8080
+   → Sends: 5MB via Tailscale (outbound from VPS)
+   
+3. Tailscale VPN:
+   → Encrypted tunnel: VPS → Control Plane
+   → Transfer: 5MB data
+   
+4. Control Plane (Socat):
+   → Receives: 5MB on 100.118.5.68:8080
+   → Forwards to: 10.43.126.136:80
+   
+5. Kubernetes → Immich Pod:
+   → Saves: 5MB to disk
+
+VPS Bandwidth Used: 5MB inbound + 5MB outbound = 10MB total
+```
+
+### **📥 Download Example: Photo from Immich**
+
+```
+Immich → Control Plane → VPS → YOU
+
+Detailed Flow:
+1. Immich Pod:
+   → Reads: photo.jpg (5MB) from disk
+   
+2. Kubernetes → Socat:
+   → Returns: 5MB via ClusterIP
+   
+3. Socat → Tailscale:
+   → Forwards: 5MB to VPS
+   
+4. Tailscale VPN:
+   → Encrypted tunnel: Control Plane → VPS
+   → Transfer: 5MB data
+   
+5. VPS (Traefik):
+   → Receives: 5MB from backend (inbound to VPS)
+   → Encrypts HTTPS
+   → Sends: 5MB to browser (outbound from VPS)
+   
+6. Browser:
+   → Displays: photo.jpg
+
+VPS Bandwidth Used: 5MB inbound + 5MB outbound = 10MB total
+```
+
+---
+
+### **⚠️ Bandwidth Implications**
+
+#### **VPS Bandwidth = 2x Your Data**
+
+```bash
+# Example: Upload 1000 photos (5GB total)
+Actual data: 5GB
+VPS bandwidth used:
+  - Inbound: 5GB (from your computer)
+  - Outbound: 5GB (to control plane)
+  - Total: 10GB
+
+# Example: Download 1000 photos (5GB total)
+Actual data: 5GB
+VPS bandwidth used:
+  - Inbound: 5GB (from control plane)
+  - Outbound: 5GB (to your computer)
+  - Total: 10GB
+
+# Monthly usage for active Immich use:
+Upload 10,000 photos: ~100GB VPS bandwidth
+Stream 100 movies: ~500GB VPS bandwidth
+Access apps 1000x: ~10GB VPS bandwidth
+```
+
+#### **Typical VPS Bandwidth Limits**
+
+| Provider | Monthly Limit | Cost if Exceeded |
+|----------|---------------|------------------|
+| Contabo | 32TB | €1/TB |
+| Hetzner | 20TB | €1.19/TB |
+| DigitalOcean | 1-12TB | $0.01/GB |
+| Vultr | 1-10TB | $0.01/GB |
+
+**Most hybrid setups use < 1TB/month** (well within limits)
+
+---
+
+### **🚀 Performance Bottlenecks**
+
+#### **Bottleneck 1: Home Upload Speed**
+
+```
+Downloading photo from Immich:
+  Your browser ← VPS: Limited by YOUR download speed ✓
+  VPS ← Control Plane: Limited by HOME upload speed ⚠️
+                       ↑ BOTTLENECK!
+
+Why? Control plane must UPLOAD to VPS to send data out.
+
+Example:
+  Home Upload: 10 Mbps (1.25 MB/s)
+  Download 100MB photo: ~80 seconds
+  
+Solution: Get faster home internet or use VPS-only deployment
+```
+
+#### **Bottleneck 2: VPS Network**
+
+```
+Most VPS providers:
+  - 1 Gbps network (125 MB/s)
+  - Rarely the bottleneck
+  - Home internet is usually slower
+```
+
+#### **Bottleneck 3: Tailscale VPN**
+
+```
+Typical Tailscale performance:
+  - Good: 100-500 Mbps (12-60 MB/s)
+  - Depends on: NAT traversal, routing path
+  - Usually NOT the bottleneck
+```
+
+---
+
+### **💡 Performance Optimization**
+
+#### **For Large File Transfers (Photos/Videos):**
+
+```bash
+# Option 1: Direct Tailscale access (bypass VPS)
+# Access Immich directly via Tailscale
+https://100.118.5.207  # Direct to control plane
+# Upload speed: Limited by home upload
+# Download speed: Limited by home download
+# No VPS bandwidth used!
+
+# Option 2: Temporary uploads via home network
+http://immich.mynodeone.local  # Local network access
+# Upload speed: Gigabit LAN
+# Only when home
+```
+
+#### **For Streaming Media (Jellyfin):**
+
+```bash
+# Option 1: Use VPS for remote access only
+# Option 2: Transcode to lower quality for remote
+# Option 3: Download locally before watching
+
+# Bandwidth calculation:
+1080p video: ~5 GB/hour
+720p video: ~2 GB/hour
+480p video: ~1 GB/hour
+
+# Through VPS = 2x bandwidth usage!
+```
+
+---
+
+### **📈 Bandwidth Monitoring**
+
+#### **On VPS:**
+
+```bash
+# Install vnstat
+apt install vnstat
+
+# Check bandwidth usage
+vnstat -m  # Monthly
+vnstat -d  # Daily
+vnstat -h  # Hourly
+
+# Monitor live
+vnstat -l
+```
+
+#### **On Control Plane:**
+
+```bash
+# Check Tailscale traffic
+sudo tailscale status --json | jq '.Peer[] | {hostname, tx, rx}'
+
+# Monitor network usage
+iftop -i tailscale0
+```
+
+---
+
+### **🎯 Capacity Planning**
+
+#### **Estimated Bandwidth Needs:**
+
+| Use Case | Monthly VPS Bandwidth |
+|----------|---------------------|
+| Light use (web apps, occasional access) | < 100 GB |
+| Moderate use (photo uploads, some streaming) | 100-500 GB |
+| Heavy use (daily photo uploads, video streaming) | 500-2000 GB |
+| Very heavy (large library sync, frequent streaming) | 2-10 TB |
+
+#### **When to Upgrade VPS:**
+
+```
+Symptoms of bandwidth limit approaching:
+  - Provider throttling warnings
+  - Slow transfer speeds
+  - Overage charges
+
+Solutions:
+1. Upgrade VPS plan (more bandwidth)
+2. Use direct Tailscale access when home
+3. Optimize data transfer (compression, lower quality)
+4. Move high-bandwidth apps to VPS storage
+```
+
+---
+
+### **✅ Summary: Traffic Flow**
+
+**Key Takeaway:** 
+```
+Everything flows through VPS = 2x bandwidth usage
+
+Upload:  You → VPS → Home → Storage
+Download: Storage → Home → VPS → You
+
+This is the trade-off for:
+  ✅ Accessing home apps from anywhere
+  ✅ HTTPS with valid SSL certificates
+  ✅ No port forwarding on home network
+  ✅ No exposing home IP address
+
+Alternative: Direct Tailscale access
+  ✅ No VPS bandwidth usage
+  ❌ Only works when Tailscale connected
+  ❌ No custom domain
+  ❌ Requires Tailscale app on device
+```
+
+---
+
 ## 🔐 Security Considerations
 
 ### **Defense in Depth:**

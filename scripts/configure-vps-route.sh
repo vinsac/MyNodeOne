@@ -38,14 +38,16 @@ APP_NAME="$1"
 APP_PORT="$2"
 SUBDOMAIN="$3"
 DOMAIN="$4"
+CUSTOM_NS_SERVICE="$5"  # Optional: "namespace/service" format
 
 # Usage
 if [[ -z "$APP_NAME" ]] || [[ -z "$APP_PORT" ]] || [[ -z "$SUBDOMAIN" ]] || [[ -z "$DOMAIN" ]]; then
     cat << 'EOF'
-Usage: sudo ./scripts/configure-vps-route.sh <app-name> <port> <subdomain> <domain>
+Usage: sudo ./scripts/configure-vps-route.sh <app-name> <port> <subdomain> <domain> [namespace/service]
 
 Example: 
   sudo ./scripts/configure-vps-route.sh immich 3001 photos example.com
+  sudo ./scripts/configure-vps-route.sh llm-chat 80 chat example.com llm-chat/open-webui
   
 This will configure:
   - Traefik route on VPS for photos.example.com → http://CONTROL_PLANE_IP:3001
@@ -56,6 +58,9 @@ Required:
   - VPS edge node must be set up
   - Domain must point to VPS IP
   - Control plane must be reachable via Tailscale
+
+Optional:
+  - Specify custom namespace/service if different from app-name
 
 EOF
     exit 1
@@ -68,18 +73,36 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Auto-detect service from Kubernetes
-# Try multiple common service name patterns
-info "Auto-detecting service for $APP_NAME..."
+NAMESPACE=""
 SERVICE_NAME=""
-for pattern in "${APP_NAME}-server" "${APP_NAME}" "${APP_NAME}-frontend"; do
-    if kubectl get svc -n "$APP_NAME" "$pattern" &>/dev/null 2>&1; then
-        SERVICE_NAME="$pattern"
-        break
-    fi
-done
 
-if [[ -z "$SERVICE_NAME" ]]; then
-    error "Could not find service for app '$APP_NAME'. Checked: ${APP_NAME}-server, ${APP_NAME}, ${APP_NAME}-frontend"
+if [[ -n "$CUSTOM_NS_SERVICE" ]]; then
+    # Custom namespace/service provided
+    NAMESPACE="${CUSTOM_NS_SERVICE%/*}"
+    SERVICE_NAME="${CUSTOM_NS_SERVICE#*/}"
+    info "Using custom namespace/service: $NAMESPACE/$SERVICE_NAME"
+    
+    if ! kubectl get svc -n "$NAMESPACE" "$SERVICE_NAME" &>/dev/null 2>&1; then
+        error "Service $SERVICE_NAME not found in namespace $NAMESPACE"
+    fi
+else
+    # Auto-detect: try app-name as namespace first
+    info "Auto-detecting service for $APP_NAME..."
+    NAMESPACE="$APP_NAME"
+    
+    for pattern in "${APP_NAME}-server" "${APP_NAME}" "${APP_NAME}-frontend"; do
+        if kubectl get svc -n "$NAMESPACE" "$pattern" &>/dev/null 2>&1; then
+            SERVICE_NAME="$pattern"
+            break
+        fi
+    done
+    
+    if [[ -z "$SERVICE_NAME" ]]; then
+        error "Could not find service for app '$APP_NAME'. Checked: ${APP_NAME}-server, ${APP_NAME}, ${APP_NAME}-frontend
+        
+Hint: If your service is in a different namespace, use:
+  sudo ./scripts/configure-vps-route.sh $APP_NAME $APP_PORT $SUBDOMAIN $DOMAIN <namespace>/<service-name>"
+    fi
 fi
 
 info "Found service: $SERVICE_NAME"
@@ -110,7 +133,7 @@ success "Control plane IP: $CONTROL_PLANE_IP"
 # Get NodePort (VPS needs to connect to NodePort, not LoadBalancer IP)
 # LoadBalancer IPs are only accessible within the cluster network
 info "Detecting service NodePort..."
-NODE_PORT=$(kubectl get svc -n "$APP_NAME" "$SERVICE_NAME" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+NODE_PORT=$(kubectl get svc -n "$NAMESPACE" "$SERVICE_NAME" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
 
 if [[ -z "$NODE_PORT" ]]; then
     warn "Could not detect NodePort, using provided port: $APP_PORT"

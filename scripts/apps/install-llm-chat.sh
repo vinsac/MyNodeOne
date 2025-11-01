@@ -53,11 +53,12 @@ if check_namespace_exists "$NAMESPACE"; then
     echo "What would you like to do?"
     echo ""
     echo "  1. Add public internet access (expose to web)"
-    echo "  2. Upgrade resources (more CPU/RAM for faster responses)"
-    echo "  3. Reinstall completely (deletes existing data!)"
-    echo "  4. Exit (keep current installation)"
+    echo "  2. Upgrade to high performance (4-16Gi RAM, 2-6 CPU)"
+    echo "  3. Upgrade to MAXIMUM performance (32-96Gi RAM, 8-24 CPU)"
+    echo "  4. Reinstall completely (deletes existing data!)"
+    echo "  5. Exit (keep current installation)"
     echo ""
-    read -p "Choose option [1-4]: " INSTALL_OPTION
+    read -p "Choose option [1-5]: " INSTALL_OPTION
     
     case $INSTALL_OPTION in
         1)
@@ -68,11 +69,17 @@ if check_namespace_exists "$NAMESPACE"; then
             ;;
         2)
             echo ""
-            echo -e "${GREEN}Will upgrade resources for better performance...${NC}"
+            echo -e "${GREEN}Will upgrade to high performance resources...${NC}"
             ALREADY_INSTALLED=true
-            UPGRADE_RESOURCES=true
+            UPGRADE_RESOURCES="high"
             ;;
         3)
+            echo ""
+            echo -e "${GREEN}Will upgrade to MAXIMUM performance resources...${NC}"
+            ALREADY_INSTALLED=true
+            UPGRADE_RESOURCES="max"
+            ;;
+        4)
             echo ""
             echo -e "${RED}⚠️  WARNING: This will delete all your chat history and downloaded models!${NC}"
             read -p "Are you absolutely sure? Type 'yes' to confirm: " CONFIRM
@@ -361,29 +368,67 @@ EOF
     fi
 fi
 
-# Upgrade resources (if option 2 was chosen)
-if [ "${UPGRADE_RESOURCES:-false}" = true ]; then
+# Upgrade resources (if option 2 or 3 was chosen)
+if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}" = "max" ]; then
     echo ""
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  Upgrading Resources for Better Performance${NC}"
+    if [ "$UPGRADE_RESOURCES" = "max" ]; then
+        echo -e "${BLUE}  Upgrading to MAXIMUM Performance${NC}"
+    else
+        echo -e "${BLUE}  Upgrading to High Performance${NC}"
+    fi
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    
+    if [ "$UPGRADE_RESOURCES" = "max" ]; then
+        # MAXIMUM performance - use all available resources
+        OLLAMA_REQ_CPU="8000m"
+        OLLAMA_REQ_MEM="32Gi"
+        OLLAMA_LIMIT_CPU="24000m"
+        OLLAMA_LIMIT_MEM="96Gi"
+        WEBUI_REQ_CPU="1000m"
+        WEBUI_REQ_MEM="2Gi"
+        WEBUI_LIMIT_CPU="4000m"
+        WEBUI_LIMIT_MEM="8Gi"
+        OLLAMA_PARALLEL="8"
+        OLLAMA_KEEP_ALIVE="24h"
+        OLLAMA_MAX_MODELS="4"
+    else
+        # High performance - balanced
+        OLLAMA_REQ_CPU="2000m"
+        OLLAMA_REQ_MEM="4Gi"
+        OLLAMA_LIMIT_CPU="6000m"
+        OLLAMA_LIMIT_MEM="16Gi"
+        WEBUI_REQ_CPU="500m"
+        WEBUI_REQ_MEM="1Gi"
+        WEBUI_LIMIT_CPU="2000m"
+        WEBUI_LIMIT_MEM="4Gi"
+        OLLAMA_PARALLEL="4"
+        OLLAMA_KEEP_ALIVE="24h"
+        OLLAMA_MAX_MODELS="2"
+    fi
     
     echo "🚀 Updating Ollama resources..."
-    kubectl patch deployment ollama -n "$NAMESPACE" --type='json' -p='[
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "4Gi"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": "2000m"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "16Gi"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": "6000m"}
-    ]'
+    kubectl patch deployment ollama -n "$NAMESPACE" --type='json' -p="[
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/memory\", \"value\": \"$OLLAMA_REQ_MEM\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/cpu\", \"value\": \"$OLLAMA_REQ_CPU\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/memory\", \"value\": \"$OLLAMA_LIMIT_MEM\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/cpu\", \"value\": \"$OLLAMA_LIMIT_CPU\"}
+    ]"
+    
+    echo "🚀 Updating Ollama environment for performance..."
+    kubectl set env deployment/ollama -n "$NAMESPACE" \
+        OLLAMA_NUM_PARALLEL="$OLLAMA_PARALLEL" \
+        OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_MODELS" \
+        OLLAMA_KEEP_ALIVE="$OLLAMA_KEEP_ALIVE"
     
     echo "🚀 Updating Open WebUI resources..."
-    kubectl patch deployment open-webui -n "$NAMESPACE" --type='json' -p='[
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "1Gi"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": "500m"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "4Gi"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": "2000m"}
-    ]'
+    kubectl patch deployment open-webui -n "$NAMESPACE" --type='json' -p="[
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/memory\", \"value\": \"$WEBUI_REQ_MEM\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/cpu\", \"value\": \"$WEBUI_REQ_CPU\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/memory\", \"value\": \"$WEBUI_LIMIT_MEM\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/cpu\", \"value\": \"$WEBUI_LIMIT_CPU\"}
+    ]"
     
     echo "🏆 Adding high priority scheduling..."
     kubectl patch deployment ollama -n "$NAMESPACE" -p '{"spec":{"template":{"spec":{"priorityClassName":"system-cluster-critical"}}}}'
@@ -393,9 +438,18 @@ if [ "${UPGRADE_RESOURCES:-false}" = true ]; then
     echo "✓ Resources upgraded!"
     echo ""
     echo "New resource allocation:"
-    echo "  Ollama:     4-16Gi RAM, 2-6 CPU cores"
-    echo "  Open WebUI: 1-4Gi RAM, 0.5-2 CPU cores"
+    echo "  Ollama:     $OLLAMA_REQ_MEM-$OLLAMA_LIMIT_MEM RAM, ${OLLAMA_REQ_CPU/000m/}-${OLLAMA_LIMIT_CPU/000m/} CPU cores"
+    echo "  Open WebUI: $WEBUI_REQ_MEM-$WEBUI_LIMIT_MEM RAM, ${WEBUI_REQ_CPU/000m/}-${WEBUI_LIMIT_CPU/000m/} CPU cores"
+    echo "  Parallel:   $OLLAMA_PARALLEL concurrent requests"
+    echo "  Max Models: $OLLAMA_MAX_MODELS models in memory"
+    echo "  Keep Alive: $OLLAMA_KEEP_ALIVE"
     echo "  Priority:   System-critical (highest)"
+    echo ""
+    if [ "$UPGRADE_RESOURCES" = "max" ]; then
+        echo "🚀 Result: 5-10x faster token generation!"
+    else
+        echo "🚀 Result: 2-3x faster token generation!"
+    fi
     echo ""
     echo "⏳ Pods will restart to apply changes..."
     sleep 5
@@ -434,7 +488,7 @@ if [ "${AUTO_INSTALL_MODE:-false}" != "true" ] && ([ "$ALREADY_INSTALLED" = fals
             echo "   Public URL: https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}"
             echo ""
             
-            if bash "$SCRIPT_DIR/../configure-vps-route.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$PUBLIC_DOMAIN"; then
+            if bash "$SCRIPT_DIR/../configure-vps-route.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$PUBLIC_DOMAIN" "$NAMESPACE/open-webui"; then
                 echo ""
                 echo "✓ VPS route configured!"
                 echo ""

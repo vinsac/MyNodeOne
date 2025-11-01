@@ -84,20 +84,11 @@ fi
 
 info "Found service: $SERVICE_NAME"
 
-# Get service external IP and port
-SERVICE_IP=$(kubectl get svc -n "$APP_NAME" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-SERVICE_PORT=$(kubectl get svc -n "$APP_NAME" "$SERVICE_NAME" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo "")
+# Auto-detect control plane Tailscale IP from Kubernetes
+info "Detecting control plane node IP..."
+CONTROL_PLANE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || echo "")
 
-# Use detected port or fall back to manual
-if [[ -n "$SERVICE_PORT" ]]; then
-    info "Auto-detected service port: $SERVICE_PORT"
-    APP_PORT="$SERVICE_PORT"
-else
-    warn "Could not auto-detect port, using provided: $APP_PORT"
-fi
-
-# If service not found or no external IP, try to detect control plane IP
-if [[ -z "$SERVICE_IP" ]]; then
+if [[ -z "$CONTROL_PLANE_IP" ]]; then
     # Try to get from Tailscale if running on control plane
     if command -v tailscale &> /dev/null; then
         CONTROL_PLANE_IP=$(tailscale ip -4)
@@ -112,14 +103,26 @@ if [[ -z "$SERVICE_IP" ]]; then
             error "Control plane IP required"
         fi
     fi
-else
-    CONTROL_PLANE_IP="$SERVICE_IP"
 fi
 
-info "Control plane IP: $CONTROL_PLANE_IP"
+success "Control plane IP: $CONTROL_PLANE_IP"
+
+# Get NodePort (VPS needs to connect to NodePort, not LoadBalancer IP)
+# LoadBalancer IPs are only accessible within the cluster network
+info "Detecting service NodePort..."
+NODE_PORT=$(kubectl get svc -n "$APP_NAME" "$SERVICE_NAME" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+
+if [[ -z "$NODE_PORT" ]]; then
+    warn "Could not detect NodePort, using provided port: $APP_PORT"
+    NODE_PORT="$APP_PORT"
+else
+    success "Auto-detected NodePort: $NODE_PORT"
+    APP_PORT="$NODE_PORT"
+fi
+
 info "App: $APP_NAME"
-info "Port: $APP_PORT"
-info "Domain: ${SUBDOMAIN}.${DOMAIN}"
+info "Backend: http://${CONTROL_PLANE_IP}:${APP_PORT}"
+info "Public Domain: ${SUBDOMAIN}.${DOMAIN}"
 
 # Check if VPS edge node is configured
 if [[ -z "${VPS_EDGE_IP:-}" ]]; then

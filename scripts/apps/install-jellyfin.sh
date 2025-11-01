@@ -237,17 +237,6 @@ if [[ -f ~/.mynodeone/config.env ]]; then
         
         if [[ "$configure_internet" != "n" ]] && [[ "$configure_internet" != "N" ]]; then
             echo ""
-            
-            # Step 1: Setup proxy on control plane
-            if [[ -x "$SCRIPT_DIR/../setup-app-proxy.sh" ]]; then
-                echo "📡 Setting up app proxy on control plane..."
-                bash "$SCRIPT_DIR/../setup-app-proxy.sh" jellyfin jellyfin --skip-systemd || {
-                    echo "⚠️  Proxy setup incomplete. You can set it up later:"
-                    echo "   sudo ./scripts/setup-app-proxy.sh jellyfin jellyfin"
-                }
-            fi
-            
-            # Step 2: Configure VPS route
             read -p "Enter your public domain (e.g., curiios.com): " user_domain
             
             if [[ -n "$user_domain" ]]; then
@@ -256,14 +245,7 @@ if [[ -f ~/.mynodeone/config.env ]]; then
                 echo "   Public URL: https://${APP_SUBDOMAIN}.${user_domain}"
                 echo ""
                 
-                # Get proxy port
-                PROXY_PORT=8081  # Default for jellyfin
-                if [[ -f ~/.mynodeone/proxy-ports.env ]]; then
-                    source ~/.mynodeone/proxy-ports.env
-                    PROXY_PORT="${jellyfin_PROXY_PORT:-8081}"
-                fi
-                
-                # Run VPS route configuration
+                # Run VPS route configuration (auto-detects NodePort)
                 if [[ -x "$SCRIPT_DIR/../configure-vps-route.sh" ]]; then
                     bash "$SCRIPT_DIR/../configure-vps-route.sh" jellyfin 80 "$APP_SUBDOMAIN" "$user_domain" || {
                         echo ""

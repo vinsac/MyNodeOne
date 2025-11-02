@@ -67,6 +67,12 @@ prompt_input() {
         read -p "$(echo -e ${GREEN}?${NC}) $prompt: " value
     fi
     
+    # Strip surrounding quotes (single or double)
+    value="${value%\'}"  # Remove trailing single quote
+    value="${value#\'}"  # Remove leading single quote
+    value="${value%\"}"  # Remove trailing double quote
+    value="${value#\"}"  # Remove leading double quote
+    
     # Use printf instead of eval to avoid command injection
     printf -v "$var_name" '%s' "$value"
 }
@@ -75,6 +81,17 @@ validate_hostname() {
     local name="$1"
     # RFC 1123 hostname validation: lowercase letters, numbers, hyphens, dots
     if [[ "$name" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+validate_k8s_label() {
+    local value="$1"
+    # Kubernetes label values: alphanumeric, '-', '_', '.', max 63 chars
+    # Must start and end with alphanumeric
+    if [[ "$value" =~ ^[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$ ]]; then
         return 0
     else
         return 1
@@ -318,14 +335,31 @@ configure_cluster_info() {
     echo
     echo "ℹ Location helps you identify nodes in multi-location clusters."
     echo "  Examples:"
-    echo "    • Home server: 'home', 'basement', 'office'"
-    echo "    • Data center: 'toronto', 'newyork', 'aws-us-east'"
-    echo "    • VPS provider: 'digitalocean-nyc', 'linode-ca', 'hetzner-de'"
+    echo "    • Home server: home, basement, office"
+    echo "    • Data center: toronto, newyork, aws-us-east"
+    echo "    • VPS provider: digitalocean-nyc, linode-ca, hetzner-de"
     echo
     echo "  💡 Tip: Use the city name or provider location for VPS nodes"
-    echo "          (e.g., 'digitalocean-toronto' or just 'toronto')"
+    echo "          (e.g., digitalocean-toronto or just toronto)"
     echo
-    prompt_input "Where is this node located?" NODE_LOCATION "home"
+    while true; do
+        prompt_input "Where is this node located?" NODE_LOCATION "home"
+        
+        # Validate the location is a valid Kubernetes label value
+        if validate_k8s_label "$NODE_LOCATION"; then
+            break
+        else
+            print_warn "Invalid location: '$NODE_LOCATION'"
+            print_warn "Location must:"
+            print_warn "  • Start and end with a letter or number"
+            print_warn "  • Contain only letters, numbers, hyphens (-), underscores (_), or dots (.)"
+            print_warn "  • Be at most 63 characters"
+            print_warn "  • Not contain quotes or special characters"
+            echo
+            print_info "Examples: home, toronto, office-1, aws-us-east, digitalocean-nyc"
+            echo
+        fi
+    done
     
     if [ "$NODE_TYPE" = "worker" ]; then
         echo

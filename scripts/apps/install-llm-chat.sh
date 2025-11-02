@@ -55,11 +55,12 @@ if check_namespace_exists "$NAMESPACE"; then
     echo "  1. Add public internet access (expose to web)"
     echo "  2. Upgrade to high performance (4-16Gi RAM, 2-6 CPU)"
     echo "  3. Upgrade to MAXIMUM performance (48-128Gi RAM, 8-24 CPU for 70B models)"
-    echo "  4. Expand storage (increase model storage capacity)"
-    echo "  5. Reinstall completely (deletes existing data!)"
-    echo "  6. Exit (keep current installation)"
+    echo "  4. Custom resources (choose your own RAM and CPU)"
+    echo "  5. Expand storage (increase model storage capacity)"
+    echo "  6. Reinstall completely (deletes existing data!)"
+    echo "  7. Exit (keep current installation)"
     echo ""
-    read -p "Choose option [1-6]: " INSTALL_OPTION
+    read -p "Choose option [1-7]: " INSTALL_OPTION
     
     case $INSTALL_OPTION in
         1)
@@ -79,32 +80,36 @@ if check_namespace_exists "$NAMESPACE"; then
             echo -e "${GREEN}Will upgrade to MAXIMUM performance resources...${NC}"
             ALREADY_INSTALLED=true
             UPGRADE_RESOURCES="max"
-            EXPAND_STORAGE=false
             ;;
         4)
             echo ""
-            echo -e "${GREEN}Will expand Ollama storage...${NC}"
+            echo -e "${GREEN}Will configure custom resources...${NC}"
             ALREADY_INSTALLED=true
-            UPGRADE_RESOURCES=false
-            EXPAND_STORAGE=true
+            UPGRADE_RESOURCES="custom"
             ;;
         5)
             echo ""
-            echo -e "${RED}⚠️  WARNING: This will delete all your chat history and downloaded models!${NC}"
-            read -p "Are you absolutely sure? Type 'yes' to confirm: " CONFIRM
-            if [ "$CONFIRM" = "yes" ]; then
-                echo ""
-                echo "Deleting existing installation..."
-                kubectl delete namespace "$NAMESPACE"
+            echo -e "${GREEN}Will expand Ollama storage...${NC}"
+            ALREADY_INSTALLED=true
+            EXPAND_STORAGE=true
+            ;;
+        6)
+            echo ""
+            echo -e "${YELLOW}This will delete all data and reinstall...${NC}"
+            read -p "Are you sure? [y/N]: " CONFIRM
+            if [ "${CONFIRM,,}" = "y" ]; then
+                kubectl delete namespace "$NAMESPACE" --ignore-not-found=true
                 echo "Waiting for cleanup..."
                 sleep 10
                 ALREADY_INSTALLED=false
-                UPGRADE_RESOURCES=false
-                EXPAND_STORAGE=false
             else
-                echo "Cancelled. Exiting."
+                echo "Cancelled."
                 exit 0
             fi
+            ;;
+        7)
+            echo "Cancelled. Exiting."
+            exit 0
             ;;
         *)
             echo "Exiting without changes."
@@ -376,6 +381,275 @@ EOF
         echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         echo ""
     fi
+fi
+
+# Custom resource configuration (if option 4 was chosen)
+if [ "${UPGRADE_RESOURCES:-false}" = "custom" ]; then
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}  Custom Resource Configuration${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Detect cluster capacity
+    echo "🔍 Detecting cluster capacity..."
+    TOTAL_CPU=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.cpu}')
+    TOTAL_RAM_KB=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.memory}' | sed 's/Ki//')
+    TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
+    
+    echo "   Total CPU cores: $TOTAL_CPU"
+    echo "   Total RAM: ${TOTAL_RAM_GB}GB"
+    echo ""
+    
+    echo "💡 Choose configuration method:"
+    echo ""
+    echo "  1. Quick presets (10 optimized configurations)"
+    echo "  2. Manual (choose RAM and CPU separately)"
+    echo ""
+    read -p "Choose method [1-2]: " CONFIG_METHOD
+    
+    if [ "$CONFIG_METHOD" = "1" ]; then
+        # QUICK PRESETS
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  Available Presets (based on your ${TOTAL_RAM_GB}GB system)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "  🔹 Small Models (7B-13B):"
+        echo "     1. Minimal    - 2-8Gi RAM,    1-2 CPU   (phi3, gemma)"
+        echo "     2. Basic      - 4-16Gi RAM,   2-4 CPU   (llama2 7B, mistral)"
+        echo "     3. Standard   - 8-24Gi RAM,   2-6 CPU   (llama2 13B)"
+        echo ""
+        echo "  🔸 Medium Models (30B-34B):"
+        echo "     4. Medium     - 16-48Gi RAM,  4-8 CPU   (codellama 34B)"
+        echo "     5. Enhanced   - 24-64Gi RAM,  6-12 CPU  (mixtral 8x7B)"
+        echo ""
+        echo "  🔶 Large Models (70B):"
+        echo "     6. High       - 32-80Gi RAM,  8-16 CPU  (llama2 70B Q4)"
+        echo "     7. Ultra      - 48-96Gi RAM,  12-20 CPU (llama2 70B Q5)"
+        echo "     8. Extreme    - 64-128Gi RAM, 16-24 CPU (deepseek 70B Q4)"
+        echo ""
+        echo "  🔴 Massive Models (>70B):"
+        echo "     9. Maximum    - 96-192Gi RAM, 20-32 CPU (mixtral 8x22B)"
+        echo "    10. Unlimited  - Custom limits removed"
+        echo ""
+        
+        # Show recommended based on RAM
+        if [ "$TOTAL_RAM_GB" -lt 32 ]; then
+            echo "  💡 Recommended: 1-3 (Your system: ${TOTAL_RAM_GB}GB)"
+        elif [ "$TOTAL_RAM_GB" -lt 64 ]; then
+            echo "  💡 Recommended: 3-5 (Your system: ${TOTAL_RAM_GB}GB)"
+        elif [ "$TOTAL_RAM_GB" -lt 128 ]; then
+            echo "  💡 Recommended: 5-7 (Your system: ${TOTAL_RAM_GB}GB)"
+        elif [ "$TOTAL_RAM_GB" -lt 256 ]; then
+            echo "  💡 Recommended: 7-8 (Your system: ${TOTAL_RAM_GB}GB)"
+        else
+            echo "  💡 Recommended: 8-10 (Your system: ${TOTAL_RAM_GB}GB)"
+        fi
+        echo ""
+        read -p "Choose preset [1-10]: " PRESET
+        
+        case "$PRESET" in
+            1)  # Minimal
+                OLLAMA_REQ_MEM="2Gi" OLLAMA_LIMIT_MEM="8Gi"
+                OLLAMA_REQ_CPU="1000m" OLLAMA_LIMIT_CPU="2000m"
+                ;;
+            2)  # Basic
+                OLLAMA_REQ_MEM="4Gi" OLLAMA_LIMIT_MEM="16Gi"
+                OLLAMA_REQ_CPU="2000m" OLLAMA_LIMIT_CPU="4000m"
+                ;;
+            3)  # Standard
+                OLLAMA_REQ_MEM="8Gi" OLLAMA_LIMIT_MEM="24Gi"
+                OLLAMA_REQ_CPU="2000m" OLLAMA_LIMIT_CPU="6000m"
+                ;;
+            4)  # Medium
+                OLLAMA_REQ_MEM="16Gi" OLLAMA_LIMIT_MEM="48Gi"
+                OLLAMA_REQ_CPU="4000m" OLLAMA_LIMIT_CPU="8000m"
+                ;;
+            5)  # Enhanced
+                OLLAMA_REQ_MEM="24Gi" OLLAMA_LIMIT_MEM="64Gi"
+                OLLAMA_REQ_CPU="6000m" OLLAMA_LIMIT_CPU="12000m"
+                ;;
+            6)  # High
+                OLLAMA_REQ_MEM="32Gi" OLLAMA_LIMIT_MEM="80Gi"
+                OLLAMA_REQ_CPU="8000m" OLLAMA_LIMIT_CPU="16000m"
+                ;;
+            7)  # Ultra
+                OLLAMA_REQ_MEM="48Gi" OLLAMA_LIMIT_MEM="96Gi"
+                OLLAMA_REQ_CPU="12000m" OLLAMA_LIMIT_CPU="20000m"
+                ;;
+            8)  # Extreme (current max)
+                OLLAMA_REQ_MEM="48Gi" OLLAMA_LIMIT_MEM="128Gi"
+                OLLAMA_REQ_CPU="8000m" OLLAMA_LIMIT_CPU="24000m"
+                ;;
+            9)  # Maximum
+                OLLAMA_REQ_MEM="96Gi" OLLAMA_LIMIT_MEM="192Gi"
+                OLLAMA_REQ_CPU="20000m" OLLAMA_LIMIT_CPU="32000m"
+                ;;
+            10)  # Unlimited
+                OLLAMA_REQ_MEM="1Gi" OLLAMA_LIMIT_MEM="${TOTAL_RAM_GB}Gi"
+                OLLAMA_REQ_CPU="1000m" OLLAMA_LIMIT_CPU="${TOTAL_CPU}000m"
+                ;;
+            *)
+                echo "Invalid preset. Using current settings."
+                exit 0
+                ;;
+        esac
+        
+    else
+        # MANUAL CONFIGURATION
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  Manual Resource Configuration"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "📋 Model RAM Requirements (as reference):"
+        echo "   • 7B models:   4-8GB"
+        echo "   • 13B models:  8-16GB"
+        echo "   • 30B models:  16-32GB"
+        echo "   • 70B Q4_K_M:  40-80GB"
+        echo "   • 70B Q5_K_M:  50-100GB"
+        echo "   • 70B Q8:      70-140GB"
+        echo ""
+        
+        # RAM Configuration
+        echo "💾 RAM Configuration:"
+        echo ""
+        echo "Choose memory limit for Ollama:"
+        echo "  1.  8GB   (tiny models)"
+        echo "  2. 16GB   (small models: 7B)"
+        echo "  3. 24GB   (medium models: 13B)"
+        echo "  4. 32GB   (larger models: 13B-30B)"
+        echo "  5. 48GB   (large models: 30B-70B Q4)"
+        echo "  6. 64GB   (70B Q4 with context)"
+        echo "  7. 80GB   (70B Q5)"
+        echo "  8. 96GB   (70B Q5 + context)"
+        echo "  9. 128GB  (70B Q8 or multiple 70B)"
+        echo " 10. Custom (enter your own)"
+        echo ""
+        read -p "Choose RAM limit [1-10]: " RAM_CHOICE
+        
+        case "$RAM_CHOICE" in
+            1) OLLAMA_LIMIT_MEM="8Gi" OLLAMA_REQ_MEM="2Gi" ;;
+            2) OLLAMA_LIMIT_MEM="16Gi" OLLAMA_REQ_MEM="4Gi" ;;
+            3) OLLAMA_LIMIT_MEM="24Gi" OLLAMA_REQ_MEM="8Gi" ;;
+            4) OLLAMA_LIMIT_MEM="32Gi" OLLAMA_REQ_MEM="12Gi" ;;
+            5) OLLAMA_LIMIT_MEM="48Gi" OLLAMA_REQ_MEM="16Gi" ;;
+            6) OLLAMA_LIMIT_MEM="64Gi" OLLAMA_REQ_MEM="24Gi" ;;
+            7) OLLAMA_LIMIT_MEM="80Gi" OLLAMA_REQ_MEM="32Gi" ;;
+            8) OLLAMA_LIMIT_MEM="96Gi" OLLAMA_REQ_MEM="40Gi" ;;
+            9) OLLAMA_LIMIT_MEM="128Gi" OLLAMA_REQ_MEM="48Gi" ;;
+            10)
+                read -p "Enter custom RAM limit (e.g., 192Gi): " CUSTOM_RAM
+                OLLAMA_LIMIT_MEM="$CUSTOM_RAM"
+                read -p "Enter RAM request (e.g., 64Gi): " CUSTOM_RAM_REQ
+                OLLAMA_REQ_MEM="$CUSTOM_RAM_REQ"
+                ;;
+            *)
+                echo "Invalid choice. Using 128Gi."
+                OLLAMA_LIMIT_MEM="128Gi"
+                OLLAMA_REQ_MEM="48Gi"
+                ;;
+        esac
+        
+        echo ""
+        echo "⚙️  CPU Configuration:"
+        echo ""
+        echo "Choose CPU limit for Ollama:"
+        echo "  1.  2 cores  (minimal)"
+        echo "  2.  4 cores  (basic)"
+        echo "  3.  6 cores  (standard)"
+        echo "  4.  8 cores  (recommended)"
+        echo "  5. 12 cores  (high performance)"
+        echo "  6. 16 cores  (very high)"
+        echo "  7. 20 cores  (extreme)"
+        echo "  8. 24 cores  (maximum)"
+        echo "  9. 32 cores  (server-grade)"
+        echo " 10. Custom (enter your own)"
+        echo ""
+        read -p "Choose CPU limit [1-10]: " CPU_CHOICE
+        
+        case "$CPU_CHOICE" in
+            1) OLLAMA_LIMIT_CPU="2000m" OLLAMA_REQ_CPU="1000m" ;;
+            2) OLLAMA_LIMIT_CPU="4000m" OLLAMA_REQ_CPU="2000m" ;;
+            3) OLLAMA_LIMIT_CPU="6000m" OLLAMA_REQ_CPU="2000m" ;;
+            4) OLLAMA_LIMIT_CPU="8000m" OLLAMA_REQ_CPU="4000m" ;;
+            5) OLLAMA_LIMIT_CPU="12000m" OLLAMA_REQ_CPU="6000m" ;;
+            6) OLLAMA_LIMIT_CPU="16000m" OLLAMA_REQ_CPU="8000m" ;;
+            7) OLLAMA_LIMIT_CPU="20000m" OLLAMA_REQ_CPU="10000m" ;;
+            8) OLLAMA_LIMIT_CPU="24000m" OLLAMA_REQ_CPU="12000m" ;;
+            9) OLLAMA_LIMIT_CPU="32000m" OLLAMA_REQ_CPU="16000m" ;;
+            10)
+                read -p "Enter custom CPU limit in cores (e.g., 40): " CUSTOM_CPU
+                OLLAMA_LIMIT_CPU="${CUSTOM_CPU}000m"
+                read -p "Enter CPU request in cores (e.g., 20): " CUSTOM_CPU_REQ
+                OLLAMA_REQ_CPU="${CUSTOM_CPU_REQ}000m"
+                ;;
+            *)
+                echo "Invalid choice. Using 24 cores."
+                OLLAMA_LIMIT_CPU="24000m"
+                OLLAMA_REQ_CPU="8000m"
+                ;;
+        esac
+    fi
+    
+    # Set WebUI resources (proportional to Ollama)
+    WEBUI_REQ_CPU="1000m"
+    WEBUI_REQ_MEM="2Gi"
+    WEBUI_LIMIT_CPU="4000m"
+    WEBUI_LIMIT_MEM="8Gi"
+    OLLAMA_PARALLEL="4"
+    OLLAMA_KEEP_ALIVE="2m"
+    OLLAMA_MAX_MODELS="2"
+    
+    echo ""
+    echo "📊 Selected Configuration:"
+    echo "   RAM:  ${OLLAMA_REQ_MEM} (request) → ${OLLAMA_LIMIT_MEM} (limit)"
+    echo "   CPU:  ${OLLAMA_REQ_CPU} (request) → ${OLLAMA_LIMIT_CPU} (limit)"
+    echo ""
+    read -p "Apply these resources? [Y/n]: " CONFIRM
+    if [ "${CONFIRM,,}" = "n" ]; then
+        echo "Cancelled."
+        exit 0
+    fi
+    
+    # Apply the configuration
+    echo ""
+    echo "🚀 Applying custom resources..."
+    kubectl patch deployment ollama -n "$NAMESPACE" --type='json' -p="[
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/memory\", \"value\": \"$OLLAMA_REQ_MEM\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/cpu\", \"value\": \"$OLLAMA_REQ_CPU\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/memory\", \"value\": \"$OLLAMA_LIMIT_MEM\"},
+        {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/cpu\", \"value\": \"$OLLAMA_LIMIT_CPU\"}
+    ]"
+    
+    kubectl set env deployment/ollama -n "$NAMESPACE" \
+        OLLAMA_NUM_PARALLEL="$OLLAMA_PARALLEL" \
+        OLLAMA_KEEP_ALIVE="$OLLAMA_KEEP_ALIVE" \
+        OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_MODELS"
+    
+    echo ""
+    echo -e "${GREEN}✓ Custom resources applied!${NC}"
+    echo ""
+    echo "📊 Resource Summary:"
+    echo "  Memory Request: $OLLAMA_REQ_MEM"
+    echo "  Memory Limit:   $OLLAMA_LIMIT_MEM"
+    echo "  CPU Request:    $OLLAMA_REQ_CPU"
+    echo "  CPU Limit:      $OLLAMA_LIMIT_CPU"
+    echo "  Keep Alive:     $OLLAMA_KEEP_ALIVE"
+    echo ""
+    echo "✓ Ollama will restart with new resources..."
+    echo ""
+    
+    # Wait for rollout
+    kubectl rollout status deployment/ollama -n "$NAMESPACE" --timeout=120s
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  ✓ Custom Resources Applied Successfully!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    exit 0
 fi
 
 # Upgrade resources (if option 2 or 3 was chosen)

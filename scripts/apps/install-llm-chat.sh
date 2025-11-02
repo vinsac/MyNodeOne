@@ -54,7 +54,7 @@ if check_namespace_exists "$NAMESPACE"; then
     echo ""
     echo "  1. Add public internet access (expose to web)"
     echo "  2. Upgrade to high performance (4-16Gi RAM, 2-6 CPU)"
-    echo "  3. Upgrade to MAXIMUM performance (32-96Gi RAM, 8-24 CPU)"
+    echo "  3. Upgrade to MAXIMUM performance (48-128Gi RAM, 8-24 CPU for 70B models)"
     echo "  4. Expand storage (increase model storage capacity)"
     echo "  5. Reinstall completely (deletes existing data!)"
     echo "  6. Exit (keep current installation)"
@@ -391,11 +391,11 @@ if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}"
     echo ""
     
     if [ "$UPGRADE_RESOURCES" = "max" ]; then
-        # MAXIMUM performance - use all available resources
+        # MAXIMUM performance - use all available resources (for 70B models)
         OLLAMA_REQ_CPU="8000m"
-        OLLAMA_REQ_MEM="32Gi"
+        OLLAMA_REQ_MEM="48Gi"
         OLLAMA_LIMIT_CPU="24000m"
-        OLLAMA_LIMIT_MEM="96Gi"
+        OLLAMA_LIMIT_MEM="128Gi"
         WEBUI_REQ_CPU="1000m"
         WEBUI_REQ_MEM="2Gi"
         WEBUI_LIMIT_CPU="4000m"

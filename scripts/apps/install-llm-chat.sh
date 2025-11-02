@@ -401,7 +401,7 @@ if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}"
         WEBUI_LIMIT_CPU="4000m"
         WEBUI_LIMIT_MEM="8Gi"
         OLLAMA_PARALLEL="8"
-        OLLAMA_KEEP_ALIVE="24h"
+        OLLAMA_KEEP_ALIVE="2m"
         OLLAMA_MAX_MODELS="4"
     else
         # High performance - balanced
@@ -414,7 +414,7 @@ if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}"
         WEBUI_LIMIT_CPU="2000m"
         WEBUI_LIMIT_MEM="4Gi"
         OLLAMA_PARALLEL="4"
-        OLLAMA_KEEP_ALIVE="24h"
+        OLLAMA_KEEP_ALIVE="2m"
         OLLAMA_MAX_MODELS="2"
     fi
     

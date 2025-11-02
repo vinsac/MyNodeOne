@@ -10,6 +10,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Show legal disclaimer
+source "$SCRIPT_DIR/show-disclaimer.sh"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

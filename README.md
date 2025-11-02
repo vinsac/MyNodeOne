@@ -12,6 +12,36 @@
 
 ---
 
+## ⚠️ IMPORTANT LEGAL DISCLAIMER
+
+**READ BEFORE USING THIS SOFTWARE**
+
+🔴 **NO WARRANTY - USE AT YOUR OWN RISK**
+
+This software is provided "AS IS" with **ABSOLUTELY NO WARRANTY** of any kind. By using MyNodeOne, you acknowledge and accept:
+
+- ⚠️ **This software may contain security vulnerabilities**
+- ⚠️ **Data loss may occur** - Maintain your own backups
+- ⚠️ **No liability** - Authors assume NO responsibility for ANY damages (direct, indirect, consequential, or otherwise)
+- ⚠️ **You indemnify the authors** - You agree to hold harmless and fully indemnify the repository owner/developers from ALL claims
+- ⚠️ **Production use** - Using this in production is AT YOUR OWN RISK
+- ⚠️ **Security risks** - This software may have bugs, vulnerabilities, or design flaws
+- ⚠️ **No support** - No obligation to provide support, updates, or bug fixes
+- ⚠️ **Malicious use** - Authors disclaim ALL liability for illegal or malicious use
+- ⚠️ **Jurisdiction** - Any disputes must be resolved in Toronto, Ontario, Canada
+
+**📄 COMPREHENSIVE LEGAL TERMS:** Please read [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENSE`](LICENSE) for complete legal terms.
+
+**✋ By using this software, you agree to:**
+- Accept ALL risks (security, data loss, system failures, etc.)
+- Fully indemnify the authors from any and all claims
+- Submit to exclusive jurisdiction in Toronto, Canada
+- Take full responsibility for any consequences
+
+**IF YOU DO NOT AGREE, DO NOT USE THIS SOFTWARE.**
+
+---
+
 ## 💡 The Vision
 
 **Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build an enterprise-grade private cloud using:

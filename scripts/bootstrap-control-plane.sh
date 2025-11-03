@@ -763,7 +763,16 @@ display_credentials() {
     GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-    LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "$TAILSCALE_IP:30080")
+    
+    # Longhorn uses NodePort by default, so get the LoadBalancer IP or fall back to node IP:port
+    LONGHORN_LB_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    if [ -n "$LONGHORN_LB_IP" ]; then
+        LONGHORN_URL="http://$LONGHORN_LB_IP"
+    else
+        # Use NodePort (default is 30080)
+        LONGHORN_PORT=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "30080")
+        LONGHORN_URL="http://${TAILSCALE_IP}:${LONGHORN_PORT}"
+    fi
     
     # Get passwords
     GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "See file below")
@@ -788,13 +797,14 @@ display_credentials() {
     
     echo "💾 MINIO (S3 Storage):"
     echo "   Console: http://$MINIO_CONSOLE_IP:9001"
+    echo "   Note: Port 9001 is MinIO's web console (9000 is for S3 API)"
     if [ -f /root/mynodeone-minio-credentials.txt ]; then
         cat /root/mynodeone-minio-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
     fi
     echo
     
     echo "📦 LONGHORN (Storage Dashboard):"
-    echo "   URL: http://$LONGHORN_IP"
+    echo "   URL: $LONGHORN_URL"
     echo "   Authentication: None (protected by Tailscale VPN)"
     echo
     

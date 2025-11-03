@@ -439,8 +439,56 @@ detect_disks() {
             continue
         fi
         
-        # Check if this disk has ANY mounted partitions
-        # Note: We'll allow disks with mounted partitions but will unmount them before formatting
+        # ===================================================================
+        # CRITICAL SAFETY: Filter out virtual/unsafe disks
+        # ===================================================================
+        
+        # Skip loop devices (used by snaps, containers, etc.)
+        if [[ "$disk_name" =~ ^loop[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Skip NBD (Network Block Device)
+        if [[ "$disk_name" =~ ^nbd[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Skip RAM disks
+        if [[ "$disk_name" =~ ^ram[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Check disk model to filter virtual disks
+        MODEL=$(lsblk -n -o MODEL "/dev/$disk_name" 2>/dev/null | head -1 | xargs)
+        
+        # Skip virtual disks (Kubernetes CSI volumes, VM virtual disks)
+        if [[ "$MODEL" == "VIRTUAL-DISK" ]] || [[ "$MODEL" == *"Virtual"* ]]; then
+            continue
+        fi
+        
+        # Skip if disk or its partitions are mounted to Kubernetes paths
+        # (These are CSI volumes from previous installations)
+        if lsblk -n -o MOUNTPOINT "/dev/$disk_name" 2>/dev/null | grep -q "/var/lib/kubelet/pods"; then
+            continue
+        fi
+        
+        # Skip if already mounted as Longhorn disk
+        if lsblk -n -o MOUNTPOINT "/dev/$disk_name" 2>/dev/null | grep -q "/mnt/longhorn-disks"; then
+            continue
+        fi
+        
+        # Skip if mounted to /var/lib/longhorn (default Longhorn path)
+        if lsblk -n -o MOUNTPOINT "/dev/$disk_name" 2>/dev/null | grep -q "/var/lib/longhorn"; then
+            continue
+        fi
+        
+        # Check for Windows/NTFS partitions (dual-boot protection)
+        if lsblk -n -o FSTYPE "/dev/$disk_name" 2>/dev/null | grep -qi "ntfs"; then
+            print_warning "Skipping $disk_name: Contains Windows NTFS partition (dual-boot system detected)"
+            continue
+        fi
+        
+        # All checks passed - this is a safe disk
         UNMOUNTED_DISKS+=("$DISK")
     done < <(lsblk -n -d -o NAME,TYPE | grep "disk" | awk '{print $1}')
     
@@ -461,9 +509,16 @@ detect_disks() {
     echo
     
     echo -e "${YELLOW}    ⚠️  IMPORTANT SAFETY INFORMATION:${NC}"
-    echo "      • OS disk (/dev/nvme0n1) is EXCLUDED for safety"
-    echo "      • Only disks with NO mounted partitions are shown"
+    echo "      • OS disk ($OS_DISK) is EXCLUDED for safety"
+    echo "      • Virtual disks (Kubernetes CSI volumes) are EXCLUDED"
+    echo "      • Windows/NTFS partitions (dual-boot) are EXCLUDED"
+    echo "      • Only physical disks with NO mounted partitions are shown"
     echo "      • Formatting will ERASE ALL DATA on selected disks"
+    echo
+    echo -e "${BLUE}    💡 RECOMMENDED FOR DUAL-BOOT SYSTEMS:${NC}"
+    echo "      • Use an external USB/SATA hard drive for MyNodeOne storage"
+    echo "      • Or use a spare internal drive (not your Windows drive!)"
+    echo "      • This keeps your Windows installation completely safe"
     echo
 }
 

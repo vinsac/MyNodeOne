@@ -437,8 +437,22 @@ install_longhorn() {
     helm repo add longhorn https://charts.longhorn.io
     helm repo update
     
-    # Set default LONGHORN_PATH if not defined
-    LONGHORN_PATH="${LONGHORN_PATH:-/mnt/longhorn-disks}"
+    # Determine Longhorn data path
+    # If user has dedicated disks mounted, use the first one
+    # Otherwise, use default /var/lib/longhorn on root filesystem
+    LONGHORN_PATH="/var/lib/longhorn"  # Default
+    
+    # Check if user has mounted disks for Longhorn
+    if [ -d "/mnt/longhorn-disks" ]; then
+        # Find first mounted disk
+        FIRST_DISK=$(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*" | head -1)
+        if [ -n "$FIRST_DISK" ] && mountpoint -q "$FIRST_DISK" 2>/dev/null; then
+            LONGHORN_PATH="$FIRST_DISK"
+            log_info "Using dedicated storage: $LONGHORN_PATH"
+        fi
+    fi
+    
+    log_info "Longhorn will store data at: $LONGHORN_PATH"
     
     helm upgrade --install longhorn longhorn/longhorn \
         --namespace longhorn-system \

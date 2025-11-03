@@ -8,6 +8,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Load configuration
+CONFIG_FILE="$HOME/.mynodeone/config.env"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Use configured domain or fallback to mynodeone
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -73,7 +82,7 @@ setup_avahi_local_dns() {
     # Configure avahi
     cat > /etc/avahi/avahi-daemon.conf <<EOF
 [server]
-host-name=mynodeone
+host-name=${CLUSTER_DOMAIN}
 domain-name=local
 use-ipv4=yes
 use-ipv6=no
@@ -125,8 +134,8 @@ setup_dnsmasq() {
         cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak
     fi
     
-    # Create dnsmasq config for mynodeone.local
-    cat > /etc/dnsmasq.d/mynodeone.conf <<EOF
+    # Create dnsmasq config for ${CLUSTER_DOMAIN}.local
+    cat > /etc/dnsmasq.d/${CLUSTER_DOMAIN}.conf <<EOF
 # MyNodeOne local DNS configuration
 
 # Listen on Tailscale interface and localhost
@@ -135,16 +144,16 @@ interface=lo
 bind-interfaces
 
 # Domain for this cluster
-domain=mynodeone.local
-local=/mynodeone.local/
+domain=${CLUSTER_DOMAIN}.local
+local=/${CLUSTER_DOMAIN}.local/
 
 # Service DNS entries
-address=/grafana.mynodeone.local/${GRAFANA_IP}
-address=/argocd.mynodeone.local/${ARGOCD_IP}
-address=/minio.mynodeone.local/${MINIO_CONSOLE_IP}
-address=/minio-api.mynodeone.local/${MINIO_API_IP}
-address=/longhorn.mynodeone.local/${LONGHORN_IP}
-address=/mynodeone.local/${DASHBOARD_IP}
+address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
+address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
+address=/minio.${CLUSTER_DOMAIN}.local/${MINIO_CONSOLE_IP}
+address=/minio-api.${CLUSTER_DOMAIN}.local/${MINIO_API_IP}
+address=/longhorn.${CLUSTER_DOMAIN}.local/${LONGHORN_IP}
+address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 
 # Upstream DNS servers
 server=8.8.8.8
@@ -160,11 +169,11 @@ EOF
         
         # Stop systemd-resolved from listening on port 53
         mkdir -p /etc/systemd/resolved.conf.d
-        cat > /etc/systemd/resolved.conf.d/mynodeone.conf <<EOF
+        cat > /etc/systemd/resolved.conf.d/${CLUSTER_DOMAIN}.conf <<EOF
 [Resolve]
 DNS=127.0.0.1
 DNSStubListener=no
-Domains=~mynodeone.local
+Domains=~${CLUSTER_DOMAIN}.local
 EOF
         
         # Restart systemd-resolved
@@ -175,7 +184,7 @@ EOF
     systemctl enable dnsmasq
     systemctl restart dnsmasq
     
-    log_success "dnsmasq configured for mynodeone.local domain"
+    log_success "dnsmasq configured for ${CLUSTER_DOMAIN}.local domain"
 }
 
 update_hosts_file() {
@@ -191,12 +200,12 @@ update_hosts_file() {
     cat >> /etc/hosts <<EOF
 
 # MyNodeOne services
-${DASHBOARD_IP}      mynodeone.local
-${GRAFANA_IP}        grafana.mynodeone.local
-${ARGOCD_IP}         argocd.mynodeone.local
-${MINIO_CONSOLE_IP}  minio.mynodeone.local
-${MINIO_API_IP}      minio-api.mynodeone.local
-${LONGHORN_IP}       longhorn.mynodeone.local
+${DASHBOARD_IP}      ${CLUSTER_DOMAIN}.local
+${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local
+${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local
+${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local
+${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local
+${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local
 # End MyNodeOne services
 EOF
     
@@ -220,8 +229,9 @@ MINIO_CONSOLE_IP="MINIO_CONSOLE_IP_PLACEHOLDER"
 MINIO_API_IP="MINIO_API_IP_PLACEHOLDER"
 LONGHORN_IP="LONGHORN_IP_PLACEHOLDER"
 DASHBOARD_IP="DASHBOARD_IP_PLACEHOLDER"
+CLUSTER_DOMAIN="CLUSTER_DOMAIN_PLACEHOLDER"
 
-echo "Setting up mynodeone.local domains..."
+echo "Setting up ${CLUSTER_DOMAIN}.local domains..."
 
 # Detect OS
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -247,23 +257,23 @@ sudo sed -i.tmp '/# MyNodeOne services/,/# End MyNodeOne services/d' "$HOSTS_FIL
 # Add new entries
 echo "" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "# MyNodeOne services" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "${DASHBOARD_IP}      mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "${GRAFANA_IP}        grafana.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "${ARGOCD_IP}         argocd.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "${MINIO_CONSOLE_IP}  minio.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "${MINIO_API_IP}      minio-api.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "${LONGHORN_IP}       longhorn.mynodeone.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${DASHBOARD_IP}      ${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "# End MyNodeOne services" | sudo tee -a "$HOSTS_FILE" > /dev/null
 
 echo ""
 echo "✅ Local DNS configured!"
 echo ""
 echo "You can now access services at:"
-echo "  • Dashboard: http://mynodeone.local"
-echo "  • Grafana:   http://grafana.mynodeone.local"
-echo "  • ArgoCD:    https://argocd.mynodeone.local"
-echo "  • MinIO:     http://minio.mynodeone.local:9001"
-echo "  • Longhorn:  http://longhorn.mynodeone.local"
+echo "  • Dashboard: http://${CLUSTER_DOMAIN}.local"
+echo "  • Grafana:   http://grafana.${CLUSTER_DOMAIN}.local"
+echo "  • ArgoCD:    https://argocd.${CLUSTER_DOMAIN}.local"
+echo "  • MinIO:     http://minio.${CLUSTER_DOMAIN}.local:9001"
+echo "  • Longhorn:  http://longhorn.${CLUSTER_DOMAIN}.local"
 echo ""
 SCRIPT_EOF
     
@@ -274,6 +284,7 @@ SCRIPT_EOF
     sed -i "s/MINIO_API_IP_PLACEHOLDER/$MINIO_API_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
     sed -i "s/LONGHORN_IP_PLACEHOLDER/$LONGHORN_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
     sed -i "s/DASHBOARD_IP_PLACEHOLDER/$DASHBOARD_IP/g" "$PROJECT_ROOT/setup-client-dns.sh"
+    sed -i "s/CLUSTER_DOMAIN_PLACEHOLDER/$CLUSTER_DOMAIN/g" "$PROJECT_ROOT/setup-client-dns.sh"
     
     chmod +x "$PROJECT_ROOT/setup-client-dns.sh"
     
@@ -287,11 +298,11 @@ print_summary() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     echo "🎯 On this control plane, you can now access:"
-    echo "  • Dashboard: http://mynodeone.local"
-    echo "  • Grafana:   http://grafana.mynodeone.local"
-    echo "  • ArgoCD:    https://argocd.mynodeone.local"
-    echo "  • MinIO:     http://minio.mynodeone.local:9001"
-    echo "  • Longhorn:  http://longhorn.mynodeone.local"
+    echo "  • Dashboard: http://${CLUSTER_DOMAIN}.local"
+    echo "  • Grafana:   http://grafana.${CLUSTER_DOMAIN}.local"
+    echo "  • ArgoCD:    https://argocd.${CLUSTER_DOMAIN}.local"
+    echo "  • MinIO:     http://minio.${CLUSTER_DOMAIN}.local:9001"
+    echo "  • Longhorn:  http://longhorn.${CLUSTER_DOMAIN}.local"
     echo
     echo "💻 On other devices (laptop, desktop):"
     echo "  1. Ensure Tailscale is installed and connected"

@@ -784,7 +784,7 @@ deploy_dashboard() {
     
     # Deploy the dashboard
     if bash "$SCRIPT_DIR/../website/deploy-dashboard.sh" > /dev/null 2>&1; then
-        log_success "Dashboard deployed - accessible at http://mynodeone.local"
+        log_success "Dashboard deployed - accessible at http://${CLUSTER_DOMAIN}.local"
     else
         log_warn "Dashboard deployment had issues, but continuing..."
     fi
@@ -844,7 +844,7 @@ display_credentials() {
     GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "See file below")
     
     echo "🏠 MYNODEONE DASHBOARD:"
-    echo "   URL: http://$DASHBOARD_IP (also at http://mynodeone.local)"
+    echo "   URL: http://$DASHBOARD_IP (also at http://${CLUSTER_DOMAIN}.local)"
     echo "   Features: Cluster status, one-click apps, script browser"
     echo
     
@@ -1064,7 +1064,7 @@ print_summary() {
     echo "      Credentials: cat /root/mynodeone-minio-credentials.txt"
     echo
     echo "   📦 Longhorn UI (Block Storage):"
-    echo "      URL: http://$LONGHORN_IP"
+    echo "      URL: $LONGHORN_URL"
     echo "      (No authentication required - protected by Tailscale VPN)"
     echo
     echo "   📘 For complete access information, see:"

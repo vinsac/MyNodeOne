@@ -438,21 +438,31 @@ install_longhorn() {
     helm repo update
     
     # Determine Longhorn data path
-    # If user has dedicated disks mounted, use the first one
-    # Otherwise, use default /var/lib/longhorn on root filesystem
+    # If user has dedicated disks mounted, use the first one as default
+    # Then we'll add all other disks after installation
     LONGHORN_PATH="/var/lib/longhorn"  # Default
+    MOUNTED_DISKS=()
     
     # Check if user has mounted disks for Longhorn
     if [ -d "/mnt/longhorn-disks" ]; then
-        # Find first mounted disk
-        FIRST_DISK=$(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*" | head -1)
-        if [ -n "$FIRST_DISK" ] && mountpoint -q "$FIRST_DISK" 2>/dev/null; then
-            LONGHORN_PATH="$FIRST_DISK"
-            log_info "Using dedicated storage: $LONGHORN_PATH"
+        # Find all mounted disks
+        while IFS= read -r disk_path; do
+            if mountpoint -q "$disk_path" 2>/dev/null; then
+                MOUNTED_DISKS+=("$disk_path")
+            fi
+        done < <(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*")
+        
+        if [ ${#MOUNTED_DISKS[@]} -gt 0 ]; then
+            LONGHORN_PATH="${MOUNTED_DISKS[0]}"
+            log_info "Found ${#MOUNTED_DISKS[@]} dedicated disk(s) for Longhorn:"
+            for disk in "${MOUNTED_DISKS[@]}"; do
+                DISK_SIZE=$(df -h "$disk" | tail -1 | awk '{print $2}')
+                log_info "  • $disk ($DISK_SIZE)"
+            done
         fi
     fi
     
-    log_info "Longhorn will store data at: $LONGHORN_PATH"
+    log_info "Longhorn default path: $LONGHORN_PATH"
     
     helm upgrade --install longhorn longhorn/longhorn \
         --namespace longhorn-system \
@@ -466,6 +476,48 @@ install_longhorn() {
     
     log_success "Longhorn installed"
     log_info "Longhorn UI will be available at: http://$TAILSCALE_IP:30080 (via NodePort)"
+    
+    # Configure Longhorn to use ALL mounted disks (not just the first one)
+    if [ ${#MOUNTED_DISKS[@]} -gt 1 ]; then
+        log_info "Configuring Longhorn to use all ${#MOUNTED_DISKS[@]} disks..."
+        
+        # Wait for Longhorn to be fully ready
+        sleep 10
+        
+        # Get the node name
+        NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+        
+        # For each additional disk, add it to Longhorn
+        for i in "${!MOUNTED_DISKS[@]}"; do
+            if [ $i -eq 0 ]; then
+                continue  # Skip first disk (already configured as default)
+            fi
+            
+            DISK_PATH="${MOUNTED_DISKS[$i]}"
+            DISK_NAME="disk-$(basename "$DISK_PATH")"
+            
+            log_info "Adding additional disk: $DISK_PATH"
+            
+            # Add disk to Longhorn node configuration
+            # This uses Longhorn's API to add the disk
+            kubectl -n longhorn-system patch node "$NODE_NAME" --type='json' -p="[
+                {
+                    \"op\": \"add\",
+                    \"path\": \"/spec/disks/$DISK_NAME\",
+                    \"value\": {
+                        \"path\": \"$DISK_PATH\",
+                        \"allowScheduling\": true,
+                        \"evictionRequested\": false,
+                        \"storageReserved\": 0,
+                        \"tags\": []
+                    }
+                }
+            ]" 2>/dev/null || log_warn "Could not auto-add $DISK_PATH (you can add it manually via Longhorn UI)"
+        done
+        
+        log_success "All disks configured!"
+        log_info "Total storage: $(df -h "${MOUNTED_DISKS[@]}" | tail -${#MOUNTED_DISKS[@]} | awk '{sum+=$2} END {print sum"G"}')"
+    fi
 }
 
 install_metallb() {

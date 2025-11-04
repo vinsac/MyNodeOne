@@ -926,20 +926,20 @@ display_credentials() {
     echo
     
     echo "📊 GRAFANA (Monitoring Dashboard):"
-    echo "   URL: http://$GRAFANA_IP"
+    echo "   URL: http://$GRAFANA_IP (also http://grafana.${CLUSTER_DOMAIN}.local)"
     echo "   Username: admin"
     echo "   Password: $GRAFANA_PASS"
     echo
     
     echo "🚀 ARGOCD (GitOps):"
-    echo "   URL: https://$ARGOCD_IP"
+    echo "   URL: https://$ARGOCD_IP (also https://argocd.${CLUSTER_DOMAIN}.local)"
     if [ -f /root/mynodeone-argocd-credentials.txt ]; then
         cat /root/mynodeone-argocd-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
     fi
     echo
     
     echo "💾 MINIO (S3 Storage):"
-    echo "   Console: http://$MINIO_CONSOLE_IP:9001"
+    echo "   Console: http://$MINIO_CONSOLE_IP:9001 (also http://minio.${CLUSTER_DOMAIN}.local:9001)"
     echo "   Note: Port 9001 is MinIO's web console (9000 is for S3 API)"
     if [ -f /root/mynodeone-minio-credentials.txt ]; then
         cat /root/mynodeone-minio-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
@@ -947,7 +947,7 @@ display_credentials() {
     echo
     
     echo "📦 LONGHORN (Storage Dashboard):"
-    echo "   URL: $LONGHORN_URL"
+    echo "   URL: $LONGHORN_URL (also http://longhorn.${CLUSTER_DOMAIN}.local)"
     echo "   Authentication: None (protected by Tailscale VPN)"
     echo
     

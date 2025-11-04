@@ -266,11 +266,102 @@ optimize_system_for_containers() {
     log_success "System optimizations applied"
 }
 
+prepare_encryption_config() {
+    log_info "Configuring secrets encryption at rest..."
+    
+    # Generate encryption key
+    ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
+    
+    # Create encryption provider config
+    cat > /etc/rancher/k3s/encryption-config.yaml <<EOF
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: ${ENCRYPTION_KEY}
+      - identity: {}  # Fallback for reading old unencrypted data
+EOF
+    
+    chmod 600 /etc/rancher/k3s/encryption-config.yaml
+    log_success "Encryption configuration created"
+}
+
+prepare_audit_config() {
+    log_info "Configuring audit logging..."
+    
+    # Create audit policy
+    cat > /etc/rancher/k3s/audit-policy.yaml <<'EOF'
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  # Log admin actions
+  - level: RequestResponse
+    users: ["system:admin", "admin"]
+    
+  # Log secret access
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets"]
+    
+  # Log pod creation/deletion
+  - level: Request
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: ""
+        resources: ["pods"]
+    
+  # Log everything else at metadata level
+  - level: Metadata
+EOF
+    
+    chmod 644 /etc/rancher/k3s/audit-policy.yaml
+    log_success "Audit policy configured"
+}
+
+prepare_pod_security_config() {
+    log_info "Configuring Pod Security Standards..."
+    
+    cat > /etc/rancher/k3s/pod-security-config.yaml <<'EOF'
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+  - name: PodSecurity
+    configuration:
+      apiVersion: pod-security.admission.config.k8s.io/v1
+      kind: PodSecurityConfiguration
+      defaults:
+        enforce: "baseline"
+        enforce-version: "latest"
+        audit: "restricted"
+        audit-version: "latest"
+        warn: "restricted"
+        warn-version: "latest"
+      exemptions:
+        usernames: []
+        runtimeClasses: []
+        namespaces: [kube-system, kube-public, kube-node-lease, longhorn-system, metallb-system, cert-manager]
+EOF
+    
+    chmod 644 /etc/rancher/k3s/pod-security-config.yaml
+    log_success "Pod Security Standards configured"
+}
+
 install_k3s() {
     log_info "Installing K3s server..."
     
     # Prepare K3s configuration
     mkdir -p /etc/rancher/k3s
+    
+    # Setup security configs BEFORE K3s starts
+    prepare_encryption_config
+    prepare_audit_config
+    prepare_pod_security_config
     
     cat > /etc/rancher/k3s/config.yaml <<EOF
 cluster-init: true
@@ -288,6 +379,14 @@ disable:
 disable-cloud-controller: true
 kubelet-arg:
   - "max-pods=250"
+kube-apiserver-arg:
+  - "encryption-provider-config=/etc/rancher/k3s/encryption-config.yaml"
+  - "audit-log-path=/var/log/k3s-audit.log"
+  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+  - "audit-log-maxage=30"
+  - "audit-log-maxbackup=10"
+  - "audit-log-maxsize=100"
+  - "admission-control-config-file=/etc/rancher/k3s/pod-security-config.yaml"
 EOF
     
     # Install K3s
@@ -1208,48 +1307,57 @@ print_summary() {
 offer_security_hardening() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔒 Recommended: Enable Security Hardening"
+    echo "  🔒 Core Security: Already Enabled!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "Would you like to enable additional security features?"
+    log_success "Your cluster has production-grade security built-in:"
+    echo "  ✅ Secrets encryption at rest (AES-256)"
+    echo "  ✅ Kubernetes audit logging"
+    echo "  ✅ Pod Security Standards (baseline enforcement)"
+    echo "  ✅ Firewall enabled (UFW)"
+    echo "  ✅ Fail2ban protection"
     echo
-    echo "This will configure:"
-    echo "  ✅ Secrets encryption at rest (encrypts passwords in etcd)"
-    echo "  ✅ Enhanced audit logging"
-    echo "  ✅ Pod Security Standards (restrict unsafe containers)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🛡️  Optional: Additional Security Enhancements"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "⚠️  Note: This will restart K3s once (takes ~30 seconds)"
+    echo "Would you like to deploy optional security enhancements?"
     echo
-    echo "Recommended: YES for production, OPTIONAL for testing"
+    echo "This adds:"
+    echo "  • Network policies (default deny + explicit allow)"
+    echo "  • Resource quotas (prevent DoS attacks)"
+    echo "  • Traefik security headers (HSTS, CSP, XSS protection)"
+    echo
+    echo "Recommended: YES for production, OPTIONAL for home/testing"
     echo
     
-    # Skip prompt in unattended mode - auto-enable for production
+    # Skip prompt in unattended mode
     if [ "${UNATTENDED:-0}" = "1" ]; then
-        log_info "UNATTENDED mode: Auto-enabling security hardening"
-        bash "$SCRIPT_DIR/enable-security-hardening.sh"
+        log_info "UNATTENDED mode: Skipping optional security enhancements"
+        log_info "You can add them later with: sudo $SCRIPT_DIR/enable-security-hardening.sh"
         return
     fi
     
-    read -p "Enable security hardening? [Y/n]: " -r
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    read -p "Deploy optional security enhancements? [y/N]: " -r
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo
-        log_info "Enabling security hardening..."
+        log_info "Deploying optional security enhancements..."
         if bash "$SCRIPT_DIR/enable-security-hardening.sh"; then
-            log_success "Security hardening enabled!"
+            log_success "Optional security enhancements deployed!"
             echo
-            echo "✅ Secrets are now encrypted at rest"
-            echo "✅ Pod Security Standards enforced"
-            echo "✅ Enhanced audit logging active"
+            echo "✅ Network policies active"
+            echo "✅ Resource quotas enforced"
+            echo "✅ Traefik security headers configured"
         else
-            log_warn "Security hardening had issues. You can enable it later with:"
+            log_warn "Deployment had issues. You can try again later with:"
             echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
         fi
     else
         echo
-        log_info "Skipping security hardening. You can enable it anytime with:"
-        echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
+        log_info "Skipping optional enhancements. Your cluster still has strong core security."
         echo
-        log_warn "⚠️  Without encryption, secrets are stored as base64 (not encrypted)"
+        log_info "You can add them anytime with:"
+        echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
     fi
 }
 

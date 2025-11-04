@@ -10,8 +10,13 @@
 set -euo pipefail
 
 # Get script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_REMATCH[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Source validation library
+if [ -f "$SCRIPT_DIR/lib/validation.sh" ]; then
+    source "$SCRIPT_DIR/lib/validation.sh"
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -138,12 +143,33 @@ detect_os() {
 }
 
 check_tailscale() {
-    if command -v tailscale &> /dev/null; then
-        if tailscale status &> /dev/null; then
-            TAILSCALE_IP=$(tailscale ip -4 | head -n1)
+    if ! command -v tailscale &> /dev/null; then
+        return 1
+    fi
+    
+    # Check if Tailscale is actually running
+    if ! tailscale status &> /dev/null; then
+        return 1
+    fi
+    
+    # Get Tailscale IP with retry
+    local attempt=1
+    local max_attempts=5
+    
+    while [ $attempt -le $max_attempts ]; do
+        TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -n1 | tr -d '\n')
+        
+        # Validate it's a proper Tailscale IP
+        if [ -n "$TAILSCALE_IP" ] && validate_tailscale_ip "$TAILSCALE_IP" 2>/dev/null; then
             return 0
         fi
-    fi
+        
+        print_warning "Tailscale IP not ready yet (attempt $attempt/$max_attempts)..."
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    print_error "Failed to get valid Tailscale IP after $max_attempts attempts"
     return 1
 }
 

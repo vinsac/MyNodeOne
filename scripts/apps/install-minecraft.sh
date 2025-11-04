@@ -159,9 +159,15 @@ echo ""
 echo "🌐 Configuring local DNS..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if bash "$SCRIPT_DIR/../configure-app-dns.sh" > /dev/null 2>&1; then
+    # Load cluster domain
+    CLUSTER_DOMAIN="mynodeone"
+    if [ -f "$HOME/.mynodeone/config.env" ]; then
+        source "$HOME/.mynodeone/config.env"
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+    fi
     echo ""
     echo "✓ DNS configured! Connect using:"
-    echo "   minecraft.mynodeone.local:25565"
+    echo "   minecraft.${CLUSTER_DOMAIN}.local:25565"
     echo ""
 else
     echo ""

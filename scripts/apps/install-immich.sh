@@ -247,7 +247,7 @@ metadata:
   name: immich-server
   namespace: $NAMESPACE
   annotations:
-    mynodeone.local/subdomain: "$APP_SUBDOMAIN"
+    ${CLUSTER_DOMAIN}.local/subdomain: "$APP_SUBDOMAIN"
 spec:
   type: LoadBalancer
   ports:
@@ -349,6 +349,15 @@ echo ""
 
 # Configure local DNS automatically (if kubectl is available)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+# Load cluster configuration
+CONFIG_FILE="$HOME/.mynodeone/config.env"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+
 if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
     echo "🌐 Updating local DNS entries..."
     if sudo bash "$SCRIPT_DIR/../update-laptop-dns.sh" --quiet 2>/dev/null; then

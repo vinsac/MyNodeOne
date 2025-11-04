@@ -119,7 +119,7 @@ discover_services() {
     log_info "Discovering LoadBalancer services..."
     
     # Get all LoadBalancer services with IPs and custom subdomain annotations
-    SERVICES=$(kubectl get svc -A -o json | jq -r '
+    SERVICES=$(kubectl get svc -A -o json | jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
         .items[] | 
         select(.spec.type == "LoadBalancer") | 
         select(.status.loadBalancer.ingress != null) |
@@ -128,7 +128,7 @@ discover_services() {
             namespace: .metadata.namespace,
             name: .metadata.name,
             ip: .status.loadBalancer.ingress[0].ip,
-            subdomain: (.metadata.annotations["mynodeone.local/subdomain"] // "")
+            subdomain: (.metadata.annotations[$domain + "/subdomain"] // "")
         } |
         "\(.ip)|\(.name)|\(.namespace)|\(.subdomain)"
     ')

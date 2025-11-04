@@ -94,6 +94,12 @@ echo ""
 
 # Configure DNS automatically
 if bash "$SCRIPT_DIR/../configure-app-dns.sh" > /dev/null 2>&1; then
-    echo "✓ DNS configured! Access at: http://homepage.mynodeone.local"
+    # Load cluster domain
+    CLUSTER_DOMAIN="mynodeone"
+    if [ -f "$HOME/.mynodeone/config.env" ]; then
+        source "$HOME/.mynodeone/config.env"
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+    fi
+    echo "✓ DNS configured! Access at: http://homepage.${CLUSTER_DOMAIN}.local"
     echo ""
 fi

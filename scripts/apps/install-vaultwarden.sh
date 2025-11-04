@@ -190,10 +190,16 @@ echo ""
 echo "🌐 Configuring local DNS..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if bash "$SCRIPT_DIR/../configure-app-dns.sh" vaultwarden > /dev/null 2>&1; then
+    # Load cluster domain
+    CLUSTER_DOMAIN="mynodeone"
+    if [ -f "$HOME/.mynodeone/config.env" ]; then
+        source "$HOME/.mynodeone/config.env"
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+    fi
     echo ""
     echo "✓ DNS configured! Access Vaultwarden at:"
-    echo "   http://vaultwarden.mynodeone.local"
-    echo "   http://vaultwarden.mynodeone.local/admin (admin panel)"
+    echo "   http://vaultwarden.${CLUSTER_DOMAIN}.local"
+    echo "   http://vaultwarden.${CLUSTER_DOMAIN}.local/admin (admin panel)"
     echo ""
 else
     echo ""

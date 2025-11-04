@@ -174,7 +174,7 @@ http:
   routers:
     # Example router - add your domains here
     dashboard:
-      rule: "Host(\`traefik.mynodeone.local\`)"
+      rule: "Host(\`traefik.${CLUSTER_DOMAIN}.local\`)"
       service: api@internal
       entryPoints:
         - websecure

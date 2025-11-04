@@ -6,6 +6,15 @@
 
 set -e
 
+# Load cluster configuration if it exists
+CONFIG_FILE="$HOME/.mynodeone/config.env"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Use configured domain or fallback to mynodeone
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -325,7 +334,7 @@ setup_local_dns() {
     print_header "Local DNS Setup (Optional)"
     
     echo "Would you like to set up .local domain names for easy access?"
-    echo "This allows you to use names like grafana.mynodeone.local instead of IPs."
+    echo "This allows you to use names like grafana.${CLUSTER_DOMAIN}.local instead of IPs."
     echo
     read -p "Set up local DNS? [Y/n]: " -r
     
@@ -349,11 +358,11 @@ setup_local_dns() {
         # Add new entries
         echo "" | sudo tee -a /etc/hosts > /dev/null
         echo "# MyNodeOne services" | sudo tee -a /etc/hosts > /dev/null
-        echo "${GRAFANA_IP}        grafana.mynodeone.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${ARGOCD_IP}         argocd.mynodeone.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${MINIO_CONSOLE_IP}  minio.mynodeone.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${MINIO_API_IP}      minio-api.mynodeone.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${LONGHORN_IP}       longhorn.mynodeone.local" | sudo tee -a /etc/hosts > /dev/null
+        echo "${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
+        echo "${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
+        echo "${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
+        echo "${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
+        echo "${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
         echo "# End MyNodeOne services" | sudo tee -a /etc/hosts > /dev/null
         
         log_success "Local DNS configured"
@@ -414,10 +423,10 @@ print_summary() {
     echo
     echo "📊 Access Web UIs (in your browser):"
     if [ "$USE_LOCAL_DNS" = true ]; then
-        echo "  • Grafana:  http://grafana.mynodeone.local"
-        echo "  • ArgoCD:   https://argocd.mynodeone.local"
-        echo "  • MinIO:    http://minio.mynodeone.local:9001"
-        echo "  • Longhorn: http://longhorn.mynodeone.local"
+        echo "  • Grafana:  http://grafana.${CLUSTER_DOMAIN}.local"
+        echo "  • ArgoCD:   https://argocd.${CLUSTER_DOMAIN}.local"
+        echo "  • MinIO:    http://minio.${CLUSTER_DOMAIN}.local:9001"
+        echo "  • Longhorn: http://longhorn.${CLUSTER_DOMAIN}.local"
     else
         if [ -n "$GRAFANA_IP" ]; then
             echo "  • Grafana:  http://$GRAFANA_IP"

@@ -177,7 +177,7 @@ metadata:
   name: jellyfin
   namespace: $NAMESPACE
   annotations:
-    mynodeone.local/subdomain: "$APP_SUBDOMAIN"
+    ${CLUSTER_DOMAIN}.local/subdomain: "$APP_SUBDOMAIN"
 spec:
   type: LoadBalancer
   ports:

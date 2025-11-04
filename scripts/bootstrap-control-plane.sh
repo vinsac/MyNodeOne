@@ -800,9 +800,9 @@ configure_tailscale_subnet_routes() {
     echo "5. Click 'Save'"
     echo
     echo "Once approved, you can access services directly at:"
-    echo "  • http://grafana.mynodeone.local"
-    echo "  • https://argocd.mynodeone.local"
-    echo "  • http://minio.mynodeone.local:9001"
+    echo "  • http://grafana.${CLUSTER_DOMAIN}.local"
+    echo "  • https://argocd.${CLUSTER_DOMAIN}.local"
+    echo "  • http://minio.${CLUSTER_DOMAIN}.local:9001"
     echo
     log_info "This step takes 30 seconds in Tailscale admin console"
     echo

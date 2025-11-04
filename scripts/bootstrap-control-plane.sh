@@ -1095,6 +1095,20 @@ deploy_dashboard() {
     fi
 }
 
+create_cluster_info() {
+    log_info "Creating cluster information configmap..."
+    
+    # Create configmap with cluster metadata for management laptops and workers to discover
+    kubectl create configmap cluster-info \
+        --from-literal=cluster-name="$CLUSTER_NAME" \
+        --from-literal=cluster-domain="$CLUSTER_DOMAIN" \
+        --from-literal=control-plane-ip="$TAILSCALE_IP" \
+        --namespace=kube-system \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    log_success "Cluster info configmap created"
+}
+
 create_cluster_token() {
     log_info "Generating node join token..."
     
@@ -1660,6 +1674,7 @@ main() {
     install_monitoring
     install_argocd
     deploy_dashboard
+    create_cluster_info
     create_cluster_token
     
     echo

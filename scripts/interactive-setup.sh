@@ -340,18 +340,65 @@ configure_node_type() {
 configure_cluster_info() {
     print_header "Cluster Configuration"
     
-    prompt_input "Give your cluster a name" CLUSTER_NAME "mynodeone"
+    # Try to get existing cluster info (for management laptops and workers)
+    local existing_cluster_name=""
+    local existing_cluster_domain=""
     
-    echo
-    echo "ℹ️  The cluster domain is used for local .local addresses."
-    echo "  Examples:"
-    echo "    • mynodeone.local → Access apps at: photos.mynodeone.local"
-    echo "    • universe.local → Access apps at: photos.universe.local"
-    echo "    • myhome.local → Access apps at: photos.myhome.local"
-    echo
-    prompt_input "Local domain for your cluster (without .local)" CLUSTER_DOMAIN "mynodeone"
-    # Ensure no .local suffix
-    CLUSTER_DOMAIN="${CLUSTER_DOMAIN%.local}"
+    # Check if there's an existing config file
+    if [ -f "$CONFIG_DIR/config.env" ]; then
+        source "$CONFIG_DIR/config.env"
+        existing_cluster_name="${CLUSTER_NAME:-}"
+        existing_cluster_domain="${CLUSTER_DOMAIN:-}"
+    fi
+    
+    # If this is not a control plane, try to get info from kubectl
+    if [ "$NODE_ROLE" != "Control Plane" ]; then
+        if command -v kubectl &> /dev/null && kubectl cluster-info &> /dev/null; then
+            print_info "Detected existing Kubernetes cluster connection"
+            
+            # Try to get cluster name from configmap or node labels
+            local detected_name=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>/dev/null || echo "")
+            local detected_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+            
+            if [ -n "$detected_name" ]; then
+                existing_cluster_name="$detected_name"
+                print_success "Found cluster name: $detected_name"
+            fi
+            
+            if [ -n "$detected_domain" ]; then
+                existing_cluster_domain="$detected_domain"
+                print_success "Found cluster domain: $detected_domain"
+            fi
+        fi
+    fi
+    
+    # Use existing values as defaults
+    local default_cluster_name="${existing_cluster_name:-mynodeone}"
+    local default_cluster_domain="${existing_cluster_domain:-mynodeone}"
+    
+    # For management laptops and workers with existing config, use it automatically
+    if [ "$NODE_ROLE" != "Control Plane" ] && [ -n "$existing_cluster_name" ]; then
+        CLUSTER_NAME="$existing_cluster_name"
+        CLUSTER_DOMAIN="$existing_cluster_domain"
+        print_info "Using existing cluster configuration:"
+        print_info "  Name: $CLUSTER_NAME"
+        print_info "  Domain: ${CLUSTER_DOMAIN}.local"
+        echo
+    else
+        # Ask for cluster name (control plane or no existing config)
+        prompt_input "Give your cluster a name" CLUSTER_NAME "$default_cluster_name"
+        
+        echo
+        echo "ℹ️  The cluster domain is used for local .local addresses."
+        echo "  Examples:"
+        echo "    • mynodeone.local → Access apps at: photos.mynodeone.local"
+        echo "    • universe.local → Access apps at: photos.universe.local"
+        echo "    • myhome.local → Access apps at: photos.myhome.local"
+        echo
+        prompt_input "Local domain for your cluster (without .local)" CLUSTER_DOMAIN "$default_cluster_domain"
+        # Ensure no .local suffix
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN%.local}"
+    fi
     
     # For control plane, this is the node name
     # For workers, we'll ask for control plane IP

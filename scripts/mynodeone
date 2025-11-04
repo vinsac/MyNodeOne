@@ -13,6 +13,13 @@
 
 set -euo pipefail
 
+# Check if running as root/sudo
+if [ "$EUID" -ne 0 ]; then 
+    echo "ERROR: This script must be run as root or with sudo"
+    echo "Usage: sudo $0"
+    exit 1
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -1421,9 +1428,8 @@ main() {
                 bash "$SCRIPT_DIR/setup-edge-node.sh"
                 ;;
             management)
-                print_success "Management workstation configured!"
-                print_info "Follow the instructions above to set up kubectl."
-                exit 0
+                print_info "Running management laptop setup..."
+                bash "$SCRIPT_DIR/setup-management-laptop.sh"
                 ;;
             *)
                 print_error "Unknown node type: $NODE_TYPE"

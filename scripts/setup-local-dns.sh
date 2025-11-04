@@ -152,7 +152,14 @@ address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
 address=/minio.${CLUSTER_DOMAIN}.local/${MINIO_CONSOLE_IP}
 address=/minio-api.${CLUSTER_DOMAIN}.local/${MINIO_API_IP}
-address=/longhorn.${CLUSTER_DOMAIN}.local/${LONGHORN_IP}
+EOF
+    
+    # Only add Longhorn DNS entry if it has a LoadBalancer IP
+    if [ -n "$LONGHORN_IP" ]; then
+        echo "address=/longhorn.${CLUSTER_DOMAIN}.local/${LONGHORN_IP}" >> /etc/dnsmasq.d/${CLUSTER_DOMAIN}.conf
+    fi
+    
+    cat >> /etc/dnsmasq.d/${CLUSTER_DOMAIN}.conf <<EOF
 address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 
 # Upstream DNS servers
@@ -205,11 +212,21 @@ ${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local
 ${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local
 ${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local
 ${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local
-${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local
-# End MyNodeOne services
 EOF
     
+    # Only add Longhorn if it has a LoadBalancer IP (not NodePort)
+    if [ -n "$LONGHORN_IP" ]; then
+        echo "${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local" >> /etc/hosts
+    fi
+    
+    echo "# End MyNodeOne services" >> /etc/hosts
+    
     log_success "/etc/hosts updated with .local domains"
+    
+    # Note about Longhorn if it uses NodePort
+    if [ -z "$LONGHORN_IP" ]; then
+        log_info "Note: Longhorn uses NodePort - access at http://\${TAILSCALE_IP}:30080"
+    fi
 }
 
 create_client_setup_script() {

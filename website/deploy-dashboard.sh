@@ -3,7 +3,7 @@
 ###############################################################################
 # Deploy MyNodeOne Dashboard
 # 
-# Deploys the local dashboard accessible at mynodeone.local
+# Deploys the local dashboard accessible at <cluster-domain>.local
 # Shows cluster info, installed services, and one-click app installation
 ###############################################################################
 
@@ -12,16 +12,33 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="mynodeone-dashboard"
 
+# Load cluster configuration to get CLUSTER_DOMAIN
+CONFIG_FILE="$HOME/.mynodeone/config.env"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Fallback to default if not configured
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+
 echo "📦 Deploying MyNodeOne Dashboard..."
+echo "🌐 Using domain: ${CLUSTER_DOMAIN}.local"
 
 # Create namespace
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# Create ConfigMap with dashboard HTML
+# Create a temporary HTML file with domain replaced
+TEMP_HTML=$(mktemp)
+sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/dashboard.html" > "$TEMP_HTML"
+
+# Create ConfigMap with templated dashboard HTML
 kubectl create configmap dashboard-html \
-    --from-file=index.html="$SCRIPT_DIR/dashboard.html" \
+    --from-file=index.html="$TEMP_HTML" \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
+
+# Clean up temp file
+rm -f "$TEMP_HTML"
 
 # Deploy nginx with dashboard
 kubectl apply -f - <<EOF
@@ -92,7 +109,7 @@ echo ""
 echo "✓ Dashboard deployed successfully!"
 echo ""
 echo "📍 Access at: http://$SERVICE_IP"
-echo "📍 Will also be available at: http://mynodeone.local (after DNS setup)"
+echo "📍 Will also be available at: http://${CLUSTER_DOMAIN}.local (after DNS setup)"
 echo ""
 
 # Return the IP for use in other scripts

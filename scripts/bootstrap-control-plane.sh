@@ -62,6 +62,77 @@ log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+# Retry logic for network operations
+retry_command() {
+    local max_attempts="$1"
+    shift
+    local cmd="$@"
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if eval "$cmd"; then
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_attempts ]; then
+            log_warn "Command failed (attempt $attempt/$max_attempts). Retrying in 5 seconds..."
+            sleep 5
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    log_error "Command failed after $max_attempts attempts: $cmd"
+    return 1
+}
+
+# Helm wrapper with timeout and error handling
+helm_install_safe() {
+    local release_name="$1"
+    local chart="$2"
+    local namespace="$3"
+    shift 3
+    local extra_args="$@"
+    
+    log_info "Installing $release_name (timeout: 10m, with retry)..."
+    
+    # Try with 10 minute timeout
+    if timeout 600 helm upgrade --install "$release_name" "$chart" \
+        --namespace "$namespace" \
+        --timeout 10m \
+        --wait \
+        $extra_args 2>&1; then
+        log_success "$release_name installed successfully"
+        return 0
+    else
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            log_warn "$release_name installation timed out, checking if pods are running..."
+            # Check if pods are actually running despite timeout
+            sleep 10
+            if kubectl get pods -n "$namespace" | grep -q "Running"; then
+                log_success "$release_name pods are running despite timeout"
+                return 0
+            fi
+        fi
+        log_error "$release_name installation failed"
+        return 1
+    fi
+}
+
+# Check DNS connectivity before operations
+check_dns() {
+    log_info "Verifying DNS connectivity..."
+    
+    # Test with Google DNS as fallback
+    if ! timeout 5 nslookup github.com 8.8.8.8 > /dev/null 2>&1; then
+        log_warn "DNS issues detected, this may cause delays"
+        return 1
+    fi
+    
+    log_success "DNS is working"
+    return 0
+}
+
 # Prompt for user confirmation
 prompt_confirm() {
     local prompt="$1"
@@ -805,19 +876,17 @@ install_minio() {
         --dry-run=client -o yaml | kubectl apply -f -
     
     # Install MinIO
-    helm repo add minio https://charts.min.io/
-    helm repo update
+    log_info "Adding MinIO helm repository..."
+    retry_command 3 "helm repo add minio https://charts.min.io/ 2>&1" || true
+    timeout 60 helm repo update 2>&1 || log_warn "Helm repo update timed out, continuing..."
     
     # Set default storage size if not defined
     MINIO_STORAGE_SIZE="${MINIO_STORAGE_SIZE:-100Gi}"
     
-    # Install with timeout to prevent hanging
-    # If LoadBalancer IPs aren't allocating (e.g., Tailscale route not approved),
-    # we don't want to wait forever
     log_info "Installing MinIO (this may take 2-3 minutes)..."
     
-    if ! timeout 600 helm upgrade --install minio minio/minio \
-        --namespace minio \
+    # Install with safe wrapper
+    helm_install_safe "minio" "minio/minio" "minio" \
         --set rootUser="$MINIO_ROOT_USER" \
         --set rootPassword="$MINIO_ROOT_PASSWORD" \
         --set mode=standalone \
@@ -827,24 +896,26 @@ install_minio() {
         --set persistence.storageClass=longhorn \
         --set service.type=LoadBalancer \
         --set consoleService.type=LoadBalancer \
-        --wait; then
-        log_error "MinIO installation timed out or failed"
+    || {
+        log_error "MinIO installation had issues"
         log_warn "This usually happens when LoadBalancer IPs can't be allocated"
         log_warn "Possible causes:"
         echo "  1. Tailscale subnet route not approved"
         echo "  2. MetalLB not working properly"
         echo "  3. Longhorn storage not ready"
         echo
-        log_info "You can check status with:"
-        echo "  kubectl get pods -n minio"
-        echo "  kubectl get svc -n minio"
+        log_info "Checking MinIO status..."
+        kubectl get pods -n minio || true
+        kubectl get svc -n minio || true
         echo
-        if ! prompt_confirm "Continue with installation despite MinIO issue?" "n"; then
-            log_error "Installation aborted"
-            exit 1
+        if [ "${UNATTENDED:-0}" != "1" ]; then
+            if ! prompt_confirm "Continue with installation despite MinIO issue?" "y"; then
+                log_error "Installation aborted"
+                exit 1
+            fi
         fi
         log_warn "Continuing installation, but MinIO may not be fully functional"
-    fi
+    }
     
     # Save credentials securely
     cat > /root/mynodeone-minio-credentials.txt <<EOF
@@ -869,40 +940,67 @@ install_monitoring() {
     
     kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
     
-    # Install kube-prometheus-stack (Prometheus + Grafana)
-    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-    helm repo update
+    # Check DNS before adding repos
+    check_dns || log_warn "DNS may be slow, continuing anyway..."
     
-    helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-        --namespace monitoring \
+    # Install kube-prometheus-stack (Prometheus + Grafana)
+    log_info "Adding helm repositories..."
+    retry_command 3 "helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>&1" || true
+    retry_command 3 "helm repo add grafana https://grafana.github.io/helm-charts 2>&1" || true
+    
+    # Update repos with timeout
+    log_info "Updating helm repositories (may take a moment)..."
+    timeout 120 helm repo update 2>&1 || log_warn "Helm repo update slow/timed out, but continuing..."
+    
+    # Generate Grafana password
+    GRAFANA_PASSWORD="$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)"
+    
+    # Install kube-prometheus-stack with safe wrapper
+    helm_install_safe "kube-prometheus-stack" "prometheus-community/kube-prometheus-stack" "monitoring" \
         --version 55.5.0 \
         --set prometheus.prometheusSpec.retention=30d \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=100Gi \
-        --set grafana.adminPassword="$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)" \
+        --set grafana.adminPassword="$GRAFANA_PASSWORD" \
         --set grafana.service.type=LoadBalancer \
         --set grafana.persistence.enabled=true \
         --set grafana.persistence.storageClassName=longhorn \
         --set grafana.persistence.size=10Gi \
-        --wait
+    || {
+        log_error "Failed to install kube-prometheus-stack"
+        log_info "Checking if pods started anyway..."
+        sleep 15
+        if kubectl get pods -n monitoring | grep -q "Running"; then
+            log_warn "Some monitoring pods are running, continuing..."
+        else
+            log_error "Monitoring installation failed completely"
+            return 1
+        fi
+    }
     
-    # Install Loki for logs
-    helm repo add grafana https://grafana.github.io/helm-charts
-    helm repo update
-    
-    helm upgrade --install loki grafana/loki-stack \
-        --namespace monitoring \
+    # Install Loki for logs (non-critical, allow failure)
+    log_info "Installing Loki (log aggregation)..."
+    helm_install_safe "loki" "grafana/loki-stack" "monitoring" \
         --version 2.10.1 \
         --set loki.persistence.enabled=true \
         --set loki.persistence.storageClassName=longhorn \
         --set loki.persistence.size=100Gi \
         --set promtail.enabled=true \
-        --wait
+    || log_warn "Loki installation failed, but continuing (non-critical)"
     
-    # Get generated Grafana password from secret
+    # Get generated Grafana password from secret (with retry)
     sleep 5
-    GRAFANA_PASSWORD=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode)
+    log_info "Retrieving Grafana credentials..."
+    local attempts=0
+    while [ $attempts -lt 10 ]; do
+        GRAFANA_PASSWORD=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 --decode 2>/dev/null) || true
+        if [ -n "$GRAFANA_PASSWORD" ]; then
+            break
+        fi
+        attempts=$((attempts + 1))
+        sleep 3
+    done
     
     # Save Grafana credentials securely
     cat > /root/mynodeone-grafana-credentials.txt <<EOF
@@ -910,7 +1008,7 @@ Grafana Credentials
 ===================
 Username: admin
 Password: $GRAFANA_PASSWORD
-URL: http://$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+URL: http://$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
@@ -926,17 +1024,48 @@ install_argocd() {
     
     kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
     
-    # Install ArgoCD
-    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.9.3/manifests/install.yaml
+    # Add ArgoCD helm repo
+    log_info "Adding ArgoCD helm repository..."
+    retry_command 3 "helm repo add argo https://argoproj.github.io/argo-helm 2>&1" || true
+    timeout 60 helm repo update 2>&1 || log_warn "Helm repo update timed out, continuing..."
     
-    # Wait for ArgoCD to be ready
-    kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+    # Install ArgoCD using helm (more reliable than raw manifests)
+    helm_install_safe "argocd" "argo/argo-cd" "argocd" \
+        --version 5.51.6 \
+        --set server.service.type=LoadBalancer \
+    || {
+        log_error "ArgoCD helm install failed, trying kubectl method..."
+        # Fallback to kubectl method
+        retry_command 2 "timeout 120 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.9.3/manifests/install.yaml" || {
+            log_error "ArgoCD installation failed"
+            return 1
+        }
+        
+        # Wait for ArgoCD to be ready (with timeout)
+        log_info "Waiting for ArgoCD to be ready..."
+        timeout 300 kubectl wait --for=condition=available deployment/argocd-server -n argocd 2>&1 || log_warn "ArgoCD wait timed out"
+        
+        # Expose ArgoCD with LoadBalancer
+        kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}' || log_warn "Failed to patch ArgoCD service"
+    }
     
-    # Expose ArgoCD with LoadBalancer
-    kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+    # Get initial admin password (with retry and timeout)
+    log_info "Retrieving ArgoCD password..."
+    local attempts=0
+    ARGOCD_PASSWORD=""
+    while [ $attempts -lt 30 ]; do
+        ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d 2>/dev/null) || true
+        if [ -n "$ARGOCD_PASSWORD" ]; then
+            break
+        fi
+        attempts=$((attempts + 1))
+        sleep 2
+    done
     
-    # Get initial admin password
-    ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+    if [ -z "$ARGOCD_PASSWORD" ]; then
+        log_warn "Could not retrieve ArgoCD password yet (it may not be ready)"
+        ARGOCD_PASSWORD="<retrieve with: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d>"
+    fi
     
     # Save credentials securely
     cat > /root/mynodeone-argocd-credentials.txt <<EOF
@@ -944,7 +1073,7 @@ ArgoCD Credentials
 ==================
 Username: admin
 Password: $ARGOCD_PASSWORD
-URL: https://$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+URL: https://$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF

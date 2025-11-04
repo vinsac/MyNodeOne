@@ -263,10 +263,13 @@ sudo ./scripts/mynodeone
 **After completion:**
 - Cluster is ready!
 - **IMPORTANT:** Credentials will be displayed in terminal - save them immediately!
-- **⚠️ ACTION REQUIRED:** Approve the Tailscale subnet route (takes 30 seconds)
+- **⚠️ CRITICAL:** The installer will **PAUSE** and wait for you to approve the Tailscale subnet route
+  - This step is now interactive - the installer won't continue until you confirm
   - Go to https://login.tailscale.com/admin/machines
   - Find your control plane machine → Edit route settings
   - Enable the subnet route (e.g., `100.118.5.0/24`)
+  - Return to the terminal and confirm you've approved it
+  - **Why this matters:** Services need this route approved to receive proper IP addresses
   - This enables `.local` domain access from your laptop
 - Access services via Tailscale IPs (100.x.x.x addresses shown in output)
 - Run `sudo ./scripts/show-credentials.sh` to view all service URLs and credentials

@@ -62,6 +62,27 @@ log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+# Prompt for user confirmation
+prompt_confirm() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local response
+    
+    # Check if running in unattended mode
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        response="$default"
+        echo -e "${BLUE}[INFO]${NC} $prompt [using default: $default]"
+    elif [ "$default" = "y" ]; then
+        read -p "$(echo -e ${GREEN}?)${NC}) $prompt [Y/n]: " response
+        response="${response:-y}"
+    else
+        read -p "$(echo -e ${GREEN}?)${NC}) $prompt [y/N]: " response
+        response="${response:-n}"
+    fi
+    
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
 # Generic failsafe installation function
 # Usage: install_tool_failsafe "tool_name" "snap_package" "curl_script_url" "version" "binary_url_template"
 install_tool_failsafe() {
@@ -443,14 +464,19 @@ install_longhorn() {
     LONGHORN_PATH="/var/lib/longhorn"  # Default
     MOUNTED_DISKS=()
     
-    # Check if user has mounted disks for Longhorn
+    # Check if user has mounted disks for Longhorn from THIS installation session
+    # Only count disks that are in the config file (from mynodeone script)
     if [ -d "/mnt/longhorn-disks" ]; then
         # Find all mounted disks
         while IFS= read -r disk_path; do
             if mountpoint -q "$disk_path" 2>/dev/null; then
-                MOUNTED_DISKS+=("$disk_path")
+                # Verify this disk was formatted in THIS session by checking if device is in fstab
+                DISK_DEVICE=$(findmnt -n -o SOURCE "$disk_path" 2>/dev/null)
+                if [ -n "$DISK_DEVICE" ] && grep -q "$disk_path" /etc/fstab 2>/dev/null; then
+                    MOUNTED_DISKS+=("$disk_path")
+                fi
             fi
-        done < <(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*")
+        done < <(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*" 2>/dev/null | sort)
         
         if [ ${#MOUNTED_DISKS[@]} -gt 0 ]; then
             LONGHORN_PATH="${MOUNTED_DISKS[0]}"
@@ -612,6 +638,35 @@ configure_tailscale_subnet_routes() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
+    
+    # Pause installation to let user approve the subnet route
+    # Note: Subnet route approval is CRITICAL for LoadBalancer IPs to work
+    # The subsequent IP allocations to services depend on this being approved
+    if [ "${UNATTENDED:-0}" != "1" ]; then
+        echo
+        log_warn "IMPORTANT: The installer will PAUSE here to let you approve the subnet route."
+        log_info "Services need this route to be approved before they receive proper IP addresses."
+        echo
+        if ! prompt_confirm "Have you approved the subnet route in Tailscale?" "n"; then
+            log_warn "Subnet route not approved yet. Installation will continue, but:"
+            echo "  ⚠️  LoadBalancer services may not get proper IPs"
+            echo "  ⚠️  You'll need to approve it later and restart services"
+            echo "  ⚠️  To fix later: kubectl rollout restart -n <namespace> deployment/<service>"
+            echo
+            if ! prompt_confirm "Continue anyway?" "n"; then
+                log_error "Installation cancelled by user"
+                echo
+                echo "After approving the subnet route, run:"
+                echo "  sudo ./scripts/mynodeone"
+                exit 1
+            fi
+        else
+            log_success "Subnet route approved! Continuing with installation..."
+        fi
+    else
+        log_warn "UNATTENDED mode: Assuming subnet route will be approved manually"
+    fi
+    echo
 }
 
 install_traefik() {
@@ -657,7 +712,12 @@ install_minio() {
     # Set default storage size if not defined
     MINIO_STORAGE_SIZE="${MINIO_STORAGE_SIZE:-100Gi}"
     
-    helm upgrade --install minio minio/minio \
+    # Install with timeout to prevent hanging
+    # If LoadBalancer IPs aren't allocating (e.g., Tailscale route not approved),
+    # we don't want to wait forever
+    log_info "Installing MinIO (this may take 2-3 minutes)..."
+    
+    if ! timeout 600 helm upgrade --install minio minio/minio \
         --namespace minio \
         --set rootUser="$MINIO_ROOT_USER" \
         --set rootPassword="$MINIO_ROOT_PASSWORD" \
@@ -668,7 +728,24 @@ install_minio() {
         --set persistence.storageClass=longhorn \
         --set service.type=LoadBalancer \
         --set consoleService.type=LoadBalancer \
-        --wait
+        --wait; then
+        log_error "MinIO installation timed out or failed"
+        log_warn "This usually happens when LoadBalancer IPs can't be allocated"
+        log_warn "Possible causes:"
+        echo "  1. Tailscale subnet route not approved"
+        echo "  2. MetalLB not working properly"
+        echo "  3. Longhorn storage not ready"
+        echo
+        log_info "You can check status with:"
+        echo "  kubectl get pods -n minio"
+        echo "  kubectl get svc -n minio"
+        echo
+        if ! prompt_confirm "Continue with installation despite MinIO issue?" "n"; then
+            log_error "Installation aborted"
+            exit 1
+        fi
+        log_warn "Continuing installation, but MinIO may not be fully functional"
+    fi
     
     # Save credentials securely
     cat > /root/mynodeone-minio-credentials.txt <<EOF

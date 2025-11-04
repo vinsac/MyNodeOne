@@ -1295,6 +1295,9 @@ main() {
     # Export UNATTENDED so child scripts inherit it
     export UNATTENDED="${UNATTENDED:-0}"
     
+    # Show legal disclaimer FIRST (before welcome)
+    source "$SCRIPT_DIR/show-disclaimer.sh"
+    
     welcome
     check_root
     

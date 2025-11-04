@@ -594,6 +594,40 @@ kubectl top nodes
 kubectl top pods -A
 ```
 
+### Uninstall
+
+MyNodeOne provides a safe uninstall script with options to keep or remove data and configurations:
+
+```bash
+# Interactive uninstall (asks what to keep)
+sudo ./scripts/uninstall-mynodeone.sh
+
+# Keep configuration for reinstall
+sudo ./scripts/uninstall-mynodeone.sh --keep-config
+
+# Keep application data but remove cluster
+sudo ./scripts/uninstall-mynodeone.sh --keep-data
+
+# Complete removal (everything)
+sudo ./scripts/uninstall-mynodeone.sh --full
+
+# See all options
+sudo ./scripts/uninstall-mynodeone.sh --help
+```
+
+**What can be removed:**
+- Kubernetes cluster (K3s)
+- Container images
+- Application data (photos, videos, etc.)
+- Configuration files
+- DNS settings
+
+**What can be preserved:**
+- Configuration files (for easy reinstall)
+- Application data (keeps your photos, etc.)
+- Formatted disks (always kept)
+- Tailscale (optional)
+
 ## Storage
 
 ### Object Storage (S3-compatible)

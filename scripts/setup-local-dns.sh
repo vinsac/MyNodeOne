@@ -149,6 +149,7 @@ domain=${CLUSTER_DOMAIN}.local
 local=/${CLUSTER_DOMAIN}.local/
 
 # Service DNS entries (explicit only - no wildcards!)
+address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}

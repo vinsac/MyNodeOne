@@ -91,10 +91,15 @@ fetch_cluster_info() {
     
     mkdir -p ~/.kube
     
-    # Try to fetch with sudo - will prompt for password in terminal
-    if ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" 2>&1 | \
-       grep -v "Connection to.*closed" | \
-       sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp; then
+    # Fetch to a temp file first (allows interactive password prompt)
+    log_info "Retrieving kubeconfig file..."
+    if ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>&1; then
+        
+        # Process the file to remove connection messages and update IP
+        grep -v "Connection to.*closed" ~/.kube/config.raw | \
+        sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp
+        
+        rm -f ~/.kube/config.raw
         
         # Check if we actually got content
         if [ ! -s ~/.kube/config.tmp ]; then

@@ -86,14 +86,15 @@ fetch_cluster_info() {
     
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
-    log_info "Note: You may be prompted for sudo password on the control plane"
+    log_info "You will be prompted for the sudo password for $ssh_user"
     echo
     
     mkdir -p ~/.kube
     
-    # Try to fetch with sudo - may prompt for password
-    if ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | \
-       sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp 2>/dev/null; then
+    # Try to fetch with sudo - will prompt for password in terminal
+    if ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" 2>&1 | \
+       grep -v "Connection to.*closed" | \
+       sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp; then
         
         # Check if we actually got content
         if [ ! -s ~/.kube/config.tmp ]; then

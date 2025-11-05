@@ -86,11 +86,25 @@ fetch_cluster_info() {
     
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
+    log_info "Note: You may be prompted for sudo password on the control plane"
+    echo
     
     mkdir -p ~/.kube
     
-    if ssh "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | \
-       sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp; then
+    # Try to fetch with sudo - may prompt for password
+    if ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | \
+       sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp 2>/dev/null; then
+        
+        # Check if we actually got content
+        if [ ! -s ~/.kube/config.tmp ]; then
+            log_error "Retrieved empty kubeconfig"
+            log_info "Possible reasons:"
+            echo "  • k3s is not installed on control plane"
+            echo "  • k3s is not running"
+            echo "  • Insufficient permissions"
+            rm -f ~/.kube/config.tmp
+            return 1
+        fi
         
         log_success "Kubeconfig retrieved"
         

@@ -372,7 +372,7 @@ configure_cluster_info() {
                 fi
             fi
         else
-            print_warn "Could not auto-fetch cluster info - will ask manually"
+            print_warning "Could not auto-fetch cluster info - will ask manually"
             echo
         fi
     fi

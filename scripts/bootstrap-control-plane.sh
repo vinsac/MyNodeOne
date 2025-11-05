@@ -1772,7 +1772,7 @@ main() {
     offer_security_hardening
     
     # Setup local DNS automatically
-    setup_local_dns_automatic
+    setup_local_dns
     
     # Run comprehensive validation AFTER DNS is setup
     run_final_validation

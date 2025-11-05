@@ -350,6 +350,11 @@ main() {
     check_requirements
     get_service_ips
     
+    # Dual DNS configuration for maximum reliability and network accessibility
+    # - /etc/hosts: Local resolution (instant, always works)
+    # - dnsmasq: Network DNS server (other devices can use it)
+    # See: docs/DNS_ARCHITECTURE.md for why we configure both
+    
     # Method 1: Update /etc/hosts (simple, always works)
     update_hosts_file
     

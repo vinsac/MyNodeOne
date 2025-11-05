@@ -26,7 +26,7 @@ sudo sed -i.tmp '/# MyNodeOne Apps/,/# End MyNodeOne Apps/d' "$HOSTS_FILE"
 # Add new entries
 echo "" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "# MyNodeOne Apps" | sudo tee -a "$HOSTS_FILE" > /dev/null
-echo "100.122.68.206        demoapp.mycloud.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
+echo "100.122.68.207        demoapp.mycloud.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "# End MyNodeOne Apps" | sudo tee -a "$HOSTS_FILE" > /dev/null
 
 echo ""

@@ -177,6 +177,8 @@ verify_dns_resolves() {
     log_check "Checking DNS resolution for $hostname..."
     
     # Take first result only (getent may return duplicates from /etc/hosts and dnsmasq)
+    # Why duplicates? MyNodeOne configures BOTH for redundancy and network accessibility
+    # See: docs/DNS_ARCHITECTURE.md for detailed explanation
     local resolved_ip=$(getent hosts "$hostname" 2>/dev/null | awk '{print $1}' | head -1)
     
     if [ -z "$resolved_ip" ]; then

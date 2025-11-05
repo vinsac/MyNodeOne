@@ -699,20 +699,13 @@ install_longhorn() {
             log_info "Adding additional disk: $DISK_PATH"
             
             # Add disk to Longhorn node configuration
-            # This uses Longhorn's API to add the disk
-            kubectl -n longhorn-system patch node "$NODE_NAME" --type='json' -p="[
-                {
-                    \"op\": \"add\",
-                    \"path\": \"/spec/disks/$DISK_NAME\",
-                    \"value\": {
-                        \"path\": \"$DISK_PATH\",
-                        \"allowScheduling\": true,
-                        \"evictionRequested\": false,
-                        \"storageReserved\": 0,
-                        \"tags\": []
-                    }
-                }
-            ]" 2>/dev/null || log_warn "Could not auto-add $DISK_PATH (you can add it manually via Longhorn UI)"
+            # Must use merge patch for Longhorn CRD (nodes.longhorn.io)
+            if kubectl -n longhorn-system patch nodes.longhorn.io "$NODE_NAME" --type=merge -p "{\"spec\":{\"disks\":{\"$DISK_NAME\":{\"allowScheduling\":true,\"diskType\":\"filesystem\",\"evictionRequested\":false,\"path\":\"$DISK_PATH\",\"storageReserved\":0,\"tags\":[]}}}}" 2>&1; then
+                log_success "Added disk: $DISK_PATH"
+            else
+                log_warn "Could not auto-add $DISK_PATH (you can add it manually via Longhorn UI)"
+                log_warn "Or run: kubectl -n longhorn-system patch nodes.longhorn.io $NODE_NAME --type=merge -p '{\"spec\":{\"disks\":{\"$DISK_NAME\":{\"path\":\"$DISK_PATH\",\"allowScheduling\":true,\"diskType\":\"filesystem\"}}}}'"
+            fi
         done
         
         log_success "All disks configured!"

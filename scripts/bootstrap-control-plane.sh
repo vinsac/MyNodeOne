@@ -670,8 +670,12 @@ install_longhorn() {
     # Set Longhorn as default storage class
     kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
     
+    # Expose Longhorn UI via LoadBalancer (instead of NodePort)
+    log_info "Exposing Longhorn UI via LoadBalancer..."
+    kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'
+    
     log_success "Longhorn installed"
-    log_info "Longhorn UI will be available at: http://$TAILSCALE_IP:30080 (via NodePort)"
+    log_info "Longhorn UI will be accessible via LoadBalancer (DNS will be configured later)"
     
     # Configure Longhorn to use ALL mounted disks (not just the first one)
     if [ ${#MOUNTED_DISKS[@]} -gt 1 ]; then

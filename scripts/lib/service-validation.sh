@@ -13,19 +13,19 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 log_check() {
-    echo -e "${BLUE}[CHECK]${NC} $1"
+    echo -e "${BLUE}[CHECK]${NC} $1" >&2
 }
 
 log_pass() {
-    echo -e "${GREEN}[PASS]${NC} $1"
+    echo -e "${GREEN}[PASS]${NC} $1" >&2
 }
 
 log_fail() {
-    echo -e "${RED}[FAIL]${NC} $1"
+    echo -e "${RED}[FAIL]${NC} $1" >&2
 }
 
 log_warn_check() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    echo -e "${YELLOW}[WARN]${NC} $1" >&2
 }
 
 # Check if pods are running in a namespace

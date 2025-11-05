@@ -353,16 +353,27 @@ configure_cluster_info() {
     
     # Special handling for management laptops - fetch kubeconfig first if needed
     if [ "$NODE_ROLE" = "Management Workstation" ]; then
-        print_info "Management laptop detected - attempting to fetch cluster info from control plane..."
+        print_info "Management laptop detected - will fetch cluster configuration from control plane"
+        echo
         
         # Try to fetch cluster info before asking user
-        if bash "$SCRIPT_DIR/lib/fetch-cluster-info.sh" 2>/dev/null; then
+        if bash "$SCRIPT_DIR/lib/fetch-cluster-info.sh"; then
             # Reload config after fetch
             if [ -f "$CONFIG_DIR/config.env" ]; then
                 source "$CONFIG_DIR/config.env"
                 existing_cluster_name="${CLUSTER_NAME:-}"
                 existing_cluster_domain="${CLUSTER_DOMAIN:-}"
+                
+                if [ -n "$existing_cluster_name" ] && [ -n "$existing_cluster_domain" ]; then
+                    print_success "Successfully auto-detected cluster configuration!"
+                    print_info "  Cluster: $existing_cluster_name"
+                    print_info "  Domain: ${existing_cluster_domain}.local"
+                    echo
+                fi
             fi
+        else
+            print_warn "Could not auto-fetch cluster info - will ask manually"
+            echo
         fi
     fi
     

@@ -128,8 +128,8 @@ verify_dns_in_hosts() {
     fi
     
     if [ -n "$expected_ip" ]; then
-        if ! grep "$hostname" /etc/hosts | grep -q "$expected_ip"; then
-            local actual_ip=$(grep "$hostname" /etc/hosts | awk '{print $1}' | head -1)
+        if ! grep -F "$hostname" /etc/hosts | grep -Fq "$expected_ip"; then
+            local actual_ip=$(grep -F "$hostname" /etc/hosts | awk '{print $1}' | head -1)
             log_fail "$hostname has IP $actual_ip in /etc/hosts, expected $expected_ip"
             return 1
         fi
@@ -158,7 +158,7 @@ verify_dns_in_dnsmasq() {
     fi
     
     if [ -n "$expected_ip" ]; then
-        if ! grep -r "address=/$hostname/$expected_ip" /etc/dnsmasq.d/ 2>/dev/null | grep -v "^#" >/dev/null; then
+        if ! grep -rF "address=/$hostname/$expected_ip" /etc/dnsmasq.d/ 2>/dev/null | grep -v "^#" >/dev/null; then
             log_fail "$hostname has wrong IP in dnsmasq config"
             return 1
         fi

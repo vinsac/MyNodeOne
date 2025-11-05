@@ -211,17 +211,36 @@ EOF
     
     if [ -n "$DEMO_IP" ]; then
         log_success "Demo application is accessible at: http://$DEMO_IP"
+        
+        # Configure DNS automatically
+        log_info "Configuring local DNS for demo app..."
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        if bash "$SCRIPT_DIR/configure-app-dns.sh" > /dev/null 2>&1; then
+            # Load cluster domain
+            CLUSTER_DOMAIN="mycloud"
+            if [ -f "$HOME/.mynodeone/config.env" ]; then
+                source "$HOME/.mynodeone/config.env"
+            fi
+            log_success "DNS configured: http://demoapp.${CLUSTER_DOMAIN}.local"
+            DEMO_URL="http://demoapp.${CLUSTER_DOMAIN}.local"
+        else
+            log_warn "DNS configuration skipped - use IP address"
+            DEMO_URL="http://$DEMO_IP"
+        fi
+        
         echo
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  🎉 Demo Application Deployed Successfully!"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo
-        echo "  Access URL: http://$DEMO_IP"
+        echo "  Access URL: $DEMO_URL"
+        echo "  Direct IP:  http://$DEMO_IP"
         echo
         echo "  This demo shows:"
         echo "    ✓ Secure pod configuration"
         echo "    ✓ LoadBalancer service working"
         echo "    ✓ Cluster is operational"
+        echo "    ✓ DNS resolution (.local domains)"
         echo
         echo "  To remove this demo:"
         echo "    kubectl delete namespace demo-apps"

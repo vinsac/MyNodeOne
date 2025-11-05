@@ -64,22 +64,23 @@ spec:
       min:
         storage: "1Gi"
 
----
+# ---
 # Template for custom namespace quotas
-# Copy and customize for each namespace
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: custom-namespace-quota-template
-  namespace: your-namespace  # Change this
-  annotations:
-    description: "Template - customize for your namespace"
-spec:
-  hard:
-    # Adjust based on namespace needs
-    requests.cpu: "10"
-    requests.memory: "20Gi"
-    limits.cpu: "20"
-    limits.memory: "40Gi"
-    pods: "30"
-    services: "10"
+# Copy and customize for each namespace as needed
+# 
+# apiVersion: v1
+# kind: ResourceQuota
+# metadata:
+#   name: custom-namespace-quota-template
+#   namespace: your-namespace  # Change this to your actual namespace
+#   annotations:
+#     description: "Template - customize for your namespace"
+# spec:
+#   hard:
+#     # Adjust based on namespace needs
+#     requests.cpu: "10"
+#     requests.memory: "20Gi"
+#     limits.cpu: "20"
+#     limits.memory: "40Gi"
+#     pods: "30"
+#     services: "10"

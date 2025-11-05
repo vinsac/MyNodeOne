@@ -176,7 +176,8 @@ verify_dns_resolves() {
     
     log_check "Checking DNS resolution for $hostname..."
     
-    local resolved_ip=$(getent hosts "$hostname" 2>/dev/null | awk '{print $1}')
+    # Take first result only (getent may return duplicates from /etc/hosts and dnsmasq)
+    local resolved_ip=$(getent hosts "$hostname" 2>/dev/null | awk '{print $1}' | head -1)
     
     if [ -z "$resolved_ip" ]; then
         log_fail "$hostname does not resolve"

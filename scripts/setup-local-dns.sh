@@ -56,6 +56,7 @@ get_service_ips() {
     MINIO_API_IP=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     DASHBOARD_IP=$(kubectl get svc -n mynodeone-dashboard dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    TRAEFIK_IP=$(kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     
     # Validate we got IPs
     if [ -z "$GRAFANA_IP" ] || [ -z "$ARGOCD_IP" ] || [ -z "$MINIO_CONSOLE_IP" ]; then
@@ -147,11 +148,13 @@ bind-interfaces
 domain=${CLUSTER_DOMAIN}.local
 local=/${CLUSTER_DOMAIN}.local/
 
-# Service DNS entries
+# Service DNS entries (explicit only - no wildcards!)
+address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
 address=/minio.${CLUSTER_DOMAIN}.local/${MINIO_CONSOLE_IP}
 address=/minio-api.${CLUSTER_DOMAIN}.local/${MINIO_API_IP}
+address=/traefik.${CLUSTER_DOMAIN}.local/${TRAEFIK_IP}
 EOF
     
     # Only add Longhorn DNS entry if it has a LoadBalancer IP
@@ -159,8 +162,9 @@ EOF
         echo "address=/longhorn.${CLUSTER_DOMAIN}.local/${LONGHORN_IP}" >> /etc/dnsmasq.d/${CLUSTER_DOMAIN}.conf
     fi
     
+    # Note: Root domain handled in /etc/hosts only (not dnsmasq)
+    # This prevents wildcard matching of undefined subdomains
     cat >> /etc/dnsmasq.d/${CLUSTER_DOMAIN}.conf <<EOF
-address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 
 # Upstream DNS servers
 server=8.8.8.8

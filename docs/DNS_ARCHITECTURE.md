@@ -93,9 +93,11 @@ $ getent hosts grafana.mycloud.local
 ```
 
 **Resolution order (configured in `/etc/nsswitch.conf`):**
-1. **files** → Checks `/etc/hosts` first
-2. **dns** → Queries dnsmasq second
-3. **mdns** → Checks mDNS if available
+1. **files** → Checks `/etc/hosts` first ✅ *Configured by MyNodeOne*
+2. **dns** → Queries dnsmasq second ✅ *Configured by MyNodeOne*
+3. **mdns** → Checks Avahi/mDNS third ⚪ *Pre-installed but not configured*
+
+**Note:** Avahi (mDNS) is pre-installed on Ubuntu but MyNodeOne doesn't configure it. The current two-method setup (/etc/hosts + dnsmasq) is sufficient for all use cases.
 
 Since the hostname exists in BOTH, `getent` returns it TWICE!
 
@@ -384,6 +386,66 @@ This configures the client to use the control plane for `.local` domains.
 - **Flexibility:** Best of both worlds
 
 **Key takeaway:** This dual configuration ensures DNS always works, both locally and across your network!
+
+---
+
+## What About Avahi (mDNS)?
+
+### Is Avahi Installed?
+
+**Yes!** Avahi comes pre-installed on Ubuntu, but MyNodeOne doesn't configure it.
+
+```bash
+# Check Avahi status
+$ systemctl status avahi-daemon
+Active: active (running)
+
+# But MyNodeOne doesn't configure it
+$ grep -r "setup_avahi" /home/*/MyNodeOne/scripts/setup-local-dns.sh
+# Function defined but NOT called in main()
+```
+
+### Why Not Use Avahi?
+
+**Current setup is simpler and sufficient:**
+
+| Feature | /etc/hosts + dnsmasq | + Avahi/mDNS |
+|---------|---------------------|--------------|
+| **Local resolution** | ✅ Works | ✅ Works |
+| **Network DNS** | ✅ Works | ✅ Works |
+| **Service discovery** | ❌ No | ✅ Yes |
+| **Zero-config** | ⚠️ Manual | ✅ Auto |
+| **Complexity** | ⭐ Simple | ⭐⭐ Medium |
+| **Maintenance** | ⭐ Low | ⭐⭐ Higher |
+| **Conflicts** | 🟢 None | 🟡 Possible |
+
+**Decision:** /etc/hosts + dnsmasq provides all necessary functionality without added complexity.
+
+### When Would You Enable Avahi?
+
+Enable Avahi if you need:
+- 🍎 **iOS/macOS auto-discovery** (Bonjour-like behavior)
+- 🔍 **Service discovery** (browse available services)
+- 🌐 **Zero-config networking** across subnets
+- 📱 **Mobile app integration** without manual DNS setup
+
+### How to Enable Avahi (Optional)
+
+If you decide you need Avahi later:
+
+```bash
+# The function already exists in setup-local-dns.sh
+# Just uncomment these lines in main():
+
+# Method 3: Setup Avahi/mDNS (optional, for service discovery)
+# if setup_avahi_local_dns 2>/dev/null; then
+#     log_success "Avahi mDNS configured"
+# else
+#     log_warn "Avahi setup skipped (optional)"
+# fi
+```
+
+**Current recommendation:** Keep it simple. Enable Avahi only if you have a specific use case.
 
 ---
 

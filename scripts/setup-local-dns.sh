@@ -363,6 +363,39 @@ main() {
     create_client_setup_script
     
     print_summary
+    
+    # Validate DNS configuration
+    echo
+    log_info "Validating DNS configuration..."
+    sleep 3  # Give DNS a moment to propagate
+
+    # Test key services
+    DNS_VALIDATION_OK=true
+    for service in "grafana.${CLUSTER_DOMAIN}.local" "argocd.${CLUSTER_DOMAIN}.local" "minio.${CLUSTER_DOMAIN}.local"; do
+        if getent hosts "$service" >/dev/null 2>&1; then
+            echo "  ✓ $service"
+        else
+            echo "  ✗ $service - NOT RESOLVING"
+            DNS_VALIDATION_OK=false
+        fi
+    done
+
+    # Test for wildcard (security check)
+    RANDOM_HOST="test-undefined-$(date +%s).${CLUSTER_DOMAIN}.local"
+    if getent hosts "$RANDOM_HOST" >/dev/null 2>&1; then
+        echo "  ✗ SECURITY WARNING: Wildcard DNS detected!"
+        DNS_VALIDATION_OK=false
+    else
+        echo "  ✓ No wildcard DNS (secure)"
+    fi
+
+    echo
+    if [ "$DNS_VALIDATION_OK" = true ]; then
+        log_success "DNS validation passed! All services resolving correctly."
+    else
+        log_warn "DNS validation found issues. Services may not be accessible."
+        log_warn "Wait a few seconds and test manually, or run this script again."
+    fi
 }
 
 main "$@"

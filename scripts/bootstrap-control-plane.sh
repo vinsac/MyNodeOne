@@ -1508,27 +1508,88 @@ offer_security_hardening() {
     fi
 }
 
-setup_local_dns_automatic() {
+setup_local_dns() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🌐 Setting up Local DNS (.local domains)"
+    echo "  🌐 Setting Up Local DNS Resolution"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     log_info "Configuring easy-to-remember domain names for services..."
     echo
     
-    if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
+    # Wait for all LoadBalancer IPs to be assigned (with retry)
+    log_info "Waiting for LoadBalancer IPs to be assigned..."
+    local max_wait=60
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        local pending=$(kubectl get svc -A -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | select(.status.loadBalancer.ingress == null) | .metadata.name' | wc -l)
+        if [ "$pending" -eq 0 ]; then
+            log_success "All LoadBalancer IPs assigned!"
+            break
+        fi
+        echo -n "."
+        sleep 2
+        waited=$((waited + 2))
+    done
+    echo
+    
+    if [ $waited -ge $max_wait ]; then
+        log_warn "Some LoadBalancer IPs still pending after ${max_wait}s"
+        log_info "Services with pending IPs:"
+        kubectl get svc -A -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | select(.status.loadBalancer.ingress == null) | "\(.metadata.namespace)/\(.metadata.name)"'
+        echo
+    fi
+    
+    # Run DNS setup with retry
+    local dns_retry=0
+    local dns_max_retries=3
+    local dns_success=false
+    
+    while [ $dns_retry -lt $dns_max_retries ]; do
+        if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
+            dns_success=true
+            break
+        else
+            dns_retry=$((dns_retry + 1))
+            if [ $dns_retry -lt $dns_max_retries ]; then
+                log_warn "DNS setup attempt $dns_retry failed, retrying in 5s..."
+                sleep 5
+            fi
+        fi
+    done
+    
+    if [ "$dns_success" = true ]; then
         log_success "Local DNS setup complete!"
         echo
-        echo "✅ You can now use .local domain names on this server"
-        echo "📄 Client setup script created: $PROJECT_ROOT/setup-client-dns.sh"
+        
+        # Verify DNS resolution works
+        log_info "Verifying DNS resolution..."
+        local dns_ok=true
+        for service in "grafana.${CLUSTER_DOMAIN}.local" "argocd.${CLUSTER_DOMAIN}.local"; do
+            if getent hosts "$service" >/dev/null 2>&1; then
+                echo "  ✓ $service"
+            else
+                echo "  ✗ $service (not resolving)"
+                dns_ok=false
+            fi
+        done
         echo
-        log_info "To access services from your laptop/desktop:"
+        
+        if [ "$dns_ok" = true ]; then
+            log_success "DNS verification passed!"
+        else
+            log_warn "Some DNS entries not resolving yet. May need a few seconds to propagate."
+        fi
+        
+        echo "✅ You can now use .local domain names on this server"
+        echo
+        log_info "To access from other devices (laptop, phone):"
         echo "  1. Ensure Tailscale is installed and connected"
-        echo "  2. Copy setup-client-dns.sh to that device"
+        echo "  2. Copy the setup script: $PROJECT_ROOT/setup-client-dns.sh"
         echo "  3. Run: sudo bash setup-client-dns.sh"
     else
-        log_warn "Local DNS setup had issues. You can set it up later with:"
+        log_warn "Local DNS setup failed after $dns_max_retries attempts."
+        log_warn "You can set it up later with:"
         echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
     fi
 }

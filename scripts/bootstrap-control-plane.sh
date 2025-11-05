@@ -1594,6 +1594,36 @@ setup_local_dns() {
     fi
 }
 
+run_final_validation() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔍 Final Validation: Verifying All Services"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "Running comprehensive service validation..."
+    log_info "This checks: pods running, services exist, IPs assigned, DNS configured"
+    echo
+    
+    # Source validation library
+    if [ -f "$SCRIPT_DIR/lib/service-validation.sh" ]; then
+        source "$SCRIPT_DIR/lib/service-validation.sh"
+        
+        # Run comprehensive validation
+        if verify_all_core_services "$CLUSTER_DOMAIN"; then
+            echo
+            log_success "🎉 ALL VALIDATION CHECKS PASSED!"
+            log_success "Your cluster is fully operational and ready to use!"
+        else
+            echo
+            log_warn "⚠️  Some validation checks failed (see above)"
+            log_warn "Your cluster may still be functional, but some services may need attention"
+        fi
+    else
+        log_warn "Validation library not found, skipping comprehensive validation"
+        log_info "Basic DNS verification was performed earlier"
+    fi
+}
+
 offer_demo_app() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1750,6 +1780,9 @@ main() {
     
     # Setup local DNS automatically
     setup_local_dns_automatic
+    
+    # Run comprehensive validation AFTER DNS is setup
+    run_final_validation
     
     # Offer to deploy demo app
     offer_demo_app

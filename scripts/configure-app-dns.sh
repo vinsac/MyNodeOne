@@ -66,6 +66,25 @@ APP_NAMESPACES=(
     "uptime-kuma"
     "paperless"
     "audiobookshelf"
+    "demo-apps"
+    "llm-chat"
+)
+
+# Friendly DNS names for services (override namespace name)
+declare -A FRIENDLY_NAMES
+FRIENDLY_NAMES["demo-apps"]="demoapp"
+FRIENDLY_NAMES["llm-chat"]="chat"
+
+# Core services to exclude (already configured in setup-local-dns.sh)
+EXCLUDE_NAMESPACES=(
+    "kube-system"
+    "metallb-system"
+    "traefik"
+    "longhorn-system"
+    "monitoring"
+    "argocd"
+    "minio"
+    "mynodeone-dashboard"
 )
 
 log_info "Detecting installed applications..."
@@ -76,6 +95,19 @@ declare -A FOUND_APPS
 
 # Check each namespace
 for ns in "${APP_NAMESPACES[@]}"; do
+    # Skip excluded namespaces
+    skip=false
+    for exclude in "${EXCLUDE_NAMESPACES[@]}"; do
+        if [ "$ns" = "$exclude" ]; then
+            skip=true
+            break
+        fi
+    done
+    
+    if [ "$skip" = true ]; then
+        continue
+    fi
+    
     if kubectl get namespace "$ns" &>/dev/null; then
         # Get the LoadBalancer service IP
         SERVICE_NAME=$(kubectl get svc -n "$ns" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
@@ -84,8 +116,10 @@ for ns in "${APP_NAMESPACES[@]}"; do
             SERVICE_IP=$(kubectl get svc -n "$ns" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
             
             if [ -n "$SERVICE_IP" ]; then
-                FOUND_APPS["$ns"]="$SERVICE_IP"
-                log_success "Found: $ns at $SERVICE_IP"
+                # Use friendly name if available, otherwise use namespace
+                dns_name="${FRIENDLY_NAMES[$ns]:-$ns}"
+                FOUND_APPS["$dns_name"]="$SERVICE_IP"
+                log_success "Found: $ns -> $dns_name.$CLUSTER_DOMAIN.local at $SERVICE_IP"
             fi
         fi
     fi

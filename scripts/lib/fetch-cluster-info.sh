@@ -86,17 +86,25 @@ fetch_cluster_info() {
     
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
-    log_info "You will be prompted for the sudo password for $ssh_user"
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔑 Enter your sudo password when prompted below"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
     mkdir -p ~/.kube
     
-    # Fetch to a temp file first (allows interactive password prompt)
-    log_info "Retrieving kubeconfig file..."
-    if ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>&1; then
-        
+    # Run SSH command - let it interact directly with terminal
+    echo "Connecting to control plane..."
+    ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw
+    
+    local ssh_exit=$?
+    echo
+    
+    if [ $ssh_exit -eq 0 ] && [ -s ~/.kube/config.raw ]; then
         # Process the file to remove connection messages and update IP
         grep -v "Connection to.*closed" ~/.kube/config.raw | \
+        grep -v "^$" | \
         sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp
         
         rm -f ~/.kube/config.raw

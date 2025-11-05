@@ -84,22 +84,43 @@ fetch_cluster_info() {
     log_success "SSH connection successful"
     echo
     
+    # Ask for sudo password upfront (if needed)
+    local sudo_password=""
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔑 Sudo Password Required"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "To fetch the kubeconfig, we need sudo access on the control plane"
+    echo
+    
+    # Check if passwordless sudo works first
+    if ssh "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
+        log_success "Passwordless sudo detected"
+    else
+        log_info "Passwordless sudo not available - password required"
+        echo
+        read -s -p "Enter sudo password for $ssh_user on control plane: " sudo_password
+        echo
+        echo
+    fi
+    
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
-    echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔑 Enter your sudo password when prompted below"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
     
     mkdir -p ~/.kube
     
-    # Run SSH command - let it interact directly with terminal
-    echo "Connecting to control plane..."
-    ssh -t "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw
+    # Run SSH command with or without password
+    if [ -z "$sudo_password" ]; then
+        # Passwordless sudo
+        ssh "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>/dev/null
+    else
+        # Pass password to sudo via stdin
+        ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | \
+        grep -v "^\[sudo\]" > ~/.kube/config.raw
+    fi
     
     local ssh_exit=$?
-    echo
     
     if [ $ssh_exit -eq 0 ] && [ -s ~/.kube/config.raw ]; then
         # Process the file to remove connection messages and update IP

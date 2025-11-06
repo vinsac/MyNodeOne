@@ -143,33 +143,39 @@ fetch_cluster_info() {
         
         log_success "Kubeconfig retrieved"
         
-        # Validate it works
-        log_info "Validating cluster connection..."
+        # Save kubeconfig (don't require local kubectl for validation)
+        mv ~/.kube/config.tmp ~/.kube/config
+        chmod 600 ~/.kube/config
+        echo
         
-        if KUBECONFIG=~/.kube/config.tmp kubectl cluster-info &>/dev/null; then
-            mv ~/.kube/config.tmp ~/.kube/config
-            chmod 600 ~/.kube/config
-            
-            log_success "Cluster connection validated"
+        # Fetch cluster info directly from control plane (doesn't require local kubectl)
+        log_info "Reading cluster configuration from control plane..."
+        
+        # Use SSH to run kubectl on the control plane
+        local cluster_name=""
+        local cluster_domain=""
+        
+        if [ -z "$sudo_password" ]; then
+            # Passwordless sudo
+            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
+            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
+        else
+            # With password
+            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null | grep -v "^\[sudo\]" || echo "")
+            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null | grep -v "^\[sudo\]" || echo "")
+        fi
+        
+        if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
+            log_success "Cluster info retrieved:"
+            echo "  • Cluster Name: $cluster_name"
+            echo "  • Domain: ${cluster_domain}.local"
             echo
             
-            # Fetch cluster info from configmap
-            log_info "Reading cluster configuration..."
+            # Save to config
+            mkdir -p "$CONFIG_DIR"
             
-            local cluster_name=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>/dev/null || echo "")
-            local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
-            
-            if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
-                log_success "Cluster info retrieved:"
-                echo "  • Cluster Name: $cluster_name"
-                echo "  • Domain: ${cluster_domain}.local"
-                echo
-                
-                # Save to config
-                mkdir -p "$CONFIG_DIR"
-                
-                # Create or update config file
-                cat > "$CONFIG_DIR/config.env" <<EOF
+            # Create or update config file
+            cat > "$CONFIG_DIR/config.env" <<EOF
 # MyNodeOne Configuration
 # Auto-generated on $(date)
 
@@ -178,17 +184,12 @@ CLUSTER_DOMAIN="$cluster_domain"
 CONTROL_PLANE_IP="$control_plane_ip"
 CONTROL_PLANE_SSH_USER="$ssh_user"
 EOF
-                
-                log_success "Configuration saved to $CONFIG_DIR/config.env"
-                return 0
-            else
-                log_warn "Could not find cluster-info configmap"
-                log_info "The control plane may not have been fully initialized"
-                return 1
-            fi
+            
+            log_success "Configuration saved to $CONFIG_DIR/config.env"
+            return 0
         else
-            log_error "Kubeconfig validation failed"
-            rm -f ~/.kube/config.tmp
+            log_warn "Could not find cluster-info configmap"
+            log_info "The control plane may not have been fully initialized"
             return 1
         fi
     else

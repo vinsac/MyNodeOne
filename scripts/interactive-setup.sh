@@ -351,9 +351,19 @@ configure_cluster_info() {
         existing_cluster_domain="${CLUSTER_DOMAIN:-}"
     fi
     
-    # Special handling for management laptops - fetch kubeconfig first if needed
-    if [ "$NODE_ROLE" = "Management Workstation" ]; then
-        print_info "Management laptop detected - will fetch cluster configuration from control plane"
+    # Special handling for non-control-plane nodes - fetch kubeconfig first if needed
+    if [ "$NODE_ROLE" = "Management Workstation" ] || [ "$NODE_ROLE" = "VPS Edge Node" ] || [ "$NODE_ROLE" = "Worker Node" ]; then
+        case "$NODE_ROLE" in
+            "Management Workstation")
+                print_info "Management laptop detected - will fetch cluster configuration from control plane"
+                ;;
+            "VPS Edge Node")
+                print_info "VPS edge node detected - will fetch cluster configuration from control plane"
+                ;;
+            "Worker Node")
+                print_info "Worker node detected - will fetch cluster configuration from control plane"
+                ;;
+        esac
         echo
         
         # Try to fetch cluster info before asking user

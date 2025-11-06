@@ -1,9 +1,10 @@
 #!/bin/bash
 
 ###############################################################################
-# VPS Route Sync Script
+# VPS Route Sync Script - Enterprise Multi-Domain Support
 # 
-# Fetches service registry from control plane and updates Traefik routes
+# Fetches service registry and domain routing from control plane
+# Supports multiple domains and VPS nodes with load balancing
 # Run this on VPS edge nodes to sync routing configuration
 ###############################################################################
 
@@ -65,6 +66,9 @@ log_info "Control Plane: $CONTROL_PLANE_IP"
 log_info "Public Domain: $PUBLIC_DOMAIN"
 echo ""
 
+# Detect VPS Tailscale IP
+VPS_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
+
 # Fetch service registry from control plane
 log_info "Fetching service registry from control plane..."
 
@@ -80,6 +84,17 @@ if [[ "$SERVICES" == "{}" ]] || [[ -z "$SERVICES" ]]; then
     echo "Run this on control plane to populate registry:"
     echo "  sudo ./scripts/lib/service-registry.sh sync"
     exit 0
+fi
+
+# Check for multi-domain registry
+MULTI_DOMAIN_ENABLED=false
+DOMAIN_REGISTRY=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    "sudo kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.routing\.json}' 2>/dev/null" \
+    2>/dev/null || echo "{}")
+
+if [[ "$DOMAIN_REGISTRY" != "{}" ]] && [[ -n "$DOMAIN_REGISTRY" ]]; then
+    MULTI_DOMAIN_ENABLED=true
+    log_info "Multi-domain routing enabled"
 fi
 
 # Filter for public services only
@@ -120,43 +135,56 @@ echo "" >> "$TEMP_FILE"
 echo "http:" >> "$TEMP_FILE"
 echo "  routers:" >> "$TEMP_FILE"
 
-echo "$PUBLIC_SERVICES" | jq -r --arg domain "$PUBLIC_DOMAIN" '
-    .subdomain as $sub |
-    "    \($sub):",
-    "      rule: \"Host(`\($sub).\($domain)`)\"",
-    "      service: \($sub)-service",
-    "      entryPoints:",
-    "        - websecure",
-    "      tls:",
-    "        certResolver: letsencrypt",
-    "",
-    "    \($sub)-http:",
-    "      rule: \"Host(`\($sub).\($domain)`)\"",
-    "      service: \($sub)-service",
-    "      entryPoints:",
-    "        - web",
-    "      middlewares:",
-    "        - https-redirect",
-    ""
-' >> "$TEMP_FILE"
+if [[ "$MULTI_DOMAIN_ENABLED" == "true" ]] && [[ -n "$VPS_TAILSCALE_IP" ]]; then
+    # Multi-domain mode: Use domain registry routing
+    log_info "Generating multi-domain routes..."
+    
+    # Get routes for this VPS from control plane
+    ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh export-vps-routes $VPS_TAILSCALE_IP $CONTROL_PLANE_IP" >> "$TEMP_FILE" 2>/dev/null
+    
+else
+    # Single-domain mode: Legacy behavior
+    log_info "Generating single-domain routes..."
+    
+    echo "$PUBLIC_SERVICES" | jq -r --arg domain "$PUBLIC_DOMAIN" '
+        .subdomain as $sub |
+        "    \($sub):",
+        "      rule: \"Host(`\($sub).\($domain)`)\"",
+        "      service: \($sub)-service",
+        "      entryPoints:",
+        "        - websecure",
+        "      tls:",
+        "        certResolver: letsencrypt",
+        "",
+        "    \($sub)-http:",
+        "      rule: \"Host(`\($sub).\($domain)`)\"",
+        "      service: \($sub)-service",
+        "      entryPoints:",
+        "        - web",
+        "      middlewares:",
+        "        - https-redirect",
+        ""
+    ' >> "$TEMP_FILE"
 
-echo "  services:" >> "$TEMP_FILE"
+    echo "  services:" >> "$TEMP_FILE"
 
-echo "$PUBLIC_SERVICES" | jq -r --arg cp_ip "$CONTROL_PLANE_IP" '
-    .subdomain as $sub |
-    .port as $port |
-    "    \($sub)-service:",
-    "      loadBalancer:",
-    "        servers:",
-    "          - url: \"http://\($cp_ip):\($port)\"",
-    ""
-' >> "$TEMP_FILE"
+    echo "$PUBLIC_SERVICES" | jq -r --arg cp_ip "$CONTROL_PLANE_IP" '
+        .subdomain as $sub |
+        .port as $port |
+        "    \($sub)-service:",
+        "      loadBalancer:",
+        "        servers:",
+        "          - url: \"http://\($cp_ip):\($port)\"",
+        ""
+    ' >> "$TEMP_FILE"
 
-echo "  middlewares:" >> "$TEMP_FILE"
-echo "    https-redirect:" >> "$TEMP_FILE"
-echo "      redirectScheme:" >> "$TEMP_FILE"
-echo "        scheme: https" >> "$TEMP_FILE"
-echo "        permanent: true" >> "$TEMP_FILE"
+    echo "  middlewares:" >> "$TEMP_FILE"
+    echo "    https-redirect:" >> "$TEMP_FILE"
+    echo "      redirectScheme:" >> "$TEMP_FILE"
+    echo "        scheme: https" >> "$TEMP_FILE"
+    echo "        permanent: true" >> "$TEMP_FILE"
+fi
 
 # Backup existing routes
 if [[ -f "$ROUTE_FILE" ]]; then

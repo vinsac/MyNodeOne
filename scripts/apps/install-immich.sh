@@ -377,65 +377,7 @@ else
     echo ""
 fi
 
-# Check if VPS edge node is configured
-if [[ -f ~/.mynodeone/config.env ]]; then
-    source ~/.mynodeone/config.env
-    
-    if [[ -n "${VPS_EDGE_IP:-}" ]] || [[ "${NODE_TYPE:-}" == "vps-edge" ]]; then
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  🌍 Internet Access via VPS Edge Node"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        echo "Make Immich accessible from the internet?"
-        echo ""
-        echo "This will configure:"
-        echo "  • Public URL: https://${APP_SUBDOMAIN}.yourdomain.com"
-        echo "  • Automatic SSL certificate"
-        echo "  • VPS routing to your cluster"
-        echo ""
-        echo "Using subdomain: ${APP_SUBDOMAIN} (same as local)"
-        echo ""
-        read -p "Configure public access? [Y/n]: " configure_vps
-        
-        if [[ "$configure_vps" != "n" ]] && [[ "$configure_vps" != "N" ]]; then
-            echo ""
-            read -p "Enter your public domain (e.g., curiios.com): " user_domain
-            
-            if [[ -n "$user_domain" ]]; then
-                echo ""
-                echo "📡 Configuring VPS route..."
-                echo "   Public URL: https://${APP_SUBDOMAIN}.${user_domain}"
-                echo ""
-                
-                # Run VPS route configuration
-                if [[ -x "$SCRIPT_DIR/../configure-vps-route.sh" ]]; then
-                    bash "$SCRIPT_DIR/../configure-vps-route.sh" immich 80 "$APP_SUBDOMAIN" "$user_domain"
-                else
-                    echo "⚠️  VPS route script not found"
-                    echo ""
-                    echo "To configure manually later, run:"
-                    echo "  sudo ./scripts/configure-vps-route.sh immich 80 $APP_SUBDOMAIN $user_domain"
-                fi
-            else
-                echo ""
-                echo "⚠️  Domain required. Skipped."
-                echo ""
-                echo "To configure later, run:"
-                echo "  sudo ./scripts/configure-vps-route.sh immich 80 $APP_SUBDOMAIN <domain>"
-            fi
-        else
-            echo ""
-            echo "⚠️  VPS route configuration skipped"
-            echo ""
-            echo "To configure later, run:"
-            echo "  sudo ./scripts/configure-vps-route.sh immich 80 $APP_SUBDOMAIN <domain>"
-            echo ""
-        fi
-        
-        echo ""
-        echo "📖 For DNS setup instructions, see:"
-        echo "   docs/guides/DNS-SETUP-GUIDE.md"
-        echo ""
-    fi
+# Automatically configure VPS routing and DNS updates
+if [[ -f "$SCRIPT_DIR/lib/post-install-routing.sh" ]]; then
+    source "$SCRIPT_DIR/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
 fi

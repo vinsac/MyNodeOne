@@ -3,7 +3,7 @@
 ###############################################################################
 # Post-Installation Routing Helper
 # 
-# Automatically configures VPS routes and DNS after app installation
+# Uses centralized service registry for DNS and routing
 # Called by app install scripts
 ###############################################################################
 
@@ -31,9 +31,10 @@ APP_PORT="$2"
 SUBDOMAIN="$3"
 NAMESPACE="${4:-$APP_NAME}"
 SERVICE_NAME="${5:-${APP_NAME}-server}"
+MAKE_PUBLIC="${6:-false}"
 
 if [[ -z "$APP_NAME" ]] || [[ -z "$APP_PORT" ]] || [[ -z "$SUBDOMAIN" ]]; then
-    echo "Usage: source post-install-routing.sh <app-name> <port> <subdomain> [namespace] [service-name]"
+    echo "Usage: source post-install-routing.sh <app-name> <port> <subdomain> [namespace] [service-name] [public]"
     return 1
 fi
 
@@ -42,89 +43,92 @@ if [[ -f ~/.mynodeone/config.env ]]; then
     source ~/.mynodeone/config.env
 fi
 
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🌐 Configuring Access for $APP_NAME"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-
-# 1. Check if VPS edge node exists and has domain configured
-VPS_CONFIGURED=false
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
 PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
 
-if [[ -n "${VPS_EDGE_IP:-}" ]] && [[ -n "$PUBLIC_DOMAIN" ]]; then
-    VPS_CONFIGURED=true
-    log_info "VPS edge node detected with domain: $PUBLIC_DOMAIN"
-fi
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  🌐 Registering Service: $APP_NAME"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
 
-# 2. If VPS is configured, auto-setup routing
-if [[ "$VPS_CONFIGURED" == "true" ]]; then
-    echo ""
-    log_info "Automatically configuring public access..."
-    log_info "  Public URL: https://${SUBDOMAIN}.${PUBLIC_DOMAIN}"
-    echo ""
-    
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    
-    if [[ -x "$SCRIPT_DIR/../configure-vps-route.sh" ]]; then
-        # Call configure-vps-route.sh with proper parameters
-        if bash "$SCRIPT_DIR/../configure-vps-route.sh" "$APP_NAME" "$APP_PORT" "$SUBDOMAIN" "$PUBLIC_DOMAIN" "$NAMESPACE/$SERVICE_NAME" 2>&1; then
-            log_success "Public access configured!"
-            echo ""
-            echo "✅ $APP_NAME is now accessible at:"
-            echo "   • Public: https://${SUBDOMAIN}.${PUBLIC_DOMAIN}"
-            echo "   • Local: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-            echo ""
-        else
-            log_warn "Auto-configuration failed"
-            echo ""
-            echo "To configure manually:"
-            echo "  sudo ./scripts/configure-vps-route.sh $APP_NAME $APP_PORT $SUBDOMAIN $PUBLIC_DOMAIN"
-            echo ""
-        fi
-    else
-        log_warn "VPS route script not found"
-    fi
-else
-    # VPS not configured or no domain
-    if [[ -n "${VPS_EDGE_IP:-}" ]]; then
-        # VPS exists but no domain configured
-        echo ""
-        log_info "VPS edge node detected but no public domain configured"
-        echo ""
-        echo "To enable public access:"
-        echo "  1. Add PUBLIC_DOMAIN=\"yourdomain.com\" to ~/.mynodeone/config.env"
-        echo "  2. Run: sudo ./scripts/configure-vps-route.sh $APP_NAME $APP_PORT $SUBDOMAIN yourdomain.com"
-        echo ""
-    else
-        # No VPS
-        echo ""
-        log_info "No VPS edge node configured - local access only"
-        echo ""
-        echo "To enable public access:"
-        echo "  1. Set up VPS edge node: sudo ./scripts/mynodeone"
-        echo "  2. Configure domain in ~/.mynodeone/config.env"
-        echo "  3. Run: sudo ./scripts/configure-vps-route.sh $APP_NAME $APP_PORT $SUBDOMAIN yourdomain.com"
-        echo ""
-    fi
-fi
-
-# 3. Auto-update management laptops DNS (if script exists)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ -x "$SCRIPT_DIR/../update-laptop-dns.sh" ]]; then
-    echo ""
-    log_info "Updating local DNS entries..."
+# 1. Register service in central registry
+log_info "Registering in service registry..."
+
+if bash "$SCRIPT_DIR/service-registry.sh" register \
+    "$APP_NAME" "$SUBDOMAIN" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "$MAKE_PUBLIC" 2>&1; then
+    log_success "Service registered in cluster"
+else
+    log_warn "Could not register service (kubectl may not be configured)"
+fi
+
+# 2. Update local DNS entries on control plane
+log_info "Updating local DNS on this machine..."
+
+DNS_ENTRIES=$(bash "$SCRIPT_DIR/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null || echo "")
+
+if [[ -n "$DNS_ENTRIES" ]]; then
+    # Backup /etc/hosts
+    sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
     
-    if bash "$SCRIPT_DIR/../update-laptop-dns.sh" &>/dev/null; then
-        log_success "Local DNS updated"
-        echo "   Access locally at: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-    else
-        log_warn "Could not auto-update local DNS"
-        echo "   Run manually: sudo ./scripts/update-laptop-dns.sh"
-    fi
+    # Remove old MyNodeOne entries
+    sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
+    
+    # Add new entries
+    {
+        echo ""
+        echo "$DNS_ENTRIES"
+        echo ""
+    } | sudo tee -a /etc/hosts > /dev/null
+    
+    log_success "Local DNS updated"
+fi
+
+# 3. Show access URLs
+echo ""
+echo "✅ Service registered successfully!"
+echo ""
+echo "Access via:"
+echo "   • Local: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+
+if [[ -n "$PUBLIC_DOMAIN" ]] && [[ "$MAKE_PUBLIC" == "true" ]]; then
+    echo "   • Public: https://${SUBDOMAIN}.${PUBLIC_DOMAIN} (after sync)"
 fi
 
 echo ""
-log_success "Configuration complete!"
+
+# 4. Show sync instructions
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  📡 Sync to Other Machines"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+log_info "To access from management laptops:"
+echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
+echo ""
+
+if [[ -n "$PUBLIC_DOMAIN" ]] && [[ -n "${VPS_EDGE_IP:-}" ]]; then
+    log_info "To enable public access via VPS:"
+    echo "  SSH to VPS: ssh root@${VPS_EDGE_IP}"
+    echo "  cd ~/MyNodeOne && sudo ./scripts/sync-vps-routes.sh"
+    echo ""
+    
+    if [[ "$MAKE_PUBLIC" != "true" ]]; then
+        log_warn "Service is not marked as public"
+        echo "  To make public, run on control plane:"
+        echo "  sudo ./scripts/lib/service-registry.sh register \\"
+        echo "    $APP_NAME $SUBDOMAIN $NAMESPACE $SERVICE_NAME $APP_PORT true"
+        echo ""
+    fi
+elif [[ -z "$PUBLIC_DOMAIN" ]]; then
+    log_info "To enable public access:"
+    echo "  1. Add PUBLIC_DOMAIN=\"yourdomain.com\" to ~/.mynodeone/config.env"
+    echo "  2. Set up VPS edge node (if not done): sudo ./scripts/mynodeone"
+    echo "  3. Run sync on VPS: sudo ./scripts/sync-vps-routes.sh"
+    echo ""
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

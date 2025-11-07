@@ -29,9 +29,32 @@ When you install an app in MyNodeOne, you have **full control** over whether it'
 
 **🌍 Public (Internet-Accessible)**
 - Accessible from anywhere on the internet
-- URL: `https://subdomain.yourdomain.com`
+- URL options:
+  - **Subdomain**: `https://subdomain.yourdomain.com` (e.g., `photos.curiios.com`)
+  - **Root domain**: `https://yourdomain.com` (e.g., `curiios.com`)
 - Automatic SSL certificates
 - Best for: Sharing with others, public portfolios, client-facing apps
+
+### Subdomain vs Root Domain
+
+**Subdomain (Default):**
+```
+photos.curiios.com    → Immich
+chat.curiios.com      → Open-WebUI
+media.curiios.com     → Jellyfin
+```
+✅ **Use this when:** You have multiple apps on same domain  
+✅ **Benefit:** Organize apps by subdomain  
+
+**Root Domain:**
+```
+curiios.com           → Your main website/app
+myportfolio.com       → Your portfolio site
+myblog.com            → Your blog
+```
+✅ **Use this when:** Domain dedicated to one app  
+✅ **Benefit:** Cleaner URL, no subdomain prefix  
+⚠️  **Note:** One app per domain only (root can't share)
 
 ---
 
@@ -77,6 +100,14 @@ Available domains:
 Select domains (comma-separated numbers, 'all', or press Enter for all):
 Selection: 1,2
 
+How do you want to access this app?
+
+  1. Use subdomain: photos.<domain> (e.g., photos.curiios.com)
+  2. Use root domain: <domain> only (e.g., curiios.com)
+
+Choice (1/2): 1
+
+✓ Will use subdomain: photos
 ✓ Public routing configured
 ✓ Configuration pushed to VPS nodes
 
@@ -89,6 +120,33 @@ Access via:
    • Public: https://photos.curiios.com
    • Public: https://photos.vinaysachdeva.com
 ```
+
+**Example with root domain:**
+```bash
+Choice (1/2/3): 1
+
+Selection: 1  # Just curiios.com
+
+How do you want to access this app?
+
+  1. Use subdomain: photos.<domain> (e.g., photos.curiios.com)
+  2. Use root domain: <domain> only (e.g., curiios.com)
+
+Choice (1/2): 2
+
+✓ Will use root domain (no subdomain)
+✓ Public routing configured
+✓ Configuration pushed to VPS nodes
+
+Access via:
+   • Local: http://mycloud.local (root domain not supported locally)
+   • Public: https://curiios.com (root domain)
+```
+
+**What gets asked:**
+1. ✅ Make public? (Yes/No/Later)
+2. ✅ Which domain(s)? (Select from list)
+3. ✅ **NEW! Subdomain or root domain?** (subdomain.domain.com vs domain.com)
 
 **What happens:**
 1. ✅ Script lists all registered domains from domain-registry
@@ -443,6 +501,41 @@ Choice: 1 (Make public)
 ```
 
 **Best practice for new apps!**
+
+---
+
+### Scenario 7: Root Domain for Main Website
+
+**Situation:** Want your app at root domain (no subdomain)
+
+```bash
+# Install Homepage as your main site
+sudo ./scripts/apps/install-homepage.sh
+Choice: 1 (Make public)
+Domain: mysite.com
+Subdomain or root: 2 (Root domain)
+
+Result: https://mysite.com (no subdomain!)
+```
+
+**Perfect for:**
+- Personal homepage/portfolio
+- Blog as main site
+- Business website
+- Dedicated app domains
+
+**Example setup:**
+```
+mysite.com              → Homepage (root)
+photos.mysite.com       → Immich (subdomain)
+blog.mysite.com         → Ghost (subdomain)
+
+myportfolio.com         → Homepage (root, dedicated)
+myblog.com              → Ghost (root, dedicated)
+photos-app.com          → Immich (root, dedicated)
+```
+
+**Pro tip:** Buy separate domains for dedicated apps!
 
 ---
 

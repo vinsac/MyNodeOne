@@ -173,6 +173,23 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                     fi
                 fi
                 
+                # Ask about subdomain or root domain
+                echo ""
+                echo "How do you want to access this app?"
+                echo ""
+                echo "  1. Use subdomain: ${SUBDOMAIN}.<domain> (e.g., photos.curiios.com)"
+                echo "  2. Use root domain: <domain> only (e.g., curiios.com)"
+                echo ""
+                read -p "Choice (1/2): " domain_type_choice
+                
+                # Modify subdomain based on choice
+                if [[ "$domain_type_choice" == "2" ]]; then
+                    log_info "Will use root domain (no subdomain)"
+                    SUBDOMAIN="@"  # Special marker for root domain
+                else
+                    log_info "Will use subdomain: ${SUBDOMAIN}"
+                fi
+                
                 # Configure routing if domains selected
                 if [[ -n "$selected_domains" ]]; then
                     echo ""
@@ -236,12 +253,20 @@ echo "  ✅ Service Registered Successfully!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Access via:"
-echo "   • Local: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+if [[ "$SUBDOMAIN" == "@" ]]; then
+    echo "   • Local: http://${CLUSTER_DOMAIN}.local (root domain not supported locally)"
+else
+    echo "   • Local: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+fi
 
 if [[ "$MAKE_PUBLIC" == "true" ]] && [[ -n "${selected_domains:-}" ]]; then
     IFS=',' read -ra DOMAINS <<< "$selected_domains"
     for domain in "${DOMAINS[@]}"; do
-        echo "   • Public: https://${SUBDOMAIN}.${domain}"
+        if [[ "$SUBDOMAIN" == "@" ]]; then
+            echo "   • Public: https://${domain} (root domain)"
+        else
+            echo "   • Public: https://${SUBDOMAIN}.${domain}"
+        fi
     done
 fi
 

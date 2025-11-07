@@ -216,8 +216,16 @@ export_vps_routing() {
             continue
         fi
         
+        # Handle root domain (@) or subdomain
+        local host_rule
+        if [[ "$subdomain" == "@" ]]; then
+            host_rule="Host(\`${domain}\`)"
+        else
+            host_rule="Host(\`${subdomain}.${domain}\`)"
+        fi
+        
         echo "    ${service}-${domain//\./-}:"
-        echo "      rule: \"Host(\`${subdomain}.${domain}\`)\"" 
+        echo "      rule: \"${host_rule}\"" 
         echo "      service: ${service}-service"
         echo "      entryPoints:"
         echo "        - websecure"
@@ -226,7 +234,7 @@ export_vps_routing() {
         echo ""
         
         echo "    ${service}-${domain//\./-}-http:"
-        echo "      rule: \"Host(\`${subdomain}.${domain}\`)\"" 
+        echo "      rule: \"${host_rule}\"" 
         echo "      service: ${service}-service"
         echo "      entryPoints:"
         echo "        - web"

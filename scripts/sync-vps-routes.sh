@@ -149,8 +149,9 @@ else
     
     echo "$PUBLIC_SERVICES" | jq -r --arg domain "$PUBLIC_DOMAIN" '
         .subdomain as $sub |
+        (if $sub == "@" then "Host(`" + $domain + "`)" else "Host(`" + $sub + "." + $domain + "`)" end) as $host_rule |
         "    \($sub):",
-        "      rule: \"Host(`\($sub).\($domain)`)\"",
+        "      rule: \"\($host_rule)\"",
         "      service: \($sub)-service",
         "      entryPoints:",
         "        - websecure",
@@ -158,7 +159,7 @@ else
         "        certResolver: letsencrypt",
         "",
         "    \($sub)-http:",
-        "      rule: \"Host(`\($sub).\($domain)`)\"",
+        "      rule: \"\($host_rule)\"",
         "      service: \($sub)-service",
         "      entryPoints:",
         "        - web",

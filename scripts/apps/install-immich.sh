@@ -377,13 +377,7 @@ else
     echo ""
 fi
 
-# Automatically configure VPS routing and DNS updates
+# Automatically configure routing and ask about public access
 if [[ -f "$SCRIPT_DIR/lib/post-install-routing.sh" ]]; then
-    # Auto-detect if should be public
-    MAKE_PUBLIC="false"
-    if [[ -n "${PUBLIC_DOMAIN:-}" ]] && [[ -n "${VPS_EDGE_IP:-}" ]]; then
-        MAKE_PUBLIC="true"
-    fi
-    
-    source "$SCRIPT_DIR/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server" "$MAKE_PUBLIC"
+    source "$SCRIPT_DIR/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
 fi

@@ -212,19 +212,42 @@ EOF
     if [ -n "$DEMO_IP" ]; then
         log_success "Demo application is accessible at: http://$DEMO_IP"
         
-        # Configure DNS automatically
-        log_info "Configuring local DNS for demo app..."
+        # Register with enterprise registry (if available)
+        log_info "Registering demo app in service registry..."
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        if bash "$SCRIPT_DIR/configure-app-dns.sh" > /dev/null 2>&1; then
-            # Load cluster domain
-            CLUSTER_DOMAIN="mycloud"
-            if [ -f "$HOME/.mynodeone/config.env" ]; then
-                source "$HOME/.mynodeone/config.env"
+        
+        # Load cluster domain
+        CLUSTER_DOMAIN="mycloud"
+        if [ -f "$HOME/.mynodeone/config.env" ]; then
+            source "$HOME/.mynodeone/config.env"
+        fi
+        
+        # Register in new enterprise registry
+        if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+            if bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+                "demo" "demo" "demo-apps" "demo-chat-app" "80" "false" 2>/dev/null; then
+                log_success "Registered in service registry"
+                DEMO_URL="http://demo.${CLUSTER_DOMAIN}.local"
+            else
+                log_warn "Could not register (kubectl may not be configured)"
+                DEMO_URL="http://$DEMO_IP"
             fi
-            log_success "DNS configured: http://demoapp.${CLUSTER_DOMAIN}.local"
-            DEMO_URL="http://demoapp.${CLUSTER_DOMAIN}.local"
+            
+            # Update local DNS
+            if bash "$SCRIPT_DIR/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/demo-dns-entries.txt; then
+                sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+                sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
+                {
+                    echo ""
+                    cat /tmp/demo-dns-entries.txt
+                    echo ""
+                } | sudo tee -a /etc/hosts > /dev/null
+                rm -f /tmp/demo-dns-entries.txt
+                log_success "Local DNS updated"
+            fi
         else
-            log_warn "DNS configuration skipped - use IP address"
+            # Fallback to old method if new registry not available
+            log_warn "Enterprise registry not available, using direct access"
             DEMO_URL="http://$DEMO_IP"
         fi
         

@@ -3,9 +3,33 @@
 ###############################################################################
 # Configure DNS for Installed Apps
 # 
-# Automatically detects installed apps and adds .local domain entries
-# Makes apps accessible via friendly names like jellyfin.mynodeone.local
+# ⚠️  DEPRECATED: This script is replaced by the enterprise registry system
+# 
+# Please use instead:
+#   sudo ./scripts/lib/service-registry.sh sync
+#   sudo ./scripts/sync-dns.sh
+# 
+# This script may create duplicate DNS entries if you're using the
+# enterprise registry (setup-enterprise-registry.sh)
 ###############################################################################
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ⚠️  DEPRECATION WARNING"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "This script is deprecated and may cause duplicate DNS entries."
+echo ""
+echo "If you have enterprise registry installed, use instead:"
+echo "  sudo ./scripts/lib/service-registry.sh sync"
+echo "  sudo ./scripts/sync-dns.sh"
+echo ""
+read -p "Continue with old script anyway? [y/N]: " continue_old
+if [[ "$continue_old" != "y" ]] && [[ "$continue_old" != "Y" ]]; then
+    echo "Exiting. Use the new enterprise registry commands instead."
+    exit 0
+fi
+echo ""
 
 set -euo pipefail
 

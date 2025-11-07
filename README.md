@@ -72,6 +72,12 @@ This software is provided "AS IS" with **ABSOLUTELY NO WARRANTY** of any kind. B
   - Troubleshooting, monitoring, maintenance
   - All common operations in one place
   
+- **🌍 App Public Access** → [APP-PUBLIC-ACCESS.md](docs/APP-PUBLIC-ACCESS.md) - **How to make apps publicly accessible**
+  - Interactive flow during app installation
+  - Making apps public or private after installation
+  - Common scenarios and troubleshooting
+  - **Read this before installing your first app!**
+  
 - **🌐 Domain Management** → [DOMAIN-MANAGEMENT.md](docs/DOMAIN-MANAGEMENT.md)
   - Add new domains (when you buy more domains)
   - Configure service routing

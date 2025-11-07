@@ -5,6 +5,11 @@
 # 
 # Self-hosted Google Photos alternative
 # Photo and video backup with AI-powered search
+#
+# DOCUMENTATION:
+# - Public access configuration: docs/APP-PUBLIC-ACCESS.md
+# - After installation, you'll be asked if you want to make this app public
+# - You can change visibility anytime: sudo ./scripts/manage-app-visibility.sh
 ###############################################################################
 
 set -euo pipefail

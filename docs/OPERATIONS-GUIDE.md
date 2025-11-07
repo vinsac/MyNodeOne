@@ -115,12 +115,28 @@ sudo ./scripts/apps/install-open-webui.sh  # AI chat
 sudo ./scripts/apps/install-jellyfin.sh    # Media server
 ```
 
-**Auto-detection:**
-- If `PUBLIC_DOMAIN` configured → App marked as public
-- If VPS registered → Routes pushed automatically
-- If sync controller running → All nodes updated within 30s
+**Interactive public access configuration:**
 
-**No manual routing or DNS configuration!**
+During installation, you'll be asked:
+
+```
+Do you want to make this app publicly accessible from the internet?
+
+Options:
+  1. Yes, make it public (expose via domain)
+  2. No, keep it local-only (Tailscale VPN access only)
+  3. Configure later
+```
+
+**If you choose "Yes":**
+- ✅ Select which domain(s) to use
+- ✅ Routing configured automatically
+- ✅ Pushed to all VPS nodes within 30s
+- ✅ SSL certificates obtained automatically
+
+**See full guide:** [APP-PUBLIC-ACCESS.md](APP-PUBLIC-ACCESS.md)
+
+**No manual routing or DNS configuration needed!**
 
 ---
 

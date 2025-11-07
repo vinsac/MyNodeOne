@@ -449,6 +449,18 @@ main() {
     done
     echo
     
+    # Step 7: Auto-register in enterprise registry
+    print_header "Step 7: Enterprise Registry Registration"
+    
+    if [ -f "$SCRIPT_DIR/setup-management-node.sh" ]; then
+        bash "$SCRIPT_DIR/setup-management-node.sh" || true
+    else
+        log_warn "Auto-registration script not found"
+        log_info "To manually register this laptop, run:"
+        echo "  sudo ./scripts/setup-management-node.sh"
+    fi
+    echo
+    
     # Final summary
     print_header "Setup Complete!"
     

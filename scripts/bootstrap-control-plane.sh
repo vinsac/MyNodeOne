@@ -1131,6 +1131,50 @@ EOF
     log_warn "IMPORTANT: This token grants cluster access. Store securely!"
 }
 
+initialize_service_registries() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🌐 Initializing Service Registry System"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    log_info "Creating service registry..."
+    bash "$SCRIPT_DIR/lib/service-registry.sh" init || true
+    
+    log_info "Creating multi-domain registry..."
+    bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" init || true
+    
+    log_info "Syncing existing services to registry..."
+    bash "$SCRIPT_DIR/lib/service-registry.sh" sync || true
+    
+    log_success "Service registry initialized"
+    
+    # Install sync controller as systemd service
+    if [ ! -f /etc/systemd/system/mynodeone-sync-controller.service ]; then
+        log_info "Installing sync controller service..."
+        
+        # Update the service file with correct paths
+        sed "s|/root/MyNodeOne|$PROJECT_ROOT|g" \
+            "$PROJECT_ROOT/systemd/mynodeone-sync-controller.service" | \
+            sudo tee /etc/systemd/system/mynodeone-sync-controller.service > /dev/null
+        
+        sudo systemctl daemon-reload
+        sudo systemctl enable mynodeone-sync-controller
+        sudo systemctl start mynodeone-sync-controller
+        
+        log_success "Sync controller service installed and started"
+    else
+        log_info "Sync controller service already installed"
+    fi
+    
+    echo
+    log_success "Registry system ready!"
+    log_info "  • Service registry: Tracks all cluster services"
+    log_info "  • Multi-domain registry: Supports multiple domains and VPS"
+    log_info "  • Sync controller: Auto-pushes config changes to all nodes"
+    echo
+}
+
 display_credentials() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1764,6 +1808,7 @@ main() {
     deploy_dashboard
     create_cluster_info
     create_cluster_token
+    initialize_service_registries
     
     echo
     print_summary

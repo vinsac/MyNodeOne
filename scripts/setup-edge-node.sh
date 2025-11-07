@@ -391,9 +391,26 @@ main() {
     save_control_plane_ip
     configure_routing
     setup_monitoring_agent
+    auto_register_vps
     
     echo
     print_summary
+}
+
+auto_register_vps() {
+    echo
+    log_info "Registering VPS in enterprise registry..."
+    
+    # Check if setup script exists
+    if [ -f "$SCRIPT_DIR/setup-vps-node.sh" ]; then
+        bash "$SCRIPT_DIR/setup-vps-node.sh" || true
+        log_success "VPS auto-registration complete"
+    else
+        log_warn "Auto-registration script not found, skipping..."
+        echo ""
+        echo "To manually register this VPS, run:"
+        echo "  sudo ./scripts/setup-vps-node.sh"
+    fi
 }
 
 # Run main function

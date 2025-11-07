@@ -59,13 +59,47 @@ This software is provided "AS IS" with **ABSOLUTELY NO WARRANTY** of any kind. B
 
 ---
 
-## 👋 New Here? → **[GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)**
+## 📚 Documentation
 
-If you're new to MyNodeOne, start with **[GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)** for a guided introduction.
+### Quick Start
+- **👋 New User?** → [GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)
+- **🖥️ Never used terminal?** → [TERMINAL-BASICS.md](docs/TERMINAL-BASICS.md)
+- **❓ Don't understand terms?** → [GLOSSARY.md](docs/GLOSSARY.md)
 
-**Never used terminal/command line?** → Read **[TERMINAL-BASICS.md](docs/TERMINAL-BASICS.md)** first!
+### Operations & Management
+- **📖 Operations Guide** → [OPERATIONS-GUIDE.md](docs/OPERATIONS-GUIDE.md) - **Complete guide for daily operations**
+  - Install apps, add domains, make apps public/private
+  - Troubleshooting, monitoring, maintenance
+  - All common operations in one place
+  
+- **🌐 Domain Management** → [DOMAIN-MANAGEMENT.md](docs/DOMAIN-MANAGEMENT.md)
+  - Add new domains (when you buy more domains)
+  - Configure service routing
+  - Multi-domain strategies
 
-**Don't understand the technical terms?** → Check **[GLOSSARY.md](docs/GLOSSARY.md)** for simple explanations!
+- **🏗️ Enterprise Setup** → [ENTERPRISE-SETUP.md](docs/ENTERPRISE-SETUP.md)
+  - Event-driven architecture
+  - Multi-domain, multi-VPS setup
+  - Production deployment
+
+### Quick Commands
+
+```bash
+# INSTALLATION (One-Click)
+sudo ./scripts/mynodeone                                    # Main menu
+
+# APP MANAGEMENT
+sudo ./scripts/apps/install-<app>.sh                       # Install app
+sudo ./scripts/manage-app-visibility.sh                    # Make app public/private
+
+# DOMAIN MANAGEMENT
+sudo ./scripts/add-domain.sh                               # Add domain
+sudo ./scripts/configure-domain-routing.sh <domain>        # Manage routing
+
+# MONITORING
+sudo ./scripts/lib/sync-controller.sh health               # Check all nodes
+sudo systemctl status mynodeone-sync-controller            # Sync controller status
+```
 
 ---
 

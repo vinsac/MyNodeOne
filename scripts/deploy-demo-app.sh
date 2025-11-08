@@ -69,7 +69,7 @@ deploy_demo_app() {
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: demo-chat-html
+  name: demo-html
   namespace: demo-apps
 data:
   index.html: |
@@ -129,17 +129,17 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demo-chat-app
+  name: demo
   namespace: demo-apps
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demo-chat-app
+      app: demo
   template:
     metadata:
       labels:
-        app: demo-chat-app
+        app: demo
     spec:
       securityContext:
         runAsNonRoot: true
@@ -148,7 +148,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: chat-app
+      - name: demo
         image: nginxinc/nginx-unprivileged:alpine
         ports:
         - containerPort: 8080
@@ -176,17 +176,17 @@ spec:
       volumes:
       - name: html
         configMap:
-          name: demo-chat-html
+          name: demo-html
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: demo-chat-app
+  name: demo
   namespace: demo-apps
 spec:
   type: LoadBalancer
   selector:
-    app: demo-chat-app
+    app: demo
   ports:
   - port: 80
     targetPort: 8080
@@ -200,7 +200,7 @@ EOF
     sleep 10
     
     for i in {1..12}; do
-        DEMO_IP=$(kubectl get svc -n demo-apps demo-chat-app -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+        DEMO_IP=$(kubectl get svc -n demo-apps demo -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
         if [ -n "$DEMO_IP" ]; then
             break
         fi
@@ -225,7 +225,7 @@ EOF
         # Register in new enterprise registry
         if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
             if bash "$SCRIPT_DIR/lib/service-registry.sh" register \
-                "demo" "demo" "demo-apps" "demo-chat-app" "80" "false" 2>/dev/null; then
+                "demo" "demo" "demo-apps" "demo" "80" "false" 2>/dev/null; then
                 log_success "Registered in service registry"
                 DEMO_URL="http://demo.${CLUSTER_DOMAIN}.local"
             else
@@ -324,7 +324,7 @@ show_status() {
     kubectl get pods,svc -n demo-apps
     echo
     
-    DEMO_IP=$(kubectl get svc -n demo-apps demo-chat-app -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+    DEMO_IP=$(kubectl get svc -n demo-apps demo -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
     if [ -n "$DEMO_IP" ]; then
         log_success "Demo app is running at: http://$DEMO_IP"
     else

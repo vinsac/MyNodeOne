@@ -67,6 +67,12 @@ log_success "Backup created"
 # Remove old MyNodeOne Apps entries
 log_info "Removing old DNS entries..."
 sudo sed -i '/# MyNodeOne Apps/,/# End MyNodeOne Apps/d' /etc/hosts 2>/dev/null || true
+
+# Also remove any standalone demo entries that might exist
+log_info "Removing any standalone demo entries..."
+sudo sed -i '/demo-chat-app\..*\.local/d' /etc/hosts 2>/dev/null || true
+sudo sed -i '/demoapp\..*\.local/d' /etc/hosts 2>/dev/null || true
+
 log_success "Old entries removed"
 
 # Check if enterprise registry exists

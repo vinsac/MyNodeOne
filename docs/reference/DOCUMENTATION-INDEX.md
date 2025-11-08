@@ -116,6 +116,8 @@ mynodeone/
 - Installation guide: [INSTALLATION.md](INSTALLATION.md)
 - Setup options: [docs/setup-options-guide.md](docs/setup-options-guide.md)
 - Configuration wizard: `scripts/interactive-setup.sh`
+- **VPS Edge Node Setup:** [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) ⭐ NEW
+- VPS Installation: [docs/guides/VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md)
 
 ### Comparisons & Alternatives
 - **MyNodeOne vs Alternatives:** [docs/comparison-guide.md](docs/comparison-guide.md) ⭐
@@ -151,6 +153,7 @@ mynodeone/
 ### Scaling
 - Add workers: [docs/scaling.md](docs/scaling.md)
 - Add VPS: [INSTALLATION.md](INSTALLATION.md) - Section "Step 4"
+- **Add VPS Edge Node:** [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) ⭐
 - High availability: [docs/architecture.md](docs/architecture.md)
 
 ---
@@ -181,12 +184,20 @@ mynodeone/
 **"I have a question..."**  
 → [FAQ.md](FAQ.md)
 
+**"How do I add a domain to my VPS?"**  
+→ [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - Section "Adding Domain Later"
+
+**"How do I expose apps publicly?"**  
+→ [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
+
 ---
 
 ## 📚 Documentation by Type
 
 ### Guides (How-to)
 - [INSTALLATION.md](INSTALLATION.md) - Installation walkthrough
+- [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - VPS edge node & domain setup ⭐
+- [docs/guides/VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md) - VPS control plane setup
 - [docs/operations.md](docs/operations.md) - Daily management
 - [docs/scaling.md](docs/scaling.md) - Growth strategies
 - [docs/troubleshooting.md](docs/troubleshooting.md) - Problem solving

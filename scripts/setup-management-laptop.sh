@@ -535,8 +535,36 @@ main() {
         fi
         
         log_info "User $SUDO_USER can now run kubectl without sudo"
-        echo
     fi
+    echo
+    
+    # Run validation tests
+    print_header "Step 9: Validating Installation"
+    
+    log_info "Running installation validation tests..."
+    echo
+    
+    if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
+        if bash "$SCRIPT_DIR/lib/validate-installation.sh" management-laptop; then
+            echo
+            log_success "✅ All validation tests passed!"
+            
+            # Save validation status
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> ~/.mynodeone/config.env
+            echo "VALIDATION_STATUS=passed" >> ~/.mynodeone/config.env
+        else
+            echo
+            log_warn "⚠️  Some validation tests failed"
+            log_info "Your laptop may still work, but some features need attention"
+            
+            # Save validation status
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> ~/.mynodeone/config.env
+            echo "VALIDATION_STATUS=failed" >> ~/.mynodeone/config.env
+        fi
+    else
+        log_warn "Validation script not found, skipping tests"
+    fi
+    echo
     
     # Final summary
     print_header "Setup Complete!"

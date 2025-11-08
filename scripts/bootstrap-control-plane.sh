@@ -1686,30 +1686,47 @@ setup_local_dns() {
 run_final_validation() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔍 Final Validation: Verifying All Services"
+    echo "  🔍 Final Validation: Testing Installation"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    log_info "Running comprehensive service validation..."
-    log_info "This checks: pods running, services exist, IPs assigned, DNS configured"
+    log_info "Running comprehensive installation validation..."
+    log_info "This verifies: Kubernetes, services, registry, DNS, and more"
     echo
     
-    # Source validation library
-    if [ -f "$SCRIPT_DIR/lib/service-validation.sh" ]; then
-        source "$SCRIPT_DIR/lib/service-validation.sh"
-        
-        # Run comprehensive validation
-        if verify_all_core_services "$CLUSTER_DOMAIN"; then
+    # Run unified validation script
+    if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
+        if bash "$SCRIPT_DIR/lib/validate-installation.sh" control-plane; then
             echo
-            log_success "🎉 ALL VALIDATION CHECKS PASSED!"
-            log_success "Your cluster is fully operational and ready to use!"
+            log_success "🎉 INSTALLATION VALIDATION PASSED!"
+            log_info "Your control plane is fully operational!"
+            
+            # Save validation timestamp
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> /root/.mynodeone/config.env
+            echo "VALIDATION_STATUS=passed" >> /root/.mynodeone/config.env
         else
             echo
-            log_warn "⚠️  Some validation checks failed (see above)"
-            log_warn "Your cluster may still be functional, but some services may need attention"
+            log_error "❌ INSTALLATION VALIDATION FAILED"
+            log_warn "Some components may need attention (see details above)"
+            log_info "You can re-run validation anytime:"
+            echo "  sudo bash $SCRIPT_DIR/lib/validate-installation.sh control-plane"
+            
+            # Save validation status
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> /root/.mynodeone/config.env
+            echo "VALIDATION_STATUS=failed" >> /root/.mynodeone/config.env
+            
+            # Ask if user wants to continue
+            if [ "${UNATTENDED:-0}" != "1" ]; then
+                echo
+                read -p "Continue despite validation failures? [y/N]: " -r
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    log_info "Installation paused. Fix issues and re-run validation."
+                    exit 1
+                fi
+            fi
         fi
     else
-        log_warn "Validation library not found, skipping comprehensive validation"
-        log_info "Basic DNS verification was performed earlier"
+        log_warn "Validation script not found at: $SCRIPT_DIR/lib/validate-installation.sh"
+        log_info "Skipping automated validation"
     fi
 }
 

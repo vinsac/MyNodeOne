@@ -231,6 +231,23 @@ main() {
     join_cluster
     label_node
     
+    # Run validation tests
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔍 Validating Worker Node Installation"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
+        if bash "$SCRIPT_DIR/lib/validate-installation.sh" worker-node; then
+            log_success "✅ Worker node validation passed!"
+        else
+            log_warn "⚠️  Some validation tests failed (see above)"
+        fi
+    else
+        log_warn "Validation script not found, skipping tests"
+    fi
+    
     echo
     print_summary
 }

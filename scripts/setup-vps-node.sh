@@ -158,5 +158,23 @@ echo "  Value: $PUBLIC_IP"
 echo "  TTL: 300"
 echo ""
 
+# Run validation tests
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  🔍 Validating VPS Edge Node Setup"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
+    if bash "$SCRIPT_DIR/lib/validate-installation.sh" vps-edge; then
+        log_success "✅ VPS validation passed!"
+    else
+        log_warn "⚠️  Some validation tests failed (see above)"
+    fi
+else
+    log_warn "Validation script not found, skipping tests"
+fi
+echo ""
+
 log_success "VPS node registration complete! 🎉"
 echo ""

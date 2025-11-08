@@ -78,29 +78,53 @@ echo ""
 # Register this laptop in sync controller
 CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 
-# Detect MyNodeOne repo path on control plane
-log_info "Detecting MyNodeOne path on control plane..."
-MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "find ~ /root /home/$CONTROL_PLANE_SSH_USER -maxdepth 2 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+# Check if we already have the path saved in config
+CONTROL_PLANE_REPO_PATH="${CONTROL_PLANE_REPO_PATH:-}"
 
-if [ -z "$MYNODEONE_PATH" ]; then
-    log_warn "Could not auto-detect MyNodeOne path on control plane"
-    log_info "Trying common locations..."
+if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
+    # Detect MyNodeOne repo path on control plane
+    log_info "Detecting MyNodeOne path on control plane..."
     
-    # Try common paths
-    for path in ~/MyNodeOne /root/MyNodeOne ~/Projects/mynodeone/code/MyNodeOne; do
-        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
-            MYNODEONE_PATH="$path"
-            break
+    # Search common locations (user-agnostic)
+    MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+    
+    if [ -z "$MYNODEONE_PATH" ]; then
+        log_warn "Could not auto-detect MyNodeOne path on control plane"
+        log_info "Trying standard locations..."
+        
+        # Try recommended and common paths
+        for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+            if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
+                MYNODEONE_PATH="$path"
+                break
+            fi
+        done
+    fi
+    
+    if [ -n "$MYNODEONE_PATH" ]; then
+        log_success "Found MyNodeOne at: $MYNODEONE_PATH"
+        
+        # Save the path for future use
+        if ! grep -q "CONTROL_PLANE_REPO_PATH" ~/.mynodeone/config.env 2>/dev/null; then
+            echo "CONTROL_PLANE_REPO_PATH=\"$MYNODEONE_PATH\"" >> ~/.mynodeone/config.env
+            log_info "Saved repo path to config for future use"
         fi
-    done
+        
+        CONTROL_PLANE_REPO_PATH="$MYNODEONE_PATH"
+    else
+        log_warn "Could not find MyNodeOne on control plane"
+        log_info "Skipping registry registration (can be done manually later)"
+        log_info ""
+        log_info "💡 Recommended: Install MyNodeOne at ~/MyNodeOne on control plane"
+    fi
 fi
 
-if [ -n "$MYNODEONE_PATH" ]; then
-    log_success "Found MyNodeOne at: $MYNODEONE_PATH"
+if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
+    log_info "Using MyNodeOne at: $CONTROL_PLANE_REPO_PATH"
     
     ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd '$MYNODEONE_PATH' && sudo ./scripts/lib/sync-controller.sh register management_laptops \
+        "cd '$CONTROL_PLANE_REPO_PATH' && sudo ./scripts/lib/sync-controller.sh register management_laptops \
         $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
     
     if [ $? -eq 0 ]; then
@@ -108,9 +132,6 @@ if [ -n "$MYNODEONE_PATH" ]; then
     else
         log_warn "Registration may have failed, continuing..."
     fi
-else
-    log_warn "Could not find MyNodeOne on control plane"
-    log_info "Skipping registry registration (can be done manually later)"
 fi
 
 echo ""

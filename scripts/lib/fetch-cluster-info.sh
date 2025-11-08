@@ -171,6 +171,28 @@ fetch_cluster_info() {
             echo "  • Domain: ${cluster_domain}.local"
             echo
             
+            # Detect MyNodeOne repo path on control plane
+            log_info "Detecting MyNodeOne repository path..."
+            local repo_path=""
+            repo_path=$(ssh "$ssh_user@$control_plane_ip" \
+                "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+            
+            if [ -z "$repo_path" ]; then
+                # Try standard locations
+                for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+                    if ssh "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
+                        repo_path="$path"
+                        break
+                    fi
+                done
+            fi
+            
+            if [ -n "$repo_path" ]; then
+                log_success "Found MyNodeOne at: $repo_path"
+            else
+                log_warn "Could not detect MyNodeOne path (will auto-detect later)"
+            fi
+            
             # Save to config
             mkdir -p "$CONFIG_DIR"
             
@@ -184,6 +206,11 @@ CLUSTER_DOMAIN="$cluster_domain"
 CONTROL_PLANE_IP="$control_plane_ip"
 CONTROL_PLANE_SSH_USER="$ssh_user"
 EOF
+            
+            # Add repo path if detected
+            if [ -n "$repo_path" ]; then
+                echo "CONTROL_PLANE_REPO_PATH=\"$repo_path\"" >> "$CONFIG_DIR/config.env"
+            fi
             
             log_success "Configuration saved to $CONFIG_DIR/config.env"
             return 0

@@ -364,6 +364,65 @@ sudo ./scripts/enable-security-hardening.sh
 
 ## Quick Start
 
+### 📁 Installation Location (Important!)
+
+**For best compatibility, install MyNodeOne at one of these recommended locations:**
+
+#### ✅ **Recommended (Works Everywhere)**
+
+```bash
+# Option 1: User home directory (RECOMMENDED)
+cd ~
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
+# This creates: /home/YOUR_USERNAME/MyNodeOne
+# ✅ Works with any username
+# ✅ Auto-detected by all scripts
+# ✅ Easiest for multi-user environments
+```
+
+```bash
+# Option 2: Root home directory (for root-only systems)
+cd /root
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
+# This creates: /root/MyNodeOne
+# ✅ Auto-detected by scripts
+# ✅ Good for dedicated servers
+```
+
+```bash
+# Option 3: System-wide installation (for shared systems)
+sudo mkdir -p /opt
+cd /opt
+sudo git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
+# This creates: /opt/MyNodeOne
+# ✅ Auto-detected by scripts
+# ✅ Accessible to all users
+# ✅ Follows Linux filesystem standards
+```
+
+#### 🟡 **Also Supported (Custom Paths)**
+
+You can install anywhere (e.g., `~/Projects/mynodeone/code/MyNodeOne`), but:
+- ✅ Scripts will auto-detect the path
+- ✅ Path is saved to config for reuse
+- ⏱️ May take slightly longer to detect on first run
+
+#### ❌ **Not Recommended**
+
+- Deep nested paths (>3 levels) - Slower auto-detection
+- Paths with spaces or special characters - May cause issues
+- Temporary directories - Repository needed long-term
+
+**💡 Tip:** Use `~/MyNodeOne` unless you have specific requirements. It's the simplest and most reliable option for all users.
+
+---
+
 ### Prerequisites
 
 > 💡 **Understanding Command Output:** Not sure if a command worked? Copy the output and ask ChatGPT, Gemini, or Claude: "Did this command succeed?" They can instantly help you understand what you're seeing!

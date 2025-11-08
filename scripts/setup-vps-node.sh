@@ -74,15 +74,18 @@ fi
 if [ -z "${PUBLIC_DOMAIN:-}" ]; then
     log_warn "PUBLIC_DOMAIN not set in ~/.mynodeone/config.env"
     echo ""
-    read -p "Enter your public domain (e.g., curiios.com): " user_domain
+    echo "A public domain is needed for SSL certificates and external access."
+    echo "You can set this up later if you don't have one yet."
+    echo ""
+    read -p "Enter your public domain (or press Enter to skip): " user_domain
     
     if [ -n "$user_domain" ]; then
         echo "PUBLIC_DOMAIN=\"$user_domain\"" >> ~/.mynodeone/config.env
         PUBLIC_DOMAIN="$user_domain"
-        log_success "Domain configured"
+        log_success "Domain configured: $PUBLIC_DOMAIN"
     else
-        log_error "Public domain required for VPS nodes"
-        exit 1
+        log_warn "Skipping domain configuration. You can add it later to ~/.mynodeone/config.env"
+        PUBLIC_DOMAIN=""
     fi
 fi
 

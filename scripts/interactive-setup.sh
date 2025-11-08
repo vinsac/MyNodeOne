@@ -661,10 +661,13 @@ CONTROL_PLANE_IP="$CONTROL_PLANE_IP"
 EOF
     fi
     
-    if [ "$NODE_TYPE" = "management" ] && [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
-        cat >> "$CONFIG_FILE" <<EOF
+    # Save SSH user for all non-control-plane nodes
+    if [ "$NODE_TYPE" = "worker" ] || [ "$NODE_TYPE" = "edge" ] || [ "$NODE_TYPE" = "management" ]; then
+        if [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
+            cat >> "$CONFIG_FILE" <<EOF
 CONTROL_PLANE_SSH_USER="$CONTROL_PLANE_SSH_USER"
 EOF
+        fi
     fi
 
     if [ "$NODE_TYPE" = "edge" ]; then

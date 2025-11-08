@@ -309,17 +309,19 @@ validate_vps_edge() {
         TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
     
-    # Domain registry
-    run_test "Can reach control plane" "kubectl get nodes" false
-    
-    if kubectl get configmap -n kube-system domain-registry &>/dev/null; then
-        log_success "Domain registry accessible"
+    # Control plane connectivity (optional - VPS edge nodes don't need kubectl)
+    echo
+    log_info "Testing control plane connectivity (optional)..."
+    if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null; then
+        log_success "Control plane accessible via kubectl"
         
-        local domains=$(kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo "{}")
-        local domain_count=$(echo "$domains" | jq 'length' 2>/dev/null || echo "0")
-        log_info "Domain registry has $domain_count registered domains"
+        if kubectl get configmap -n kube-system domain-registry &>/dev/null; then
+            local domains=$(kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo "{}")
+            local domain_count=$(echo "$domains" | jq 'length' 2>/dev/null || echo "0")
+            log_info "Domain registry has $domain_count registered domains"
+        fi
     else
-        log_warn "Domain registry not accessible"
+        log_info "kubectl not configured (not required for VPS edge nodes)"
     fi
     
     # Public IP

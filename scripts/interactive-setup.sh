@@ -374,10 +374,21 @@ configure_cluster_info() {
                 existing_cluster_name="${CLUSTER_NAME:-}"
                 existing_cluster_domain="${CLUSTER_DOMAIN:-}"
                 
+                # Preserve control plane info for management/worker/edge nodes
+                if [ -n "${CONTROL_PLANE_IP:-}" ]; then
+                    CONTROL_PLANE_IP="$CONTROL_PLANE_IP"
+                fi
+                if [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
+                    CONTROL_PLANE_SSH_USER="$CONTROL_PLANE_SSH_USER"
+                fi
+                
                 if [ -n "$existing_cluster_name" ] && [ -n "$existing_cluster_domain" ]; then
                     print_success "Successfully auto-detected cluster configuration!"
                     print_info "  Cluster: $existing_cluster_name"
                     print_info "  Domain: ${existing_cluster_domain}.local"
+                    if [ -n "${CONTROL_PLANE_IP:-}" ]; then
+                        print_info "  Control Plane: $CONTROL_PLANE_IP"
+                    fi
                     echo
                 fi
             fi
@@ -644,9 +655,15 @@ NODE_LOCATION="$NODE_LOCATION"
 TAILSCALE_IP="$TAILSCALE_IP"
 EOF
 
-    if [ "$NODE_TYPE" = "worker" ] || [ "$NODE_TYPE" = "edge" ]; then
+    if [ "$NODE_TYPE" = "worker" ] || [ "$NODE_TYPE" = "edge" ] || [ "$NODE_TYPE" = "management" ]; then
         cat >> "$CONFIG_FILE" <<EOF
 CONTROL_PLANE_IP="$CONTROL_PLANE_IP"
+EOF
+    fi
+    
+    if [ "$NODE_TYPE" = "management" ] && [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
+        cat >> "$CONFIG_FILE" <<EOF
+CONTROL_PLANE_SSH_USER="$CONTROL_PLANE_SSH_USER"
 EOF
     fi
 

@@ -110,7 +110,7 @@ fi
 log_info "Detected provider: $PROVIDER, region: $REGION"
 
 # Register VPS in multi-domain registry
-ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
     $TAILSCALE_IP $PUBLIC_IP $REGION $PROVIDER" 2>&1 | grep -v "Warning: Permanently added"
 
@@ -121,7 +121,7 @@ else
 fi
 
 # Register VPS in sync controller
-ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo ./scripts/lib/sync-controller.sh register vps_nodes \
     $TAILSCALE_IP $HOSTNAME root" 2>&1 | grep -v "Warning: Permanently added"
 

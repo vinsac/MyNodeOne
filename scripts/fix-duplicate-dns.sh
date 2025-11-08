@@ -1,10 +1,71 @@
 #!/bin/bash
 
 ###############################################################################
-# Fix Duplicate DNS Entries
+# Fix Duplicate DNS Entries - Migration & Troubleshooting Tool
 # 
-# Removes old DNS entries and rebuilds using enterprise registry
-# Fixes the issue where demo-chat-app and demoapp both exist
+# PURPOSE:
+#   Fixes systems that have duplicate DNS entries from old registration systems
+#   This was caused by two conflicting DNS registration methods running together:
+#     1. Old: configure-app-dns.sh (manual namespace-to-name mapping)
+#     2. New: Enterprise registry (automatic service detection)
+#
+# WHEN TO USE THIS SCRIPT:
+#   ✅ You see duplicate DNS entries for the same app
+#      Example: demo-chat-app.minicloud.local AND demoapp.minicloud.local
+#   ✅ You upgraded from a pre-enterprise-registry installation
+#   ✅ Apps are accessible via multiple URLs and you want to clean up
+#   ✅ You reinstalled control plane and got duplicates
+#
+# WHEN NOT TO USE THIS SCRIPT:
+#   ❌ Fresh installations (no duplicates will be created)
+#   ❌ System already using enterprise registry exclusively
+#   ❌ No DNS issues present
+#
+# WHAT THIS SCRIPT DOES:
+#   1. Backs up /etc/hosts
+#   2. Removes old "MyNodeOne Apps" section entries
+#   3. Removes standalone duplicate entries (demo-chat-app, demoapp)
+#   4. Syncs service registry from Kubernetes
+#   5. Exports clean DNS entries from enterprise registry
+#   6. Updates /etc/hosts with single, consistent entries
+#
+# USAGE:
+#   sudo ./scripts/fix-duplicate-dns.sh
+#
+# EXAMPLE SCENARIO:
+#   Before:
+#     100.76.150.207    demo-chat-app.minicloud.local  (from old system)
+#     100.76.150.207    demoapp.minicloud.local        (from configure-app-dns.sh)
+#     100.76.150.207    demo.minicloud.local           (from enterprise registry)
+#
+#   After:
+#     100.76.150.207    demo.minicloud.local           (single entry)
+#
+# REQUIREMENTS:
+#   - Enterprise registry must be set up (setup-enterprise-registry.sh)
+#   - kubectl access to cluster
+#   - sudo privileges (to edit /etc/hosts)
+#
+# SAFE TO RUN:
+#   ✅ Creates backup before making changes
+#   ✅ Can be run multiple times safely
+#   ✅ Only removes MyNodeOne-managed entries
+#   ✅ Does not affect other /etc/hosts entries
+#
+# TROUBLESHOOTING:
+#   If script fails:
+#     1. Check enterprise registry: kubectl get cm -n kube-system service-registry
+#     2. Verify apps running: kubectl get svc --all-namespaces
+#     3. Manual restore: sudo cp /etc/hosts.backup.* /etc/hosts
+#
+# SEE ALSO:
+#   - docs/OPERATIONS-GUIDE.md - DNS troubleshooting section
+#   - scripts/lib/service-registry.sh - Enterprise registry commands
+#   - scripts/sync-dns.sh - Regular DNS sync (after this fix)
+#
+# VERSION: 1.0 (Created: 2024-11-07)
+# MAINTENANCE: This script may be removed in future versions once all
+#              installations have migrated to enterprise registry.
 ###############################################################################
 
 set -e

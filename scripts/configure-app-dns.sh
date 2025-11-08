@@ -18,11 +18,17 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  ⚠️  DEPRECATION WARNING"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "This script is deprecated and may cause duplicate DNS entries."
+echo "This script is DEPRECATED and may cause duplicate DNS entries."
 echo ""
 echo "If you have enterprise registry installed, use instead:"
 echo "  sudo ./scripts/lib/service-registry.sh sync"
 echo "  sudo ./scripts/sync-dns.sh"
+echo ""
+echo "If you already have duplicate DNS entries, run:"
+echo "  sudo ./scripts/fix-duplicate-dns.sh"
+echo ""
+echo "NOTE: Fresh installations (Nov 2024+) don't need this script."
+echo "      It's only for legacy systems."
 echo ""
 read -p "Continue with old script anyway? [y/N]: " continue_old
 if [[ "$continue_old" != "y" ]] && [[ "$continue_old" != "Y" ]]; then

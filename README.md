@@ -105,7 +105,22 @@ sudo ./scripts/configure-domain-routing.sh <domain>        # Manage routing
 # MONITORING
 sudo ./scripts/lib/sync-controller.sh health               # Check all nodes
 sudo systemctl status mynodeone-sync-controller            # Sync controller status
+
+# TROUBLESHOOTING (Migration/Upgrade Tools)
+sudo ./scripts/fix-duplicate-dns.sh                        # Fix duplicate DNS entries
+                                                            # (Only needed if upgrading from old version)
 ```
+
+### Migration & Troubleshooting Tools
+
+**⚠️ Note:** These scripts are only needed for systems upgrading from older versions. **Fresh installations don't need these.**
+
+- **🔧 Fix Duplicate DNS** → `scripts/fix-duplicate-dns.sh`
+  - **Purpose:** Removes duplicate DNS entries from old registration system
+  - **When to use:** You see same app at multiple URLs (e.g., `demo.minicloud.local`, `demoapp.minicloud.local`)
+  - **Safe to run:** Creates backup, only removes MyNodeOne entries
+  - **Not needed for:** Fresh installations (Nov 2024+)
+  - **See:** [OPERATIONS-GUIDE.md - Duplicate DNS section](docs/OPERATIONS-GUIDE.md#issue-duplicate-dns-entries-same-app-multiple-urls)
 
 ---
 

@@ -499,6 +499,78 @@ sudo ufw status
 
 ---
 
+#### Issue: Duplicate DNS entries (same app, multiple URLs)
+
+**Symptoms:**
+- Same app accessible via multiple URLs
+- Example: `demo.minicloud.local`, `demoapp.minicloud.local`, `demo-chat-app.minicloud.local`
+- Caused by old and new DNS registration systems both running
+
+**When this happens:**
+- ✅ You upgraded from pre-enterprise-registry version
+- ✅ You reinstalled control plane and got duplicates
+- ✅ Both `configure-app-dns.sh` and enterprise registry ran
+
+**Check for duplicates:**
+```bash
+# Look for duplicate entries
+grep -E "(demo|immich|jellyfin)" /etc/hosts
+
+# Should see only ONE entry per app:
+100.76.150.207    demo.minicloud.local        # ✅ Good
+100.76.150.207    immich.minicloud.local      # ✅ Good
+
+# NOT multiple entries:
+100.76.150.207    demo-chat-app.minicloud.local  # ❌ Duplicate
+100.76.150.207    demoapp.minicloud.local        # ❌ Duplicate
+100.76.150.207    demo.minicloud.local           # ✅ Keep this
+```
+
+**Fix (One Command):**
+```bash
+# This removes old entries and rebuilds from enterprise registry
+sudo ./scripts/fix-duplicate-dns.sh
+```
+
+**What it does:**
+1. ✅ Backs up `/etc/hosts`
+2. ✅ Removes old duplicate entries
+3. ✅ Syncs enterprise registry
+4. ✅ Exports clean DNS entries
+5. ✅ Updates `/etc/hosts` with single entries
+
+**Manual fix (if needed):**
+```bash
+# 1. Delete problematic app
+kubectl delete namespace demo-apps
+
+# 2. Clean DNS
+sudo ./scripts/fix-duplicate-dns.sh
+
+# 3. Redeploy app
+sudo ./scripts/deploy-demo-app.sh
+```
+
+**Verify fix:**
+```bash
+# Should see single entry per app
+grep mycloud.local /etc/hosts
+
+# Test access (only one should work)
+curl http://demo.minicloud.local  # ✅ Should work
+curl http://demoapp.minicloud.local  # ❌ Should fail
+```
+
+**Prevention:**
+- ✅ Fresh installations won't have this issue (fixed as of 2024-11-07)
+- ✅ Use enterprise registry exclusively (automatic)
+- ✅ Don't run `configure-app-dns.sh` manually (deprecated)
+
+**Note:** This issue only affects systems upgraded from older versions.
+New installations use enterprise registry exclusively and won't have duplicates.
+
+---
+
 #### Issue: Sync controller not running
 
 **Check:**

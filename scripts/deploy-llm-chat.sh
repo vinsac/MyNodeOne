@@ -266,6 +266,25 @@ get_access_info() {
     if [ -z "$WEBUI_IP" ]; then
         log_warn "LoadBalancer IP not assigned yet. Check with: kubectl get svc -n llm-chat"
         WEBUI_IP="<pending>"
+        return
+    fi
+    
+    # Register in enterprise registry for DNS access
+    log_info "Registering in service registry..."
+    if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+        if bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+            "open-webui" "chat" "llm-chat" "open-webui" "80" "false" 2>/dev/null; then
+            log_success "Registered in service registry"
+            
+            # Get cluster domain
+            CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mycloud")
+            
+            # Trigger DNS sync on management laptops
+            log_info "DNS will be available at: http://chat.${CLUSTER_DOMAIN}.local"
+            log_info "Management laptops will auto-sync DNS on next sync"
+        else
+            log_warn "Could not register in service registry (DNS may not work)"
+        fi
     fi
 }
 

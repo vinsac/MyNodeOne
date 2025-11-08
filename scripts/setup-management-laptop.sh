@@ -151,6 +151,16 @@ fix_kubeconfig() {
             sudo chown root:root /root/.kube/config
             sudo chmod 600 /root/.kube/config
             
+            # Also update actual user's kubeconfig if running as sudo
+            if [ -n "${SUDO_USER:-}" ]; then
+                local user_home=$(eval echo ~$SUDO_USER)
+                sudo mkdir -p "$user_home/.kube"
+                sudo cp "$HOME/.kube/config" "$user_home/.kube/config"
+                sudo chown $SUDO_USER:$SUDO_USER "$user_home/.kube/config"
+                sudo chmod 600 "$user_home/.kube/config"
+                log_info "Updated kubeconfig for user: $SUDO_USER"
+            fi
+            
             log_success "Kubeconfig updated and validated"
             return 0
         else
@@ -341,9 +351,50 @@ install_kubectl() {
     return 0
 }
 
+# Clean up stale configs from previous installations
+cleanup_old_configs() {
+    log_info "Checking for stale configurations..."
+    local cleaned=0
+    
+    # Check if running as root/sudo
+    local actual_user="${SUDO_USER:-$USER}"
+    local user_home=$(eval echo ~$actual_user)
+    
+    # Clean user's old config if it exists and differs from root config
+    if [ -f "$user_home/.mynodeone/config.env" ]; then
+        # Backup old user config
+        local backup_file="$user_home/.mynodeone/config.env.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$user_home/.mynodeone/config.env" "$backup_file"
+        log_info "Backed up old user config to: $backup_file"
+        cleaned=$((cleaned + 1))
+    fi
+    
+    # Clean old kubeconfig if it exists
+    if [ -f "$user_home/.kube/config" ]; then
+        # Check if it points to wrong control plane
+        local old_server=$(grep "server:" "$user_home/.kube/config" 2>/dev/null | head -n 1 || echo "")
+        if [ -n "$old_server" ]; then
+            local backup_file="$user_home/.kube/config.backup.$(date +%Y%m%d_%H%M%S)"
+            cp "$user_home/.kube/config" "$backup_file"
+            log_info "Backed up old kubeconfig to: $backup_file"
+            cleaned=$((cleaned + 1))
+        fi
+    fi
+    
+    if [ $cleaned -gt 0 ]; then
+        log_success "Cleaned up $cleaned stale configuration(s)"
+    else
+        log_info "No stale configurations found"
+    fi
+}
+
 # Main setup function
 main() {
     print_header "Management Laptop Setup (Hardened)"
+    
+    # Clean up stale configs first
+    cleanup_old_configs
+    echo
     
     # Load configuration
     CONFIG_FILE="$HOME/.mynodeone/config.env"
@@ -460,6 +511,32 @@ main() {
         echo "  sudo ./scripts/setup-management-node.sh"
     fi
     echo
+    
+    # Sync configs to actual user (if running as sudo)
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        print_header "Step 8: Syncing Configs to User"
+        local user_home=$(eval echo ~$SUDO_USER)
+        
+        # Copy mynodeone config
+        if [ -f "/root/.mynodeone/config.env" ]; then
+            sudo mkdir -p "$user_home/.mynodeone"
+            sudo cp /root/.mynodeone/config.env "$user_home/.mynodeone/config.env"
+            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone"
+            log_success "Synced MyNodeOne config to $SUDO_USER"
+        fi
+        
+        # Copy kubeconfig
+        if [ -f "/root/.kube/config" ]; then
+            sudo mkdir -p "$user_home/.kube"
+            sudo cp /root/.kube/config "$user_home/.kube/config"
+            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube"
+            sudo chmod 600 "$user_home/.kube/config"
+            log_success "Synced kubeconfig to $SUDO_USER"
+        fi
+        
+        log_info "User $SUDO_USER can now run kubectl without sudo"
+        echo
+    fi
     
     # Final summary
     print_header "Setup Complete!"

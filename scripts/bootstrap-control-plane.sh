@@ -1152,6 +1152,53 @@ initialize_service_registries() {
     log_info "Syncing existing services to registry..."
     bash "$SCRIPT_DIR/lib/service-registry.sh" sync || true
     
+    # Register platform services in the registry
+    log_info "Registering platform services..."
+    
+    # Wait a moment for services to be fully ready
+    sleep 5
+    
+    # Register Grafana
+    if kubectl get svc -n monitoring kube-prometheus-stack-grafana &>/dev/null; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+            "kube-prometheus-stack-grafana" "grafana" "monitoring" \
+            "kube-prometheus-stack-grafana" "80" "false" 2>/dev/null || \
+            log_warn "Could not register Grafana (will retry later)"
+    fi
+    
+    # Register ArgoCD
+    if kubectl get svc -n argocd argocd-server &>/dev/null; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+            "argocd-server" "argocd" "argocd" \
+            "argocd-server" "80" "false" 2>/dev/null || \
+            log_warn "Could not register ArgoCD (will retry later)"
+    fi
+    
+    # Register MinIO Console
+    if kubectl get svc -n minio minio-console &>/dev/null; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+            "minio-console" "minio" "minio" \
+            "minio-console" "9001" "false" 2>/dev/null || \
+            log_warn "Could not register MinIO (will retry later)"
+    fi
+    
+    # Register Longhorn (if LoadBalancer type)
+    if kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.spec.type}' 2>/dev/null | grep -q "LoadBalancer"; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+            "longhorn-frontend" "longhorn" "longhorn-system" \
+            "longhorn-frontend" "80" "false" 2>/dev/null || \
+            log_warn "Could not register Longhorn (will retry later)"
+    fi
+    
+    # Register Dashboard
+    if kubectl get svc -n mynodeone-dashboard dashboard &>/dev/null; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+            "dashboard" "${CLUSTER_DOMAIN}" "mynodeone-dashboard" \
+            "dashboard" "80" "false" 2>/dev/null || \
+            log_warn "Could not register Dashboard (will retry later)"
+    fi
+    
+    log_success "Platform services registered in service registry"
     log_success "Service registry initialized"
     
     # Install sync controller as systemd service

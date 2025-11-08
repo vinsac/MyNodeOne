@@ -314,58 +314,37 @@ test_cluster_connection() {
 }
 
 fetch_service_ips() {
-    log_info "Retrieving service IPs..."
-    
-    GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    MINIO_API_IP=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    
-    if [ -z "$GRAFANA_IP" ]; then
-        log_warn "Services not fully ready yet, will use IPs when available"
-        return
-    fi
-    
-    log_success "Service IPs retrieved"
+    # Deprecated: Service IPs are now managed by service registry
+    # Kept for backwards compatibility but does nothing
+    :
 }
 
 setup_local_dns() {
-    print_header "Local DNS Setup (Optional)"
+    print_header "Local DNS Setup"
     
-    echo "Would you like to set up .local domain names for easy access?"
+    echo "Setting up .local domain names for easy access..."
     echo "This allows you to use names like grafana.${CLUSTER_DOMAIN}.local instead of IPs."
     echo
     read -p "Set up local DNS? [Y/n]: " -r
     
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        if [ -z "$GRAFANA_IP" ]; then
-            log_warn "Service IPs not available yet. Run this after services are ready:"
-            echo "  kubectl get svc -A | grep LoadBalancer"
-            echo
-            echo "Then add to /etc/hosts manually or re-run this script"
+        log_info "Syncing DNS from service registry..."
+        
+        # Use centralized DNS sync script
+        if [ -f "$SCRIPT_DIR/sync-dns.sh" ]; then
+            bash "$SCRIPT_DIR/sync-dns.sh" || {
+                log_warn "DNS sync failed, you can retry later with:"
+                echo "  sudo $SCRIPT_DIR/sync-dns.sh"
+                return
+            }
+        else
+            log_error "DNS sync script not found at: $SCRIPT_DIR/sync-dns.sh"
+            log_info "Manual sync: Run 'sudo ./scripts/sync-dns.sh' from MyNodeOne directory"
             return
         fi
         
-        log_info "Adding entries to /etc/hosts..."
-        
-        # Backup hosts file
-        sudo cp /etc/hosts /etc/hosts.bak.$(date +%Y%m%d_%H%M%S)
-        
-        # Remove old entries
-        sudo sed -i.tmp '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
-        
-        # Add new entries
-        echo "" | sudo tee -a /etc/hosts > /dev/null
-        echo "# MyNodeOne services" | sudo tee -a /etc/hosts > /dev/null
-        echo "${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local" | sudo tee -a /etc/hosts > /dev/null
-        echo "# End MyNodeOne services" | sudo tee -a /etc/hosts > /dev/null
-        
-        log_success "Local DNS configured"
+        log_success "Local DNS configured from service registry"
+        log_info "All services (platform + apps) are now accessible via .local domains"
         USE_LOCAL_DNS=true
     else
         USE_LOCAL_DNS=false

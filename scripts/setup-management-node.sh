@@ -82,29 +82,41 @@ CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 CONTROL_PLANE_REPO_PATH="${CONTROL_PLANE_REPO_PATH:-}"
 
 if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
-    # Detect MyNodeOne repo path on control plane
-    log_info "Detecting MyNodeOne path on control plane..."
+    # Try to get authoritative path from cluster configmap first
+    log_info "Fetching MyNodeOne path from cluster config..."
     
-    # Search common locations (user-agnostic)
     MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+        "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>/dev/null" || echo "")
     
-    if [ -z "$MYNODEONE_PATH" ]; then
-        log_warn "Could not auto-detect MyNodeOne path on control plane"
-        log_info "Trying standard locations..."
+    if [ -n "$MYNODEONE_PATH" ]; then
+        log_success "Found authoritative path from cluster: $MYNODEONE_PATH"
+    else
+        # Fallback: search filesystem (for backwards compatibility)
+        log_info "No path in cluster config, searching filesystem..."
         
-        # Try recommended and common paths
-        for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
-            if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
-                MYNODEONE_PATH="$path"
-                break
-            fi
-        done
+        # Search common locations (user-agnostic)
+        MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+            "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+        
+        if [ -z "$MYNODEONE_PATH" ]; then
+            log_warn "Could not auto-detect MyNodeOne path on control plane"
+            log_info "Trying standard locations..."
+            
+            # Try recommended and common paths
+            for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+                if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
+                    MYNODEONE_PATH="$path"
+                    break
+                fi
+            done
+        fi
+        
+        if [ -n "$MYNODEONE_PATH" ]; then
+            log_success "Found MyNodeOne at: $MYNODEONE_PATH"
+        fi
     fi
     
     if [ -n "$MYNODEONE_PATH" ]; then
-        log_success "Found MyNodeOne at: $MYNODEONE_PATH"
-        
         # Save the path for future use
         if ! grep -q "CONTROL_PLANE_REPO_PATH" ~/.mynodeone/config.env 2>/dev/null; then
             echo "CONTROL_PLANE_REPO_PATH=\"$MYNODEONE_PATH\"" >> ~/.mynodeone/config.env

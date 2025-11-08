@@ -1095,15 +1095,20 @@ deploy_dashboard() {
 create_cluster_info() {
     log_info "Creating cluster information configmap..."
     
+    # Get absolute path to MyNodeOne repository
+    REPO_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    
     # Create configmap with cluster metadata for management laptops and workers to discover
     kubectl create configmap cluster-info \
         --from-literal=cluster-name="$CLUSTER_NAME" \
         --from-literal=cluster-domain="$CLUSTER_DOMAIN" \
         --from-literal=control-plane-ip="$TAILSCALE_IP" \
+        --from-literal=repo-path="$REPO_PATH" \
         --namespace=kube-system \
         --dry-run=client -o yaml | kubectl apply -f -
     
     log_success "Cluster info configmap created"
+    log_info "Repository path saved: $REPO_PATH"
 }
 
 create_cluster_token() {

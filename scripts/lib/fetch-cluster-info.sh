@@ -171,26 +171,40 @@ fetch_cluster_info() {
             echo "  • Domain: ${cluster_domain}.local"
             echo
             
-            # Detect MyNodeOne repo path on control plane
-            log_info "Detecting MyNodeOne repository path..."
+            # Fetch MyNodeOne repo path from authoritative cluster config
+            log_info "Fetching MyNodeOne repository path from cluster..."
             local repo_path=""
-            repo_path=$(ssh "$ssh_user@$control_plane_ip" \
-                "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
             
-            if [ -z "$repo_path" ]; then
-                # Try standard locations
-                for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
-                    if ssh "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
-                        repo_path="$path"
-                        break
-                    fi
-                done
+            # Try to get from cluster configmap (authoritative source)
+            if [ -z "$sudo_password" ]; then
+                repo_path=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
+            else
+                repo_path=$(ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null | grep -v "^\[sudo\]" || echo "")
             fi
             
             if [ -n "$repo_path" ]; then
-                log_success "Found MyNodeOne at: $repo_path"
+                log_success "Found authoritative path: $repo_path"
             else
-                log_warn "Could not detect MyNodeOne path (will auto-detect later)"
+                # Fallback: search filesystem (for backwards compatibility with older clusters)
+                log_info "No path in cluster config, searching filesystem..."
+                repo_path=$(ssh "$ssh_user@$control_plane_ip" \
+                    "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+                
+                if [ -z "$repo_path" ]; then
+                    # Try standard locations
+                    for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+                        if ssh "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
+                            repo_path="$path"
+                            break
+                        fi
+                    done
+                fi
+                
+                if [ -n "$repo_path" ]; then
+                    log_success "Found MyNodeOne at: $repo_path"
+                else
+                    log_warn "Could not detect MyNodeOne path (will auto-detect later)"
+                fi
             fi
             
             # Save to config

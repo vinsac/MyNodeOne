@@ -50,7 +50,13 @@ source ~/.mynodeone/config.env
 
 # Get VPS details
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
-PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || echo "")
+# Prefer configured VPS_PUBLIC_IP, otherwise auto-detect IPv4
+if [ -n "${VPS_PUBLIC_IP:-}" ]; then
+    PUBLIC_IP="$VPS_PUBLIC_IP"
+else
+    # Force IPv4 with -4 flag
+    PUBLIC_IP=$(curl -4 -s ifconfig.me 2>/dev/null || curl -s ipv4.icanhazip.com 2>/dev/null || echo "")
+fi
 HOSTNAME=$(hostname)
 
 if [ -z "$TAILSCALE_IP" ]; then

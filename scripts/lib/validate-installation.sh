@@ -284,19 +284,29 @@ validate_worker_node() {
 validate_vps_edge() {
     print_header "VPS Edge Node Validation"
     
-    # Cloudflared
-    run_test "cloudflared installed" "command -v cloudflared" true
-    run_test "cloudflared service running" "systemctl is-active cloudflared" true
+    # Docker and Traefik
+    run_test "Docker installed" "command -v docker" true
+    run_test "Docker running" "systemctl is-active docker" true
     
-    # Tunnel configuration
-    if [ -f ~/.cloudflared/config.yml ]; then
-        log_success "Cloudflare tunnel configured"
+    # Check Traefik container
+    if docker ps --format '{{.Names}}' | grep -q traefik; then
+        log_success "Traefik container running"
         
-        # Check ingress rules
-        local ingress_count=$(grep -c 'hostname:' ~/.cloudflared/config.yml 2>/dev/null || echo "0")
-        log_info "Tunnel has $ingress_count ingress rules"
+        # Check Traefik configuration
+        if [ -f /etc/traefik/traefik.yml ]; then
+            log_success "Traefik configuration found"
+        else
+            log_warn "Traefik config not found at /etc/traefik/traefik.yml"
+        fi
+        
+        # Check dynamic routes
+        if [ -d /etc/traefik/dynamic ]; then
+            local route_count=$(find /etc/traefik/dynamic -name "*.yml" | wc -l)
+            log_info "Found $route_count route configuration files"
+        fi
     else
-        log_warn "Cloudflare tunnel config not found"
+        log_error "Traefik container not running"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
     
     # Domain registry

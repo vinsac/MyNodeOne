@@ -181,11 +181,19 @@ validate_management_laptop() {
     
     for subdomain in grafana argocd minio longhorn "${cluster_domain}"; do
         dns_tests=$((dns_tests + 1))
-        if getent hosts "${subdomain}.${cluster_domain}.local" &>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} ${subdomain}.${cluster_domain}.local"
+        
+        # Special case: dashboard is at root domain (e.g., minicloud.local, not minicloud.minicloud.local)
+        if [ "$subdomain" = "$cluster_domain" ]; then
+            local test_domain="${cluster_domain}.local"
+        else
+            local test_domain="${subdomain}.${cluster_domain}.local"
+        fi
+        
+        if getent hosts "$test_domain" &>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} $test_domain"
             dns_passed=$((dns_passed + 1))
         else
-            echo -e "  ${RED}✗${NC} ${subdomain}.${cluster_domain}.local"
+            echo -e "  ${RED}✗${NC} $test_domain"
         fi
     done
     
@@ -205,17 +213,25 @@ validate_management_laptop() {
     local http_tests=0
     local http_passed=0
     
-    for service in "grafana" "dashboard"; do
-        local url="http://${service}.${cluster_domain}.local"
-        http_tests=$((http_tests + 1))
-        
-        if curl -s -f -m 5 "$url" &>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} $url"
-            http_passed=$((http_passed + 1))
-        else
-            echo -e "  ${YELLOW}⚠${NC} $url (may not be ready yet)"
-        fi
-    done
+    # Test grafana
+    local url="http://grafana.${cluster_domain}.local"
+    http_tests=$((http_tests + 1))
+    if curl -s -f -m 5 "$url" &>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} $url"
+        http_passed=$((http_passed + 1))
+    else
+        echo -e "  ${YELLOW}⚠${NC} $url (may not be ready yet)"
+    fi
+    
+    # Test dashboard (at root domain)
+    url="http://${cluster_domain}.local"
+    http_tests=$((http_tests + 1))
+    if curl -s -f -m 5 "$url" &>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} $url"
+        http_passed=$((http_passed + 1))
+    else
+        echo -e "  ${YELLOW}⚠${NC} $url (may not be ready yet)"
+    fi
     
     if [ $http_passed -gt 0 ]; then
         log_success "HTTP access working ($http_passed/$http_tests services reachable)"

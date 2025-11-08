@@ -78,14 +78,39 @@ echo ""
 # Register this laptop in sync controller
 CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 
-ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "cd ~/MyNodeOne && sudo ./scripts/lib/sync-controller.sh register management_laptops \
-    $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
+# Detect MyNodeOne repo path on control plane
+log_info "Detecting MyNodeOne path on control plane..."
+MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    "find ~ /root /home/$CONTROL_PLANE_SSH_USER -maxdepth 2 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
 
-if [ $? -eq 0 ]; then
-    log_success "Laptop registered in sync controller"
+if [ -z "$MYNODEONE_PATH" ]; then
+    log_warn "Could not auto-detect MyNodeOne path on control plane"
+    log_info "Trying common locations..."
+    
+    # Try common paths
+    for path in ~/MyNodeOne /root/MyNodeOne ~/Projects/mynodeone/code/MyNodeOne; do
+        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
+            MYNODEONE_PATH="$path"
+            break
+        fi
+    done
+fi
+
+if [ -n "$MYNODEONE_PATH" ]; then
+    log_success "Found MyNodeOne at: $MYNODEONE_PATH"
+    
+    ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "cd '$MYNODEONE_PATH' && sudo ./scripts/lib/sync-controller.sh register management_laptops \
+        $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
+    
+    if [ $? -eq 0 ]; then
+        log_success "Laptop registered in sync controller"
+    else
+        log_warn "Registration may have failed, continuing..."
+    fi
 else
-    log_warn "Registration may have failed, continuing..."
+    log_warn "Could not find MyNodeOne on control plane"
+    log_info "Skipping registry registration (can be done manually later)"
 fi
 
 echo ""

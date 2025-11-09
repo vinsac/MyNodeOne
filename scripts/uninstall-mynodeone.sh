@@ -440,7 +440,7 @@ if [ "$KEEP_CONFIG" = false ]; then
     
     # Remove user configs if running as sudo
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        local user_home=$(eval echo ~$SUDO_USER)
+        user_home=$(eval echo ~$SUDO_USER)
         
         if [ -d "$user_home/.mynodeone" ]; then
             rm -rf "$user_home/.mynodeone"

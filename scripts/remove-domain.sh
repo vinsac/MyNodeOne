@@ -166,11 +166,10 @@ domains_json=$(kubectl get configmap -n kube-system domain-registry \
 
 new_domains_json=$(echo "$domains_json" | jq "del(.[\"$DOMAIN\"])")
 
-kubectl create configmap domain-registry \
+kubectl patch configmap domain-registry \
     -n kube-system \
-    --from-literal=domains.json="$new_domains_json" \
-    --dry-run=client -o yaml | \
-    kubectl apply -f - &>/dev/null
+    --type merge \
+    -p "{\"data\":{\"domains.json\":\"$(echo "$new_domains_json" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
 
 log_success "Domain removed from registry"
 

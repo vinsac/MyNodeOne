@@ -150,10 +150,10 @@ make_public() {
         --arg service "$service_name" \
         '.[$service].public = true')
     
-    if ! kubectl create configmap service-registry \
+    if ! kubectl patch configmap service-registry \
         -n kube-system \
-        --from-literal=services.json="$updated_services" \
-        --dry-run=client -o yaml | kubectl apply -f - &>/dev/null; then
+        --type merge \
+        -p "{\"data\":{\"services.json\":\"$(echo "$updated_services" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" &>/dev/null; then
         log_error "Failed to update service registry"
         return 1
     fi
@@ -211,10 +211,10 @@ make_private() {
         --arg service "$service_name" \
         '.[$service].public = false')
     
-    if ! kubectl create configmap service-registry \
+    if ! kubectl patch configmap service-registry \
         -n kube-system \
-        --from-literal=services.json="$updated_services" \
-        --dry-run=client -o yaml | kubectl apply -f - &>/dev/null; then
+        --type merge \
+        -p "{\"data\":{\"services.json\":\"$(echo "$updated_services" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" &>/dev/null; then
         log_error "Failed to update service registry"
         return 1
     fi
@@ -229,10 +229,10 @@ make_private() {
     
     local updated_routing=$(echo "$routing" | jq "del(.[\"$service_name\"])")
     
-    if kubectl create configmap domain-registry \
+    if kubectl patch configmap domain-registry \
         -n kube-system \
-        --from-literal=routing.json="$updated_routing" \
-        --dry-run=client -o yaml | kubectl apply -f - &>/dev/null; then
+        --type merge \
+        -p "{\"data\":{\"routing.json\":\"$(echo "$updated_routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" &>/dev/null; then
         log_success "Removed from routing"
     else
         log_warn "Could not update routing (may not have been configured)"

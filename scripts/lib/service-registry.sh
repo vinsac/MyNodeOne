@@ -85,11 +85,11 @@ register_service() {
             updated: now | todate
         }')
     
-    # Update configmap
-    kubectl create configmap service-registry \
+    # Update configmap using patch to preserve other fields
+    kubectl patch configmap service-registry \
         -n kube-system \
-        --from-literal=services.json="$registry" \
-        --dry-run=client -o yaml | kubectl apply -f -
+        --type merge \
+        -p "{\"data\":{\"services.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
     
     log_success "Registered: $subdomain → $ip"
     

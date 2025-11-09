@@ -48,36 +48,43 @@ fi
 
 source ~/.mynodeone/config.env
 
-# Detect current user (needed throughout script)
-CURRENT_VPS_USER=$(whoami)
-log_info "Running as user: $CURRENT_VPS_USER"
-
-# Security check: warn if running as root
-if [ "$CURRENT_VPS_USER" = "root" ]; then
-    log_warn "⚠️  Running as root user detected!"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔒 Security Best Practice"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "For production VPS servers, it's recommended to:"
-    echo "  1. Create a dedicated sudo user instead of using root"
-    echo "  2. Disable root SSH login"
-    echo ""
-    echo "To create a sudo user, run these commands:"
-    echo "  sudo adduser mynodeone"
-    echo "  sudo usermod -aG sudo mynodeone"
-    echo "  su - mynodeone"
-    echo ""
-    echo "Then run this script again as the new user."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    read -p "Continue as root anyway? [y/N]: " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Please create a sudo user and run again"
-        exit 0
+# Detect the ACTUAL user (not the sudo-elevated user)
+# When running with sudo, $SUDO_USER contains the real user
+if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    CURRENT_VPS_USER="$SUDO_USER"
+    log_info "Running as user: $CURRENT_VPS_USER (via sudo)"
+    log_success "✓ Using actual user '$CURRENT_VPS_USER' for SSH access (not root)"
+else
+    CURRENT_VPS_USER=$(whoami)
+    log_info "Running as user: $CURRENT_VPS_USER"
+    
+    # Security check: warn if actually logged in as root
+    if [ "$CURRENT_VPS_USER" = "root" ]; then
+        log_warn "⚠️  Logged in as root user!"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  🔒 Security Best Practice"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "For production VPS servers, it's recommended to:"
+        echo "  1. Create a dedicated sudo user instead of using root"
+        echo "  2. Disable root SSH login"
+        echo ""
+        echo "To create a sudo user, run these commands:"
+        echo "  sudo adduser mynodeone"
+        echo "  sudo usermod -aG sudo mynodeone"
+        echo "  su - mynodeone"
+        echo ""
+        echo "Then run this script again as the new user."
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        read -p "Continue as root anyway? [y/N]: " -r
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Please create a sudo user and run again"
+            exit 0
+        fi
+        echo ""
     fi
-    echo ""
 fi
 
 # Get VPS details

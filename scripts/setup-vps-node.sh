@@ -126,6 +126,21 @@ else
     log_warn "VPS registration may have failed, continuing..."
 fi
 
+# Register domain in cluster if PUBLIC_DOMAIN is configured
+if [ -n "$PUBLIC_DOMAIN" ]; then
+    log_info "Registering domain in cluster: $PUBLIC_DOMAIN"
+    
+    ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-domain \
+        $PUBLIC_DOMAIN 'VPS edge node domain'" 2>&1 | grep -v "Warning: Permanently added"
+    
+    if [ $? -eq 0 ]; then
+        log_success "Domain registered in cluster: $PUBLIC_DOMAIN"
+    else
+        log_warn "Domain registration may have failed, continuing..."
+    fi
+fi
+
 # Register VPS in sync controller
 ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo ./scripts/lib/sync-controller.sh register vps_nodes \

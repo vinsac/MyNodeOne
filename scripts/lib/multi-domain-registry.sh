@@ -256,16 +256,25 @@ export_vps_routing() {
     
     while IFS= read -r service; do
         local svc_info=$(echo "$services" | jq -r ".\"$service\"")
+        local svc_ip=$(echo "$svc_info" | jq -r '.ip')
         local port=$(echo "$svc_info" | jq -r '.port')
         
         if [[ "$port" == "null" ]]; then
             continue
         fi
         
+        # Use service LoadBalancer IP if available, otherwise fallback to control plane
+        local backend_url
+        if [[ "$svc_ip" != "null" ]] && [[ -n "$svc_ip" ]]; then
+            backend_url="http://${svc_ip}:${port}"
+        else
+            backend_url="http://${control_plane_ip}:${port}"
+        fi
+        
         echo "    ${service}-service:"
         echo "      loadBalancer:"
         echo "        servers:"
-        echo "          - url: \"http://${control_plane_ip}:${port}\""
+        echo "          - url: \"${backend_url}\""
         echo ""
     done <<< "$unique_services"
     

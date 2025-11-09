@@ -193,6 +193,11 @@ check_dependencies() {
         fi
     done
     
+    # Check for python3-yaml (used for YAML validation)
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        missing+=("python3-yaml")
+    fi
+    
     if [ ${#missing[@]} -gt 0 ]; then
         print_error "Missing required dependencies: ${missing[*]}"
         echo

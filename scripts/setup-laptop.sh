@@ -441,6 +441,41 @@ print_summary() {
     echo
 }
 
+configure_passwordless_sudo() {
+    log_info "Configuring passwordless sudo for automation..."
+    
+    local current_user=$(whoami)
+    
+    # Check if already configured
+    if sudo -n true 2>/dev/null; then
+        log_success "Passwordless sudo already configured for $current_user"
+        return 0
+    fi
+    
+    log_info "Setting up passwordless sudo for user: $current_user"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Passwordless Sudo Configuration"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "This allows MyNodeOne scripts to run without password prompts."
+    echo "You'll be prompted for your sudo password ONE LAST TIME."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # Create sudoers rule
+    echo "$current_user ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/${current_user}-nopasswd" > /dev/null
+    sudo chmod 0440 "/etc/sudoers.d/${current_user}-nopasswd"
+    
+    # Verify it works
+    if sudo -n true 2>/dev/null; then
+        log_success "Passwordless sudo configured successfully"
+    else
+        log_warn "Could not verify passwordless sudo, continuing anyway..."
+    fi
+    echo ""
+}
+
 main() {
     print_header "MyNodeOne Laptop Setup"
     
@@ -449,6 +484,7 @@ main() {
     echo
     
     check_requirements
+    configure_passwordless_sudo
     configure_tailscale_routes
     get_control_plane_info
     test_ssh_connection

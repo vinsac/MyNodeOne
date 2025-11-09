@@ -48,6 +48,38 @@ fi
 
 source ~/.mynodeone/config.env
 
+# Detect current user (needed throughout script)
+CURRENT_VPS_USER=$(whoami)
+log_info "Running as user: $CURRENT_VPS_USER"
+
+# Security check: warn if running as root
+if [ "$CURRENT_VPS_USER" = "root" ]; then
+    log_warn "⚠️  Running as root user detected!"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔒 Security Best Practice"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "For production VPS servers, it's recommended to:"
+    echo "  1. Create a dedicated sudo user instead of using root"
+    echo "  2. Disable root SSH login"
+    echo ""
+    echo "To create a sudo user, run these commands:"
+    echo "  sudo adduser mynodeone"
+    echo "  sudo usermod -aG sudo mynodeone"
+    echo "  su - mynodeone"
+    echo ""
+    echo "Then run this script again as the new user."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    read -p "Continue as root anyway? [y/N]: " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Please create a sudo user and run again"
+        exit 0
+    fi
+    echo ""
+fi
+
 # Get VPS details
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 # Prefer configured VPS_PUBLIC_IP, otherwise auto-detect IPv4
@@ -282,10 +314,7 @@ fi
 
 # Register VPS in sync controller (uses new registry manager)
 log_info "Registering VPS in sync controller..."
-
-# Detect current user (never assume root)
-CURRENT_VPS_USER=$(whoami)
-log_info "Detected VPS user: $CURRENT_VPS_USER"
+log_info "Using VPS user: $CURRENT_VPS_USER"
 
 ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \

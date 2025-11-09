@@ -343,13 +343,50 @@ sudo ./scripts/mynodeone
 
 **Add VPS Edge Nodes:**
 
-On each VPS:
+#### 🔒 Security Best Practice: Create Sudo User (RECOMMENDED)
+
+Before installing MyNodeOne on your VPS, create a dedicated sudo user instead of using root:
+
+```bash
+# 1. SSH to your VPS as root (or existing user)
+ssh root@your-vps-ip
+
+# 2. Create a new user (choose any username, e.g., mynodeone, yourname_vps, etc.)
+sudo adduser mynodeone
+
+# 3. Add user to sudo group
+sudo usermod -aG sudo mynodeone
+
+# 4. Switch to the new user
+su - mynodeone
+
+# 5. Verify sudo access
+sudo whoami
+# Should output: root
+```
+
+**Why this matters:**
+- ✅ **Security:** Running as root exposes your VPS to greater risk
+- ✅ **Best Practice:** Industry standard for production servers
+- ✅ **Safety:** Limits damage from accidental commands
+- ✅ **Audit Trail:** Easier to track actions with named users
+
+**What the installer does:**
+- If running as root, it will **warn you** and give you a chance to create a sudo user
+- You can continue as root if needed (for testing), but it's not recommended for production
+
+---
+
+#### Installing MyNodeOne on VPS
+
+On each VPS (as your sudo user):
 
 ```bash
 # Same process as above, but select "VPS Edge Node"
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 sudo ./scripts/mynodeone
+# Select option 3 (VPS Edge Node) when prompted
 ```
 
 ### Configure VPS Edge Nodes

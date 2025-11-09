@@ -138,7 +138,7 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
     # Register using new registry manager (auto-detects user, validates in ConfigMap)
     log_info "Registering in enterprise registry..."
     ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd '$CONTROL_PLANE_REPO_PATH' && ./scripts/lib/node-registry-manager.sh register management_laptops \
+        "cd '$CONTROL_PLANE_REPO_PATH' && sudo ./scripts/lib/node-registry-manager.sh register management_laptops \
         $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
     
     if [ $? -eq 0 ]; then
@@ -147,7 +147,7 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
         # VALIDATION: Verify registration in ConfigMap
         log_info "Validating registration..."
         LAPTOP_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-            "kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.management_laptops[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
+            "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.management_laptops[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
         
         if [ "$LAPTOP_CHECK" = "$USERNAME" ]; then
             log_success "✓ Registration verified in ConfigMap"

@@ -164,13 +164,59 @@ else
         chmod 600 ~/.ssh/authorized_keys
         
         # Verify reverse SSH works (control plane -> VPS)
-        log_info "Verifying reverse SSH access..."
-        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 root@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
-            log_success "Bidirectional passwordless SSH verified ✓"
+        log_info "Verifying bidirectional SSH access..."
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  🔐 Reverse SSH Verification"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "Testing SSH connection from control plane → VPS..."
+        echo "The control plane needs to SSH back to this VPS for route sync."
+        echo ""
+        
+        # Try reverse SSH with automatic yes to known_hosts
+        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
+            log_success "✓ Bidirectional SSH verified (control plane ↔ VPS)"
         else
-            log_warn "Reverse SSH verification failed, but continuing..."
-            log_warn "Control plane may need to add VPS to known_hosts"
+            log_warn "⚠ Reverse SSH verification failed"
+            echo ""
+            echo "This may be due to SSH host key verification on the control plane."
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  📋 Manual Fix Required on Control Plane"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "On your control plane ($CONTROL_PLANE_IP), run:"
+            echo ""
+            echo "  ssh -o StrictHostKeyChecking=accept-new $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
+            echo ""
+            echo "This will add the VPS to known_hosts and verify SSH access."
+            echo ""
+            
+            # Give user option to fix it now
+            read -p "Do you want to fix this now? [Y/n]: " -r
+            if [[ $REPLY =~ ^[Nn]$ ]]; then
+                log_warn "Skipping reverse SSH verification"
+                log_warn "Route sync may require manual intervention later"
+            else
+                echo ""
+                echo "Please switch to your control plane terminal and run the command above."
+                echo "When done, press Enter to verify..."
+                read -r
+                
+                # Test again
+                if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
+                    log_success "✓ Reverse SSH now working!"
+                else
+                    log_error "✗ Reverse SSH still not working"
+                    log_warn "Continuing anyway - you can fix this later"
+                    echo ""
+                    echo "Manual fix command (on control plane):"
+                    echo "  ssh $CURRENT_VPS_USER@$TAILSCALE_IP"
+                fi
+            fi
         fi
+        echo ""
     else
         log_warn "Could not install SSH key automatically"
         log_warn "You will be prompted for passwords during setup"

@@ -221,7 +221,7 @@ if [ -n "$PUBLIC_DOMAIN" ]; then
         # VALIDATION: Verify domain was actually registered
         log_info "Validating domain registration..."
         DOMAIN_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-            "kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
+            "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
         
         if [ "$DOMAIN_CHECK" = "true" ]; then
             log_success "✓ Domain registration verified in ConfigMap"
@@ -242,7 +242,7 @@ CURRENT_VPS_USER=$(whoami)
 log_info "Detected VPS user: $CURRENT_VPS_USER"
 
 ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "cd ~/MyNodeOne && SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \
+    "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \
     $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER" 2>&1 | grep -v "Warning: Permanently added"
 
 if [ $? -eq 0 ]; then
@@ -251,7 +251,7 @@ if [ $? -eq 0 ]; then
     # VALIDATION: Verify VPS was actually registered
     log_info "Validating VPS registration..."
     VPS_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
+        "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
     
     if [ "$VPS_CHECK" = "$CURRENT_VPS_USER" ]; then
         log_success "✓ VPS registration verified in ConfigMap"

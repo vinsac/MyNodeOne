@@ -32,70 +32,39 @@ log_error() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.mynodeone"
-NODE_REGISTRY="$CONFIG_DIR/node-registry.json"
+REGISTRY_MANAGER="$SCRIPT_DIR/node-registry-manager.sh"
 
-# Initialize node registry
+# Initialize node registry (uses new registry manager)
 init_node_registry() {
-    mkdir -p "$CONFIG_DIR"
-    
-    if [[ ! -f "$NODE_REGISTRY" ]]; then
-        cat > "$NODE_REGISTRY" << 'EOF'
-{
-  "management_laptops": [],
-  "vps_nodes": [],
-  "worker_nodes": []
-}
-EOF
-        log_success "Node registry initialized"
+    # Sync from ConfigMap to ensure we have latest data
+    if [[ -f "$REGISTRY_MANAGER" ]]; then
+        "$REGISTRY_MANAGER" sync-from || {
+            log_warn "Failed to sync from ConfigMap, initializing..."
+            "$REGISTRY_MANAGER" init || return 1
+        }
+        log_success "Node registry initialized from ConfigMap"
+    else
+        log_error "Registry manager not found: $REGISTRY_MANAGER"
+        return 1
     fi
 }
 
-# Register a node for sync
+# Register a node for sync (delegates to registry manager)
 register_node() {
     local node_type="$1"  # management_laptops, vps_nodes, worker_nodes
     local node_ip="$2"
     local node_name="${3:-}"
-    local ssh_user="${4:-root}"
+    local ssh_user="${4:-}"
     local webhook_port="${5:-8080}"
     
-    init_node_registry
-    
-    local registry=$(cat "$NODE_REGISTRY")
-    
-    # Add node if not exists
-    registry=$(echo "$registry" | jq \
-        --arg type "$node_type" \
-        --arg ip "$node_ip" \
-        --arg name "$node_name" \
-        --arg user "$ssh_user" \
-        --arg port "$webhook_port" \
-        '.[$type] |= (
-            if any(.ip == $ip) then
-                map(if .ip == $ip then {
-                    ip: $ip,
-                    name: $name,
-                    ssh_user: $user,
-                    webhook_port: ($port | tonumber),
-                    registered: now | todate,
-                    last_sync: null,
-                    status: "active"
-                } else . end)
-            else
-                . + [{
-                    ip: $ip,
-                    name: $name,
-                    ssh_user: $user,
-                    webhook_port: ($port | tonumber),
-                    registered: now | todate,
-                    last_sync: null,
-                    status: "active"
-                }]
-            end
-        )')
-    
-    echo "$registry" > "$NODE_REGISTRY"
-    log_success "Registered $node_type: $node_ip ($node_name)"
+    # Use registry manager for registration
+    if [[ -f "$REGISTRY_MANAGER" ]]; then
+        SKIP_SSH_VALIDATION=true "$REGISTRY_MANAGER" register \
+            "$node_type" "$node_ip" "$node_name" "$ssh_user" "$webhook_port"
+    else
+        log_error "Registry manager not found: $REGISTRY_MANAGER"
+        return 1
+    fi
 }
 
 # Push sync to a single node
@@ -105,6 +74,13 @@ push_sync_to_node() {
     local ssh_user="$3"
     local max_retries=3
     local retry_delay=5
+    local registry_file="$HOME/.mynodeone/node-registry.json"
+    
+    # Skip syncing to localhost for management laptops (they don't need route syncing)
+    if [[ "$node_type" == "management_laptops" ]]; then
+        log_info "Skipping sync to management laptop (uses kubectl directly)"
+        return 0
+    fi
     
     log_info "Pushing sync to $node_ip..."
     
@@ -133,18 +109,22 @@ push_sync_to_node() {
             "cd ~/MyNodeOne && sudo ./scripts/$sync_script" &>/dev/null; then
             log_success "Synced: $node_ip"
             
-            # Update last_sync time
-            local registry=$(cat "$NODE_REGISTRY")
-            registry=$(echo "$registry" | jq \
-                --arg type "$node_type" \
-                --arg ip "$node_ip" \
-                '.[$type] |= map(
-                    if .ip == $ip then
-                        .last_sync = (now | todate) |
-                        .status = "active"
-                    else . end
-                )')
-            echo "$registry" > "$NODE_REGISTRY"
+            # Update last_sync time in ConfigMap
+            if [[ -f "$registry_file" ]]; then
+                local registry=$(cat "$registry_file")
+                registry=$(echo "$registry" | jq \
+                    --arg type "$node_type" \
+                    --arg ip "$node_ip" \
+                    '.[$type] |= map(
+                        if .ip == $ip then
+                            .last_sync = (now | todate) |
+                            .status = "active"
+                        else . end
+                    )')
+                echo "$registry" > "$registry_file"
+                # Sync back to ConfigMap
+                "$REGISTRY_MANAGER" sync-to &>/dev/null || true
+            fi
             
             return 0
         else
@@ -159,18 +139,22 @@ push_sync_to_node() {
     
     log_error "Failed to sync $node_ip after $max_retries attempts"
     
-    # Mark as failed
-    local registry=$(cat "$NODE_REGISTRY")
-    registry=$(echo "$registry" | jq \
-        --arg type "$node_type" \
-        --arg ip "$node_ip" \
-        '.[$type] |= map(
-            if .ip == $ip then
-                .status = "failed" |
-                .last_error = (now | todate)
-            else . end
-        )')
-    echo "$registry" > "$NODE_REGISTRY"
+    # Mark as failed in ConfigMap
+    if [[ -f "$registry_file" ]]; then
+        local registry=$(cat "$registry_file")
+        registry=$(echo "$registry" | jq \
+            --arg type "$node_type" \
+            --arg ip "$node_ip" \
+            '.[$type] |= map(
+                if .ip == $ip then
+                    .status = "failed" |
+                    .last_error = (now | todate)
+                else . end
+            )')
+        echo "$registry" > "$registry_file"
+        # Sync back to ConfigMap
+        "$REGISTRY_MANAGER" sync-to &>/dev/null || true
+    fi
     
     return 1
 }
@@ -183,7 +167,16 @@ push_sync_all() {
     
     init_node_registry
     
-    local registry=$(cat "$NODE_REGISTRY")
+    # Get registry from ConfigMap via registry manager
+    local config_dir=$("$REGISTRY_MANAGER" sync-from 2>&1 | grep -oP '(?<=to local cache\n).*' || echo "$HOME/.mynodeone")
+    local registry_file="$HOME/.mynodeone/node-registry.json"
+    
+    if [[ ! -f "$registry_file" ]]; then
+        log_error "Registry file not found after sync: $registry_file"
+        return 1
+    fi
+    
+    local registry=$(cat "$registry_file")
     local success_count=0
     local fail_count=0
     
@@ -288,7 +281,8 @@ health_check() {
     log_info "Running health check on registered nodes..."
     
     init_node_registry
-    local registry=$(cat "$NODE_REGISTRY")
+    local registry_file="$HOME/.mynodeone/node-registry.json"
+    local registry=$(cat "$registry_file")
     
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

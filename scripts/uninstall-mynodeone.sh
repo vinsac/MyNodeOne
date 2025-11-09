@@ -87,8 +87,12 @@ WHAT GETS REMOVED:
     • All running pods and services
     • Docker/containerd images
     • Longhorn storage system
+    • Systemd services (sync-controller)
+    • VPS Traefik setup (/etc/traefik/)
+    • DNS configurations (/etc/hosts, dnsmasq, Avahi)
+    • Cron jobs (VPS sync)
     • Tailscale configuration (optional)
-    • System modifications (DNS, firewall)
+    • Config files from all users (root + sudo user)
 
 WHAT CAN BE KEPT:
     • Configuration files (~/.mynodeone/config.env)
@@ -360,9 +364,49 @@ fi
 log_success "DNS configurations removed"
 echo
 
-# Step 7: Remove Tailscale (optional)
+# Step 7: Remove systemd services and VPS components
+log_info "[7/10] Removing systemd services and VPS components..."
+
+# Remove sync controller service (control plane)
+if [ -f /etc/systemd/system/mynodeone-sync-controller.service ]; then
+    systemctl stop mynodeone-sync-controller 2>/dev/null || true
+    systemctl disable mynodeone-sync-controller 2>/dev/null || true
+    rm -f /etc/systemd/system/mynodeone-sync-controller.service
+    systemctl daemon-reload
+    log_success "Removed sync controller service"
+fi
+
+# Remove VPS Traefik setup
+if [ -d /etc/traefik ]; then
+    log_info "Detected VPS Traefik installation..."
+    
+    # Stop docker compose
+    if [ -f /etc/traefik/docker-compose.yml ]; then
+        (cd /etc/traefik && docker compose down 2>/dev/null) || true
+        log_success "Stopped Traefik containers"
+    fi
+    
+    # Remove Traefik directory
+    if [ "$KEEP_CONFIG" = false ]; then
+        rm -rf /etc/traefik
+        log_success "Removed /etc/traefik/"
+    else
+        log_info "Keeping /etc/traefik/ (--keep-config specified)"
+    fi
+fi
+
+# Remove VPS sync cron jobs
+if crontab -l 2>/dev/null | grep -q "sync-vps-routes.sh"; then
+    crontab -l 2>/dev/null | grep -v "sync-vps-routes.sh" | crontab -
+    log_success "Removed VPS sync cron jobs"
+fi
+
+log_success "Services and VPS components cleaned up"
+echo
+
+# Step 8: Remove Tailscale (optional)
 if [ "$REMOVE_TAILSCALE" = true ]; then
-    log_info "[7/8] Removing Tailscale..."
+    log_info "[8/10] Removing Tailscale..."
     if command -v tailscale &> /dev/null; then
         tailscale down 2>/dev/null || true
         if [ -f /usr/bin/tailscale-uninstall.sh ]; then
@@ -375,30 +419,78 @@ if [ "$REMOVE_TAILSCALE" = true ]; then
         log_info "Tailscale not installed"
     fi
 else
-    log_info "[7/8] Keeping Tailscale (skipped)"
+    log_info "[8/10] Keeping Tailscale (skipped)"
 fi
 echo
 
-# Step 8: Remove configuration files
+# Step 9: Remove configuration files (both root and user)
 if [ "$KEEP_CONFIG" = false ]; then
-    log_info "[8/8] Removing configuration files..."
-    if [ -d "$HOME/.mynodeone" ]; then
-        rm -rf "$HOME/.mynodeone"
-        log_success "Configuration files removed"
+    log_info "[9/10] Removing configuration files..."
+    
+    # Remove root configs
+    if [ -d "/root/.mynodeone" ]; then
+        rm -rf /root/.mynodeone
+        log_success "Removed /root/.mynodeone/"
     fi
     
-    # Remove kubectl config (management laptops)
-    if [ "$NODE_TYPE" = "management" ]; then
-        if [ -f "$HOME/.kube/config" ]; then
-            read -p "Remove kubectl config? [y/N]: " -r
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                rm -rf "$HOME/.kube"
-                log_success "kubectl config removed"
+    if [ -d "/root/.kube" ]; then
+        rm -rf /root/.kube
+        log_success "Removed /root/.kube/"
+    fi
+    
+    # Remove user configs if running as sudo
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        local user_home=$(eval echo ~$SUDO_USER)
+        
+        if [ -d "$user_home/.mynodeone" ]; then
+            rm -rf "$user_home/.mynodeone"
+            log_success "Removed $user_home/.mynodeone/ (user: $SUDO_USER)"
+        fi
+        
+        if [ -d "$user_home/.kube" ]; then
+            if [ "$INTERACTIVE" = true ]; then
+                read -p "Remove kubectl config for user $SUDO_USER? [y/N]: " -r
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    rm -rf "$user_home/.kube"
+                    log_success "Removed $user_home/.kube/"
+                fi
             fi
         fi
     fi
+    
+    # Also clean current user if different from root and SUDO_USER
+    if [ "$HOME" != "/root" ] && [ "$USER" != "${SUDO_USER:-}" ]; then
+        if [ -d "$HOME/.mynodeone" ]; then
+            rm -rf "$HOME/.mynodeone"
+            log_success "Removed $HOME/.mynodeone/"
+        fi
+    fi
+    
+    log_success "Configuration files removed"
 else
-    log_info "[8/8] Keeping configuration files (skipped)"
+    log_info "[9/10] Keeping configuration files (skipped)"
+fi
+echo
+
+# Step 10: Final verification and cleanup
+log_info "[10/10] Final cleanup and verification..."
+
+# Verify critical directories are removed
+local cleanup_verified=true
+
+if [ "$KEEP_CONFIG" = false ]; then
+    [ -d "/root/.mynodeone" ] && cleanup_verified=false && log_warn "⚠ /root/.mynodeone still exists"
+    [ -n "${SUDO_USER:-}" ] && [ -d "$(eval echo ~$SUDO_USER)/.mynodeone" ] && cleanup_verified=false && log_warn "⚠ User .mynodeone still exists"
+fi
+
+if [ "$REMOVE_K8S" = true ]; then
+    [ -f /usr/local/bin/k3s ] && cleanup_verified=false && log_warn "⚠ K3s binary still exists"
+fi
+
+if [ "$cleanup_verified" = true ]; then
+    log_success "All cleanup verified"
+else
+    log_warn "Some items may require manual removal"
 fi
 echo
 
@@ -444,10 +536,13 @@ else
 fi
 echo
 
-echo "🧹 Additional cleanup (optional):"
+echo "🧹 Additional manual cleanup (if needed):"
 echo "   • Remove formatted disks data: sudo rm -rf /mnt/longhorn-disks/"
 echo "   • Remove Tailscale: sudo apt remove tailscale"
-[ -d "$HOME/.mynodeone" ] && echo "   • Remove config: rm -rf $HOME/.mynodeone"
+[ -d "/root/.mynodeone" ] && echo "   • Remove root config: sudo rm -rf /root/.mynodeone"
+[ -d "$HOME/.mynodeone" ] && echo "   • Remove user config: rm -rf $HOME/.mynodeone"
+[ -d "/etc/traefik" ] && echo "   • Remove Traefik config: sudo rm -rf /etc/traefik"
+echo "   • Verify services stopped: sudo systemctl list-units | grep mynodeone"
 echo
 
 log_success "Uninstall complete!"

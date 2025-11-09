@@ -139,7 +139,14 @@ fi
 
 echo ""
 log_info "Running initial sync..."
-sudo ./scripts/sync-vps-routes.sh
+
+# Check if sync script exists (it won't on fresh VPS installs)
+if [ -f "./scripts/sync-vps-routes.sh" ]; then
+    sudo ./scripts/sync-vps-routes.sh
+else
+    log_info "Sync script not found on VPS (expected)"
+    log_info "Routes will be pushed from control plane when apps are made public"
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

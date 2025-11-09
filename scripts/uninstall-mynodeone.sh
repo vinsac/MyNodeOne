@@ -83,6 +83,7 @@ EXAMPLES:
     sudo ./scripts/uninstall-mynodeone.sh --full
 
 WHAT GETS REMOVED:
+    • Kubernetes ConfigMaps (service/domain/sync registries)
     • Kubernetes cluster (K3s)
     • All running pods and services
     • Docker/containerd images
@@ -93,6 +94,10 @@ WHAT GETS REMOVED:
     • Cron jobs (VPS sync)
     • Tailscale configuration (optional)
     • Config files from all users (root + sudo user)
+    • Git repository (~/MyNodeOne/)
+    • SSH known_hosts (Tailscale IPs)
+    • Registry cache files
+    • Docker volumes (Traefik)
 
 WHAT CAN BE KEPT:
     • Configuration files (~/.mynodeone/config.env)
@@ -257,7 +262,7 @@ print_header "Starting Uninstall"
 
 # Step 1: Stop K3s
 if [ "$REMOVE_K8S" = true ]; then
-    log_info "[1/8] Stopping Kubernetes..."
+    log_info "[1/12] Stopping Kubernetes..."
     if systemctl is-active --quiet k3s 2>/dev/null; then
         systemctl stop k3s 2>/dev/null || true
         log_success "K3s stopped"
@@ -268,23 +273,48 @@ if [ "$REMOVE_K8S" = true ]; then
         log_info "K3s not running"
     fi
 else
-    log_info "[1/8] Keeping Kubernetes cluster (skipped)"
+    log_info "[1/12] Keeping Kubernetes cluster (skipped)"
 fi
 echo
 
-# Step 2: Backup data if requested
+# Step 2: Clean Kubernetes ConfigMaps (CRITICAL - before removing K3s)
+if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ]; then
+    log_info "[2/12] Cleaning Kubernetes ConfigMaps..."
+    if command -v kubectl &> /dev/null; then
+        # Remove MyNodeOne ConfigMaps (contains registry data)
+        kubectl delete configmap service-registry -n kube-system --ignore-not-found=true 2>/dev/null && \
+            log_success "Removed service-registry ConfigMap" || true
+        kubectl delete configmap domain-registry -n kube-system --ignore-not-found=true 2>/dev/null && \
+            log_success "Removed domain-registry ConfigMap" || true
+        kubectl delete configmap sync-controller-registry -n kube-system --ignore-not-found=true 2>/dev/null && \
+            log_success "Removed sync-controller-registry ConfigMap" || true
+        kubectl delete configmap cluster-info -n default --ignore-not-found=true 2>/dev/null && \
+            log_success "Removed cluster-info ConfigMap" || true
+        
+        log_success "ConfigMaps cleaned"
+    else
+        log_info "kubectl not available, skipping ConfigMap cleanup"
+    fi
+elif [ "$KEEP_CONFIG" = true ]; then
+    log_info "[2/12] Keeping ConfigMaps (--keep-config specified)"
+else
+    log_info "[2/12] Keeping Kubernetes cluster (skipped)"
+fi
+echo
+
+# Step 3: Backup data if requested
 if [ "$REMOVE_K8S" = true ] && [ "$KEEP_DATA" = true ]; then
-    log_info "[2/8] Preserving application data..."
+    log_info "[3/12] Preserving application data..."
     # Data will be kept on Longhorn volumes (disks stay mounted)
     log_success "Data will be preserved on storage disks"
 else
-    log_info "[2/8] Application data will be removed with cluster"
+    log_info "[3/12] Application data will be removed with cluster"
 fi
 echo
 
-# Step 3: Remove container images
+# Step 4: Remove container images
 if [ "$REMOVE_IMAGES" = true ]; then
-    log_info "[3/8] Removing container images..."
+    log_info "[4/12] Removing container images..."
     if command -v crictl &> /dev/null; then
         crictl rmi --prune 2>/dev/null || true
         log_success "Container images removed"
@@ -292,13 +322,13 @@ if [ "$REMOVE_IMAGES" = true ]; then
         log_info "crictl not found, skipping"
     fi
 else
-    log_info "[3/8] Keeping container images (skipped)"
+    log_info "[4/12] Keeping container images (skipped)"
 fi
 echo
 
-# Step 4: Uninstall K3s
+# Step 5: Uninstall K3s
 if [ "$REMOVE_K8S" = true ]; then
-    log_info "[4/8] Uninstalling Kubernetes..."
+    log_info "[5/12] Uninstalling Kubernetes..."
     if [ -f /usr/local/bin/k3s-uninstall.sh ]; then
         /usr/local/bin/k3s-uninstall.sh 2>/dev/null || true
         log_success "K3s uninstalled"
@@ -309,12 +339,12 @@ if [ "$REMOVE_K8S" = true ]; then
         log_info "K3s not installed"
     fi
 else
-    log_info "[4/8] Keeping Kubernetes cluster (skipped)"
+    log_info "[5/12] Keeping Kubernetes cluster (skipped)"
 fi
 echo
 
-# Step 5: Unmount Longhorn disks
-log_info "[5/8] Unmounting storage disks..."
+# Step 6: Unmount Longhorn disks
+log_info "[6/12] Unmounting storage disks..."
 if [ -d /mnt/longhorn-disks ]; then
     for mount in /mnt/longhorn-disks/disk-*; do
         if mountpoint -q "$mount" 2>/dev/null; then
@@ -334,8 +364,8 @@ else
 fi
 echo
 
-# Step 6: Remove DNS configurations
-log_info "[6/8] Removing DNS configurations..."
+# Step 7: Remove DNS configurations
+log_info "[7/12] Removing DNS configurations..."
 
 # Remove from /etc/hosts
 if grep -q "# MyNodeOne" /etc/hosts 2>/dev/null; then
@@ -364,8 +394,8 @@ fi
 log_success "DNS configurations removed"
 echo
 
-# Step 7: Remove systemd services and VPS components
-log_info "[7/10] Removing systemd services and VPS components..."
+# Step 8: Remove systemd services and VPS components
+log_info "[8/12] Removing systemd services and VPS components..."
 
 # Remove sync controller service (control plane)
 if [ -f /etc/systemd/system/mynodeone-sync-controller.service ]; then
@@ -404,9 +434,9 @@ fi
 log_success "Services and VPS components cleaned up"
 echo
 
-# Step 8: Remove Tailscale (optional)
+# Step 9: Remove Tailscale (optional)
 if [ "$REMOVE_TAILSCALE" = true ]; then
-    log_info "[8/10] Removing Tailscale..."
+    log_info "[9/12] Removing Tailscale..."
     if command -v tailscale &> /dev/null; then
         tailscale down 2>/dev/null || true
         if [ -f /usr/bin/tailscale-uninstall.sh ]; then
@@ -419,13 +449,13 @@ if [ "$REMOVE_TAILSCALE" = true ]; then
         log_info "Tailscale not installed"
     fi
 else
-    log_info "[8/10] Keeping Tailscale (skipped)"
+    log_info "[9/12] Keeping Tailscale (skipped)"
 fi
 echo
 
-# Step 9: Remove configuration files (both root and user)
+# Step 10: Remove configuration files (both root and user)
 if [ "$KEEP_CONFIG" = false ]; then
-    log_info "[9/10] Removing configuration files..."
+    log_info "[10/12] Removing configuration files..."
     
     # Remove root configs
     if [ -d "/root/.mynodeone" ]; then
@@ -468,12 +498,65 @@ if [ "$KEEP_CONFIG" = false ]; then
     
     log_success "Configuration files removed"
 else
-    log_info "[9/10] Keeping configuration files (skipped)"
+    log_info "[10/12] Keeping configuration files (skipped)"
 fi
 echo
 
-# Step 10: Final verification and cleanup
-log_info "[10/10] Final cleanup and verification..."
+# Step 11: Remove Git repository and additional files
+if [ "$KEEP_CONFIG" = false ]; then
+    log_info "[11/12] Removing Git repository and cache files..."
+    
+    # Remove MyNodeOne git repository
+    for dir in "$HOME/MyNodeOne" "/root/MyNodeOne"; do
+        if [ -d "$dir" ]; then
+            rm -rf "$dir"
+            log_success "Removed $dir"
+        fi
+    done
+    
+    # Remove user's MyNodeOne directory if running as sudo
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        user_home=$(eval echo ~$SUDO_USER)
+        if [ -d "$user_home/MyNodeOne" ]; then
+            rm -rf "$user_home/MyNodeOne"
+            log_success "Removed $user_home/MyNodeOne"
+        fi
+    fi
+    
+    # Remove registry cache files
+    for cache_file in ~/.mynodeone/node-registry.json* /root/.mynodeone/node-registry.json*; do
+        if [ -f "$cache_file" ]; then
+            rm -f "$cache_file"
+        fi
+    done
+    
+    # Remove backup files
+    rm -f ~/.mynodeone/*.backup.* /root/.mynodeone/*.backup.* 2>/dev/null || true
+    
+    # Clean SSH known_hosts (Tailscale IPs)
+    if [ -f ~/.ssh/known_hosts ]; then
+        sed -i '/^100\./d' ~/.ssh/known_hosts 2>/dev/null || true
+        log_success "Cleaned SSH known_hosts (Tailscale IPs)"
+    fi
+    
+    if [ -f /root/.ssh/known_hosts ]; then
+        sed -i '/^100\./d' /root/.ssh/known_hosts 2>/dev/null || true
+    fi
+    
+    # Remove Docker volumes (Traefik)
+    if command -v docker &> /dev/null; then
+        docker volume ls -q 2>/dev/null | grep traefik | xargs -r docker volume rm 2>/dev/null || true
+        log_success "Removed Docker volumes"
+    fi
+    
+    log_success "Additional cleanup completed"
+else
+    log_info "[11/12] Keeping additional files (--keep-config specified)"
+fi
+echo
+
+# Step 12: Final verification and cleanup
+log_info "[12/12] Final cleanup and verification..."
 
 # Verify critical directories are removed
 cleanup_verified=true
@@ -541,7 +624,9 @@ echo "   • Remove formatted disks data: sudo rm -rf /mnt/longhorn-disks/"
 echo "   • Remove Tailscale: sudo apt remove tailscale"
 [ -d "/root/.mynodeone" ] && echo "   • Remove root config: sudo rm -rf /root/.mynodeone"
 [ -d "$HOME/.mynodeone" ] && echo "   • Remove user config: rm -rf $HOME/.mynodeone"
+[ -d "$HOME/MyNodeOne" ] && echo "   • Remove Git repository: rm -rf $HOME/MyNodeOne"
 [ -d "/etc/traefik" ] && echo "   • Remove Traefik config: sudo rm -rf /etc/traefik"
+echo "   • Verify ConfigMaps removed: kubectl get cm -n kube-system 2>/dev/null"
 echo "   • Verify services stopped: sudo systemctl list-units | grep mynodeone"
 echo
 

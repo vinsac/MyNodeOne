@@ -131,21 +131,22 @@ HEADER
 echo "Generated on: $(date)" >> "$TEMP_FILE"
 echo "" >> "$TEMP_FILE"
 
-# Generate HTTP routers and services
-echo "http:" >> "$TEMP_FILE"
-echo "  routers:" >> "$TEMP_FILE"
-
 if [[ "$MULTI_DOMAIN_ENABLED" == "true" ]] && [[ -n "$VPS_TAILSCALE_IP" ]]; then
     # Multi-domain mode: Use domain registry routing
     log_info "Generating multi-domain routes..."
     
     # Get routes for this VPS from control plane
+    # Note: export-vps-routes already outputs "http:" and "routers:" headers
     ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh export-vps-routes $VPS_TAILSCALE_IP $CONTROL_PLANE_IP" >> "$TEMP_FILE" 2>/dev/null
     
 else
     # Single-domain mode: Legacy behavior
     log_info "Generating single-domain routes..."
+    
+    # Add headers for single-domain mode
+    echo "http:" >> "$TEMP_FILE"
+    echo "  routers:" >> "$TEMP_FILE"
     
     echo "$PUBLIC_SERVICES" | jq -r --arg domain "$PUBLIC_DOMAIN" '
         .subdomain as $sub |

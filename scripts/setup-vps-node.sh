@@ -65,6 +65,32 @@ if [ -z "$TAILSCALE_IP" ]; then
     exit 1
 fi
 
+# Configure Tailscale to accept subnet routes from control plane
+log_info "Configuring Tailscale to accept subnet routes..."
+if tailscale status --self 2>&1 | grep -q "accept-routes"; then
+    log_info "Tailscale already configured for route acceptance"
+else
+    log_info "Enabling subnet route acceptance..."
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Tailscale Subnet Routes"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "The VPS needs to access services in your Kubernetes cluster."
+    echo "This requires accepting subnet routes from the control plane."
+    echo ""
+    echo "This will enable routing to cluster LoadBalancer IPs."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    if tailscale up --accept-routes; then
+        log_success "Tailscale configured to accept subnet routes"
+    else
+        log_warn "Could not configure Tailscale routes automatically"
+        log_warn "You may need to manually approve routes in Tailscale admin"
+    fi
+fi
+
 log_info "VPS Details:"
 echo "  • Tailscale IP: $TAILSCALE_IP"
 echo "  • Public IP: $PUBLIC_IP"
@@ -99,8 +125,57 @@ echo ""
 log_info "Registering with control plane..."
 echo ""
 
-# Register this VPS in the multi-domain registry
+# Setup SSH keys for passwordless authentication
 CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
+
+log_info "Setting up SSH key authentication..."
+if ssh -o BatchMode=yes -o ConnectTimeout=5 "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "exit" 2>/dev/null; then
+    log_success "SSH key authentication already configured"
+else
+    log_info "Configuring passwordless SSH between VPS and control plane..."
+    
+    # Generate SSH key if it doesn't exist
+    if [ ! -f ~/.ssh/id_rsa ]; then
+        log_info "Generating SSH key..."
+        ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "vps-$HOSTNAME"
+        log_success "SSH key generated"
+    fi
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  SSH Key Setup"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Setting up passwordless SSH access to control plane."
+    echo "You'll be prompted for the password ONE LAST TIME."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # Copy SSH key to control plane
+    if ssh-copy-id -o StrictHostKeyChecking=no "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" 2>/dev/null; then
+        log_success "SSH key installed on control plane"
+        
+        # Also setup reverse SSH access (control plane -> VPS)
+        log_info "Setting up reverse SSH access (control plane → VPS)..."
+        ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
+            if [ ! -f ~/.ssh/id_rsa ]; then
+                ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' -C 'control-plane'
+            fi
+            cat ~/.ssh/id_rsa.pub
+        " | tee -a ~/.ssh/authorized_keys > /dev/null
+        
+        # Ensure proper permissions
+        chmod 600 ~/.ssh/authorized_keys
+        
+        log_success "Bidirectional passwordless SSH configured"
+    else
+        log_warn "Could not install SSH key automatically"
+        log_warn "You will be prompted for passwords during setup"
+    fi
+    echo ""
+fi
+
+# Register this VPS in the multi-domain registry
 REGION="${NODE_LOCATION:-unknown}"
 PROVIDER="unknown"
 

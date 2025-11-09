@@ -73,11 +73,11 @@ register_domain() {
             status: "active"
         }')
     
-    kubectl create configmap domain-registry \
+    # Use kubectl patch to preserve other fields
+    kubectl patch configmap domain-registry \
         -n kube-system \
-        --from-literal=domains.json="$domains" \
-        --dry-run=client -o yaml | \
-        kubectl apply -f - &>/dev/null
+        --type merge \
+        -p "{\"data\":{\"domains.json\":\"$(echo "$domains" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
     
     log_success "Domain registered: $domain"
 }
@@ -113,11 +113,11 @@ register_vps() {
             health: "unknown"
         }')
     
-    kubectl create configmap domain-registry \
+    # Use kubectl patch to preserve other fields
+    kubectl patch configmap domain-registry \
         -n kube-system \
-        --from-literal=vps-nodes.json="$vps_nodes" \
-        --dry-run=client -o yaml | \
-        kubectl apply -f - &>/dev/null
+        --type merge \
+        -p "{\"data\":{\"vps-nodes.json\":\"$(echo "$vps_nodes" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
     
     log_success "VPS registered: $vps_ip → $public_ip ($region)"
 }

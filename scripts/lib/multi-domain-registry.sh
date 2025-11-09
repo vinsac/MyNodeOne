@@ -39,13 +39,28 @@ init_multi_domain_registry() {
     if ! kubectl get configmap -n kube-system domain-registry &>/dev/null; then
         log_info "Creating domain registry..."
         
+        # Use unified structure for domains.json
         kubectl create configmap domain-registry \
             -n kube-system \
-            --from-literal=domains.json='{}' \
-            --from-literal=vps-nodes.json='{}' \
+            --from-literal=domains.json='{"domains":{},"vps_nodes":[]}' \
             --from-literal=routing.json='{}'
         
         log_success "Domain registry created"
+    else
+        # Migrate old structure to new if needed
+        local current_structure=$(kubectl get configmap -n kube-system domain-registry \
+            -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{}')
+        
+        # Check if it's using old structure (no nested "domains" key)
+        if ! echo "$current_structure" | jq -e '.domains' &>/dev/null; then
+            log_info "Migrating domain registry to unified structure..."
+            local migrated=$(echo "$current_structure" | jq '{domains: ., vps_nodes: []}')
+            kubectl patch configmap domain-registry \
+                -n kube-system \
+                --type merge \
+                -p "{\"data\":{\"domains.json\":\"$(echo "$migrated" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+            log_success "Registry migrated to unified structure"
+        fi
     fi
 }
 
@@ -58,16 +73,17 @@ register_domain() {
     
     log_info "Registering domain: $domain"
     
-    local domains=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{}')
+    local registry=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
     
     # Handle empty string from ConfigMap
-    [ -z "$domains" ] && domains='{}'
+    [ -z "$registry" ] && registry='{"domains":{},"vps_nodes":[]}'
     
-    domains=$(echo "$domains" | jq \
+    # Add domain to the nested "domains" object
+    registry=$(echo "$registry" | jq \
         --arg domain "$domain" \
         --arg desc "$description" \
-        '.[$domain] = {
+        '.domains[$domain] = {
             description: $desc,
             registered: now | todate,
             status: "active"
@@ -77,7 +93,7 @@ register_domain() {
     kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$domains" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
     
     log_success "Domain registered: $domain"
 }
@@ -93,31 +109,31 @@ register_vps() {
     
     log_info "Registering VPS: $vps_ip ($region)"
     
-    local vps_nodes=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null || echo '{}')
+    local registry=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
     
     # Handle empty string from ConfigMap
-    [ -z "$vps_nodes" ] && vps_nodes='{}'
+    [ -z "$registry" ] && registry='{"domains":{},"vps_nodes":[]}'
     
-    vps_nodes=$(echo "$vps_nodes" | jq \
+    # Add VPS to the "vps_nodes" array
+    registry=$(echo "$registry" | jq \
         --arg ip "$vps_ip" \
         --arg public_ip "$public_ip" \
         --arg region "$region" \
         --arg provider "$provider" \
-        '.[$ip] = {
+        '.vps_nodes += [{
+            tailscale_ip: $ip,
             public_ip: $public_ip,
-            region: $region,
-            provider: $provider,
+            location: $region,
             registered: now | todate,
-            status: "active",
-            health: "unknown"
-        }')
+            status: "active"
+        }] | .vps_nodes |= unique_by(.tailscale_ip)')
     
-    # Use kubectl patch to preserve other fields
+    # Use kubectl patch to update the unified structure
     kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"vps-nodes.json\":\"$(echo "$vps_nodes" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
     
     log_success "VPS registered: $vps_ip → $public_ip ($region)"
 }

@@ -103,8 +103,8 @@ verify_domain_registry() {
 # Check if VPS nodes are available
 check_vps_availability() {
     local vps_count=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null | \
-        jq 'length' 2>/dev/null || echo "0")
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+        jq '.vps_nodes | length' 2>/dev/null || echo "0")
     
     if [ "$vps_count" -eq 0 ]; then
         log_warn "No VPS nodes registered"
@@ -121,7 +121,7 @@ check_vps_availability() {
 check_domain_availability() {
     local domain_count=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-        jq 'length' 2>/dev/null || echo "0")
+        jq '.domains | length' 2>/dev/null || echo "0")
     
     if [ "$domain_count" -eq 0 ]; then
         log_warn "No domains registered"
@@ -370,7 +370,7 @@ main() {
                 domain_array[$i]="$domain"
                 ((i++))
             done < <(kubectl get configmap -n kube-system domain-registry \
-                -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'keys[]')
+                -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.domains | keys[]')
             
             echo ""
             echo "Select domains (comma-separated numbers or 'all'):"
@@ -379,7 +379,7 @@ main() {
             local selected_domains=""
             if [ "$domain_selection" = "all" ]; then
                 selected_domains=$(kubectl get configmap -n kube-system domain-registry \
-                    -o jsonpath='{.data.domains\.json}' | jq -r 'keys[]' | tr '\n' ',' | sed 's/,$//')
+                    -o jsonpath='{.data.domains\.json}' | jq -r '.domains | keys[]' | tr '\n' ',' | sed 's/,$//')
             else
                 declare -a domain_list
                 IFS=',' read -ra NUMS <<< "$domain_selection"
@@ -404,8 +404,8 @@ main() {
                 vps_array[$i]="$ip"
                 ((i++))
             done < <(kubectl get configmap -n kube-system domain-registry \
-                -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null | \
-                jq -r 'to_entries[] | "\(.key)|\(.value.public_ip)|\(.value.region)"')
+                -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+                jq -r '.vps_nodes[] | "\(.tailscale_ip)|\(.public_ip)|\(.location)"')
             
             echo ""
             echo "Select VPS nodes (comma-separated numbers or 'all'):"
@@ -414,7 +414,7 @@ main() {
             local selected_vps=""
             if [ "$vps_selection" = "all" ]; then
                 selected_vps=$(kubectl get configmap -n kube-system domain-registry \
-                    -o jsonpath='{.data.vps-nodes\.json}' | jq -r 'keys[]' | tr '\n' ',' | sed 's/,$//')
+                    -o jsonpath='{.data.domains\.json}' | jq -r '.vps_nodes[].tailscale_ip' | tr '\n' ',' | sed 's/,$//')
             else
                 declare -a vps_list
                 IFS=',' read -ra NUMS <<< "$vps_selection"

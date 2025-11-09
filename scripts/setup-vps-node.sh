@@ -192,15 +192,46 @@ else
         
         # Also setup reverse SSH access (control plane -> VPS)
         log_info "Setting up reverse SSH access (control plane → VPS)..."
+        
+        # CRITICAL: Scripts run with sudo use root's SSH keys, so we need to set up root->VPS access
+        # First, ensure root on control plane has an SSH key
         ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
-            if [ ! -f ~/.ssh/id_rsa ]; then
-                ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' -C 'control-plane'
+            # Ensure root has an SSH key (scripts run with sudo)
+            if ! sudo test -f /root/.ssh/id_ed25519; then
+                echo 'Generating SSH key for root (used by scripts)...'
+                sudo ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '' -C 'root@control-plane' >/dev/null 2>&1
             fi
-            cat ~/.ssh/id_rsa.pub
-        " | tee -a ~/.ssh/authorized_keys > /dev/null
+            
+            # Also ensure current user has an SSH key
+            if [ ! -f ~/.ssh/id_ed25519 ]; then
+                echo 'Generating SSH key for $CONTROL_PLANE_SSH_USER...'
+                ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane' >/dev/null 2>&1
+            fi
+            
+            # Output both keys to be added to VPS
+            echo '=== ROOT KEY ==='
+            sudo cat /root/.ssh/id_ed25519.pub 2>/dev/null || true
+            echo '=== USER KEY ==='
+            cat ~/.ssh/id_ed25519.pub 2>/dev/null || true
+        " | while IFS= read -r line; do
+            if [[ "$line" == "=== ROOT KEY ===" ]]; then
+                mode=\"root\"
+            elif [[ "$line" == "=== USER KEY ===" ]]; then
+                mode=\"user\"
+            elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
+                # Add to the VPS user's authorized_keys
+                echo "$line" >> ~/.ssh/authorized_keys
+                if [[ "$mode" == "root" ]]; then
+                    log_success "Added root SSH key from control plane"
+                else
+                    log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane"
+                fi
+            fi
+        done
         
         # Ensure proper permissions
         chmod 600 ~/.ssh/authorized_keys
+        chmod 700 ~/.ssh
         
         # Verify reverse SSH works (control plane -> VPS)
         log_info "Verifying bidirectional SSH access..."
@@ -214,8 +245,23 @@ else
         echo ""
         
         # Try reverse SSH with automatic yes to known_hosts
+        # Test BOTH as regular user AND as root (since scripts run with sudo)
+        USER_SSH_OK=false
+        ROOT_SSH_OK=false
+        
         if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
-            log_success "✓ Bidirectional SSH verified (control plane ↔ VPS)"
+            USER_SSH_OK=true
+        fi
+        
+        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "sudo ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
+            ROOT_SSH_OK=true
+        fi
+        
+        if $USER_SSH_OK && $ROOT_SSH_OK; then
+            log_success "✓ Bidirectional SSH verified (user ✓, root ✓)"
+        elif $ROOT_SSH_OK; then
+            log_success "✓ Root SSH verified (used by scripts) ✓"
+            log_warn "⚠ User SSH not working, but root works (this is fine)"
         else
             log_warn "⚠ Reverse SSH verification failed"
             echo ""
@@ -336,12 +382,25 @@ if [ -n "$PUBLIC_DOMAIN" ]; then
         # VALIDATION: Verify domain was actually registered
         log_info "Validating domain registration..."
         DOMAIN_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-            "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
+            "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.domains | has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
         
         if [ "$DOMAIN_CHECK" = "true" ]; then
             log_success "✓ Domain registration verified in ConfigMap"
+            
+            # VALIDATION: Verify registry structure is correct
+            log_info "Validating registry structure..."
+            STRUCTURE_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+                "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"domains\") and has(\"vps_nodes\")'" 2>/dev/null || echo "false")
+            
+            if [ "$STRUCTURE_CHECK" = "true" ]; then
+                log_success "✓ Registry structure validated (unified format)"
+            else
+                log_warn "⚠ Registry structure may be incorrect"
+                log_info "Expected: {\"domains\":{...}, \"vps_nodes\":[...]}"
+            fi
         else
             log_warn "⚠ Could not verify domain registration"
+            log_warn "Domain may be in old structure format"
         fi
     else
         log_error "Domain registration failed"
@@ -475,6 +534,28 @@ if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
     fi
 else
     log_warn "Validation script not found, skipping tests"
+fi
+echo ""
+
+# CRITICAL: Final end-to-end SSH validation
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  🔐 Final SSH Connectivity Check"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+log_info "Testing end-to-end SSH (required for route sync)..."
+log_info "This simulates what manage-app-visibility.sh will do..."
+echo ""
+
+# Test as root (what sudo scripts use)
+if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    "sudo ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo \"SSH test from root@control-plane to $CURRENT_VPS_USER@VPS successful\"' 2>&1"; then
+    log_success "✅ Root SSH works (scripts will run without password prompts)"
+else
+    log_error "❌ Root SSH FAILED - manage-app-visibility.sh will ask for passwords"
+    echo ""
+    echo "To fix manually, run on control plane:"
+    echo "  sudo ssh-copy-id -i /root/.ssh/id_ed25519.pub $CURRENT_VPS_USER@$TAILSCALE_IP"
+    echo ""
 fi
 echo ""
 

@@ -476,7 +476,7 @@ echo
 log_info "[10/10] Final cleanup and verification..."
 
 # Verify critical directories are removed
-local cleanup_verified=true
+cleanup_verified=true
 
 if [ "$KEEP_CONFIG" = false ]; then
     [ -d "/root/.mynodeone" ] && cleanup_verified=false && log_warn "⚠ /root/.mynodeone still exists"

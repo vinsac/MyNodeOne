@@ -67,28 +67,24 @@ fi
 
 # Configure Tailscale to accept subnet routes from control plane
 log_info "Configuring Tailscale to accept subnet routes..."
-if tailscale status --self 2>&1 | grep -q "accept-routes"; then
-    log_info "Tailscale already configured for route acceptance"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Tailscale Subnet Routes"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "The VPS needs to access services in your Kubernetes cluster."
+echo "This requires accepting subnet routes from the control plane."
+echo ""
+echo "This will enable routing to cluster LoadBalancer IPs."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Always run tailscale up --accept-routes (it's idempotent)
+if tailscale up --accept-routes; then
+    log_success "Tailscale configured to accept subnet routes"
 else
-    log_info "Enabling subnet route acceptance..."
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Tailscale Subnet Routes"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "The VPS needs to access services in your Kubernetes cluster."
-    echo "This requires accepting subnet routes from the control plane."
-    echo ""
-    echo "This will enable routing to cluster LoadBalancer IPs."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    if tailscale up --accept-routes; then
-        log_success "Tailscale configured to accept subnet routes"
-    else
-        log_warn "Could not configure Tailscale routes automatically"
-        log_warn "You may need to manually approve routes in Tailscale admin"
-    fi
+    log_warn "Could not configure Tailscale routes automatically"
+    log_warn "You may need to manually approve routes in Tailscale admin"
 fi
 
 log_info "VPS Details:"
@@ -167,7 +163,14 @@ else
         # Ensure proper permissions
         chmod 600 ~/.ssh/authorized_keys
         
-        log_success "Bidirectional passwordless SSH configured"
+        # Verify reverse SSH works (control plane -> VPS)
+        log_info "Verifying reverse SSH access..."
+        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 root@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
+            log_success "Bidirectional passwordless SSH verified ✓"
+        else
+            log_warn "Reverse SSH verification failed, but continuing..."
+            log_warn "Control plane may need to add VPS to known_hosts"
+        fi
     else
         log_warn "Could not install SSH key automatically"
         log_warn "You will be prompted for passwords during setup"
@@ -228,13 +231,58 @@ else
 fi
 
 echo ""
-log_info "Running initial sync..."
+log_info "Installing sync script on VPS..."
 
-# Check if sync script exists (it won't on fresh VPS installs)
-if [ -f "./scripts/sync-vps-routes.sh" ]; then
-    sudo ./scripts/sync-vps-routes.sh
+# Create scripts directory structure
+mkdir -p ~/MyNodeOne/scripts/lib
+
+# Fetch sync script from control plane
+if scp "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP:~/MyNodeOne/scripts/sync-vps-routes.sh" \
+    ~/MyNodeOne/scripts/sync-vps-routes.sh 2>/dev/null; then
+    chmod +x ~/MyNodeOne/scripts/sync-vps-routes.sh
+    log_success "Sync script installed"
 else
-    log_info "Sync script not found on VPS (expected)"
+    log_warn "Could not fetch sync script from control plane"
+    log_info "Creating minimal sync script..."
+    
+    # Create a minimal sync script that uses SSH to control plane
+    cat > ~/MyNodeOne/scripts/sync-vps-routes.sh << 'EOFSCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+# Load configuration
+source ~/.mynodeone/config.env
+
+VPS_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null)
+
+echo "[INFO] Syncing routes from control plane..."
+
+# Fetch routes from control plane
+ssh "${CONTROL_PLANE_SSH_USER:-root}@${CONTROL_PLANE_IP}" \
+    "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh export-vps-routes $VPS_TAILSCALE_IP ${CONTROL_PLANE_IP}" \
+    > /tmp/mynodeone-routes.yml
+
+# Install routes
+sudo mkdir -p /etc/traefik/dynamic
+sudo cp /tmp/mynodeone-routes.yml /etc/traefik/dynamic/mynodeone-routes.yml
+sudo chmod 644 /etc/traefik/dynamic/mynodeone-routes.yml
+rm -f /tmp/mynodeone-routes.yml
+
+# Restart Traefik
+cd /etc/traefik && sudo docker compose restart
+
+echo "[SUCCESS] Routes synced and Traefik restarted"
+EOFSCRIPT
+    
+    chmod +x ~/MyNodeOne/scripts/sync-vps-routes.sh
+    log_success "Minimal sync script created"
+fi
+
+log_info "Running initial sync..."
+if ~/MyNodeOne/scripts/sync-vps-routes.sh 2>&1 | tail -5; then
+    log_success "Initial sync completed"
+else
+    log_info "Initial sync skipped (no routes configured yet)"
     log_info "Routes will be pushed from control plane when apps are made public"
 fi
 

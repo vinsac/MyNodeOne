@@ -194,6 +194,7 @@ fi
 log_info "Detected provider: $PROVIDER, region: $REGION"
 
 # Register VPS in multi-domain registry
+log_info "Registering VPS in multi-domain registry..."
 ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
     $TAILSCALE_IP $PUBLIC_IP $REGION $PROVIDER" 2>&1 | grep -v "Warning: Permanently added"
@@ -201,7 +202,9 @@ ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
 if [ $? -eq 0 ]; then
     log_success "VPS registered in multi-domain registry"
 else
-    log_warn "VPS registration may have failed, continuing..."
+    log_error "VPS registration failed in multi-domain registry"
+    log_error "This may cause routing issues. Please register manually:"
+    log_error "  kubectl patch configmap domain-registry -n kube-system ..."
 fi
 
 # Register domain in cluster if PUBLIC_DOMAIN is configured
@@ -214,20 +217,53 @@ if [ -n "$PUBLIC_DOMAIN" ]; then
     
     if [ $? -eq 0 ]; then
         log_success "Domain registered in cluster: $PUBLIC_DOMAIN"
+        
+        # VALIDATION: Verify domain was actually registered
+        log_info "Validating domain registration..."
+        DOMAIN_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+            "kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
+        
+        if [ "$DOMAIN_CHECK" = "true" ]; then
+            log_success "✓ Domain registration verified in ConfigMap"
+        else
+            log_warn "⚠ Could not verify domain registration"
+        fi
     else
-        log_warn "Domain registration may have failed, continuing..."
+        log_error "Domain registration failed"
+        log_error "Manual registration: ./scripts/lib/multi-domain-registry.sh register-domain $PUBLIC_DOMAIN"
     fi
 fi
 
-# Register VPS in sync controller
+# Register VPS in sync controller (uses new registry manager)
+log_info "Registering VPS in sync controller..."
+
+# Detect current user (never assume root)
+CURRENT_VPS_USER=$(whoami)
+log_info "Detected VPS user: $CURRENT_VPS_USER"
+
 ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "cd ~/MyNodeOne && sudo ./scripts/lib/sync-controller.sh register vps_nodes \
-    $TAILSCALE_IP $HOSTNAME root" 2>&1 | grep -v "Warning: Permanently added"
+    "cd ~/MyNodeOne && SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \
+    $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER" 2>&1 | grep -v "Warning: Permanently added"
 
 if [ $? -eq 0 ]; then
     log_success "VPS registered in sync controller"
+    
+    # VALIDATION: Verify VPS was actually registered
+    log_info "Validating VPS registration..."
+    VPS_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
+    
+    if [ "$VPS_CHECK" = "$CURRENT_VPS_USER" ]; then
+        log_success "✓ VPS registration verified in ConfigMap"
+        log_success "✓ Registered with user: $VPS_CHECK"
+    else
+        log_warn "⚠ Could not verify VPS registration (expected user: $CURRENT_VPS_USER, got: ${VPS_CHECK:-none})"
+    fi
 else
-    log_warn "Sync controller registration may have failed, continuing..."
+    log_error "VPS registration failed in sync controller"
+    log_error "Routes may not sync automatically. Manual registration:"
+    log_error "  ./scripts/lib/node-registry-manager.sh register vps_nodes $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER"
+    exit 1
 fi
 
 echo ""

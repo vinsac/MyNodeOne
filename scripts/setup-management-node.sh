@@ -135,14 +135,30 @@ fi
 if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
     log_info "Using MyNodeOne at: $CONTROL_PLANE_REPO_PATH"
     
+    # Register using new registry manager (auto-detects user, validates in ConfigMap)
+    log_info "Registering in enterprise registry..."
     ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd '$CONTROL_PLANE_REPO_PATH' && sudo ./scripts/lib/sync-controller.sh register management_laptops \
+        "cd '$CONTROL_PLANE_REPO_PATH' && ./scripts/lib/node-registry-manager.sh register management_laptops \
         $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
     
     if [ $? -eq 0 ]; then
         log_success "Laptop registered in sync controller"
+        
+        # VALIDATION: Verify registration in ConfigMap
+        log_info "Validating registration..."
+        LAPTOP_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+            "kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.management_laptops[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
+        
+        if [ "$LAPTOP_CHECK" = "$USERNAME" ]; then
+            log_success "✓ Registration verified in ConfigMap"
+            log_success "✓ Registered with user: $LAPTOP_CHECK"
+        else
+            log_warn "⚠ Could not verify registration (expected user: $USERNAME, got: ${LAPTOP_CHECK:-none})"
+        fi
     else
-        log_warn "Registration may have failed, continuing..."
+        log_error "Registration failed"
+        log_error "Manual registration: ./scripts/lib/node-registry-manager.sh register management_laptops $TAILSCALE_IP $HOSTNAME $USERNAME"
+        # Don't exit - allow manual registration later
     fi
 fi
 

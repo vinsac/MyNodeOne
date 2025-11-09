@@ -1149,6 +1149,43 @@ initialize_service_registries() {
     log_info "Creating multi-domain registry..."
     bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" init || true
     
+    log_info "Initializing enterprise node registry..."
+    bash "$SCRIPT_DIR/lib/node-registry-manager.sh" init || {
+        log_warn "Could not initialize node registry (kubectl may not be ready yet)"
+        log_info "Registry will be initialized on first node registration"
+    }
+    
+    # VALIDATION: Verify ConfigMaps were created
+    log_info "Validating registry initialization..."
+    local validation_passed=true
+    
+    if ! kubectl get cm service-registry -n kube-system &>/dev/null; then
+        log_warn "⚠ service-registry ConfigMap not found"
+        validation_passed=false
+    else
+        log_success "✓ service-registry ConfigMap exists"
+    fi
+    
+    if ! kubectl get cm domain-registry -n kube-system &>/dev/null; then
+        log_warn "⚠ domain-registry ConfigMap not found"
+        validation_passed=false
+    else
+        log_success "✓ domain-registry ConfigMap exists"
+    fi
+    
+    if ! kubectl get cm sync-controller-registry -n kube-system &>/dev/null; then
+        log_warn "⚠ sync-controller-registry ConfigMap not found"
+        validation_passed=false
+    else
+        log_success "✓ sync-controller-registry ConfigMap exists"
+    fi
+    
+    if [ "$validation_passed" = "true" ]; then
+        log_success "✓ All registries initialized successfully"
+    else
+        log_warn "Some registries failed to initialize - may need manual creation"
+    fi
+    
     log_info "Syncing existing services to registry..."
     bash "$SCRIPT_DIR/lib/service-registry.sh" sync || true
     

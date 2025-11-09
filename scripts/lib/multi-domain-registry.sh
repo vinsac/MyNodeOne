@@ -141,6 +141,9 @@ configure_service_routing() {
     local domain_array=$(echo "$domains" | jq -R 'split(",")')
     local vps_array=$(echo "$vps_nodes" | jq -R 'split(",")')
     
+    # Handle empty string from ConfigMap
+    [ -z "$routing" ] && routing='{}'
+    
     routing=$(echo "$routing" | jq \
         --arg service "$service_name" \
         --argjson domains "$domain_array" \
@@ -153,11 +156,11 @@ configure_service_routing() {
             updated: now | todate
         }')
     
-    kubectl create configmap domain-registry \
+    # Use kubectl patch to preserve other fields
+    kubectl patch configmap domain-registry \
         -n kube-system \
-        --from-literal=routing.json="$routing" \
-        --dry-run=client -o yaml | \
-        kubectl apply -f - &>/dev/null
+        --type merge \
+        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
     
     log_success "Routing configured for $service_name"
     log_info "  Domains: $domains"

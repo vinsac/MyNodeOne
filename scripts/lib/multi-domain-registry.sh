@@ -61,6 +61,9 @@ register_domain() {
     local domains=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{}')
     
+    # Handle empty string from ConfigMap
+    [ -z "$domains" ] && domains='{}'
+    
     domains=$(echo "$domains" | jq \
         --arg domain "$domain" \
         --arg desc "$description" \
@@ -92,6 +95,9 @@ register_vps() {
     
     local vps_nodes=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null || echo '{}')
+    
+    # Handle empty string from ConfigMap
+    [ -z "$vps_nodes" ] && vps_nodes='{}'
     
     vps_nodes=$(echo "$vps_nodes" | jq \
         --arg ip "$vps_ip" \

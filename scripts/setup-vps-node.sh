@@ -218,33 +218,63 @@ else
             echo "  📋 Manual Fix Required on Control Plane"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
-            echo "On your control plane ($CONTROL_PLANE_IP), run:"
+            echo "The control plane needs SSH access to this VPS for route sync."
+            echo "You can fix this NOW from any machine with SSH to control plane."
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  🖥️  Option 1: From Your Management Laptop/Desktop"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "Open a terminal on your laptop/desktop and run:"
+            echo ""
+            echo "  ssh $CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP"
+            echo "  ssh -o StrictHostKeyChecking=accept-new $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
+            echo "  exit"
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  🖥️  Option 2: If You Have Direct Access to Control Plane"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "Open terminal directly on control plane and run:"
             echo ""
             echo "  ssh -o StrictHostKeyChecking=accept-new $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
             echo ""
-            echo "This will add the VPS to known_hosts and verify SSH access."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
             
             # Give user option to fix it now
-            read -p "Do you want to fix this now? [Y/n]: " -r
-            if [[ $REPLY =~ ^[Nn]$ ]]; then
+            read -p "Ready to verify? Press Enter after running the command, or type 'skip' to continue: " -r
+            if [[ $REPLY =~ ^[Ss][Kk][Ii][Pp]$ ]] || [[ $REPLY =~ ^[Nn]$ ]]; then
                 log_warn "Skipping reverse SSH verification"
-                log_warn "Route sync may require manual intervention later"
+                log_warn "You can fix this later by running from control plane:"
+                log_warn "  ssh $CURRENT_VPS_USER@$TAILSCALE_IP"
             else
                 echo ""
-                echo "Please switch to your control plane terminal and run the command above."
-                echo "When done, press Enter to verify..."
-                read -r
+                log_info "Testing reverse SSH connection..."
                 
                 # Test again
                 if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
                     log_success "✓ Reverse SSH now working!"
                 else
-                    log_error "✗ Reverse SSH still not working"
-                    log_warn "Continuing anyway - you can fix this later"
+                    log_warn "✗ Reverse SSH still not working"
                     echo ""
-                    echo "Manual fix command (on control plane):"
-                    echo "  ssh $CURRENT_VPS_USER@$TAILSCALE_IP"
+                    echo "Possible issues:"
+                    echo "  1. Command not run yet (run it now and press Enter)"
+                    echo "  2. Tailscale IP $TAILSCALE_IP not reachable from control plane"
+                    echo "  3. SSH keys not properly configured"
+                    echo ""
+                    read -p "Try verification again? [Y/n]: " -r
+                    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                        echo "Press Enter after running the command on control plane..."
+                        read -r
+                        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
+                            log_success "✓ Reverse SSH now working!"
+                        else
+                            log_warn "Continuing anyway - fix this later"
+                        fi
+                    else
+                        log_warn "Continuing anyway - you can fix this later"
+                    fi
                 fi
             fi
         fi

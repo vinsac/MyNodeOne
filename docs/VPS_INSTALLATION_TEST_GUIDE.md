@@ -2,16 +2,20 @@
 
 **Date:** 2025-11-09  
 **Purpose:** Test automated VPS installation with SSH automation fixes  
-**Latest Commits:** e550999 (SSH fix) + 2578b04 (manual fallback)
+**Latest Commits:** 
+- c489d55 (CRITICAL: Allow password prompt during config fetch)
+- 2578b04 (Manual SSH setup fallback instructions)
+- e550999 (SSH automation with interactive sudo)
 
 ---
 
 ## 🎯 **Testing Strategy**
 
-We're testing the **automated** VPS installation workflow with two important improvements:
+We're testing the **automated** VPS installation workflow with three critical fixes:
 
-1. **Commit e550999:** Fixed remote sudo requiring PTY (`-t` flag)
-2. **Commit 2578b04:** Added comprehensive manual SSH setup instructions as fallback
+1. **Commit c489d55:** Fixed password prompt being hidden during cluster config fetch
+2. **Commit e550999:** Fixed remote sudo requiring PTY (`-t` flag) for SSH key generation
+3. **Commit 2578b04:** Added comprehensive manual SSH setup instructions as fallback
 
 ---
 
@@ -26,9 +30,11 @@ ssh sammy@100.93.144.102
 cd ~/MyNodeOne
 git pull origin main
 
-# 3. Verify you have both fixes
-git log --oneline -3
+# 3. Verify you have all three critical fixes
+git log --oneline -4
 # Should show:
+# c489d55 CRITICAL FIX: Allow password prompt during cluster config fetch
+# 2e648bc Add comprehensive VPS installation test guide
 # 2578b04 Enhance VPS setup with comprehensive manual SSH fallback
 # e550999 CRITICAL FIX: Enable interactive sudo for SSH key generation
 # 54cb643 Add final reinstall checklist
@@ -66,7 +72,20 @@ sudo ./scripts/mynodeone
 During installation, you should see these **NEW** messages:
 
 ```bash
-# ✅ WHAT TO LOOK FOR:
+# ✅ PHASE 1: Cluster Config Fetch (NEW FIX - c489d55)
+
+📡 Fetching Cluster Configuration
+[INFO] To auto-detect your cluster settings, I need your control plane details
+? Control plane Tailscale IP: 100.67.210.15
+? SSH username on control plane: vinaysachdeva
+
+[INFO] Testing SSH connection to vinaysachdeva@100.67.210.15...
+[⚠] Passwordless SSH failed, you may be prompted for password
+
+vinaysachdeva@100.67.210.15's password:  ← YOU SHOULD SEE THIS NOW!
+[✓] SSH connection successful  ← Should proceed after entering password
+
+# ✅ PHASE 2: SSH Key Automation (FIX - e550999)
 
 [INFO] Setting up SSH key authentication...
 [INFO] Configuring passwordless SSH between VPS and control plane...

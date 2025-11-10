@@ -195,29 +195,37 @@ else
         
         # CRITICAL: Scripts run with sudo use root's SSH keys, so we need to set up root->VPS access
         # First, ensure root on control plane has an SSH key
-        ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
+        # Use -t to allocate PTY for interactive sudo if needed
+        ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
             # Ensure root has an SSH key (scripts run with sudo)
             if ! sudo test -f /root/.ssh/id_ed25519; then
                 echo 'Generating SSH key for root (used by scripts)...'
-                sudo ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '' -C 'root@control-plane' >/dev/null 2>&1
+                sudo ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '' -C 'root@control-plane'
             fi
             
             # Also ensure current user has an SSH key
             if [ ! -f ~/.ssh/id_ed25519 ]; then
                 echo 'Generating SSH key for $CONTROL_PLANE_SSH_USER...'
-                ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane' >/dev/null 2>&1
+                ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane'
             fi
             
             # Output both keys to be added to VPS
             echo '=== ROOT KEY ==='
-            sudo cat /root/.ssh/id_ed25519.pub 2>/dev/null || true
+            sudo cat /root/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read root key'
             echo '=== USER KEY ==='
-            cat ~/.ssh/id_ed25519.pub 2>/dev/null || true
-        " | while IFS= read -r line; do
+            cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read user key'
+        " 2>&1 | while IFS= read -r line; do
+            # Skip password prompts and other noise
+            if [[ "$line" =~ ^\[sudo\] || "$line" =~ ^Connection ]]; then
+                continue
+            fi
+            
             if [[ "$line" == "=== ROOT KEY ===" ]]; then
                 mode=\"root\"
             elif [[ "$line" == "=== USER KEY ===" ]]; then
                 mode=\"user\"
+            elif [[ "$line" == "ERROR:"* ]]; then
+                log_warn "$line"
             elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
                 # Add to the VPS user's authorized_keys
                 echo "$line" >> ~/.ssh/authorized_keys
@@ -226,12 +234,15 @@ else
                 else
                     log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane"
                 fi
+            elif [[ -n "$line" ]] && [[ ! "$line" =~ ^Generating ]]; then
+                # Echo other informational lines
+                echo "$line"
             fi
         done
         
         # Ensure proper permissions
-        chmod 600 ~/.ssh/authorized_keys
-        chmod 700 ~/.ssh
+        chmod 600 ~/.ssh/authorized_keys 2>/dev/null || true
+        chmod 700 ~/.ssh 2>/dev/null || true
         
         # Verify reverse SSH works (control plane -> VPS)
         log_info "Verifying bidirectional SSH access..."

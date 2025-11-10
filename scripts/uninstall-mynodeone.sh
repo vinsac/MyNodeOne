@@ -31,6 +31,7 @@ NC='\033[0m'
 KEEP_CONFIG=false
 KEEP_DATA=false
 INTERACTIVE=true
+REMOVE_TAILSCALE=false
 
 print_header() {
     echo
@@ -66,6 +67,7 @@ OPTIONS:
     --keep-config       Keep configuration files (~/.mynodeone/)
     --keep-data         Keep application data (Longhorn volumes, PVCs)
     --full              Remove everything (default if no options)
+    --remove-tailscale  Also remove Tailscale (disconnect from network)
     --yes               Non-interactive mode (auto-confirm)
     --help              Show this help message
 
@@ -81,6 +83,9 @@ EXAMPLES:
 
     # Complete removal
     sudo ./scripts/uninstall-mynodeone.sh --full
+
+    # Fresh install (remove everything including Tailscale)
+    sudo ./scripts/uninstall-mynodeone.sh --full --remove-tailscale --yes
 
 WHAT GETS REMOVED:
     • Kubernetes ConfigMaps (service/domain/sync registries)
@@ -122,6 +127,10 @@ while [[ $# -gt 0 ]]; do
         --full)
             KEEP_CONFIG=false
             KEEP_DATA=false
+            shift
+            ;;
+        --remove-tailscale)
+            REMOVE_TAILSCALE=true
             shift
             ;;
         --yes|-y)
@@ -221,7 +230,7 @@ if [ "$INTERACTIVE" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$KEEP_DATA" = f
 else
     REMOVE_K8S=true
     REMOVE_IMAGES=true
-    REMOVE_TAILSCALE=false
+    # REMOVE_TAILSCALE is already set by --remove-tailscale flag or defaults to false
 fi
 
 # Summary

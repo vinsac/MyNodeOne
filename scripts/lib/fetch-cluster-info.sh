@@ -68,9 +68,11 @@ fetch_cluster_info() {
     
     if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
         log_warn "Passwordless SSH failed, you may be prompted for password"
+        echo
         
-        # Try with password
-        if ! ssh -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
+        # Try with password - MUST NOT suppress stderr so user can see password prompt
+        if ! ssh -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit"; then
+            echo
             log_error "Cannot connect to control plane"
             log_info "Please ensure:"
             echo "  1. Control plane is running and accessible"

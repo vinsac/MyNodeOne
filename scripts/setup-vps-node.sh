@@ -48,6 +48,20 @@ fi
 
 source ~/.mynodeone/config.env
 
+# Source preflight checks library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/preflight-checks.sh"
+
+# Run pre-flight checks
+log_info "Running pre-flight checks..."
+if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "${CONTROL_PLANE_SSH_USER:-$(whoami)}"; then
+    log_error "Pre-flight checks failed. Please fix the issues above and try again."
+    echo ""
+    echo "💡 Tip: Run this to see what needs to be fixed:"
+    echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP"
+    exit 1
+fi
+
 # Detect the ACTUAL user (not the sudo-elevated user)
 # When running with sudo, $SUDO_USER contains the real user
 if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
@@ -443,6 +457,45 @@ if [ $? -eq 0 ]; then
         log_success "✓ Registered with user: $VPS_CHECK"
     else
         log_warn "⚠ Could not verify VPS registration (expected user: $CURRENT_VPS_USER, got: ${VPS_CHECK:-none})"
+    fi
+    
+    # CRITICAL: Validate IP matches what we expect
+    log_info "Validating registered IP matches current Tailscale IP..."
+    REGISTERED_IP=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.name==\"$HOSTNAME\") | .ip'" 2>/dev/null || echo "")
+    
+    if [ "$REGISTERED_IP" = "$TAILSCALE_IP" ]; then
+        log_success "✓ IP validation passed: $REGISTERED_IP"
+    else
+        log_error "IP MISMATCH DETECTED!"
+        echo ""
+        echo "Expected Tailscale IP: $TAILSCALE_IP"
+        echo "Registered IP: ${REGISTERED_IP:-none}"
+        echo ""
+        echo "This usually means:"
+        echo "  1. Stale registration from previous installation"
+        echo "  2. Tailscale IP changed"
+        echo ""
+        echo "Fix: Unregister and re-register:"
+        echo "  ./scripts/unregister-vps.sh ${REGISTERED_IP:-unknown}"
+        echo "  Then run this script again"
+        exit 1
+    fi
+    
+    # Also validate in domain-registry
+    log_info "Validating IP in domain-registry..."
+    DOMAIN_REG_IP=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.hostname==\"$HOSTNAME\") | .tailscale_ip'" 2>/dev/null || echo "")
+    
+    if [ "$DOMAIN_REG_IP" = "$TAILSCALE_IP" ]; then
+        log_success "✓ Domain registry IP validated: $DOMAIN_REG_IP"
+    elif [ -z "$DOMAIN_REG_IP" ]; then
+        log_warn "⚠ VPS not found in domain-registry (may be registered later)"
+    else
+        log_error "IP mismatch in domain-registry!"
+        echo "Expected: $TAILSCALE_IP, Got: $DOMAIN_REG_IP"
+        echo "Run: ./scripts/unregister-vps.sh $DOMAIN_REG_IP"
+        exit 1
     fi
 else
     log_error "VPS registration failed in sync controller"

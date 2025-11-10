@@ -32,10 +32,13 @@ Learn how to:
 1. **Prepare Your Control Plane Machine** ← Start here! (Prerequisites section below)
 2. **Download MyNodeOne** (Step 1)
 3. **Run the Installation Wizard** (Step 2)
-4. **Apply Security Hardening** (Step 3) ← RECOMMENDED, do this right after!
-5. **Add More Machines** (Step 4) ← Optional, add workers/VPS later
+4. **⚠️ MANDATORY: Configure Passwordless Sudo** (Step 3) ← NEW! Do this immediately!
+5. **Apply Security Hardening** (Step 4) ← RECOMMENDED, do this right after!
+6. **Add More Machines** (Step 5) ← Optional, add workers/VPS later
 
-The core installation (Steps 1-3) gets your control plane running. Step 4 (security) is highly recommended before Step 5 (adding more machines).
+The core installation (Steps 1-3) gets your control plane running. **Step 4 (passwordless sudo) is MANDATORY before adding VPS or management laptops.** Step 5 (security) is highly recommended before Step 6 (adding more machines).
+
+> ⚠️ **CRITICAL:** If you plan to add VPS edge nodes or management laptops, you **MUST** complete Step 4 (passwordless sudo) first. The installation will fail without it!
 
 ---
 
@@ -274,11 +277,69 @@ sudo ./scripts/mynodeone
 - Access services via Tailscale IPs (100.x.x.x addresses shown in output)
 - Run `sudo ./scripts/show-credentials.sh` to view all service URLs and credentials
 
+**⚠️ NEXT STEP:** Before adding any VPS or management nodes, proceed to Step 3 (Configure Passwordless Sudo)
+
 ---
 
-## 🔒 Step 3: Apply Security Hardening (5 minutes, RECOMMENDED)
+## 🔐 Step 3: Configure Passwordless Sudo (2 minutes, MANDATORY for VPS/Management)
 
-> **⚠️ IMPORTANT: Do this RIGHT AFTER control plane installation, BEFORE adding worker nodes!**
+> **⚠️ CRITICAL: This step is MANDATORY if you plan to add VPS edge nodes or management laptops!**
+>
+> **Why?** VPS and management nodes need to run commands on the control plane remotely via SSH. Without passwordless sudo, these commands will hang waiting for a password that cannot be provided automatically.
+>
+> **When to do this:** RIGHT NOW, immediately after control plane installation completes.
+
+**Run this command on your control plane machine:**
+
+```bash
+sudo ./scripts/setup-control-plane-sudo.sh
+```
+
+**What this does:**
+- ✅ Configures passwordless sudo for `kubectl` commands
+- ✅ Configures passwordless sudo for MyNodeOne scripts
+- ✅ Enables automation from VPS and management nodes
+- ✅ Validates configuration with tests
+- ✅ Shows clear success/failure messages
+
+**Expected output:**
+```
+🔐 MyNodeOne Control Plane - Passwordless Sudo Configuration
+
+[INFO] Configuring passwordless sudo for: yourusername
+[✓] Sudoers file installed
+[✓] Sudoers syntax verified
+
+[INFO] Testing configuration...
+
+[✓] kubectl passwordless sudo: OK
+[✓] Script passwordless sudo: OK
+[✓] Remote sudo pattern: OK
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[✓] Passwordless sudo configured successfully!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**Verify it worked:**
+```bash
+# Should run without asking for password:
+sudo kubectl version --client
+```
+
+**Takes:** ~2 minutes  
+**Required:** YES if adding VPS/management nodes, NO if only using control plane  
+**Skip if:** You're only running a single control plane and accessing it locally
+
+> 💡 **Security Note:** This allows your user account to run kubectl and MyNodeOne scripts without password prompts. Only do this on trusted machines.
+
+**After this is complete, you can safely add VPS nodes and management laptops!**
+
+---
+
+## 🔒 Step 4: Apply Security Hardening (5 minutes, RECOMMENDED)
+
+> **⚠️ IMPORTANT: Do this AFTER Step 3 (passwordless sudo) and BEFORE adding worker nodes!**
 > 
 > **Why now?** Security policies apply cluster-wide. Setting them up first ensures all nodes start with proper security from the beginning.
 
@@ -313,11 +374,15 @@ sudo ./scripts/enable-security-hardening.sh
 
 ---
 
-## 🔗 Step 4: Add More Machines (Optional)
+## Step 5: Add More Machines (Optional)
 
 **Before adding more machines:**
-- ✅ Complete Step 3 (Security Hardening) on your control plane first!
-- ✅ This ensures security policies apply to all nodes from the start
+- Complete Step 3 (Passwordless Sudo) - MANDATORY for VPS/management nodes
+- Complete Step 4 (Security Hardening) - RECOMMENDED for all deployments
+- This ensures security policies apply to all nodes from the start
+
+> **For VPS installations, see the comprehensive prerequisite guide:**  
+> **[docs/INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md)**
 
 ### Want to Add Worker Nodes?
 
@@ -343,7 +408,55 @@ sudo ./scripts/mynodeone
 
 **Add VPS Edge Nodes:**
 
-#### 🔒 Security Best Practice: Create Sudo User (RECOMMENDED)
+> **MANDATORY PREREQUISITES:** Before installing MyNodeOne on a VPS, you MUST complete these steps:
+>
+> 1. Control plane installed and running
+> 2. Passwordless sudo configured (Step 3 above)
+> 3. SSH access from VPS to control plane (ssh-copy-id)
+> 4. Tailscale connected on VPS
+> 5. Docker installed on VPS
+>
+> **Complete prerequisite guide:** [docs/INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md)
+
+#### Check Prerequisites Before Installation
+
+**From your VPS, verify all prerequisites are met:**
+
+```bash
+# Download MyNodeOne first
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
+# Run pre-flight checks (MANDATORY)
+./scripts/check-prerequisites.sh vps <control-plane-ip> <ssh-user>
+
+# Example:
+./scripts/check-prerequisites.sh vps 100.67.210.15 vinaysachdeva
+```
+
+**Expected output if ready:**
+```
+ Pre-flight Checks: vps
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] SSH connection: OK
+[ ] Passwordless sudo: OK
+[ ] Kubernetes cluster: RUNNING
+[ ] Tailscale connected: 100.65.241.25
+[ ] Docker: INSTALLED
+[ ] Ports 80, 443: AVAILABLE
+[ ] No IP conflicts detected
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] All pre-flight checks passed!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ Ready to proceed with vps installation!
+```
+
+**If ANY check fails:** Fix the issue before proceeding. The installation will fail without proper prerequisites.
+
+#### Security Best Practice: Create Sudo User (RECOMMENDED)
 
 Before installing MyNodeOne on your VPS, create a dedicated sudo user instead of using root:
 
@@ -366,10 +479,10 @@ sudo whoami
 ```
 
 **Why this matters:**
-- ✅ **Security:** Running as root exposes your VPS to greater risk
-- ✅ **Best Practice:** Industry standard for production servers
-- ✅ **Safety:** Limits damage from accidental commands
-- ✅ **Audit Trail:** Easier to track actions with named users
+- **Security:** Running as root exposes your VPS to greater risk
+- **Best Practice:** Industry standard for production servers
+- **Safety:** Limits damage from accidental commands
+- **Audit Trail:** Easier to track actions with named users
 
 **What the installer does:**
 - If running as root, it will **warn you** and give you a chance to create a sudo user
@@ -382,33 +495,89 @@ sudo whoami
 On each VPS (as your sudo user):
 
 ```bash
-# Same process as above, but select "VPS Edge Node"
-git clone https://github.com/vinsac/MyNodeOne.git
-cd MyNodeOne
+# 1. Pre-flight checks MUST pass (see above)
+./scripts/check-prerequisites.sh vps <control-plane-ip> <ssh-user>
+
+# 2. Only proceed if all checks pass
 sudo ./scripts/mynodeone
 # Select option 3 (VPS Edge Node) when prompted
 ```
 
+**What happens during installation:**
+- Pre-flight checks run automatically
+- SSH keys exchanged for bidirectional access
+- VPS registered in cluster
+- IP validated to prevent conflicts
+- Traefik installed with certificate management
+- Routes synced from control plane
+
+**After installation:**
+```bash
+# Check certificate status
+~/MyNodeOne/scripts/check-certificates.sh [domain]
+
+# Validate DNS before adding domains
+~/MyNodeOne/scripts/check-dns-ready.sh yourdomain.com <vps-ip>
+
+# Monitor Traefik logs
+sudo docker logs traefik -f
+```
+
 ### Configure VPS Edge Nodes
 
-**Then point your DNS to your VPS:**
-```
-Type  Name  Value           TTL
-A     @     <your-vps-ip>   3600
-A     www   <your-vps-ip>   3600
+**1. Validate DNS before requesting SSL certificates:**
+
+```bash
+# Point your DNS to your VPS:
+# Type  Name  Value           TTL
+# A     @     <your-vps-ip>   3600
+# A     *     <your-vps-ip>   3600
+
+# Then verify DNS propagation:
+~/MyNodeOne/scripts/check-dns-ready.sh yourdomain.com <your-vps-ip>
 ```
 
-## Step 5: Setup Management Workstation (5 minutes, optional)
+**2. Check SSL certificate status:**
+
+```bash
+# Monitor certificate issuance
+~/MyNodeOne/scripts/check-certificates.sh yourdomain.com
+
+# View Traefik logs for certificate events
+sudo docker logs traefik | grep -i certificate
+```
+
+**Certificate Management:**
+- Staging mode (test certificates): Unlimited requests, use for testing
+- Production mode (real certificates): Rate limited (5 failures/hour, 50 certs/week)
+- Switch modes by editing `/etc/traefik/traefik.yml` on VPS
+
+## Step 6: Setup Management Workstation (5 minutes, optional)
+
+> **PREREQUISITE:** Passwordless sudo must be configured on control plane (Step 3 above)
 
 On your **laptop/desktop** for deploying apps:
 
 ```bash
-# Single command setup - handles everything automatically!
+# 1. Download MyNodeOne
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
+
+# 2. (Optional) Check prerequisites
+./scripts/check-prerequisites.sh management <control-plane-ip> <ssh-user>
+
+# 3. Run installation
 sudo ./scripts/mynodeone
 # Select option 4 (Management Workstation) when prompted
 ```
 
 **What this does automatically:**
+- Configures Tailscale to accept subnet routes (enables LoadBalancer access)
+- Installs kubectl
+- Sets up SSH keys (optional)
+- Copies kubeconfig from control plane via SSH
+- Configures .local domain names
+- Tests the connection
 - ✅ Configures Tailscale to accept subnet routes (enables LoadBalancer access)
 - ✅ Installs kubectl
 - ✅ Sets up SSH keys (optional)
@@ -574,6 +743,64 @@ VPS 1-2:
 
 ## Troubleshooting
 
+> 📖 **Comprehensive troubleshooting guide:** [docs/INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md#troubleshooting)
+
+### Installation fails with "Passwordless sudo: NOT CONFIGURED"
+
+**This is the #1 cause of VPS installation failures!**
+
+```bash
+# Fix: Run on control plane
+ssh user@control-plane-ip
+cd ~/MyNodeOne
+sudo ./scripts/setup-control-plane-sudo.sh
+
+# Verify it works:
+sudo kubectl version --client
+# Should run without asking for password
+```
+
+### Installation fails with "SSH connection: FAILED"
+
+```bash
+# Fix: Set up SSH key from VPS to control plane
+ssh-copy-id user@control-plane-ip
+
+# Test it works:
+ssh user@control-plane-ip 'echo OK'
+# Should print OK without asking for password
+```
+
+### Installation fails with "IP MISMATCH DETECTED"
+
+```bash
+# This means a stale VPS registration exists
+# Fix: Unregister the old IP
+cd ~/MyNodeOne
+./scripts/unregister-vps.sh <old-tailscale-ip>
+
+# Then re-run VPS installation
+sudo ./scripts/mynodeone
+```
+
+### Certificate not obtained / showing default cert
+
+```bash
+# 1. Check DNS is properly configured
+~/MyNodeOne/scripts/check-dns-ready.sh yourdomain.com <vps-ip>
+
+# 2. Check certificate status
+~/MyNodeOne/scripts/check-certificates.sh yourdomain.com
+
+# 3. Check Traefik logs
+sudo docker logs traefik | grep -i certificate
+
+# Common causes:
+# - DNS not propagated yet (wait 5-15 minutes)
+# - Port 80 blocked by firewall
+# - Rate limit hit (use staging mode for testing)
+```
+
 ### Can't connect to Tailscale
 
 ```bash
@@ -635,10 +862,42 @@ ssh <control-plane-ip> "sudo systemctl status k3s"
 
 ## Need Help?
 
+- **Prerequisites Guide:** [docs/INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md) ⭐ **MUST READ for VPS**
+- **Reliability Improvements:** [docs/RELIABILITY_IMPROVEMENTS.md](../RELIABILITY_IMPROVEMENTS.md)
+- **Production Ready Summary:** [docs/PRODUCTION_READY_SUMMARY.md](../PRODUCTION_READY_SUMMARY.md)
 - **Documentation:** See `docs/` folder
 - **FAQ:** Check `FAQ.md`
 - **Issues:** Open on GitHub
 - **Configuration:** Stored in `~/.mynodeone/config.env`
+
+## Useful Commands
+
+**Pre-installation:**
+```bash
+# Check VPS prerequisites
+./scripts/check-prerequisites.sh vps <control-plane-ip> <user>
+
+# Check management laptop prerequisites
+./scripts/check-prerequisites.sh management <control-plane-ip> <user>
+```
+
+**Post-installation:**
+```bash
+# Configure passwordless sudo (control plane)
+sudo ./scripts/setup-control-plane-sudo.sh
+
+# Check DNS readiness
+./scripts/check-dns-ready.sh yourdomain.com <ip>
+
+# Check SSL certificates
+./scripts/check-certificates.sh [domain]
+
+# Unregister stale VPS
+./scripts/unregister-vps.sh <old-tailscale-ip>
+
+# Show cluster credentials
+sudo ./scripts/show-credentials.sh
+```
 
 ---
 

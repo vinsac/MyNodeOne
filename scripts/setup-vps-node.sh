@@ -214,31 +214,34 @@ else
             sudo cat /root/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read root key'
             echo '=== USER KEY ==='
             cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read user key'
-        " 2>&1 | while IFS= read -r line; do
-            # Skip password prompts and other noise
-            if [[ "$line" =~ ^\[sudo\] || "$line" =~ ^Connection ]]; then
-                continue
-            fi
-            
-            if [[ "$line" == "=== ROOT KEY ===" ]]; then
-                mode=\"root\"
-            elif [[ "$line" == "=== USER KEY ===" ]]; then
-                mode=\"user\"
-            elif [[ "$line" == "ERROR:"* ]]; then
-                log_warn "$line"
-            elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
-                # Add to the VPS user's authorized_keys
-                echo "$line" >> ~/.ssh/authorized_keys
-                if [[ "$mode" == "root" ]]; then
-                    log_success "Added root SSH key from control plane"
-                else
-                    log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane"
+        " 2>&1 | {
+            mode=""  # Initialize to avoid unbound variable error
+            while IFS= read -r line; do
+                # Skip password prompts and other noise
+                if [[ "$line" =~ ^\[sudo\] || "$line" =~ ^Connection ]]; then
+                    continue
                 fi
-            elif [[ -n "$line" ]] && [[ ! "$line" =~ ^Generating ]]; then
-                # Echo other informational lines
-                echo "$line"
-            fi
-        done
+                
+                if [[ "$line" == "=== ROOT KEY ===" ]]; then
+                    mode="root"
+                elif [[ "$line" == "=== USER KEY ===" ]]; then
+                    mode="user"
+                elif [[ "$line" == "ERROR:"* ]]; then
+                    log_warn "$line"
+                elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
+                    # Add to the VPS user's authorized_keys
+                    echo "$line" >> ~/.ssh/authorized_keys
+                    if [[ "$mode" == "root" ]]; then
+                        log_success "Added root SSH key from control plane"
+                    else
+                        log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane"
+                    fi
+                elif [[ -n "$line" ]] && [[ ! "$line" =~ ^Generating ]]; then
+                    # Echo other informational lines
+                    echo "$line"
+                fi
+            done
+        }
         
         # Ensure proper permissions
         chmod 600 ~/.ssh/authorized_keys 2>/dev/null || true

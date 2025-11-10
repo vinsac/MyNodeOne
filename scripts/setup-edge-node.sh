@@ -130,6 +130,44 @@ install_traefik() {
     mkdir -p /etc/traefik/dynamic
     mkdir -p /var/log/traefik
     
+    # Ask about Let's Encrypt mode
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔒 SSL Certificate Configuration"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Let's Encrypt has rate limits:"
+    echo "  • 5 failed attempts per hour"
+    echo "  • 50 certificates per week per domain"
+    echo ""
+    echo "For first-time setup or testing, use STAGING mode:"
+    echo "  ✓ Unlimited requests"
+    echo "  ✓ Test certificate issuance"
+    echo "  ✗ Browser will show 'not secure' (expected)"
+    echo ""
+    echo "For production with real SSL certificates, use PRODUCTION mode:"
+    echo "  ✓ Trusted certificates"
+    echo "  ✗ Rate limits apply"
+    echo ""
+    read -p "Use STAGING mode? (recommended for first install) [Y/n]: " use_staging
+    
+    if [[ "$use_staging" =~ ^[Nn]$ ]]; then
+        ACME_SERVER=""
+        log_info "Using Let's Encrypt PRODUCTION mode"
+        echo "⚠️  Remember: Rate limits apply!"
+    else
+        ACME_SERVER="      caServer: https://acme-staging-v02.api.letsencrypt.org/directory"
+        log_info "Using Let's Encrypt STAGING mode (test certificates)"
+        echo "ℹ️  Switch to production mode later by editing /etc/traefik/traefik.yml"
+    fi
+    echo ""
+    
+    # Create acme.json BEFORE creating config (critical for permissions)
+    log_info "Initializing certificate storage..."
+    touch /etc/traefik/acme.json
+    chmod 600 /etc/traefik/acme.json
+    log_success "acme.json created with correct permissions (600)"
+    
     # Create Traefik static configuration
     # NOTE: Using direct substitution instead of heredoc to expand variables
     cat > /etc/traefik/traefik.yml <<EOF
@@ -145,6 +183,12 @@ api:
 entryPoints:
   web:
     address: ":80"
+    # Redirect HTTP to HTTPS
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
   
   websecure:
     address: ":443"
@@ -154,6 +198,7 @@ certificatesResolvers:
     acme:
       email: ${SSL_EMAIL}
       storage: /etc/traefik/acme.json
+${ACME_SERVER}
       httpChallenge:
         entryPoint: web
 
@@ -193,10 +238,6 @@ http:
           - "admin:\$apr1\$H6uskkkW\$IgXLP6ewTrSuBkTrqE8wj/"  # admin:admin (change this!)
 EOF
     
-    # Create acme.json with proper permissions
-    touch /etc/traefik/acme.json
-    chmod 600 /etc/traefik/acme.json
-    
     # Create Docker Compose file
     cat > /etc/traefik/docker-compose.yml <<EOF
 version: '3.8'
@@ -222,7 +263,60 @@ EOF
     cd /etc/traefik
     docker compose up -d
     
+    # Wait for Traefik to start
+    log_info "Waiting for Traefik to start..."
+    sleep 5
+    
+    # Verify Traefik is running
+    if docker ps | grep traefik | grep -q Up; then
+        log_success "Traefik container is running"
+        
+        # Show status
+        TRAEFIK_STATUS=$(docker ps --format '{{.Status}}' --filter name=traefik)
+        log_info "Status: $TRAEFIK_STATUS"
+        
+        # Verify ports are listening
+        if netstat -tuln | grep -q ":80 "; then
+            log_success "Port 80 (HTTP) is listening"
+        else
+            log_warn "Port 80 not listening yet"
+        fi
+        
+        if netstat -tuln | grep -q ":443 "; then
+            log_success "Port 443 (HTTPS) is listening"
+        else
+            log_warn "Port 443 not listening yet"
+        fi
+    else
+        log_error "Traefik failed to start!"
+        echo ""
+        echo "Check logs with:"
+        echo "  docker logs traefik"
+        echo ""
+        exit 1
+    fi
+    
     log_success "Traefik installed and started"
+    
+    # Show certificate information
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  📋 Certificate Information"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Certificate storage: /etc/traefik/acme.json"
+    echo "Permissions: $(stat -c %a /etc/traefik/acme.json) (should be 600)"
+    echo ""
+    echo "📖 Useful commands:"
+    echo "  • Check certificate status:"
+    echo "    ~/MyNodeOne/scripts/check-certificates.sh"
+    echo ""
+    echo "  • Monitor Traefik logs:"
+    echo "    docker logs traefik -f"
+    echo ""
+    echo "  • Restart Traefik:"
+    echo "    cd /etc/traefik && docker compose restart"
+    echo ""
 }
 
 save_control_plane_ip() {

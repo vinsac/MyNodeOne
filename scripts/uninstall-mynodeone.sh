@@ -297,7 +297,7 @@ if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ]; then
             log_success "Removed domain-registry ConfigMap" || true
         kubectl delete configmap sync-controller-registry -n kube-system --ignore-not-found=true 2>/dev/null && \
             log_success "Removed sync-controller-registry ConfigMap" || true
-        kubectl delete configmap cluster-info -n default --ignore-not-found=true 2>/dev/null && \
+        kubectl delete configmap cluster-info -n kube-system --ignore-not-found=true 2>/dev/null && \
             log_success "Removed cluster-info ConfigMap" || true
         
         log_success "ConfigMaps cleaned"

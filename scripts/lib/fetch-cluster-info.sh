@@ -163,8 +163,9 @@ fetch_cluster_info() {
             cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
         else
             # With password - use printf for safer password handling
-            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" | grep -v "^\[sudo\]" | grep -v "^sudo:" || echo "")
-            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" | grep -v "^\[sudo\]" | grep -v "^sudo:" || echo "")
+            # Note: sudo prompt and result are on same line, so use sed to strip prefix, not grep to remove line
+            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
+            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
         fi
         
         if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
@@ -181,7 +182,7 @@ fetch_cluster_info() {
             if [ -z "$sudo_password" ]; then
                 repo_path=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
             else
-                repo_path=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" | grep -v "^\[sudo\]" | grep -v "^sudo:" || echo "")
+                repo_path=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
             fi
             
             if [ -n "$repo_path" ]; then

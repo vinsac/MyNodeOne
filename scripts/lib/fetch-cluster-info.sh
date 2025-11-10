@@ -117,9 +117,9 @@ fetch_cluster_info() {
         # Passwordless sudo
         ssh "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>/dev/null
     else
-        # Pass password to sudo via stdin
-        ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | \
-        grep -v "^\[sudo\]" > ~/.kube/config.raw
+        # Pass password to sudo via stdin - use printf for safer password handling
+        ssh "$ssh_user@$control_plane_ip" "printf '%s\n' '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>&1" | \
+        grep -v "^\[sudo\]" | grep -v "^sudo:" > ~/.kube/config.raw
     fi
     
     local ssh_exit=$?
@@ -162,9 +162,9 @@ fetch_cluster_info() {
             cluster_name=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
             cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
         else
-            # With password
-            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null | grep -v "^\[sudo\]" || echo "")
-            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null | grep -v "^\[sudo\]" || echo "")
+            # With password - use printf for safer password handling
+            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" | grep -v "^\[sudo\]" | grep -v "^sudo:" || echo "")
+            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" | grep -v "^\[sudo\]" | grep -v "^sudo:" || echo "")
         fi
         
         if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
@@ -181,7 +181,7 @@ fetch_cluster_info() {
             if [ -z "$sudo_password" ]; then
                 repo_path=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
             else
-                repo_path=$(ssh "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null | grep -v "^\[sudo\]" || echo "")
+                repo_path=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" | grep -v "^\[sudo\]" | grep -v "^sudo:" || echo "")
             fi
             
             if [ -n "$repo_path" ]; then

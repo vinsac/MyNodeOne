@@ -309,6 +309,17 @@ sudo ./scripts/setup-control-plane-sudo.sh
 - ✅ Validates configuration with tests
 - ✅ Shows clear success/failure messages
 
+**Which nodes need this?**
+
+| Node Type | Needs Passwordless Sudo? | Run This Script? |
+|-----------|-------------------------|------------------|
+| **Control Plane** | ✅ **YES** | ✅ Run `setup-control-plane-sudo.sh` |
+| **VPS Edge Node** | ❌ NO | ❌ Do NOT run this script |
+| **Management Laptop** | ❌ NO | ❌ Do NOT run this script |
+| **Worker Node** | ❌ NO | ❌ Do NOT run this script |
+
+> 💡 **Remember:** Only the control plane needs passwordless sudo because other nodes connect **TO** it. VPS and management laptops connect to the control plane but nothing connects back to them.
+
 **Expected output:**
 ```
 🔐 MyNodeOne Control Plane - Passwordless Sudo Configuration
@@ -418,12 +429,14 @@ sudo ./scripts/mynodeone
 > **MANDATORY PREREQUISITES:** Before installing MyNodeOne on a VPS, you MUST complete these steps:
 >
 > 1. Control plane installed and running
-> 2. Passwordless sudo configured (Step 3 above)
+> 2. Passwordless sudo configured on **control plane** (Step 3 above)
 > 3. SSH access from VPS to control plane (ssh-copy-id)
 > 4. Tailscale connected on VPS
 > 5. Docker installed on VPS
 >
 > **Complete prerequisite guide:** [docs/INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md)
+
+> 💡 **Important:** You do **NOT** need to run `setup-control-plane-sudo.sh` on the VPS! That script is **only** for the control plane. The VPS connects **to** the control plane via SSH, not vice versa.
 
 #### Check Prerequisites Before Installation
 
@@ -562,6 +575,8 @@ sudo docker logs traefik | grep -i certificate
 ## Step 6: Setup Management Workstation (5 minutes, optional)
 
 > **PREREQUISITE:** Passwordless sudo must be configured on control plane (Step 3 above)
+
+> 💡 **Important:** You do **NOT** need to run `setup-control-plane-sudo.sh` on your management laptop! That script is **only** for the control plane. The laptop connects **to** the control plane, not vice versa.
 
 On your **laptop/desktop** for deploying apps:
 

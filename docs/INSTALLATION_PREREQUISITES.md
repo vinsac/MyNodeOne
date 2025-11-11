@@ -33,6 +33,8 @@ kubectl get pods -A
 #### **2. Passwordless Sudo MUST Be Configured**
 **This is the #1 cause of installation failures!**
 
+> ⚠️ **IMPORTANT:** This is ONLY needed on the **control plane**! Do NOT run this on VPS or management laptop.
+
 **On Control Plane, run:**
 ```bash
 cd ~/MyNodeOne
@@ -51,6 +53,12 @@ sudo kubectl version --client
 - VPS needs to query cluster via SSH
 - Commands run as: `ssh user@control-plane 'sudo kubectl get ...'`
 - If sudo asks for password, automation hangs
+
+**Which nodes need this?**
+- ✅ **Control Plane:** YES (run the script)
+- ❌ **VPS Edge Node:** NO (do NOT run this script)
+- ❌ **Management Laptop:** NO (do NOT run this script)
+- ❌ **Worker Nodes:** NO (do NOT run this script)
 
 #### **3. SSH Access From VPS → Control Plane**
 **On VPS, set up SSH key:**

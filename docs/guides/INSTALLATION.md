@@ -438,6 +438,37 @@ sudo ./scripts/mynodeone
 
 > 💡 **Important:** You do **NOT** need to run `setup-control-plane-sudo.sh` on the VPS! That script is **only** for the control plane. The VPS connects **to** the control plane via SSH, not vice versa.
 
+#### ⚠️ CRITICAL STEP: Exchange SSH Keys (VPS → Control Plane)
+
+**This is the #1 most commonly skipped step!**
+
+Before running ANY pre-flight checks or installation, you MUST exchange SSH keys:
+
+```bash
+# On VPS, generate SSH key (if you don't have one):
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
+
+# Copy SSH key to control plane:
+ssh-copy-id <your-username>@<control-plane-tailscale-ip>
+
+# Example:
+ssh-copy-id vinaysachdeva@100.116.16.117
+
+# Test SSH connection (should NOT ask for password):
+ssh vinaysachdeva@100.116.16.117 'echo OK'
+# Expected output: OK
+
+# CRITICAL TEST: Verify passwordless sudo works remotely:
+ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
+# Should show version WITHOUT asking for password!
+```
+
+**If the last command asks for password:**
+- Passwordless sudo is NOT configured on control plane
+- Go back to control plane and run: `./scripts/setup-control-plane-sudo.sh`
+
+---
+
 #### Check Prerequisites Before Installation
 
 **From your VPS, verify all prerequisites are met:**
@@ -451,7 +482,7 @@ cd MyNodeOne
 ./scripts/check-prerequisites.sh vps <control-plane-ip> <ssh-user>
 
 # Example:
-./scripts/check-prerequisites.sh vps 100.67.210.15 vinaysachdeva
+./scripts/check-prerequisites.sh vps 100.116.16.117 vinaysachdeva
 ```
 
 **Expected output if ready:**

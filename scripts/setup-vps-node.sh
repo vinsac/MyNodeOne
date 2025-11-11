@@ -52,14 +52,23 @@ source ~/.mynodeone/config.env
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/preflight-checks.sh"
 
-# Run pre-flight checks
-log_info "Running pre-flight checks..."
-if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "${CONTROL_PLANE_SSH_USER:-$(whoami)}"; then
-    log_error "Pre-flight checks failed. Please fix the issues above and try again."
-    echo ""
-    echo "💡 Tip: Run this to see what needs to be fixed:"
-    echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP"
-    exit 1
+# Parse arguments
+SKIP_PREFLIGHT=false
+if [ "${1:-}" = "--skip-preflight" ]; then
+    SKIP_PREFLIGHT=true
+    log_info "Skipping pre-flight checks (already run by setup-edge-node.sh)"
+fi
+
+# Run pre-flight checks unless skipped
+if [ "$SKIP_PREFLIGHT" = false ]; then
+    log_info "Running pre-flight checks..."
+    if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "${CONTROL_PLANE_SSH_USER:-$(whoami)}"; then
+        log_error "Pre-flight checks failed. Please fix the issues above and try again."
+        echo ""
+        echo "💡 Tip: Run this to see what needs to be fixed:"
+        echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP"
+        exit 1
+    fi
 fi
 
 # Detect the ACTUAL user (not the sudo-elevated user)

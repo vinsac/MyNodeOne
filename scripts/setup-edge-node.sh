@@ -20,6 +20,9 @@ NC='\033[0m' # No Color
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source preflight checks library
+source "$SCRIPT_DIR/lib/preflight-checks.sh"
+
 # Load configuration
 CONFIG_FILE="$HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -79,7 +82,8 @@ install_dependencies() {
         jq \
         ufw \
         fail2ban \
-        netcat-openbsd
+        netcat-openbsd \
+        net-tools
     
     log_success "Dependencies installed"
 }
@@ -481,6 +485,23 @@ main() {
     echo
     
     check_requirements
+    
+    # Run pre-flight checks BEFORE any installation
+    log_info "Running pre-flight checks..."
+    echo
+    if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "${CONTROL_PLANE_SSH_USER:-root}"; then
+        log_error "Pre-flight checks failed. Please fix the issues above and try again."
+        echo ""
+        echo "💡 Tip: Run this to see what needs to be fixed:"
+        echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP ${CONTROL_PLANE_SSH_USER:-root}"
+        echo ""
+        echo "📖 See docs/INSTALLATION_PREREQUISITES.md for complete guide"
+        exit 1
+    fi
+    echo
+    log_success "All pre-flight checks passed! Proceeding with installation..."
+    echo
+    
     install_dependencies
     configure_firewall
     install_docker
@@ -500,7 +521,8 @@ auto_register_vps() {
     
     # Check if setup script exists
     if [ -f "$SCRIPT_DIR/setup-vps-node.sh" ]; then
-        bash "$SCRIPT_DIR/setup-vps-node.sh" || true
+        # Skip pre-flight checks since we already ran them
+        bash "$SCRIPT_DIR/setup-vps-node.sh" --skip-preflight || true
         log_success "VPS auto-registration complete"
     else
         log_warn "Auto-registration script not found, skipping..."

@@ -110,7 +110,8 @@ This software is provided "AS IS" with **ABSOLUTELY NO WARRANTY** of any kind. B
 sudo ./scripts/mynodeone                                    # Main menu
 
 # ⚠️ MANDATORY: After control plane install, before VPS/management
-sudo ./scripts/setup-control-plane-sudo.sh                 # Configure passwordless sudo
+./scripts/setup-control-plane-sudo.sh                      # Configure passwordless sudo
+                                                            # (Can also run with: sudo ./scripts/...)
 
 # PRE-FLIGHT CHECKS (Before VPS installation)
 ./scripts/check-prerequisites.sh vps <cp-ip> <user>        # Validate VPS prerequisites

@@ -157,7 +157,7 @@ MyNodeOne has been significantly enhanced with production-grade reliability impr
 ./scripts/mynodeone  # Option 1: Control Plane
 
 # 2. ⚠️ MANDATORY: Configure passwordless sudo
-sudo ./scripts/setup-control-plane-sudo.sh
+./scripts/setup-control-plane-sudo.sh
 
 # 3. (Optional but recommended) Verify prerequisites
 ./scripts/check-prerequisites.sh vps <control-plane-ip>
@@ -181,7 +181,7 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 ### **Control Plane Setup**
 - [ ] Install control plane: `./scripts/mynodeone` → Option 1
-- [ ] Run sudo setup: `sudo ./scripts/setup-control-plane-sudo.sh`
+- [ ] Run sudo setup: `./scripts/setup-control-plane-sudo.sh`
 - [ ] Verify: `sudo kubectl version --client` (no password prompt)
 - [ ] Confirm cluster running: `kubectl get nodes`
 
@@ -214,7 +214,7 @@ sudo ./scripts/setup-control-plane-sudo.sh
 # On control plane:
 cd ~/MyNodeOne
 git pull
-sudo ./scripts/setup-control-plane-sudo.sh
+./scripts/setup-control-plane-sudo.sh
 
 # Verify existing VPS registrations:
 kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' | jq '.vps_nodes'
@@ -252,7 +252,7 @@ ssh user@control-plane-ip 'echo OK'
 # Fix (MOST COMMON ISSUE):
 ssh user@control-plane-ip
 cd ~/MyNodeOne
-sudo ./scripts/setup-control-plane-sudo.sh
+./scripts/setup-control-plane-sudo.sh
 ```
 
 ### **Certificate Not Obtained**
@@ -382,7 +382,7 @@ MyNodeOne is now **production ready** with:
 
 ### **For Existing Users:**
 1. Update: `git pull`
-2. Run: `sudo ./scripts/setup-control-plane-sudo.sh`
+2. Run: `./scripts/setup-control-plane-sudo.sh`
 3. Validate: Existing VPS registrations
 4. Upgrade: VPS nodes if needed
 

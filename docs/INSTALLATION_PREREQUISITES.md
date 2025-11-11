@@ -36,7 +36,9 @@ kubectl get pods -A
 **On Control Plane, run:**
 ```bash
 cd ~/MyNodeOne
-sudo ./scripts/setup-control-plane-sudo.sh
+# Either command works:
+./scripts/setup-control-plane-sudo.sh
+# OR: sudo ./scripts/setup-control-plane-sudo.sh
 ```
 
 **Verify it works:**
@@ -155,7 +157,9 @@ This is the most critical prerequisite.
 
 3. **Run the sudo setup script:**
    ```bash
-   sudo ./scripts/setup-control-plane-sudo.sh
+   # Either command works:
+   ./scripts/setup-control-plane-sudo.sh
+   # OR: sudo ./scripts/setup-control-plane-sudo.sh
    ```
 
 4. **Verify it worked:**
@@ -280,7 +284,7 @@ echo "<paste-root-public-key>" >> ~/.ssh/authorized_keys
    └─> NO prerequisites
 
 2. ⚠️ CRITICAL STEP ⚠️
-   └─> Run: sudo ./scripts/setup-control-plane-sudo.sh
+   └─> Run: ./scripts/setup-control-plane-sudo.sh
    └─> Verify: sudo kubectl version (no password prompt)
 
 3. Management Laptop (Optional)
@@ -360,7 +364,7 @@ ssh user@control-plane-ip 'echo OK'
 ```bash
 ssh user@control-plane-ip
 cd ~/MyNodeOne
-sudo ./scripts/setup-control-plane-sudo.sh
+./scripts/setup-control-plane-sudo.sh
 exit
 
 # Verify:

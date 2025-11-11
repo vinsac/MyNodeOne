@@ -292,8 +292,15 @@ sudo ./scripts/mynodeone
 **Run this command on your control plane machine:**
 
 ```bash
+# Either of these commands works:
+./scripts/setup-control-plane-sudo.sh
+# OR
 sudo ./scripts/setup-control-plane-sudo.sh
+
+# The script will prompt for your password when needed
 ```
+
+> 💡 **Note:** Both commands work identically. The script uses `sudo` internally for privileged operations and will prompt for your password when needed.
 
 **What this does:**
 - ✅ Configures passwordless sudo for `kubectl` commands

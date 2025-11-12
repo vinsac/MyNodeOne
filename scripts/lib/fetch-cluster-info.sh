@@ -10,17 +10,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.mynodeone"
 
-# Detect if running under sudo and use actual user's SSH keys
+# Detect actual user and their home directory (even when run with sudo)
 ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    # Running under sudo - use actual user's SSH credentials
+    # Running under sudo - use actual user's home directory and SSH keys
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     SSH_CMD="sudo -u $SUDO_USER ssh"
 else
     # Running normally
+    ACTUAL_HOME="$HOME"
     SSH_CMD="ssh"
 fi
+
+CONFIG_DIR="$ACTUAL_HOME/.mynodeone"
 
 # Colors
 BLUE='\033[0;34m'

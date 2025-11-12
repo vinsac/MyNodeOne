@@ -27,7 +27,17 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-CONFIG_DIR="$HOME/.mynodeone"
+# Detect actual user and their home directory (even when run with sudo)
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally
+    ACTUAL_HOME="$HOME"
+fi
+
+CONFIG_DIR="$ACTUAL_HOME/.mynodeone"
 CONFIG_FILE="$CONFIG_DIR/config.env"
 
 # Helper functions

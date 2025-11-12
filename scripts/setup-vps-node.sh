@@ -75,10 +75,12 @@ fi
 # When running with sudo, $SUDO_USER contains the real user
 if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
     CURRENT_VPS_USER="$SUDO_USER"
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     log_info "Running as user: $CURRENT_VPS_USER (via sudo)"
     log_success "✓ Using actual user '$CURRENT_VPS_USER' for SSH access (not root)"
 else
     CURRENT_VPS_USER=$(whoami)
+    ACTUAL_HOME="$HOME"
     log_info "Running as user: $CURRENT_VPS_USER"
     
     # Security check: warn if actually logged in as root
@@ -192,11 +194,21 @@ if ssh -o BatchMode=yes -o ConnectTimeout=5 "$CONTROL_PLANE_SSH_USER@$CONTROL_PL
 else
     log_info "Configuring passwordless SSH between VPS and control plane..."
     
-    # Generate SSH key if it doesn't exist
-    if [ ! -f ~/.ssh/id_rsa ]; then
-        log_info "Generating SSH key..."
-        ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "vps-$HOSTNAME"
-        log_success "SSH key generated"
+    # Generate SSH key in actual user's home directory (not root's)
+    SSH_KEY_PATH="$ACTUAL_HOME/.ssh/id_rsa"
+    if [ ! -f "$SSH_KEY_PATH" ]; then
+        log_info "Generating SSH key for user $CURRENT_VPS_USER..."
+        log_info "Key location: $SSH_KEY_PATH"
+        
+        # Ensure .ssh directory exists with correct permissions
+        sudo -u "$CURRENT_VPS_USER" mkdir -p "$ACTUAL_HOME/.ssh"
+        sudo -u "$CURRENT_VPS_USER" chmod 700 "$ACTUAL_HOME/.ssh"
+        
+        # Generate key as actual user (not root!)
+        sudo -u "$CURRENT_VPS_USER" ssh-keygen -t rsa -b 4096 -f "$SSH_KEY_PATH" -N "" -C "vps-$HOSTNAME"
+        log_success "SSH key generated for $CURRENT_VPS_USER"
+    else
+        log_info "SSH key already exists: $SSH_KEY_PATH"
     fi
     
     echo ""
@@ -209,8 +221,8 @@ else
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     
-    # Copy SSH key to control plane
-    if ssh-copy-id -o StrictHostKeyChecking=no "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" 2>/dev/null; then
+    # Copy SSH key to control plane (as actual user!)
+    if sudo -u "$CURRENT_VPS_USER" ssh-copy-id -o StrictHostKeyChecking=no "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" 2>/dev/null; then
         log_success "SSH key installed on control plane"
         
         # Also setup reverse SSH access (control plane -> VPS)
@@ -252,12 +264,12 @@ else
                 elif [[ "$line" == "ERROR:"* ]]; then
                     log_warn "$line"
                 elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
-                    # Add to the VPS user's authorized_keys
-                    echo "$line" >> ~/.ssh/authorized_keys
+                    # Add to the ACTUAL VPS user's authorized_keys (not root's!)
+                    echo "$line" >> "$ACTUAL_HOME/.ssh/authorized_keys"
                     if [[ "$mode" == "root" ]]; then
-                        log_success "Added root SSH key from control plane"
+                        log_success "Added root SSH key from control plane to $CURRENT_VPS_USER"
                     else
-                        log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane"
+                        log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane to $CURRENT_VPS_USER"
                     fi
                 elif [[ -n "$line" ]] && [[ ! "$line" =~ ^Generating ]]; then
                     # Echo other informational lines
@@ -266,9 +278,9 @@ else
             done
         }
         
-        # Ensure proper permissions
-        chmod 600 ~/.ssh/authorized_keys 2>/dev/null || true
-        chmod 700 ~/.ssh 2>/dev/null || true
+        # Ensure proper permissions on actual user's SSH directory
+        sudo -u "$CURRENT_VPS_USER" chmod 600 "$ACTUAL_HOME/.ssh/authorized_keys" 2>/dev/null || true
+        sudo -u "$CURRENT_VPS_USER" chmod 700 "$ACTUAL_HOME/.ssh" 2>/dev/null || true
         
         # Verify reverse SSH works (control plane -> VPS)
         log_info "Verifying bidirectional SSH access..."

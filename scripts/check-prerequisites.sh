@@ -38,18 +38,21 @@ show_usage() {
     echo ""
 }
 
-# Parse arguments
-if [ $# -lt 1 ]; then
-    show_usage
-    exit 1
-fi
+# Get absolute script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Detect actual user and home directory
+source "$SCRIPT_DIR/lib/detect-actual-home.sh"
+
+# Source preflight checks library
+source "$SCRIPT_DIR/lib/preflight-checks.sh"
+
+# Parse arguments
 CHECK_TYPE="$1"
 CONTROL_PLANE_IP="${2:-}"
 SSH_USER="${3:-$(whoami)}"
 
-# Load config if exists
-CONFIG_FILE="$HOME/.mynodeone/config.env"
+# Load config if exists (CONFIG_FILE set by detect-actual-home.sh)
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
     CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-${CONTROL_PLANE_IP:-}}"

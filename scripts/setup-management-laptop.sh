@@ -19,6 +19,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Detect actual user and home directory
+source "$SCRIPT_DIR/lib/detect-actual-home.sh"
+
 # Configuration
 MAX_RETRIES=3
 RETRY_DELAY=2
@@ -396,8 +399,7 @@ main() {
     cleanup_old_configs
     echo
     
-    # Load configuration
-    CONFIG_FILE="$HOME/.mynodeone/config.env"
+    # Load configuration (CONFIG_FILE set by detect-actual-home.sh)
     if [ ! -f "$CONFIG_FILE" ]; then
         log_error "Configuration file not found: $CONFIG_FILE"
         log_error "Please run the interactive setup first: sudo ./scripts/mynodeone"
@@ -550,16 +552,16 @@ main() {
             log_success "✅ All validation tests passed!"
             
             # Save validation status
-            echo "LAST_VALIDATION=$(date -Iseconds)" >> ~/.mynodeone/config.env
-            echo "VALIDATION_STATUS=passed" >> ~/.mynodeone/config.env
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> "$CONFIG_FILE"
+            echo "VALIDATION_STATUS=passed" >> "$CONFIG_FILE"
         else
             echo
             log_warn "⚠️  Some validation tests failed"
             log_info "Your laptop may still work, but some features need attention"
             
             # Save validation status
-            echo "LAST_VALIDATION=$(date -Iseconds)" >> ~/.mynodeone/config.env
-            echo "VALIDATION_STATUS=failed" >> ~/.mynodeone/config.env
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> "$CONFIG_FILE"
+            echo "VALIDATION_STATUS=failed" >> "$CONFIG_FILE"
         fi
     else
         log_warn "Validation script not found, skipping tests"

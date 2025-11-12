@@ -10,6 +10,10 @@
 
 set -euo pipefail
 
+# Get script directory and detect actual home
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/detect-actual-home.sh"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -88,8 +92,8 @@ validate_common() {
         TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
     
-    # Config file
-    run_test "Config file exists" "test -f ~/.mynodeone/config.env || test -f /root/.mynodeone/config.env" true
+    # Config file (CONFIG_FILE set by detect-actual-home.sh)
+    run_test "Config file exists" "test -f $CONFIG_FILE" true
     
     # Network connectivity
     run_test "Internet connectivity" "ping -c 1 8.8.8.8" false
@@ -162,11 +166,11 @@ validate_management_laptop() {
     run_test "Cluster connectivity" "kubectl get nodes" true
     
     # Configuration
-    if [ -f ~/.mynodeone/config.env ]; then
-        source ~/.mynodeone/config.env
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
         log_success "Config loaded: Cluster '$CLUSTER_NAME' (domain: $CLUSTER_DOMAIN.local)"
     else
-        log_error "Config file not found"
+        log_error "Config file not found: $CONFIG_FILE"
         TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
     

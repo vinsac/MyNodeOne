@@ -29,10 +29,13 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Detect actual user and home directory
+source "$SCRIPT_DIR/lib/detect-actual-home.sh"
+
 # Load configuration
-CONFIG_FILE="$HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
+    echo "Expected location: $CONFIG_FILE"
     echo "Please run: ./scripts/interactive-setup.sh first"
     exit 1
 fi

@@ -32,6 +32,16 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Detect actual user and their home directory (even when run with sudo)
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally (as root)
+    ACTUAL_HOME="$HOME"
+fi
+
 # Track if we're in the middle of critical operations
 CRITICAL_OPERATION=false
 
@@ -314,17 +324,17 @@ check_system_resources() {
 }
 
 check_existing_installation() {
-    if [ -f "$HOME/.mynodeone/config.env" ]; then
+    if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
         print_warning "MyNodeOne appears to be already configured"
         echo
-        echo "Existing configuration found at: $HOME/.mynodeone/config.env"
+        echo "Existing configuration found at: $ACTUAL_HOME/.mynodeone/config.env"
         echo
         
         # In unattended mode, auto-select reinstall
         if [ "${UNATTENDED:-0}" = "1" ]; then
             print_info "UNATTENDED mode: Auto-selecting reinstall option"
             # Backup existing config
-            cp "$HOME/.mynodeone/config.env" "$HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+            cp "$ACTUAL_HOME/.mynodeone/config.env" "$ACTUAL_HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
             print_info "Config backed up. Proceeding with reinstall..."
             return 0
         fi
@@ -345,7 +355,7 @@ check_existing_installation() {
                 print_warning "This will remove existing MyNodeOne installation"
                 if prompt_confirm "Are you sure you want to reinstall?"; then
                     # Backup existing config
-                    cp "$HOME/.mynodeone/config.env" "$HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)"
+                    cp "$ACTUAL_HOME/.mynodeone/config.env" "$ACTUAL_HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)"
                     print_info "Config backed up. Proceeding with reinstall..."
                     return 0
                 else
@@ -989,7 +999,7 @@ setup_longhorn_disks() {
     STORAGE_PATH="$LONGHORN_DIR"
     
     # Update config file with LONGHORN_PATH
-    local cfg_file="$HOME/.mynodeone/config.env"
+    local cfg_file="$ACTUAL_HOME/.mynodeone/config.env"
     if [ -f "$cfg_file" ]; then
         # Remove old LONGHORN_PATH line if exists
         sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
@@ -1341,11 +1351,12 @@ main() {
     bash "$SCRIPT_DIR/interactive-setup.sh"
     
     # Load the configuration created by interactive setup
-    CONFIG_FILE="$HOME/.mynodeone/config.env"
+    CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
     else
         print_error "Configuration file not found. Setup may have failed."
+        print_error "Expected location: $CONFIG_FILE"
         exit 1
     fi
     
@@ -1363,7 +1374,7 @@ main() {
             else
                 print_info "Skipping disk setup. You can configure storage later."
                 # Set default LONGHORN_PATH for later use
-                local cfg_file="$HOME/.mynodeone/config.env"
+                local cfg_file="$ACTUAL_HOME/.mynodeone/config.env"
                 if [ -f "$cfg_file" ]; then
                     sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
                     echo "LONGHORN_PATH=\"/var/lib/longhorn\"" >> "$cfg_file"
@@ -1395,7 +1406,7 @@ main() {
                 print_info "Longhorn will use /var/lib/longhorn for storage."
                 
                 # Update config file with LONGHORN_PATH
-                local cfg_file="$HOME/.mynodeone/config.env"
+                local cfg_file="$ACTUAL_HOME/.mynodeone/config.env"
                 if [ -f "$cfg_file" ]; then
                     sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
                     echo "LONGHORN_PATH=\"/var/lib/longhorn\"" >> "$cfg_file"

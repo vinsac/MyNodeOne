@@ -373,7 +373,36 @@ ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
 
 ## Installation Steps
 
-### Step 1: Download MyNodeOne on VPS
+### Step 1: ⚠️ CRITICAL FIRST - Exchange SSH Keys
+
+**🛑 STOP! Do this BEFORE downloading or running ANYTHING!**
+
+```bash
+# On VPS, generate SSH key:
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
+
+# Copy SSH key to control plane:
+ssh-copy-id <your-username>@<control-plane-tailscale-ip>
+
+# Example:
+ssh-copy-id vinaysachdeva@100.116.16.117
+# Enter password when prompted (LAST TIME you'll need it!)
+
+# Test SSH (should NOT ask for password):
+ssh vinaysachdeva@100.116.16.117 'echo OK'
+# Expected: OK (no password prompt)
+
+# 🔴 CRITICAL TEST - Verify passwordless sudo:
+ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
+# Expected: Version output WITHOUT asking for password
+```
+
+**✅ If both tests pass:** Continue to Step 2  
+**❌ If sudo asks for password:** Run on control plane: `./scripts/setup-control-plane-sudo.sh`
+
+---
+
+### Step 2: Download MyNodeOne on VPS
 
 ```bash
 # On VPS:
@@ -384,7 +413,7 @@ cd MyNodeOne
 git log --oneline -1
 ```
 
-### Step 2: Run Pre-flight Checks
+### Step 3: Run Pre-flight Checks
 
 **ALWAYS run pre-flight checks BEFORE installation!**
 
@@ -419,14 +448,16 @@ git log --oneline -1
 
 | Error | Fix |
 |-------|-----|
-| `SSH connection: FAILED` | Run `ssh-copy-id` (Step 4 above) |
+| `SSH connection: FAILED` | Go back to Step 1 - Exchange SSH keys! |
 | `Passwordless sudo: NOT CONFIGURED` | Fix control plane sudo setup |
 | `Kubernetes cluster: NOT RUNNING` | Check control plane is running |
 | `Ports in use: 80 443` | Stop services using these ports |
 
 **DO NOT PROCEED until all checks pass!**
 
-### Step 3: Run VPS Installation
+### Step 4: Run VPS Installation
+
+**✅ Prerequisites complete? SSH keys work? Pre-flight checks passed?**
 
 ```bash
 # On VPS:
@@ -457,7 +488,7 @@ Next steps:
   2. Add application routes in: /etc/traefik/dynamic/mynodeone-routes.yml
 ```
 
-### Step 4: Verify VPS Installation
+### Step 5: Verify VPS Installation
 
 ```bash
 # Check Traefik is running:
@@ -473,7 +504,7 @@ docker logs traefik
 # Should NOT show permission errors
 ```
 
-### Step 5: Configure DNS for Your Domain
+### Step 6: Configure DNS for Your Domain
 
 **Point your domain to your VPS public IP:**
 

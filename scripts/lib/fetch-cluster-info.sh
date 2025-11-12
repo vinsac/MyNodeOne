@@ -67,7 +67,33 @@ fetch_cluster_info() {
     log_info "Testing SSH connection to $ssh_user@$control_plane_ip..."
     
     if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
-        log_warn "Passwordless SSH failed, you may be prompted for password"
+        log_error "Passwordless SSH not configured!"
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ⚠️  SSH Keys Not Exchanged"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        echo "SSH keys must be exchanged BEFORE running installation."
+        echo "This prevents password prompts during installation."
+        echo
+        echo "Exit this wizard and run these commands first:"
+        echo
+        echo "  # Generate SSH key:"
+        echo "  ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''"
+        echo
+        echo "  # Copy key to control plane:"
+        echo "  ssh-copy-id $ssh_user@$control_plane_ip"
+        echo
+        echo "  # Test (should NOT ask for password):"
+        echo "  ssh $ssh_user@$control_plane_ip 'echo OK'"
+        echo
+        echo "  # Then run pre-flight checks:"
+        echo "  cd ~/MyNodeOne"
+        echo "  ./scripts/check-prerequisites.sh vps $control_plane_ip $ssh_user"
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        read -p "Press Enter to continue anyway (NOT recommended) or Ctrl+C to exit: " -r
         echo
         
         # Try with password - MUST NOT suppress stderr so user can see password prompt

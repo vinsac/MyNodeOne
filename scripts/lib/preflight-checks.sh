@@ -46,10 +46,10 @@ check_control_plane_for_vps() {
     # Detect if running via sudo and need to use actual user's SSH keys
     local ssh_cmd="ssh"
     local actual_user="${SUDO_USER:-$(whoami)}"
-    if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then
         # Running with sudo, use actual user's SSH credentials
-        ssh_cmd="sudo -u $SUDO_USER ssh"
-        preflight_log_info "Using SSH credentials of user: $SUDO_USER"
+        ssh_cmd="sudo -u ${SUDO_USER} ssh"
+        preflight_log_info "Using SSH credentials of user: ${SUDO_USER}"
     fi
     
     # 1. Check SSH connectivity

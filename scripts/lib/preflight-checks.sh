@@ -138,7 +138,8 @@ check_vps_ready() {
     local ports_in_use=()
     
     for port in 80 443; do
-        if sudo lsof -i :$port &>/dev/null; then
+        # Only check for LISTENING ports, not outbound connections
+        if sudo lsof -i :$port -sTCP:LISTEN &>/dev/null; then
             ports_in_use+=($port)
         fi
     done

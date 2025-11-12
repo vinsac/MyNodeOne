@@ -20,13 +20,24 @@ NC='\033[0m' # No Color
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Detect actual user and their home directory (even when run with sudo)
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally
+    ACTUAL_HOME="$HOME"
+fi
+
 # Source preflight checks library
 source "$SCRIPT_DIR/lib/preflight-checks.sh"
 
 # Load configuration
-CONFIG_FILE="$HOME/.mynodeone/config.env"
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
+    echo "Expected location: $CONFIG_FILE"
     echo "Please run: ./scripts/interactive-setup.sh first"
     exit 1
 fi

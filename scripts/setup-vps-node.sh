@@ -37,16 +37,28 @@ echo "  🌍 VPS Node Registration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Load configuration
-if [ ! -f ~/.mynodeone/config.env ]; then
+# Detect actual user and their home directory FIRST (before loading config)
+# This MUST be before any config loading or SSH operations
+ACTUAL_USER_EARLY="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME_EARLY=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally
+    ACTUAL_HOME_EARLY="$HOME"
+fi
+
+# Load configuration from ACTUAL user's home
+if [ ! -f "$ACTUAL_HOME_EARLY/.mynodeone/config.env" ]; then
     log_error "Configuration not found!"
+    log_error "Expected location: $ACTUAL_HOME_EARLY/.mynodeone/config.env"
     echo "Please run the VPS edge node installation first:"
     echo "  sudo ./scripts/mynodeone"
     echo "  Select option: 3 (VPS Edge Node)"
     exit 1
 fi
 
-source ~/.mynodeone/config.env
+source "$ACTUAL_HOME_EARLY/.mynodeone/config.env"
 
 # Source preflight checks library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -159,12 +171,12 @@ echo ""
 
 # Check required config
 if [ -z "${CONTROL_PLANE_IP:-}" ]; then
-    log_error "CONTROL_PLANE_IP not set in ~/.mynodeone/config.env"
+    log_error "CONTROL_PLANE_IP not set in $ACTUAL_HOME_EARLY/.mynodeone/config.env"
     exit 1
 fi
 
 if [ -z "${PUBLIC_DOMAIN:-}" ]; then
-    log_warn "PUBLIC_DOMAIN not set in ~/.mynodeone/config.env"
+    log_warn "PUBLIC_DOMAIN not set in $ACTUAL_HOME_EARLY/.mynodeone/config.env"
     echo ""
     echo "A public domain is needed for SSL certificates and external access."
     echo "You can set this up later if you don't have one yet."
@@ -172,11 +184,11 @@ if [ -z "${PUBLIC_DOMAIN:-}" ]; then
     read -p "Enter your public domain (or press Enter to skip): " user_domain
     
     if [ -n "$user_domain" ]; then
-        echo "PUBLIC_DOMAIN=\"$user_domain\"" >> ~/.mynodeone/config.env
+        echo "PUBLIC_DOMAIN=\"$user_domain\"" >> "$ACTUAL_HOME_EARLY/.mynodeone/config.env"
         PUBLIC_DOMAIN="$user_domain"
         log_success "Domain configured: $PUBLIC_DOMAIN"
     else
-        log_warn "Skipping domain configuration. You can add it later to ~/.mynodeone/config.env"
+        log_warn "Skipping domain configuration. You can add it later to $ACTUAL_HOME_EARLY/.mynodeone/config.env"
         PUBLIC_DOMAIN=""
     fi
 fi
@@ -572,8 +584,16 @@ else
 #!/bin/bash
 set -euo pipefail
 
+# Detect actual user's home directory
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    ACTUAL_HOME="$HOME"
+fi
+
 # Load configuration
-source ~/.mynodeone/config.env
+source "$ACTUAL_HOME/.mynodeone/config.env"
 
 VPS_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null)
 

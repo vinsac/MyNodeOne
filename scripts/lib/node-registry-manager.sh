@@ -36,10 +36,21 @@ log_error() {
     echo -e "${RED}[✗]${NC} $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
+# Detect actual user's home directory
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally
+    ACTUAL_HOME="$HOME"
+fi
+
 # Detect config directory (never assume location)
 detect_config_dir() {
-    # Try to find existing config
+    # Try to find existing config, prioritizing actual user's home
     local possible_dirs=(
+        "$ACTUAL_HOME/.mynodeone"
         "$HOME/.mynodeone"
         "/root/.mynodeone"
         "/home/$(whoami)/.mynodeone"
@@ -52,8 +63,8 @@ detect_config_dir() {
         fi
     done
     
-    # Default to current user's home
-    echo "$HOME/.mynodeone"
+    # Default to actual user's home
+    echo "$ACTUAL_HOME/.mynodeone"
 }
 
 CONFIG_DIR=$(detect_config_dir)

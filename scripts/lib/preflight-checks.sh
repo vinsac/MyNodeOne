@@ -43,19 +43,31 @@ check_control_plane_for_vps() {
     preflight_log_info "Checking control plane: $cp_ip"
     echo ""
     
+    # Detect if running via sudo and need to use actual user's SSH keys
+    local ssh_cmd="ssh"
+    local actual_user="${SUDO_USER:-$(whoami)}"
+    if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+        # Running with sudo, use actual user's SSH credentials
+        ssh_cmd="sudo -u $SUDO_USER ssh"
+        preflight_log_info "Using SSH credentials of user: $SUDO_USER"
+    fi
+    
     # 1. Check SSH connectivity
     preflight_log_info "Testing SSH connection..."
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 "$cp_user@$cp_ip" 'echo OK' &>/dev/null; then
+    if $ssh_cmd -o BatchMode=yes -o ConnectTimeout=5 "$cp_user@$cp_ip" 'echo OK' &>/dev/null; then
         preflight_log_success "SSH connection: OK"
     else
         preflight_log_error "SSH connection: FAILED"
         echo "  Fix: ssh-copy-id $cp_user@$cp_ip"
+        if [ "$actual_user" != "$(whoami)" ]; then
+            echo "  Note: Run as user $actual_user (not root)"
+        fi
         checks_failed=1
     fi
     
     # 2. Check passwordless sudo for kubectl
     preflight_log_info "Testing passwordless sudo for kubectl..."
-    if ssh -o BatchMode=yes "$cp_user@$cp_ip" 'sudo kubectl version --client' &>/dev/null; then
+    if $ssh_cmd -o BatchMode=yes "$cp_user@$cp_ip" 'sudo kubectl version --client' &>/dev/null; then
         preflight_log_success "Passwordless sudo: OK"
     else
         preflight_log_error "Passwordless sudo: NOT CONFIGURED"
@@ -65,7 +77,7 @@ check_control_plane_for_vps() {
     
     # 3. Check Kubernetes is running
     preflight_log_info "Testing Kubernetes cluster..."
-    if ssh -o BatchMode=yes "$cp_user@$cp_ip" 'sudo kubectl cluster-info' &>/dev/null; then
+    if $ssh_cmd -o BatchMode=yes "$cp_user@$cp_ip" 'sudo kubectl cluster-info' &>/dev/null; then
         preflight_log_success "Kubernetes cluster: RUNNING"
     else
         preflight_log_error "Kubernetes cluster: NOT RUNNING"
@@ -75,7 +87,7 @@ check_control_plane_for_vps() {
     
     # 4. Check cluster-info ConfigMap exists
     preflight_log_info "Checking cluster-info ConfigMap..."
-    if ssh -o BatchMode=yes "$cp_user@$cp_ip" \
+    if $ssh_cmd -o BatchMode=yes "$cp_user@$cp_ip" \
         'sudo kubectl get configmap cluster-info -n kube-system' &>/dev/null; then
         preflight_log_success "cluster-info ConfigMap: EXISTS"
     else
@@ -108,10 +120,20 @@ check_vps_ready() {
     
     # 2. Check SSH key exists
     preflight_log_info "Checking SSH key..."
-    if [ -f "$HOME/.ssh/id_ed25519" ] || [ -f "$HOME/.ssh/id_rsa" ]; then
-        preflight_log_success "SSH key: EXISTS"
+    
+    # Detect actual user (handle sudo case)
+    local actual_user="${SUDO_USER:-$(whoami)}"
+    local actual_home
+    if [ "$actual_user" = "root" ]; then
+        actual_home="/root"
     else
-        preflight_log_warn "SSH key: NOT FOUND"
+        actual_home="/home/$actual_user"
+    fi
+    
+    if [ -f "$actual_home/.ssh/id_ed25519" ] || [ -f "$actual_home/.ssh/id_rsa" ]; then
+        preflight_log_success "SSH key: EXISTS (for user: $actual_user)"
+    else
+        preflight_log_warn "SSH key: NOT FOUND (checked: $actual_home/.ssh/)"
         echo "  Will be generated during installation"
     fi
     

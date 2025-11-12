@@ -69,6 +69,10 @@ cat > /tmp/mynodeone-sudo << EOF
 # Security Note: This allows the user to run kubectl and MyNodeOne scripts
 # without interactive password prompts. Only grant this to trusted users.
 
+# Allow specific environment variables to pass through sudo
+# Required for VPS registration scripts
+Defaults:$CURRENT_USER env_keep += "SKIP_SSH_VALIDATION"
+
 # Allow kubectl without password (required for cluster management)
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/local/bin/kubectl, /usr/bin/kubectl
 

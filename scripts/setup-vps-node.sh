@@ -449,11 +449,38 @@ fi
 log_info "Registering VPS in sync controller..."
 log_info "Using VPS user: $CURRENT_VPS_USER"
 
-ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+REGISTER_OUTPUT=$(ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \
-    $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER" 2>&1 | grep -v "Warning: Permanently added"
+    $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER" 2>&1)
 
-if [ $? -eq 0 ]; then
+REGISTER_EXIT=$?
+
+# Filter out benign warnings
+FILTERED_OUTPUT=$(echo "$REGISTER_OUTPUT" | grep -v "Warning: Permanently added")
+
+# Check for sudo environment variable error
+if echo "$REGISTER_OUTPUT" | grep -q "not allowed to set the following environment variables"; then
+    log_error "Sudo configuration issue on control plane"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔧 Fix Required on Control Plane"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "The sudo configuration needs to be updated to allow"
+    echo "environment variables required for VPS registration."
+    echo ""
+    echo "Run this command on the control plane:"
+    echo ""
+    echo "  cd ~/MyNodeOne"
+    echo "  ./scripts/setup-control-plane-sudo.sh"
+    echo ""
+    echo "Then try the VPS installation again."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    exit 1
+fi
+
+if [ $REGISTER_EXIT -eq 0 ]; then
     log_success "VPS registered in sync controller"
     
     # VALIDATION: Verify VPS was actually registered

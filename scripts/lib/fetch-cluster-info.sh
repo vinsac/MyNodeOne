@@ -12,6 +12,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.mynodeone"
 
+# Detect if running under sudo and use actual user's SSH keys
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's SSH credentials
+    SSH_CMD="sudo -u $SUDO_USER ssh"
+else
+    # Running normally
+    SSH_CMD="ssh"
+fi
+
 # Colors
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -66,7 +76,7 @@ fetch_cluster_info() {
     # Test SSH connection
     log_info "Testing SSH connection to $ssh_user@$control_plane_ip..."
     
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
+    if ! $SSH_CMD -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
         log_error "Passwordless SSH not configured!"
         echo
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -97,7 +107,7 @@ fetch_cluster_info() {
         echo
         
         # Try with password - MUST NOT suppress stderr so user can see password prompt
-        if ! ssh -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit"; then
+        if ! $SSH_CMD -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit"; then
             echo
             log_error "Cannot connect to control plane"
             log_info "Please ensure:"
@@ -123,7 +133,7 @@ fetch_cluster_info() {
     echo
     
     # Check if passwordless sudo works first
-    if ssh "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
+    if $SSH_CMD "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
         log_success "Passwordless sudo detected"
     else
         log_info "Passwordless sudo not available - password required"
@@ -141,10 +151,10 @@ fetch_cluster_info() {
     # Run SSH command with or without password
     if [ -z "$sudo_password" ]; then
         # Passwordless sudo
-        ssh "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>/dev/null
+        $SSH_CMD "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>/dev/null
     else
         # Pass password to sudo via stdin - use printf for safer password handling
-        ssh "$ssh_user@$control_plane_ip" "printf '%s\n' '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>&1" | \
+        $SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\n' '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>&1" | \
         grep -v "^\[sudo\]" | grep -v "^sudo:" > ~/.kube/config.raw
     fi
     
@@ -185,13 +195,13 @@ fetch_cluster_info() {
         
         if [ -z "$sudo_password" ]; then
             # Passwordless sudo
-            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
-            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
+            cluster_name=$($SSH_CMD "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
+            cluster_domain=$($SSH_CMD "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
         else
             # With password - use printf for safer password handling
             # Note: sudo prompt and result are on same line, so use sed to strip prefix, not grep to remove line
-            cluster_name=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
-            cluster_domain=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
+            cluster_name=$($SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
+            cluster_domain=$($SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
         fi
         
         if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
@@ -206,9 +216,9 @@ fetch_cluster_info() {
             
             # Try to get from cluster configmap (authoritative source)
             if [ -z "$sudo_password" ]; then
-                repo_path=$(ssh "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
+                repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
             else
-                repo_path=$(ssh "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
+                repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
             fi
             
             if [ -n "$repo_path" ]; then
@@ -216,13 +226,13 @@ fetch_cluster_info() {
             else
                 # Fallback: search filesystem (for backwards compatibility with older clusters)
                 log_info "No path in cluster config, searching filesystem..."
-                repo_path=$(ssh "$ssh_user@$control_plane_ip" \
+                repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" \
                     "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
                 
                 if [ -z "$repo_path" ]; then
                     # Try standard locations
                     for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
-                        if ssh "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
+                        if $SSH_CMD "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
                             repo_path="$path"
                             break
                         fi

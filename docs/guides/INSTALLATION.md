@@ -377,11 +377,13 @@ ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
 
 **🛑 STOP! Do this BEFORE downloading or running ANYTHING!**
 
+**Important:** Run these commands as your **regular user** (not with sudo):
+
 ```bash
-# On VPS, generate SSH key:
+# On VPS, generate SSH key (as regular user, NOT with sudo):
 ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
 
-# Copy SSH key to control plane:
+# Copy SSH key to control plane (enter password one last time):
 ssh-copy-id <your-username>@<control-plane-tailscale-ip>
 
 # Example:
@@ -396,6 +398,11 @@ ssh vinaysachdeva@100.116.16.117 'echo OK'
 ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
 # Expected: Version output WITHOUT asking for password
 ```
+
+**Why not use sudo for these commands?**
+- SSH keys must be in YOUR user's home directory (~/.ssh/)
+- The installation script will automatically use YOUR keys even when run with sudo
+- If you run ssh-keygen with sudo, keys go to /root/.ssh/ (wrong location!)
 
 **✅ If both tests pass:** Continue to Step 2  
 **❌ If sudo asks for password:** Run on control plane: `./scripts/setup-control-plane-sudo.sh`

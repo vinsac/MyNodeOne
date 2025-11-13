@@ -12,13 +12,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="mynodeone-dashboard"
 
-# Load cluster configuration to get CLUSTER_DOMAIN
-CONFIG_FILE="$HOME/.mynodeone/config.env"
-if [ -f "$CONFIG_FILE" ]; then
+# Load configuration
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
-
-# Fallback to default if not configured
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 echo "📦 Deploying MyNodeOne Dashboard..."

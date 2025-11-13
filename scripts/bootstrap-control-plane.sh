@@ -56,6 +56,12 @@ fi
 
 source "$CONFIG_FILE"
 
+# Export key variables to be available in sub-scripts
+export CLUSTER_NAME
+export CLUSTER_DOMAIN
+export NODE_NAME
+export NODE_LOCATION
+
 # K3s version
 K3S_VERSION="v1.28.5+k3s1"
 

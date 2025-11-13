@@ -6,8 +6,8 @@ Requires=k3s.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/MyNodeOne
-ExecStart=/root/MyNodeOne/scripts/lib/sync-controller.sh watch
+WorkingDirectory=/path/to/MyNodeOne
+ExecStart=/path/to/MyNodeOne/scripts/lib/sync-controller.sh watch
 Restart=always
 RestartSec=10
 

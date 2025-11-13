@@ -29,8 +29,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Detect actual user and home directory
-source "$SCRIPT_DIR/lib/detect-actual-home.sh"
+# ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
 
 # Load configuration
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -1251,7 +1250,7 @@ initialize_service_registries() {
         log_info "Installing sync controller service..."
         
         # Update the service file with correct paths
-        sed "s|/root/MyNodeOne|$PROJECT_ROOT|g" \
+        sed "s|/path/to/MyNodeOne|$PROJECT_ROOT|g" \
             "$PROJECT_ROOT/systemd/mynodeone-sync-controller.service" | \
             sudo tee /etc/systemd/system/mynodeone-sync-controller.service > /dev/null
         
@@ -1413,7 +1412,7 @@ delete_credential_files() {
     fi
     
     # Keep join token as it's needed for adding nodes
-    # Don't delete: /root/mynodeone-join-token.txt
+    # Keep join token as it's needed for adding nodes
     
     if [ $files_deleted -gt 0 ]; then
         log_success "✅ Credential files securely deleted ($files_deleted files)"
@@ -1746,8 +1745,8 @@ run_final_validation() {
             log_info "Your control plane is fully operational!"
             
             # Save validation timestamp
-            echo "LAST_VALIDATION=$(date -Iseconds)" >> /root/.mynodeone/config.env
-            echo "VALIDATION_STATUS=passed" >> /root/.mynodeone/config.env
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> $ACTUAL_HOME/.mynodeone/config.env
+            echo "VALIDATION_STATUS=passed" >> $ACTUAL_HOME/.mynodeone/config.env
         else
             echo
             log_error "❌ INSTALLATION VALIDATION FAILED"
@@ -1756,8 +1755,8 @@ run_final_validation() {
             echo "  sudo bash $SCRIPT_DIR/lib/validate-installation.sh control-plane"
             
             # Save validation status
-            echo "LAST_VALIDATION=$(date -Iseconds)" >> /root/.mynodeone/config.env
-            echo "VALIDATION_STATUS=failed" >> /root/.mynodeone/config.env
+            echo "LAST_VALIDATION=$(date -Iseconds)" >> $ACTUAL_HOME/.mynodeone/config.env
+            echo "VALIDATION_STATUS=failed" >> $ACTUAL_HOME/.mynodeone/config.env
             
             # Ask if user wants to continue
             if [ "${UNATTENDED:-0}" != "1" ]; then

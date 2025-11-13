@@ -27,15 +27,7 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-# Detect actual user and their home directory (even when run with sudo)
-ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    # Running under sudo - use actual user's home directory
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-else
-    # Running normally
-    ACTUAL_HOME="$HOME"
-fi
+# ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
 
 CONFIG_DIR="$ACTUAL_HOME/.mynodeone"
 CONFIG_FILE="$CONFIG_DIR/config.env"
@@ -733,7 +725,7 @@ show_next_steps() {
             echo "Your worker node is configured! Next:"
             echo
             echo "1. Get the join token from your control plane node"
-            echo "   (It was displayed after bootstrap, or check /root/mynodeone-join-token.txt)"
+            echo "   (It was displayed after bootstrap, or check $ACTUAL_HOME/mynodeone-join-token.txt)"
             echo
             echo "2. Run the worker node script:"
             echo -e "   ${CYAN}sudo ./scripts/add-worker-node.sh${NC}"

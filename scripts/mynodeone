@@ -33,13 +33,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Detect actual user and their home directory (even when run with sudo)
-ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     # Running under sudo - use actual user's home directory
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 else
     # Running normally (as root)
-    ACTUAL_HOME="$HOME"
+    export ACTUAL_HOME="$HOME"
 fi
 
 # Track if we're in the middle of critical operations
@@ -1458,7 +1458,7 @@ main() {
         print_success "Your MyNodeOne node has been set up successfully! 🎉"
         echo
         echo "Next steps:"
-        echo "  1. Review credentials in /root/mynodeone-*-credentials.txt"
+        echo "  1. Review credentials in $ACTUAL_HOME/mynodeone-*-credentials.txt"
         echo "  2. Check status: kubectl get nodes"
         echo "  3. Deploy apps: kubectl apply -f manifests/examples/"
         echo

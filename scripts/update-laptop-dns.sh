@@ -22,12 +22,24 @@ if [[ "${1:-}" == "--quiet" ]] || [[ "${1:-}" == "-q" ]]; then
     QUIET_MODE=true
 fi
 
-# Load cluster domain from config (default to mynodeone)
-CLUSTER_DOMAIN="mynodeone"
-if [ -f "$HOME/.mynodeone/config.env" ]; then
-    source "$HOME/.mynodeone/config.env"
-    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+# Load configuration
+# ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
+# If not set (standalone execution), detect them here
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 fi
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 # Colors
 GREEN='\033[0;32m'

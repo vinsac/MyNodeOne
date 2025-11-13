@@ -1916,7 +1916,8 @@ display_final_credentials_unattended() {
 configure_passwordless_sudo() {
     log_info "Configuring passwordless sudo for automation..."
     
-    local current_user=$(whoami)
+    # Use ACTUAL_USER which correctly detects the real user even when running with sudo
+    local current_user="$ACTUAL_USER"
     
     # Check if already configured
     if sudo -n true 2>/dev/null; then

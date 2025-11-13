@@ -240,27 +240,35 @@ else
         # Also setup reverse SSH access (control plane -> VPS)
         log_info "Setting up reverse SSH access (control plane → VPS)..."
         
-        # CRITICAL: Scripts run with sudo use root's SSH keys, so we need to set up root->VPS access
-        # First, ensure root on control plane has an SSH key
+        # CRITICAL: Scripts run with sudo use actual user's SSH keys
+        # First, ensure the actual user on control plane has an SSH key
         # Use -t to allocate PTY for interactive sudo if needed
         ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
-            # Ensure root has an SSH key (scripts run with sudo)
-            if ! sudo test -f $ACTUAL_HOME/.ssh/id_ed25519; then
-                echo 'Generating SSH key for user (used by scripts)...'
-                sudo ssh-keygen -t ed25519 -f $ACTUAL_HOME/.ssh/id_ed25519 -N '' -C '$ACTUAL_USER@control-plane'
+            # Detect actual user on control plane (handle sudo)
+            REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
+            if [ -n \"\${SUDO_USER:-}\" ] && [ \"\$SUDO_USER\" != \"root\" ]; then
+                REMOTE_ACTUAL_HOME=\$(getent passwd \"\$SUDO_USER\" | cut -d: -f6)
+            else
+                REMOTE_ACTUAL_HOME=\"\$HOME\"
             fi
             
-            # Also ensure current user has an SSH key
+            # Ensure actual user has an SSH key (scripts run with sudo use this)
+            if ! sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\"; then
+                echo \"Generating SSH key for \$REMOTE_ACTUAL_USER (used by scripts)...\"
+                sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane\"
+            fi
+            
+            # Also ensure current SSH user has an SSH key
             if [ ! -f ~/.ssh/id_ed25519 ]; then
-                echo 'Generating SSH key for $CONTROL_PLANE_SSH_USER...'
-                ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane'
+                echo 'Generating SSH key for current user...'
+                ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane-ssh-user'
             fi
             
             # Output both keys to be added to VPS
-            echo '=== USER KEY ==='
-            sudo cat $ACTUAL_HOME/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read user key'
-            echo '=== USER KEY ==='
-            cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read user key'
+            echo '=== SCRIPT USER KEY ==='
+            sudo cat \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\" 2>/dev/null || echo 'ERROR: Could not read script user key'
+            echo '=== SSH USER KEY ==='
+            cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read SSH user key'
         " 2>&1 | {
             mode=""  # Initialize to avoid unbound variable error
             while IFS= read -r line; do
@@ -269,19 +277,19 @@ else
                     continue
                 fi
                 
-                if [[ "$line" == "=== ROOT KEY ===" ]]; then
-                    mode="root"
-                elif [[ "$line" == "=== USER KEY ===" ]]; then
-                    mode="user"
+                if [[ "$line" == "=== SCRIPT USER KEY ===" ]]; then
+                    mode="script"
+                elif [[ "$line" == "=== SSH USER KEY ===" ]]; then
+                    mode="ssh"
                 elif [[ "$line" == "ERROR:"* ]]; then
                     log_warn "$line"
                 elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
                     # Add to the ACTUAL VPS user's authorized_keys (not root's!)
                     echo "$line" >> "$ACTUAL_HOME/.ssh/authorized_keys"
-                    if [[ "$mode" == "root" ]]; then
-                        log_success "Added root SSH key from control plane to $CURRENT_VPS_USER"
+                    if [[ "$mode" == "script" ]]; then
+                        log_success "Added script user SSH key from control plane to $CURRENT_VPS_USER"
                     else
-                        log_success "Added $CONTROL_PLANE_SSH_USER SSH key from control plane to $CURRENT_VPS_USER"
+                        log_success "Added SSH user key from control plane to $CURRENT_VPS_USER"
                     fi
                 elif [[ -n "$line" ]] && [[ ! "$line" =~ ^Generating ]]; then
                     # Echo other informational lines
@@ -715,23 +723,20 @@ else
     echo "  ssh -o BatchMode=yes $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Step 3: Setup Root SSH Keys (REQUIRED)"
+    echo "  Step 3: Setup Script User SSH Keys (REQUIRED)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "  # Switch to root"
-    echo "  sudo -i"
+    echo "  # On control plane, as the user who will run scripts:"
+    echo "  # Generate SSH key if needed"
+    echo "  [ ! -f ~/.ssh/id_ed25519 ] && ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''"
     echo ""
-    echo "  # Generate root SSH key"
-    echo "  [ ! -f $ACTUAL_HOME/.ssh/id_ed25519 ] && ssh-keygen -t ed25519 -f $ACTUAL_HOME/.ssh/id_ed25519 -N ''"
+    echo "  # Copy key to VPS (CRITICAL for scripts run with sudo)"
+    echo "  ssh-copy-id -i ~/.ssh/id_ed25519.pub $CURRENT_VPS_USER@$TAILSCALE_IP"
     echo ""
-    echo "  # Copy root key to VPS (CRITICAL for scripts)"
-    echo "  ssh-copy-id -i $ACTUAL_HOME/.ssh/id_ed25519.pub $CURRENT_VPS_USER@$TAILSCALE_IP"
-    echo ""
-    echo "  # Test root SSH (should print OK without password)"
+    echo "  # Test SSH (should print OK without password)"
     echo "  ssh -o BatchMode=yes $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
     echo ""
-    echo "  # Exit root"
-    echo "  exit"
+    echo "  # If you run scripts with sudo, ensure this user's key is installed!"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Step 4: Final Verification"

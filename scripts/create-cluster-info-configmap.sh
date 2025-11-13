@@ -54,6 +54,18 @@ fi
 
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
+# Detect actual user and their home directory (even when run with sudo)
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally
+    ACTUAL_HOME="$HOME"
+fi
+
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+
 log_info "Checking for existing cluster-info ConfigMap..."
 
 # Check if ConfigMap already exists

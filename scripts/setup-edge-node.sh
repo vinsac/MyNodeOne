@@ -499,6 +499,11 @@ main() {
     echo "  MyNodeOne VPS Edge Node Setup"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
+
+    log_info "Ensuring correct home directory permissions for user: $ACTUAL_USER..."
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"
+    log_success "Home directory permissions verified."
+    echo
     
     check_requirements
     

@@ -15,12 +15,19 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Load cluster domain from config
-CLUSTER_DOMAIN="mynodeone"
-if [ -f "$HOME/.mynodeone/config.env" ]; then
-    source "$HOME/.mynodeone/config.env"
-    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+# Load configuration
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
 fi
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+fi
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  Installing Jellyfin Media Server${NC}"

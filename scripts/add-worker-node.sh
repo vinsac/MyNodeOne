@@ -92,7 +92,7 @@ get_join_token() {
     echo
     log_info "Please obtain the K3s token from the control plane node ($CONTROL_PLANE_IP)"
     log_info "On the control plane, run: sudo cat /var/lib/rancher/k3s/server/node-token"
-    log_info "Or check: /root/mynodeone-join-token.txt"
+    log_info "Or check: $ACTUAL_HOME/mynodeone-join-token.txt"
     echo
     read -p "Enter K3s token: " K3S_TOKEN
     
@@ -182,14 +182,14 @@ label_node() {
     # This requires kubectl access from control plane
     # We'll save the labels in a file for the admin to apply
     
-    cat > /root/mynodeone-node-labels.txt <<EOF
+    cat > $ACTUAL_HOME/mynodeone-node-labels.txt <<EOF
 # Apply these labels on the control plane node:
 kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true --overwrite
 kubectl label node $NODE_NAME mynodeone.io/location=${NODE_LOCATION} --overwrite
 kubectl label node $NODE_NAME mynodeone.io/storage=true --overwrite
 EOF
     
-    log_info "Node labels saved to /root/mynodeone-node-labels.txt"
+    log_info "Node labels saved to $ACTUAL_HOME/mynodeone-node-labels.txt"
     log_info "Run these commands on the control plane to complete setup"
 }
 
@@ -207,7 +207,7 @@ print_summary() {
     echo
     echo "Next Steps:"
     echo "  1. On the control plane node, apply node labels:"
-    echo "     See: /root/mynodeone-node-labels.txt on this machine"
+    echo "     See: $ACTUAL_HOME/mynodeone-node-labels.txt on this machine"
     echo
     echo "  2. Verify node status on control plane:"
     echo "     kubectl get nodes"

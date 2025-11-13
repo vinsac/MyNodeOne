@@ -149,44 +149,44 @@ fetch_cluster_info() {
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
     
-    mkdir -p ~/.kube
+    mkdir -p "$ACTUAL_HOME/.kube"
     
     # Run SSH command with or without password
     if [ -z "$sudo_password" ]; then
         # Passwordless sudo
-        $SSH_CMD "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config.raw 2>/dev/null
+        $SSH_CMD "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$ACTUAL_HOME/.kube/config.raw" 2>/dev/null
     else
         # Pass password to sudo via stdin - use printf for safer password handling
         $SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\n' '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>&1" | \
-        grep -v "^\[sudo\]" | grep -v "^sudo:" > ~/.kube/config.raw
+        grep -v "^[sudo]" | grep -v "^sudo:" > "$ACTUAL_HOME/.kube/config.raw"
     fi
     
     local ssh_exit=$?
     
-    if [ $ssh_exit -eq 0 ] && [ -s ~/.kube/config.raw ]; then
+    if [ $ssh_exit -eq 0 ] && [ -s "$ACTUAL_HOME/.kube/config.raw" ]; then
         # Process the file to remove connection messages and update IP
-        grep -v "Connection to.*closed" ~/.kube/config.raw | \
+        grep -v "Connection to.*closed" "$ACTUAL_HOME/.kube/config.raw" | \
         grep -v "^$" | \
-        sed "s/127.0.0.1/$control_plane_ip/g" > ~/.kube/config.tmp
+        sed "s/127.0.0.1/$control_plane_ip/g" > "$ACTUAL_HOME/.kube/config.tmp"
         
-        rm -f ~/.kube/config.raw
+        rm -f "$ACTUAL_HOME/.kube/config.raw"
         
         # Check if we actually got content
-        if [ ! -s ~/.kube/config.tmp ]; then
+        if [ ! -s "$ACTUAL_HOME/.kube/config.tmp" ]; then
             log_error "Retrieved empty kubeconfig"
             log_info "Possible reasons:"
             echo "  • k3s is not installed on control plane"
             echo "  • k3s is not running"
             echo "  • Insufficient permissions"
-            rm -f ~/.kube/config.tmp
+            rm -f "$ACTUAL_HOME/.kube/config.tmp"
             return 1
         fi
         
         log_success "Kubeconfig retrieved"
         
         # Save kubeconfig (don't require local kubectl for validation)
-        mv ~/.kube/config.tmp ~/.kube/config
-        chmod 600 ~/.kube/config
+        mv "$ACTUAL_HOME/.kube/config.tmp" "$ACTUAL_HOME/.kube/config"
+        chmod 600 "$ACTUAL_HOME/.kube/config"
         echo
         
         # Fetch cluster info directly from control plane (doesn't require local kubectl)
@@ -230,11 +230,11 @@ fetch_cluster_info() {
                 # Fallback: search filesystem (for backwards compatibility with older clusters)
                 log_info "No path in cluster config, searching filesystem..."
                 repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" \
-                    "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+                    "find $ACTUAL_HOME /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
                 
                 if [ -z "$repo_path" ]; then
                     # Try standard locations
-                    for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+                    for path in "$ACTUAL_HOME/MyNodeOne" /opt/MyNodeOne; do
                         if $SSH_CMD "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
                             repo_path="$path"
                             break

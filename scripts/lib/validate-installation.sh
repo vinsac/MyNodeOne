@@ -148,7 +148,7 @@ validate_control_plane() {
     run_test "Default storage class set" "kubectl get storageclass | grep -q '(default)'" true
     
     # Credentials files
-    if [ -f /root/mynodeone-join-token.txt ]; then
+    if [ -f $ACTUAL_HOME/mynodeone-join-token.txt ]; then
         log_success "Join token saved (needed for adding nodes)"
     else
         log_warn "Join token file not found"

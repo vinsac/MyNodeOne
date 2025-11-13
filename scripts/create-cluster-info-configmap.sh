@@ -73,12 +73,9 @@ if kubectl get configmap cluster-info -n kube-system &>/dev/null; then
 fi
 
 # Load config if available
-if [ -f ~/.mynodeone/config.env ]; then
-    source ~/.mynodeone/config.env
-    log_success "Loaded config from ~/.mynodeone/config.env"
-elif [ -f /root/.mynodeone/config.env ]; then
-    source /root/.mynodeone/config.env
-    log_success "Loaded config from /root/.mynodeone/config.env"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+    log_success "Loaded config from $CONFIG_FILE"
 else
     log_warn "No config file found, will ask for values"
 fi
@@ -111,7 +108,7 @@ fi
 # Get repo path
 if [ -z "${MYNODEONE_PATH:-}" ]; then
     # Try to find MyNodeOne directory
-    MYNODEONE_PATH=$(find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1 || echo "")
+    MYNODEONE_PATH=$(find "$ACTUAL_HOME" /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1 || echo "")
     if [ -z "$MYNODEONE_PATH" ]; then
         read -p "MyNodeOne repository path: " MYNODEONE_PATH
     else

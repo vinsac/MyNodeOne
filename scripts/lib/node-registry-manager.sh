@@ -52,7 +52,6 @@ detect_config_dir() {
     local possible_dirs=(
         "$ACTUAL_HOME/.mynodeone"
         "$HOME/.mynodeone"
-        "/root/.mynodeone"
         "/home/$(whoami)/.mynodeone"
     )
     

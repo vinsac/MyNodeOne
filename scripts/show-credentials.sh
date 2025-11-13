@@ -5,6 +5,16 @@
 
 set -e
 
+# Detect actual user and their home directory (even when run with sudo)
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally
+    ACTUAL_HOME="$HOME"
+fi
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -78,29 +88,29 @@ echo "📁 Checking for old credential files on disk:"
 echo
 
 FILES_FOUND=0
-if [ -f /root/mynodeone-argocd-credentials.txt ]; then
-    echo -e "  ${YELLOW}⚠️  /root/mynodeone-argocd-credentials.txt (SHOULD BE DELETED)${NC}"
+if [ -f $ACTUAL_HOME/mynodeone-argocd-credentials.txt ]; then
+    echo -e "  ${YELLOW}⚠️  $ACTUAL_HOME/mynodeone-argocd-credentials.txt (SHOULD BE DELETED)${NC}"
     FILES_FOUND=$((FILES_FOUND + 1))
 fi
 
-if [ -f /root/mynodeone-minio-credentials.txt ]; then
-    echo -e "  ${YELLOW}⚠️  /root/mynodeone-minio-credentials.txt (SHOULD BE DELETED)${NC}"
+if [ -f $ACTUAL_HOME/mynodeone-minio-credentials.txt ]; then
+    echo -e "  ${YELLOW}⚠️  $ACTUAL_HOME/mynodeone-minio-credentials.txt (SHOULD BE DELETED)${NC}"
     FILES_FOUND=$((FILES_FOUND + 1))
 fi
 
-if [ -f /root/mynodeone-grafana-credentials.txt ]; then
-    echo -e "  ${YELLOW}⚠️  /root/mynodeone-grafana-credentials.txt (SHOULD BE DELETED)${NC}"
+if [ -f $ACTUAL_HOME/mynodeone-grafana-credentials.txt ]; then
+    echo -e "  ${YELLOW}⚠️  $ACTUAL_HOME/mynodeone-grafana-credentials.txt (SHOULD BE DELETED)${NC}"
     FILES_FOUND=$((FILES_FOUND + 1))
 fi
 
-if [ -f /root/mynodeone-join-token.txt ]; then
-    echo -e "  ${GREEN}✓${NC} /root/mynodeone-join-token.txt (kept for adding worker nodes)"
+if [ -f $ACTUAL_HOME/mynodeone-join-token.txt ]; then
+    echo -e "  ${GREEN}✓${NC} $ACTUAL_HOME/mynodeone-join-token.txt (kept for adding worker nodes)"
 fi
 
 if [ $FILES_FOUND -gt 0 ]; then
     echo
     echo -e "${YELLOW}⚠️  WARNING: Credential files found on disk! For security, delete them:${NC}"
-    echo -e "   ${YELLOW}sudo rm /root/mynodeone-*-credentials.txt${NC}"
+    echo -e "   ${YELLOW}sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt${NC}"
     echo
 fi
 

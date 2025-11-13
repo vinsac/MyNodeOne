@@ -149,10 +149,7 @@ fix_kubeconfig() {
             chmod 600 "$HOME/.kube/config"
             
             # Update both user and root configs for sudo operations
-            sudo mkdir -p /root/.kube
-            sudo cp "$HOME/.kube/config" /root/.kube/config
-            sudo chown root:root /root/.kube/config
-            sudo chmod 600 /root/.kube/config
+            # No need to copy to /root/.kube anymore, as scripts use ACTUAL_HOME
             
             # Also update actual user's kubeconfig if running as sudo
             if [ -n "${SUDO_USER:-}" ]; then
@@ -520,17 +517,17 @@ main() {
         local user_home=$(eval echo ~$SUDO_USER)
         
         # Copy mynodeone config
-        if [ -f "/root/.mynodeone/config.env" ]; then
+        if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
             sudo mkdir -p "$user_home/.mynodeone"
-            sudo cp /root/.mynodeone/config.env "$user_home/.mynodeone/config.env"
+            sudo cp $ACTUAL_HOME/.mynodeone/config.env "$user_home/.mynodeone/config.env"
             sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone"
             log_success "Synced MyNodeOne config to $SUDO_USER"
         fi
         
         # Copy kubeconfig
-        if [ -f "/root/.kube/config" ]; then
+        if [ -f "$ACTUAL_HOME/.kube/config" ]; then
             sudo mkdir -p "$user_home/.kube"
-            sudo cp /root/.kube/config "$user_home/.kube/config"
+            sudo cp $ACTUAL_HOME/.kube/config "$user_home/.kube/config"
             sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube"
             sudo chmod 600 "$user_home/.kube/config"
             log_success "Synced kubeconfig to $SUDO_USER"

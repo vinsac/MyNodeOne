@@ -124,10 +124,12 @@ check_vps_ready() {
     # Detect actual user (handle sudo case)
     local actual_user="${SUDO_USER:-$(whoami)}"
     local actual_home
-    if [ "$actual_user" = "root" ]; then
-        actual_home="/root"
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        # Running under sudo - use actual user's home directory
+        actual_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     else
-        actual_home="/home/$actual_user"
+        # Running normally
+        actual_home="$HOME"
     fi
     
     if [ -f "$actual_home/.ssh/id_ed25519" ] || [ -f "$actual_home/.ssh/id_rsa" ]; then

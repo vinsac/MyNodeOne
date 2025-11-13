@@ -245,9 +245,9 @@ else
         # Use -t to allocate PTY for interactive sudo if needed
         ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
             # Ensure root has an SSH key (scripts run with sudo)
-            if ! sudo test -f /root/.ssh/id_ed25519; then
-                echo 'Generating SSH key for root (used by scripts)...'
-                sudo ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '' -C 'root@control-plane'
+            if ! sudo test -f $ACTUAL_HOME/.ssh/id_ed25519; then
+                echo 'Generating SSH key for user (used by scripts)...'
+                sudo ssh-keygen -t ed25519 -f $ACTUAL_HOME/.ssh/id_ed25519 -N '' -C '$ACTUAL_USER@control-plane'
             fi
             
             # Also ensure current user has an SSH key
@@ -257,8 +257,8 @@ else
             fi
             
             # Output both keys to be added to VPS
-            echo '=== ROOT KEY ==='
-            sudo cat /root/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read root key'
+            echo '=== USER KEY ==='
+            sudo cat $ACTUAL_HOME/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read user key'
             echo '=== USER KEY ==='
             cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read user key'
         " 2>&1 | {
@@ -722,10 +722,10 @@ else
     echo "  sudo -i"
     echo ""
     echo "  # Generate root SSH key"
-    echo "  [ ! -f /root/.ssh/id_ed25519 ] && ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ''"
+    echo "  [ ! -f $ACTUAL_HOME/.ssh/id_ed25519 ] && ssh-keygen -t ed25519 -f $ACTUAL_HOME/.ssh/id_ed25519 -N ''"
     echo ""
     echo "  # Copy root key to VPS (CRITICAL for scripts)"
-    echo "  ssh-copy-id -i /root/.ssh/id_ed25519.pub $CURRENT_VPS_USER@$TAILSCALE_IP"
+    echo "  ssh-copy-id -i $ACTUAL_HOME/.ssh/id_ed25519.pub $CURRENT_VPS_USER@$TAILSCALE_IP"
     echo ""
     echo "  # Test root SSH (should print OK without password)"
     echo "  ssh -o BatchMode=yes $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"

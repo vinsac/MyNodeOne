@@ -70,7 +70,7 @@ if [ -f /etc/systemd/system/mynodeone-sync-controller.service ]; then
     sudo systemctl restart mynodeone-sync-controller
 else
     # Update service file with correct path
-    sed "s|/root/MyNodeOne|$PROJECT_ROOT|g" \
+    sed "s|/path/to/MyNodeOne|$PROJECT_ROOT|g" \
         "$PROJECT_ROOT/systemd/mynodeone-sync-controller.service" | \
         sudo tee /etc/systemd/system/mynodeone-sync-controller.service > /dev/null
     

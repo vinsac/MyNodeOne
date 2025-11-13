@@ -6,13 +6,19 @@
 
 set -e
 
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source libraries
+source "$SCRIPT_DIR/lib/ssh-utils.sh"
+
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then
     export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 fi
 
 if [ -z "${ACTUAL_HOME:-}" ]; then
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    if [ "$SUDO_USER" != "root" ]; then
         export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     else
         export ACTUAL_HOME="$HOME"
@@ -104,31 +110,6 @@ get_control_plane_info() {
     log_info "Will connect to: $CONTROL_PLANE_USER@$CONTROL_PLANE_IP"
 }
 
-test_ssh_connection() {
-    log_info "Testing SSH connection to control plane..."
-    
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" exit 2>/dev/null; then
-        log_success "SSH connection successful (passwordless)"
-        SSH_NEEDS_PASSWORD=false
-    else
-        log_warn "SSH requires password or key not configured"
-        SSH_NEEDS_PASSWORD=true
-        
-        echo
-        echo "Testing connection with password..."
-        if ssh -o ConnectTimeout=5 "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" exit; then
-            log_success "SSH connection successful (with password)"
-        else
-            log_error "Cannot connect to control plane. Please check:"
-            echo "  • Tailscale is running on both machines"
-            echo "  • IP/hostname is correct: $CONTROL_PLANE_IP"
-            echo "  • Username is correct: $CONTROL_PLANE_USER"
-            echo "  • SSH is enabled on control plane"
-            exit 1
-        fi
-    fi
-}
-
 configure_tailscale_routes() {
     print_header "Configuring Tailscale Network Access"
     
@@ -190,37 +171,6 @@ configure_tailscale_routes() {
     fi
 }
 
-setup_ssh_key() {
-    if [ "$SSH_NEEDS_PASSWORD" = true ]; then
-        print_header "SSH Key Setup (Optional but Recommended)"
-        
-        echo "Would you like to set up passwordless SSH access?"
-        echo "This will allow you to manage the cluster without entering password each time."
-        echo
-        read -p "Set up SSH key? [Y/n]: " -r
-        
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            log_info "Setting up SSH key..."
-            
-            # Check if SSH key exists
-            if [ ! -f ~/.ssh/id_rsa ] && [ ! -f ~/.ssh/id_ed25519 ]; then
-                log_info "Generating new SSH key..."
-                ssh-keygen -t ed25519 -C "mynodeone-laptop-access" -f ~/.ssh/id_ed25519 -N ""
-                log_success "SSH key generated"
-            fi
-            
-            # Copy key to control plane
-            log_info "Copying SSH key to control plane..."
-            if ssh-copy-id "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP"; then
-                log_success "SSH key installed on control plane"
-                SSH_NEEDS_PASSWORD=false
-            else
-                log_warn "SSH key copy failed, will use password authentication"
-            fi
-        fi
-    fi
-}
-
 install_kubectl() {
     print_header "Installing kubectl"
     
@@ -273,12 +223,12 @@ fetch_kubeconfig() {
     echo
     
     # Use -t to allocate pseudo-terminal for sudo password prompt, but keep it simple
-    if ssh -t "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml"; then
+    if ssh_with_control -t "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml"; then
         echo
         log_info "Downloading kubeconfig via SCP..."
-        if scp -q "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" ~/.kube/config; then
+        if scp_with_control -q "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" ~/.kube/config; then
             # Clean up temp file on remote
-            ssh "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "rm -f /tmp/k3s-config.yaml" 2>/dev/null || true
+            ssh_with_control "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "rm -f /tmp/k3s-config.yaml" 2>/dev/null || true
             chmod 600 ~/.kube/config
             log_success "Kubeconfig retrieved successfully"
         else
@@ -498,11 +448,28 @@ main() {
     echo
     
     check_requirements
+
+    log_info "Ensuring correct home directory permissions for user: $ACTUAL_USER..."
+    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"
+    log_success "Home directory permissions verified."
+    echo
+
     configure_passwordless_sudo
     configure_tailscale_routes
     get_control_plane_info
-    test_ssh_connection
-    setup_ssh_key
+
+    # Set up SSH multiplexing for fewer password prompts
+    log_info "Validating SSH connectivity to control plane..."
+    if ! validate_ssh_early "$CONTROL_PLANE_USER" "$CONTROL_PLANE_IP" "control plane"; then
+        log_error "Cannot establish SSH connection to control plane. Please check the IP and username."
+        exit 1
+    fi
+
+    log_info "Setting up SSH connection multiplexing..."
+    setup_ssh_control_master "$CONTROL_PLANE_USER" "$CONTROL_PLANE_IP"
+
+    # Ensure the ControlMaster socket is cleaned up on exit
+    trap "cleanup_ssh_control_master '$CONTROL_PLANE_USER' '$CONTROL_PLANE_IP'" EXIT
     install_kubectl
     fetch_kubeconfig
     test_cluster_connection

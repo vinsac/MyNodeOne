@@ -60,9 +60,10 @@ fi
 
 source "$ACTUAL_HOME_EARLY/.mynodeone/config.env"
 
-# Source preflight checks library
+# Source libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/preflight-checks.sh"
+source "$SCRIPT_DIR/lib/ssh-utils.sh"
 
 # Parse arguments
 SKIP_PREFLIGHT=false
@@ -197,216 +198,45 @@ echo ""
 log_info "Registering with control plane..."
 echo ""
 
-# Setup SSH keys for passwordless authentication
+# IMPROVEMENT 3: Automated reverse SSH setup with root key configuration
 CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 
-log_info "Setting up SSH key authentication..."
+# Generate SSH key for VPS user if needed
+SSH_KEY_PATH="$ACTUAL_HOME/.ssh/id_rsa"
+if [ ! -f "$SSH_KEY_PATH" ]; then
+    log_info "Generating SSH key for user $CURRENT_VPS_USER..."
+    
+    # Ensure .ssh directory exists with correct permissions
+    sudo -u "$CURRENT_VPS_USER" mkdir -p "$ACTUAL_HOME/.ssh"
+    sudo -u "$CURRENT_VPS_USER" chmod 700 "$ACTUAL_HOME/.ssh"
+    
+    # Generate key as actual user (not root!)
+    sudo -u "$CURRENT_VPS_USER" ssh-keygen -t rsa -b 4096 -f "$SSH_KEY_PATH" -N "" -C "vps-$HOSTNAME"
+    log_success "SSH key generated for $CURRENT_VPS_USER"
+fi
+
+# Check if VPS → Control Plane SSH is already working
 if ssh -o BatchMode=yes -o ConnectTimeout=5 "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "exit" 2>/dev/null; then
-    log_success "SSH key authentication already configured"
+    log_success "SSH key authentication already configured (VPS → Control Plane)"
 else
-    log_info "Configuring passwordless SSH between VPS and control plane..."
-    
-    # Generate SSH key in actual user's home directory (not root's)
-    SSH_KEY_PATH="$ACTUAL_HOME/.ssh/id_rsa"
-    if [ ! -f "$SSH_KEY_PATH" ]; then
-        log_info "Generating SSH key for user $CURRENT_VPS_USER..."
-        log_info "Key location: $SSH_KEY_PATH"
-        
-        # Ensure .ssh directory exists with correct permissions
-        sudo -u "$CURRENT_VPS_USER" mkdir -p "$ACTUAL_HOME/.ssh"
-        sudo -u "$CURRENT_VPS_USER" chmod 700 "$ACTUAL_HOME/.ssh"
-        
-        # Generate key as actual user (not root!)
-        sudo -u "$CURRENT_VPS_USER" ssh-keygen -t rsa -b 4096 -f "$SSH_KEY_PATH" -N "" -C "vps-$HOSTNAME"
-        log_success "SSH key generated for $CURRENT_VPS_USER"
-    else
-        log_info "SSH key already exists: $SSH_KEY_PATH"
-    fi
-    
+    log_info "Setting up SSH key for VPS → Control Plane..."
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  SSH Key Setup"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "Setting up passwordless SSH access to control plane."
-    echo "You'll be prompted for the password ONE LAST TIME."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "You'll be prompted for password ONE LAST TIME"
     echo ""
     
-    # Copy SSH key to control plane (as actual user!)
+    # Copy SSH key to control plane
     if sudo -u "$CURRENT_VPS_USER" ssh-copy-id -o StrictHostKeyChecking=no "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" 2>/dev/null; then
         log_success "SSH key installed on control plane"
-        
-        # Also setup reverse SSH access (control plane -> VPS)
-        log_info "Setting up reverse SSH access (control plane → VPS)..."
-        
-        # CRITICAL: Scripts run with sudo use actual user's SSH keys
-        # First, ensure the actual user on control plane has an SSH key
-        # Use -t to allocate PTY for interactive sudo if needed
-        ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "
-            # Detect actual user on control plane (handle sudo)
-            REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
-            if [ -n \"\${SUDO_USER:-}\" ] && [ \"\$SUDO_USER\" != \"root\" ]; then
-                REMOTE_ACTUAL_HOME=\$(getent passwd \"\$SUDO_USER\" | cut -d: -f6)
-            else
-                REMOTE_ACTUAL_HOME=\"\$HOME\"
-            fi
-            
-            # Ensure actual user has an SSH key (scripts run with sudo use this)
-            if ! sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\"; then
-                echo \"Generating SSH key for \$REMOTE_ACTUAL_USER (used by scripts)...\"
-                sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane\"
-            fi
-            
-            # Also ensure current SSH user has an SSH key
-            if [ ! -f ~/.ssh/id_ed25519 ]; then
-                echo 'Generating SSH key for current user...'
-                ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane-ssh-user'
-            fi
-            
-            # Output both keys to be added to VPS
-            echo '=== SCRIPT USER KEY ==='
-            sudo cat \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\" 2>/dev/null || echo 'ERROR: Could not read script user key'
-            echo '=== SSH USER KEY ==='
-            cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo 'ERROR: Could not read SSH user key'
-        " 2>&1 | {
-            mode=""  # Initialize to avoid unbound variable error
-            while IFS= read -r line; do
-                # Skip password prompts and other noise
-                if [[ "$line" =~ ^\[sudo\] || "$line" =~ ^Connection ]]; then
-                    continue
-                fi
-                
-                if [[ "$line" == "=== SCRIPT USER KEY ===" ]]; then
-                    mode="script"
-                elif [[ "$line" == "=== SSH USER KEY ===" ]]; then
-                    mode="ssh"
-                elif [[ "$line" == "ERROR:"* ]]; then
-                    log_warn "$line"
-                elif [[ -n "$line" ]] && [[ "$line" =~ ^ssh- ]]; then
-                    # Add to the ACTUAL VPS user's authorized_keys (not root's!)
-                    echo "$line" >> "$ACTUAL_HOME/.ssh/authorized_keys"
-                    if [[ "$mode" == "script" ]]; then
-                        log_success "Added script user SSH key from control plane to $CURRENT_VPS_USER"
-                    else
-                        log_success "Added SSH user key from control plane to $CURRENT_VPS_USER"
-                    fi
-                elif [[ -n "$line" ]] && [[ ! "$line" =~ ^Generating ]]; then
-                    # Echo other informational lines
-                    echo "$line"
-                fi
-            done
-        }
-        
-        # Ensure proper permissions on actual user's SSH directory
-        sudo -u "$CURRENT_VPS_USER" chmod 600 "$ACTUAL_HOME/.ssh/authorized_keys" 2>/dev/null || true
-        sudo -u "$CURRENT_VPS_USER" chmod 700 "$ACTUAL_HOME/.ssh" 2>/dev/null || true
-        
-        # Verify reverse SSH works (control plane -> VPS)
-        log_info "Verifying bidirectional SSH access..."
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  🔐 Reverse SSH Verification"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        echo "Testing SSH connection from control plane → VPS..."
-        echo "The control plane needs to SSH back to this VPS for route sync."
-        echo ""
-        
-        # Try reverse SSH with automatic yes to known_hosts
-        # Test BOTH as regular user AND as root (since scripts run with sudo)
-        USER_SSH_OK=false
-        ROOT_SSH_OK=false
-        
-        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
-            USER_SSH_OK=true
-        fi
-        
-        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "sudo ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
-            ROOT_SSH_OK=true
-        fi
-        
-        if $USER_SSH_OK && $ROOT_SSH_OK; then
-            log_success "✓ Bidirectional SSH verified (user ✓, root ✓)"
-        elif $ROOT_SSH_OK; then
-            log_success "✓ Root SSH verified (used by scripts) ✓"
-            log_warn "⚠ User SSH not working, but root works (this is fine)"
-        else
-            log_warn "⚠ Reverse SSH verification failed"
-            echo ""
-            echo "This may be due to SSH host key verification on the control plane."
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  📋 Manual Fix Required on Control Plane"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            echo "The control plane needs SSH access to this VPS for route sync."
-            echo "You can fix this NOW from any machine with SSH to control plane."
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  🖥️  Option 1: From Your Management Laptop/Desktop"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            echo "Open a terminal on your laptop/desktop and run:"
-            echo ""
-            echo "  ssh $CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP"
-            echo "  ssh -o StrictHostKeyChecking=accept-new $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
-            echo "  exit"
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  🖥️  Option 2: If You Have Direct Access to Control Plane"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            echo "Open terminal directly on control plane and run:"
-            echo ""
-            echo "  ssh -o StrictHostKeyChecking=accept-new $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'"
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            
-            # Give user option to fix it now
-            read -p "Ready to verify? Press Enter after running the command, or type 'skip' to continue: " -r
-            if [[ $REPLY =~ ^[Ss][Kk][Ii][Pp]$ ]] || [[ $REPLY =~ ^[Nn]$ ]]; then
-                log_warn "Skipping reverse SSH verification"
-                log_warn "You can fix this later by running from control plane:"
-                log_warn "  ssh $CURRENT_VPS_USER@$TAILSCALE_IP"
-            else
-                echo ""
-                log_info "Testing reverse SSH connection..."
-                
-                # Test again
-                if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
-                    log_success "✓ Reverse SSH now working!"
-                else
-                    log_warn "✗ Reverse SSH still not working"
-                    echo ""
-                    echo "Possible issues:"
-                    echo "  1. Command not run yet (run it now and press Enter)"
-                    echo "  2. Tailscale IP $TAILSCALE_IP not reachable from control plane"
-                    echo "  3. SSH keys not properly configured"
-                    echo ""
-                    read -p "Try verification again? [Y/n]: " -r
-                    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-                        echo "Press Enter after running the command on control plane..."
-                        read -r
-                        if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK' 2>/dev/null" | grep -q "OK"; then
-                            log_success "✓ Reverse SSH now working!"
-                        else
-                            log_warn "Continuing anyway - fix this later"
-                        fi
-                    else
-                        log_warn "Continuing anyway - you can fix this later"
-                    fi
-                fi
-            fi
-        fi
-        echo ""
     else
         log_warn "Could not install SSH key automatically"
         log_warn "You will be prompted for passwords during setup"
     fi
-    echo ""
 fi
+
+# IMPROVEMENT 3: Setup reverse SSH (Control Plane → VPS) with automated root keys
+log_info "Setting up reverse SSH access (Control Plane → VPS)..."
+setup_reverse_ssh "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP" "$CURRENT_VPS_USER" "$TAILSCALE_IP" "$ACTUAL_HOME/.ssh"
+echo ""
 
 # Register this VPS in the multi-domain registry
 REGION="${NODE_LOCATION:-unknown}"
@@ -425,7 +255,7 @@ log_info "Detected provider: $PROVIDER, region: $REGION"
 
 # Register VPS in multi-domain registry
 log_info "Registering VPS in multi-domain registry..."
-ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+ssh_with_control -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
     $TAILSCALE_IP $PUBLIC_IP $REGION $PROVIDER" 2>&1 | grep -v "Warning: Permanently added"
 
@@ -441,7 +271,7 @@ fi
 if [ -n "$PUBLIC_DOMAIN" ]; then
     log_info "Registering domain in cluster: $PUBLIC_DOMAIN"
     
-    ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    ssh_with_control -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-domain \
         $PUBLIC_DOMAIN 'VPS edge node domain'" 2>&1 | grep -v "Warning: Permanently added"
     
@@ -450,7 +280,7 @@ if [ -n "$PUBLIC_DOMAIN" ]; then
         
         # VALIDATION: Verify domain was actually registered
         log_info "Validating domain registration..."
-        DOMAIN_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        DOMAIN_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
             "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.domains | has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
         
         if [ "$DOMAIN_CHECK" = "true" ]; then
@@ -458,7 +288,7 @@ if [ -n "$PUBLIC_DOMAIN" ]; then
             
             # VALIDATION: Verify registry structure is correct
             log_info "Validating registry structure..."
-            STRUCTURE_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+            STRUCTURE_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
                 "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"domains\") and has(\"vps_nodes\")'" 2>/dev/null || echo "false")
             
             if [ "$STRUCTURE_CHECK" = "true" ]; then
@@ -481,7 +311,7 @@ fi
 log_info "Registering VPS in sync controller..."
 log_info "Using VPS user: $CURRENT_VPS_USER"
 
-REGISTER_OUTPUT=$(ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+REGISTER_OUTPUT=$(ssh_with_control -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
     "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \
     $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER" 2>&1)
 
@@ -517,7 +347,7 @@ if [ $REGISTER_EXIT -eq 0 ]; then
     
     # VALIDATION: Verify VPS was actually registered
     log_info "Validating VPS registration..."
-    VPS_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    VPS_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
     
     if [ "$VPS_CHECK" = "$CURRENT_VPS_USER" ]; then
@@ -529,7 +359,7 @@ if [ $REGISTER_EXIT -eq 0 ]; then
     
     # CRITICAL: Validate IP matches what we expect
     log_info "Validating registered IP matches current Tailscale IP..."
-    REGISTERED_IP=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    REGISTERED_IP=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.name==\"$HOSTNAME\") | .ip'" 2>/dev/null || echo "")
     
     if [ "$REGISTERED_IP" = "$TAILSCALE_IP" ]; then

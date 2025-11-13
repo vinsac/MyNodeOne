@@ -34,8 +34,9 @@ if [ -z "${ACTUAL_HOME:-}" ]; then
     fi
 fi
 
-# Source preflight checks library
+# Source libraries
 source "$SCRIPT_DIR/lib/preflight-checks.sh"
+source "$SCRIPT_DIR/lib/ssh-utils.sh"
 
 # Load configuration - inherit from parent or set fallback
 CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
@@ -501,14 +502,39 @@ main() {
     
     check_requirements
     
-    # Run pre-flight checks BEFORE any installation
-    log_info "Running pre-flight checks..."
+    # IMPROVEMENT 2: Early SSH validation with host key acceptance
+    CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
+    log_info "Step 1/3: Validating SSH connectivity..."
     echo
-    if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "${CONTROL_PLANE_SSH_USER:-root}"; then
+    if ! validate_ssh_early "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP" "control plane"; then
+        log_error "Cannot establish SSH connection to control plane"
+        echo ""
+        echo "Please verify:"
+        echo "  • Control plane is accessible: $CONTROL_PLANE_IP"
+        echo "  • SSH is enabled on control plane"
+        echo "  • User $CONTROL_PLANE_SSH_USER exists"
+        echo ""
+        exit 1
+    fi
+    echo
+    
+    # IMPROVEMENT 1: Setup SSH ControlMaster for connection multiplexing
+    log_info "Step 2/3: Setting up SSH connection multiplexing..."
+    echo
+    setup_ssh_control_master "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP"
+    echo
+    
+    # Trap to cleanup SSH ControlMaster on exit
+    trap "cleanup_ssh_control_master '$CONTROL_PLANE_SSH_USER' '$CONTROL_PLANE_IP'" EXIT
+    
+    # Run pre-flight checks BEFORE any installation
+    log_info "Step 3/3: Running pre-flight checks..."
+    echo
+    if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "$CONTROL_PLANE_SSH_USER"; then
         log_error "Pre-flight checks failed. Please fix the issues above and try again."
         echo ""
         echo "💡 Tip: Run this to see what needs to be fixed:"
-        echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP ${CONTROL_PLANE_SSH_USER:-root}"
+        echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP $CONTROL_PLANE_SSH_USER"
         echo ""
         echo "📖 See docs/INSTALLATION_PREREQUISITES.md for complete guide"
         exit 1

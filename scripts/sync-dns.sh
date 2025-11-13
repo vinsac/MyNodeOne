@@ -26,9 +26,23 @@ log_warn() {
     echo -e "${YELLOW}[⚠]${NC} $1"
 }
 
+# Detect actual user and home directory
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+fi
+
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+
 # Load configuration
-if [[ -f ~/.mynodeone/config.env ]]; then
-    source ~/.mynodeone/config.env
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
 fi
 
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"

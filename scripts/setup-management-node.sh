@@ -37,16 +37,30 @@ echo "  💻 Management Laptop Registration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# Detect actual user and home directory
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+fi
+
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+
 # Load configuration
-if [ ! -f ~/.mynodeone/config.env ]; then
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [ ! -f "$CONFIG_FILE" ]; then
     log_error "Configuration not found!"
     echo "Please run the management laptop setup first:"
     echo "  sudo ./scripts/mynodeone"
-    echo "  Select option: 4 (Management Workstation)"
+    echo "  (Select option 4: Management Workstation)"
     exit 1
 fi
 
-source ~/.mynodeone/config.env
+source "$CONFIG_FILE"
 
 # Get laptop details
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")

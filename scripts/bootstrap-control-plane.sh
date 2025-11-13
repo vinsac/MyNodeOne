@@ -919,7 +919,7 @@ install_minio() {
     }
     
     # Save credentials securely
-    cat > /root/mynodeone-minio-credentials.txt <<EOF
+    cat > $ACTUAL_HOME/mynodeone-minio-credentials.txt <<EOF
 MinIO Credentials
 =================
 Root User: $MINIO_ROOT_USER
@@ -929,10 +929,11 @@ Console: http://$(kubectl get svc -n minio minio-console -o jsonpath='{.status.l
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
-    chmod 600 /root/mynodeone-minio-credentials.txt
+    chmod 600 $ACTUAL_HOME/mynodeone-minio-credentials.txt
+    chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-minio-credentials.txt
     
     log_success "MinIO installed"
-    log_warn "MinIO credentials saved to /root/mynodeone-minio-credentials.txt (chmod 600)"
+    log_warn "MinIO credentials saved to $ACTUAL_HOME/mynodeone-minio-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
@@ -1004,7 +1005,7 @@ install_monitoring() {
     done
     
     # Save Grafana credentials securely
-    cat > /root/mynodeone-grafana-credentials.txt <<EOF
+    cat > $ACTUAL_HOME/mynodeone-grafana-credentials.txt <<EOF
 Grafana Credentials
 ===================
 Username: admin
@@ -1013,10 +1014,11 @@ URL: http://$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jso
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
-    chmod 600 /root/mynodeone-grafana-credentials.txt
+    chmod 600 $ACTUAL_HOME/mynodeone-grafana-credentials.txt
+    chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-grafana-credentials.txt
     
     log_success "Monitoring stack installed"
-    log_warn "Grafana credentials saved to /root/mynodeone-grafana-credentials.txt (chmod 600)"
+    log_warn "Grafana credentials saved to $ACTUAL_HOME/mynodeone-grafana-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
@@ -1069,7 +1071,7 @@ install_argocd() {
     fi
     
     # Save credentials securely
-    cat > /root/mynodeone-argocd-credentials.txt <<EOF
+    cat > $ACTUAL_HOME/mynodeone-argocd-credentials.txt <<EOF
 ArgoCD Credentials
 ==================
 Username: admin
@@ -1078,10 +1080,11 @@ URL: https://$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loa
 
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
-    chmod 600 /root/mynodeone-argocd-credentials.txt
+    chmod 600 $ACTUAL_HOME/mynodeone-argocd-credentials.txt
+    chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-argocd-credentials.txt
     
     log_success "ArgoCD installed"
-    log_warn "ArgoCD credentials saved to /root/mynodeone-argocd-credentials.txt (chmod 600)"
+    log_warn "ArgoCD credentials saved to $ACTUAL_HOME/mynodeone-argocd-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
 }
 
@@ -1121,7 +1124,7 @@ create_cluster_token() {
     # K3s token for joining worker nodes
     TOKEN=$(cat /var/lib/rancher/k3s/server/node-token)
     
-    cat > /root/mynodeone-join-token.txt <<EOF
+    cat > $ACTUAL_HOME/mynodeone-join-token.txt <<EOF
 MyNodeOne Cluster Join Configuration
 ====================================
 Server URL: https://$TAILSCALE_IP:6443
@@ -1134,9 +1137,10 @@ Or use the add-worker-node.sh script (recommended)
 
 WARNING: This token grants access to join nodes to your cluster. Store securely!
 EOF
-    chmod 600 /root/mynodeone-join-token.txt
+    chmod 600 $ACTUAL_HOME/mynodeone-join-token.txt
+    chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-join-token.txt
     
-    log_success "Join token saved to /root/mynodeone-join-token.txt (chmod 600)"
+    log_success "Join token saved to $ACTUAL_HOME/mynodeone-join-token.txt (chmod 600)"
     log_warn "IMPORTANT: This token grants cluster access. Store securely!"
 }
 
@@ -1309,16 +1313,16 @@ display_credentials() {
     
     echo "🚀 ARGOCD (GitOps):"
     echo "   URL: https://$ARGOCD_IP (also https://argocd.${CLUSTER_DOMAIN}.local)"
-    if [ -f /root/mynodeone-argocd-credentials.txt ]; then
-        cat /root/mynodeone-argocd-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
+    if [ -f $ACTUAL_HOME/mynodeone-argocd-credentials.txt ]; then
+        cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
     fi
     echo
     
     echo "💾 MINIO (S3 Storage):"
     echo "   Console: http://$MINIO_CONSOLE_IP:9001 (also http://minio.${CLUSTER_DOMAIN}.local:9001)"
     echo "   Note: Port 9001 is MinIO's web console (9000 is for S3 API)"
-    if [ -f /root/mynodeone-minio-credentials.txt ]; then
-        cat /root/mynodeone-minio-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
+    if [ -f $ACTUAL_HOME/mynodeone-minio-credentials.txt ]; then
+        cat $ACTUAL_HOME/mynodeone-minio-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
     fi
     echo
     
@@ -1365,14 +1369,14 @@ display_credentials() {
             echo "Options:"
             echo "  1. Save credentials now and re-run this confirmation"
             echo "  2. View credentials again: sudo $SCRIPT_DIR/show-credentials.sh"
-            echo "  3. Credentials are in: /root/mynodeone-*-credentials.txt"
+            echo "  3. Credentials are in: $ACTUAL_HOME/mynodeone-*-credentials.txt"
             echo
             read -p "Try again - Have you saved credentials? [y/N]: " -r
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 delete_credential_files
             else
                 log_error "Please save credentials and manually delete files:"
-                echo "  sudo rm /root/mynodeone-*-credentials.txt"
+                echo "  sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt"
                 echo
                 log_warn "WARNING: Leaving credential files on disk is a security risk!"
                 return 1
@@ -1393,18 +1397,18 @@ delete_credential_files() {
     
     local files_deleted=0
     
-    if [ -f /root/mynodeone-argocd-credentials.txt ]; then
-        shred -vfz -n 3 /root/mynodeone-argocd-credentials.txt 2>/dev/null || rm -f /root/mynodeone-argocd-credentials.txt
+    if [ -f $ACTUAL_HOME/mynodeone-argocd-credentials.txt ]; then
+        shred -vfz -n 3 $ACTUAL_HOME/mynodeone-argocd-credentials.txt 2>/dev/null || rm -f $ACTUAL_HOME/mynodeone-argocd-credentials.txt
         files_deleted=$((files_deleted + 1))
     fi
     
-    if [ -f /root/mynodeone-minio-credentials.txt ]; then
-        shred -vfz -n 3 /root/mynodeone-minio-credentials.txt 2>/dev/null || rm -f /root/mynodeone-minio-credentials.txt
+    if [ -f $ACTUAL_HOME/mynodeone-minio-credentials.txt ]; then
+        shred -vfz -n 3 $ACTUAL_HOME/mynodeone-minio-credentials.txt 2>/dev/null || rm -f $ACTUAL_HOME/mynodeone-minio-credentials.txt
         files_deleted=$((files_deleted + 1))
     fi
     
-    if [ -f /root/mynodeone-grafana-credentials.txt ]; then
-        shred -vfz -n 3 /root/mynodeone-grafana-credentials.txt 2>/dev/null || rm -f /root/mynodeone-grafana-credentials.txt
+    if [ -f $ACTUAL_HOME/mynodeone-grafana-credentials.txt ]; then
+        shred -vfz -n 3 $ACTUAL_HOME/mynodeone-grafana-credentials.txt 2>/dev/null || rm -f $ACTUAL_HOME/mynodeone-grafana-credentials.txt
         files_deleted=$((files_deleted + 1))
     fi
     
@@ -1413,7 +1417,7 @@ delete_credential_files() {
     
     if [ $files_deleted -gt 0 ]; then
         log_success "✅ Credential files securely deleted ($files_deleted files)"
-        log_info "Join token kept at: /root/mynodeone-join-token.txt (needed for adding nodes)"
+        log_info "Join token kept at: $ACTUAL_HOME/mynodeone-join-token.txt (needed for adding nodes)"
     else
         log_warn "No credential files found to delete"
     fi
@@ -1510,11 +1514,11 @@ print_summary() {
     echo
     echo "   🚀 ArgoCD (GitOps Deployments):"
     echo "      URL: https://$ARGOCD_IP"
-    echo "      Credentials: cat /root/mynodeone-argocd-credentials.txt"
+    echo "      Credentials: cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt"
     echo
     echo "   💾 MinIO Console (S3 Storage):"
     echo "      URL: http://$MINIO_CONSOLE_IP:9001"
-    echo "      Credentials: cat /root/mynodeone-minio-credentials.txt"
+    echo "      Credentials: cat $ACTUAL_HOME/mynodeone-minio-credentials.txt"
     echo
     echo "   📦 Longhorn UI (Block Storage):"
     echo "      URL: $LONGHORN_URL"
@@ -1886,7 +1890,7 @@ display_final_credentials_unattended() {
     echo "  • KeePassXC (https://keepassxc.org)"
     echo
     echo "⚠️  After you save them, delete the credential files for security:"
-    echo "   sudo rm /root/mynodeone-*-credentials.txt"
+    echo "   sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt"
     echo
     echo "💡 You can view credentials anytime with:"
     echo "   sudo $SCRIPT_DIR/show-credentials.sh"

@@ -98,6 +98,33 @@ register_domain() {
     log_success "Domain registered: $domain"
 }
 
+# Unregister a domain
+unregister_domain() {
+    local domain="$1"
+    
+    log_info "Unregistering domain: $domain"
+    
+    local registry=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
+    
+    # Check if domain exists
+    if ! echo "$registry" | jq -e ".domains[\"$domain\"]" &>/dev/null; then
+        log_warn "Domain not found: $domain"
+        return 0
+    fi
+    
+    # Remove domain from the registry
+    registry=$(echo "$registry" | jq "del(.domains[\"$domain\"])")
+    
+    # Update ConfigMap
+    kubectl patch configmap domain-registry \
+        -n kube-system \
+        --type merge \
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+    
+    log_success "Domain unregistered: $domain"
+}
+
 # Register a VPS node
 register_vps() {
     local vps_ip="$1"
@@ -136,6 +163,33 @@ register_vps() {
         -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
     
     log_success "VPS registered: $vps_ip → $public_ip ($region)"
+}
+
+# Unregister a VPS node
+unregister_vps() {
+    local vps_ip="$1"
+    
+    log_info "Unregistering VPS: $vps_ip"
+    
+    local registry=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
+    
+    # Check if VPS exists
+    if ! echo "$registry" | jq -e ".vps_nodes[] | select(.tailscale_ip==\"$vps_ip\")" &>/dev/null; then
+        log_warn "VPS not found: $vps_ip"
+        return 0
+    fi
+    
+    # Remove VPS from the registry
+    registry=$(echo "$registry" | jq "del(.vps_nodes[] | select(.tailscale_ip==\"$vps_ip\"))")
+    
+    # Update ConfigMap
+    kubectl patch configmap domain-registry \
+        -n kube-system \
+        --type merge \
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+    
+    log_success "VPS unregistered: $vps_ip"
 }
 
 # Configure service routing
@@ -343,10 +397,16 @@ case "${1:-}" in
         init_multi_domain_registry
         ;;
     register-domain)
-        register_domain "$2" "${3:-}"
+        register_domain "$2" "$3"
+        ;;
+    unregister-domain)
+        unregister_domain "$2"
         ;;
     register-vps)
-        register_vps "$2" "$3" "${4:-unknown}" "${5:-unknown}"
+        register_vps "$2" "$3" "$4" "$5"
+        ;;
+    unregister-vps)
+        unregister_vps "$2"
         ;;
     configure-routing)
         configure_service_routing "$2" "$3" "$4" "${5:-round-robin}"
@@ -370,9 +430,15 @@ Commands:
   register-domain <domain> [description]  Register a public domain
                                           Example: curiios.com "Main site"
 
+  unregister-domain <domain>              Unregister a domain
+                                          Example: curiios.com
+
   register-vps <tailscale_ip> <public_ip> <region> <provider>
                                           Register a VPS edge node
                                           Example: 100.68.225.92 45.8.133.192 eu contabo
+
+  unregister-vps <tailscale_ip>           Unregister a VPS node
+                                          Example: 100.68.225.92
 
   configure-routing <service> <domains> <vps_nodes> [strategy]
                                           Configure service routing

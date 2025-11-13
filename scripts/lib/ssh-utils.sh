@@ -170,10 +170,14 @@ setup_reverse_ssh() {
         # 1. Ensure actual user has SSH key (used when scripts run with sudo)
         if ! sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\"; then
             echo \"[INFO] Generating SSH key for \$REMOTE_ACTUAL_USER (script user)...\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" chmod 700 \"\$REMOTE_ACTUAL_HOME/.ssh\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-scripts\"
-            echo \"[SUCCESS] SSH key generated for \$REMOTE_ACTUAL_USER\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\" 2>/dev/null || true
+            sudo -u \"\$REMOTE_ACTUAL_USER\" chmod 700 \"\$REMOTE_ACTUAL_HOME/.ssh\" 2>/dev/null || true
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-scripts\" 2>/dev/null || {
+                echo \"[WARN] Could not generate SSH key for \$REMOTE_ACTUAL_USER\"
+            }
+            if sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\"; then
+                echo \"[SUCCESS] SSH key generated for \$REMOTE_ACTUAL_USER\"
+            fi
         else
             echo \"[INFO] SSH key already exists for \$REMOTE_ACTUAL_USER\"
         fi
@@ -209,7 +213,9 @@ setup_reverse_ssh() {
             echo \"[INFO] Setting up script user SSH access...\"
             if sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\"; then
                 echo \"=== SCRIPT_USER_KEY ===\"
-                sudo cat \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\"
+                sudo cat \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\" 2>/dev/null || echo \"[WARN] Could not read script user key\"
+            else
+                echo \"[WARN] Script user key file not found: \$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\"
             fi
         fi
         

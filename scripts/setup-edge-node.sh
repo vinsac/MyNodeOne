@@ -20,21 +20,25 @@ NC='\033[0m' # No Color
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect actual user and their home directory (even when run with sudo)
-ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    # Running under sudo - use actual user's home directory
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-else
-    # Running normally
-    ACTUAL_HOME="$HOME"
+# ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
+# If not set (standalone execution), detect them here
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+fi
+
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
 fi
 
 # Source preflight checks library
 source "$SCRIPT_DIR/lib/preflight-checks.sh"
 
-# Load configuration
-CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+# Load configuration - inherit from parent or set fallback
+CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
     echo "Expected location: $CONFIG_FILE"

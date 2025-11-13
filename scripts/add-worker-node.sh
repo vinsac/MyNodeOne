@@ -18,8 +18,22 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
+# If not set (standalone execution), detect them here
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+fi
+
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+
 # Load configuration
-CONFIG_FILE="$HOME/.mynodeone/config.env"
+CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}Error: Configuration not found!${NC}"
     echo "Please run: ./scripts/interactive-setup.sh first"

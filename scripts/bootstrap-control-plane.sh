@@ -30,6 +30,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
+# If not set (standalone execution), detect them here
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+fi
+
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+
+# CONFIG_FILE is also inherited, but we provide a fallback for standalone execution
+: "${CONFIG_FILE:=$ACTUAL_HOME/.mynodeone/config.env}"
 
 # Load configuration
 if [ ! -f "$CONFIG_FILE" ]; then

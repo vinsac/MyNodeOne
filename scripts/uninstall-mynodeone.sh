@@ -188,8 +188,21 @@ print_header "MyNodeOne Uninstall"
 echo -e "${CYAN}Detected Node Type:${NC} ${MAGENTA}${NODE_TYPE}${NC}"
 echo
 
+# Detect actual user and home directory
+if [ -z "${ACTUAL_USER:-}" ]; then
+    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+fi
+
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+
 # Load config if it exists
-CONFIG_FILE="$HOME/.mynodeone/config.env"
+CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
     echo "Configuration found:"

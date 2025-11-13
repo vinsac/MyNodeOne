@@ -1351,7 +1351,7 @@ main() {
     bash "$SCRIPT_DIR/interactive-setup.sh"
     
     # Load the configuration created by interactive setup
-    CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+    export CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
     else

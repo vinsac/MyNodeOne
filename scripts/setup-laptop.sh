@@ -18,7 +18,7 @@ if [ -z "${ACTUAL_USER:-}" ]; then
 fi
 
 if [ -z "${ACTUAL_HOME:-}" ]; then
-    if [ "$SUDO_USER" != "root" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     else
         export ACTUAL_HOME="$HOME"

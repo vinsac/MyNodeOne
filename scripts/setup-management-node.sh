@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source SSH utilities for ControlMaster support
+source "$SCRIPT_DIR/lib/ssh-utils.sh"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -65,7 +71,7 @@ source "$CONFIG_FILE"
 # Get laptop details
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 HOSTNAME=$(hostname)
-USERNAME=$(whoami)
+USERNAME="$ACTUAL_USER"
 
 if [ -z "$TAILSCALE_IP" ]; then
     log_error "Tailscale not detected"
@@ -92,6 +98,17 @@ echo ""
 # Register this laptop in sync controller
 CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 
+# Setup SSH ControlMaster for passwordless subsequent connections
+log_info "Setting up SSH connection..."
+if validate_ssh_early "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP" "control plane"; then
+    setup_ssh_control_master "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP"
+    log_success "SSH ControlMaster established"
+    echo ""
+else
+    log_error "SSH connection failed"
+    exit 1
+fi
+
 # Check if we already have the path saved in config
 CONTROL_PLANE_REPO_PATH="${CONTROL_PLANE_REPO_PATH:-}"
 
@@ -99,7 +116,7 @@ if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
     # Try to get authoritative path from cluster configmap first
     log_info "Fetching MyNodeOne path from cluster config..."
     
-    MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+    MYNODEONE_PATH=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>/dev/null" || echo "")
     
     if [ -n "$MYNODEONE_PATH" ]; then
@@ -109,7 +126,7 @@ if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
         log_info "No path in cluster config, searching filesystem..."
         
         # Search common locations (user-agnostic)
-        MYNODEONE_PATH=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        MYNODEONE_PATH=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
             "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
         
         if [ -z "$MYNODEONE_PATH" ]; then
@@ -118,7 +135,7 @@ if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
             
             # Try recommended and common paths
             for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
-                if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
+                if ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "[ -d '$path' ]" 2>/dev/null; then
                     MYNODEONE_PATH="$path"
                     break
                 fi
@@ -150,9 +167,10 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
     log_info "Using MyNodeOne at: $CONTROL_PLANE_REPO_PATH"
     
     # Register using new registry manager (auto-detects user, validates in ConfigMap)
+    # SKIP_SSH_VALIDATION=true because management laptops don't need SSH server
     log_info "Registering in enterprise registry..."
-    ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd '$CONTROL_PLANE_REPO_PATH' && sudo ./scripts/lib/node-registry-manager.sh register management_laptops \
+    ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "cd '$CONTROL_PLANE_REPO_PATH' && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register management_laptops \
         $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
     
     if [ $? -eq 0 ]; then
@@ -160,7 +178,7 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
         
         # VALIDATION: Verify registration in ConfigMap
         log_info "Validating registration..."
-        LAPTOP_CHECK=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        LAPTOP_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
             "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.management_laptops[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
         
         if [ "$LAPTOP_CHECK" = "$USERNAME" ]; then
@@ -175,6 +193,9 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
         # Don't exit - allow manual registration later
     fi
 fi
+
+# Cleanup SSH ControlMaster
+cleanup_ssh_control_master "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP"
 
 echo ""
 log_info "Running initial sync..."

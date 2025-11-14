@@ -246,22 +246,22 @@ setup_reverse_ssh() {
     # This is the definitive fix for the ownership issue.
     read -r -d '' vps_setup_script << EOM
 #!/bin/bash
-sudo -u $vps_user mkdir -p "$vps_ssh_dir" && sudo -u $vps_user chmod 700 "$vps_ssh_dir"
-sudo -u $vps_user touch "$vps_ssh_dir/authorized_keys" && sudo -u $vps_user chmod 600 "$vps_ssh_dir/authorized_keys"
+mkdir -p "$vps_ssh_dir" && chmod 700 "$vps_ssh_dir"
+touch "$vps_ssh_dir/authorized_keys" && chmod 600 "$vps_ssh_dir/authorized_keys"
 
-if [ -n "$script_user_key" ] && ! sudo -u $vps_user grep -qF "$script_user_key" "$vps_ssh_dir/authorized_keys"; then
-    echo "$script_user_key" | sudo -u $vps_user tee -a "$vps_ssh_dir/authorized_keys" > /dev/null
+if [ -n "$script_user_key" ] && ! grep -qF "$script_user_key" "$vps_ssh_dir/authorized_keys"; then
+    echo "$script_user_key" >> "$vps_ssh_dir/authorized_keys"
     echo "[SUCCESS] Added script user key from control plane"
 fi
 
-if [ -n "$ssh_user_key" ] && ! sudo -u $vps_user grep -qF "$ssh_user_key" "$vps_ssh_dir/authorized_keys"; then
-    echo "$ssh_user_key" | sudo -u $vps_user tee -a "$vps_ssh_dir/authorized_keys" > /dev/null
+if [ -n "$ssh_user_key" ] && ! grep -qF "$ssh_user_key" "$vps_ssh_dir/authorized_keys"; then
+    echo "$ssh_user_key" >> "$vps_ssh_dir/authorized_keys"
     echo "[SUCCESS] Added SSH user key from control plane"
 fi
 EOM
 
     # Run the setup script on the VPS as the target user
-    echo "$vps_setup_script" | ssh $ssh_opts "$vps_user@$vps_ip" "sudo bash -s"
+    echo "$vps_setup_script" | ssh $ssh_opts "$vps_user@$vps_ip" "bash -s"
     
     echo ""
     log_info "Verifying reverse SSH access..."

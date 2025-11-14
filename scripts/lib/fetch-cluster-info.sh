@@ -84,25 +84,44 @@ fetch_cluster_info() {
     fi
     log_success "SSH connection successful"
 
-    # Check for passwordless sudo
-    log_info "Checking for passwordless sudo on control plane..."
-    if ! $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
-        log_error "Passwordless sudo is not configured on the control plane."
-        log_info "Please run 'setup-control-plane-sudo.sh' on the control plane and try again."
-        return 1
-    fi
-    log_success "Passwordless sudo detected"
+    # Ask for sudo password upfront (if needed)
+    local sudo_password=""
     echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔑 Sudo Password Required"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "To fetch the kubeconfig, we need sudo access on the control plane"
+    echo
+    
+    # Check if passwordless sudo works first
+    if $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
+        log_success "Passwordless sudo detected"
+    else
+        log_info "Passwordless sudo not available - password required"
+        echo
+        read -s -p "Enter sudo password for $ssh_user on control plane: " sudo_password
+        echo
+        echo
+    fi
 
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
+    
     mkdir -p "$ACTUAL_HOME/.kube"
-    if ! $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$ACTUAL_HOME/.kube/config.raw" 2>/dev/null; then
-        log_error "Failed to fetch kubeconfig."
-        return 1
+    
+    # Run SSH command with or without password
+    if [ -z "$sudo_password" ]; then
+        # Passwordless sudo
+        $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$ACTUAL_HOME/.kube/config.raw" 2>/dev/null
+    else
+        # Use password with sudo - need to use -tt for pseudo-terminal
+        $SSH_CMD -tt "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | grep -v "^\[sudo\]" > "$ACTUAL_HOME/.kube/config.raw"
     fi
+    
+    local ssh_exit=$?
 
-    if [ -s "$ACTUAL_HOME/.kube/config.raw" ]; then
+    if [ $ssh_exit -eq 0 ] && [ -s "$ACTUAL_HOME/.kube/config.raw" ]; then
         # Process the file to remove connection messages and update IP
         grep -v "Connection to.*closed" "$ACTUAL_HOME/.kube/config.raw" | \
         sed "s/127.0.0.1/$control_plane_ip/g" > "$ACTUAL_HOME/.kube/config"
@@ -110,24 +129,74 @@ fetch_cluster_info() {
         chmod 600 "$ACTUAL_HOME/.kube/config"
         log_success "Kubeconfig retrieved"
 
-        # Fetch cluster info directly from control plane
+        # Fetch cluster info directly from control plane (doesn't require local kubectl)
         log_info "Reading cluster configuration from control plane..."
-        cluster_name=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
-        cluster_domain=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
+        
+        # Use SSH to run kubectl on the control plane
+        local cluster_name=""
+        local cluster_domain=""
+        
+        if [ -z "$sudo_password" ]; then
+            # Passwordless sudo
+            cluster_name=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
+            cluster_domain=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
+        else
+            # With password - use -tt for pseudo-terminal
+            cluster_name=$($SSH_CMD -tt "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" 2>/dev/null | grep -v "^\[sudo\]" | tr -d '\r')
+            cluster_domain=$($SSH_CMD -tt "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" 2>/dev/null | grep -v "^\[sudo\]" | tr -d '\r')
+        fi
 
         if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
             log_success "Cluster info retrieved:"
             echo "  • Cluster Name: $cluster_name"
             echo "  • Domain: ${cluster_domain}.local"
 
-            # Fetch MyNodeOne repo path
+            # Fetch MyNodeOne repo path from authoritative cluster config
             log_info "Fetching MyNodeOne repository path from cluster..."
-            repo_path=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
+            local repo_path=""
+            
+            # Try to get from cluster configmap (authoritative source)
+            if [ -z "$sudo_password" ]; then
+                repo_path=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
+            else
+                repo_path=$($SSH_CMD -tt "$ssh_user@$control_plane_ip" "echo '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" 2>/dev/null | grep -v "^\[sudo\]" | tr -d '\r')
+            fi
 
             if [ -n "$repo_path" ]; then
                 log_success "Found authoritative path: $repo_path"
             else
-                log_warn "Could not detect MyNodeOne repo path. You may need to specify it manually."
+                # Fallback: search filesystem (for backwards compatibility with older clusters)
+                log_info "No path in cluster config, searching filesystem..."
+                if [ -z "$sudo_password" ]; then
+                    repo_path=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" \
+                        "find $ACTUAL_HOME /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+                else
+                    repo_path=$($SSH_CMD -tt "$ssh_user@$control_plane_ip" \
+                        "find $ACTUAL_HOME /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null | tr -d '\r')
+                fi
+                
+                if [ -z "$repo_path" ]; then
+                    # Try standard locations
+                    for path in "$ACTUAL_HOME/MyNodeOne" /opt/MyNodeOne; do
+                        if [ -z "$sudo_password" ]; then
+                            if $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
+                                repo_path="$path"
+                                break
+                            fi
+                        else
+                            if $SSH_CMD -tt "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
+                                repo_path="$path"
+                                break
+                            fi
+                        fi
+                    done
+                fi
+                
+                if [ -n "$repo_path" ]; then
+                    log_success "Found MyNodeOne at: $repo_path"
+                else
+                    log_warn "Could not detect MyNodeOne path (will auto-detect later)"
+                fi
             fi
 
             # Save to config

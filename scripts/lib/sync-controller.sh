@@ -76,11 +76,6 @@ push_sync_to_node() {
     local retry_delay=5
     local registry_file="$HOME/.mynodeone/node-registry.json"
     
-    # Skip syncing to localhost for management laptops (they don't need route syncing)
-    if [[ "$node_type" == "management_laptops" ]]; then
-        log_info "Skipping sync to management laptop (uses kubectl directly)"
-        return 0
-    fi
     
     log_info "Pushing sync to $node_ip..."
     
@@ -185,20 +180,29 @@ push_sync_all() {
         local node_type="$1"
         local node_key="$2"
         
+        # Skip syncing to management laptops (they don't need route syncing)
+        if [[ "$node_key" == "management_laptops" ]]; then
+            log_info "Skipping sync for management laptops (use kubectl directly)"
+            return 0
+        fi
+
         # Check if the key exists and is an array
         if ! echo "$registry" | jq -e ". | has(\"$node_key\") and .\"$node_key\" | is_array" > /dev/null; then
             log_warn "Registry is missing or has invalid format for '$node_key'. Skipping."
             return
         fi
         
-        local nodes=$(echo "$registry" | jq -c '.["'$node_key'"][]')
-        if [[ -z "$nodes" ]]; then
+        local nodes_array=()
+        mapfile -t nodes_array < <(echo "$registry" | jq -c '.["'$node_key'"][]?' 2>/dev/null) || true
+
+        if [[ ${#nodes_array[@]} -eq 0 ]]; then
             log_info "No nodes of type '$node_key' to sync."
-            return
+            return 0
         fi
 
         log_info "Syncing $node_key..."
-        while IFS= read -r node_json; do
+
+        for node_json in "${nodes_array[@]}"; do
             local ip=$(echo "$node_json" | jq -r '.ip')
             local user=$(echo "$node_json" | jq -r '.ssh_user')
 
@@ -208,11 +212,13 @@ push_sync_all() {
             fi
 
             if push_sync_to_node "$node_key" "$ip" "$user"; then
-                ((success_count++))
+                ((success_count+=1))
             else
-                ((fail_count++))
+                ((fail_count+=1))
             fi
-        done < <(echo "$nodes")
+        done
+
+        return 0
     }
 
     process_node_type "Management Laptops" "management_laptops"

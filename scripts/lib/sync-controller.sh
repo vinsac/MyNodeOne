@@ -106,7 +106,7 @@ push_sync_to_node() {
     local attempt=1
     while [[ $attempt -le $max_retries ]]; do
         if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$ssh_user@$node_ip" \
-            "cd ~/MyNodeOne && sudo ./scripts/$sync_script" &>/dev/null; then
+            "cd ~/MyNodeOne && sudo ./scripts/$sync_script" &>/dev/null < /dev/null; then
             log_success "Synced: $node_ip"
             
             # Update last_sync time in ConfigMap

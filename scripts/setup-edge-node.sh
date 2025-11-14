@@ -501,51 +501,13 @@ main() {
     echo
 
     log_info "Ensuring correct home directory permissions for user: $ACTUAL_USER..."
-    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"
-    log_success "Home directory permissions verified."
+    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"
+    log_success "Home directory permissions verified for user '$ACTUAL_USER'."
     echo
     
+    # The main pre-flight checks are now handled in setup-vps-node.sh
+    # We just do a basic check here.
     check_requirements
-    
-    # IMPROVEMENT 2: Early SSH validation with host key acceptance
-    CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
-    log_info "Step 1/3: Validating SSH connectivity..."
-    echo
-    if ! validate_ssh_early "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP" "control plane"; then
-        log_error "Cannot establish SSH connection to control plane"
-        echo ""
-        echo "Please verify:"
-        echo "  • Control plane is accessible: $CONTROL_PLANE_IP"
-        echo "  • SSH is enabled on control plane"
-        echo "  • User $CONTROL_PLANE_SSH_USER exists"
-        echo ""
-        exit 1
-    fi
-    echo
-    
-    # IMPROVEMENT 1: Setup SSH ControlMaster for connection multiplexing
-    log_info "Step 2/3: Setting up SSH connection multiplexing..."
-    echo
-    setup_ssh_control_master "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP"
-    echo
-    
-    # Trap to cleanup SSH ControlMaster on exit
-    trap "cleanup_ssh_control_master '$CONTROL_PLANE_SSH_USER' '$CONTROL_PLANE_IP'" EXIT
-    
-    # Run pre-flight checks BEFORE any installation
-    log_info "Step 3/3: Running pre-flight checks..."
-    echo
-    if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "$CONTROL_PLANE_SSH_USER"; then
-        log_error "Pre-flight checks failed. Please fix the issues above and try again."
-        echo ""
-        echo "💡 Tip: Run this to see what needs to be fixed:"
-        echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP $CONTROL_PLANE_SSH_USER"
-        echo ""
-        echo "📖 See docs/INSTALLATION_PREREQUISITES.md for complete guide"
-        exit 1
-    fi
-    echo
-    log_success "All pre-flight checks passed! Proceeding with installation..."
     echo
     
     install_dependencies
@@ -568,7 +530,7 @@ auto_register_vps() {
     # Check if setup script exists
     if [ -f "$SCRIPT_DIR/setup-vps-node.sh" ]; then
         # Skip pre-flight checks since we already ran them
-        bash "$SCRIPT_DIR/setup-vps-node.sh" --skip-preflight
+        sudo -u "$ACTUAL_USER" bash "$SCRIPT_DIR/setup-vps-node.sh" --skip-preflight
         log_success "VPS auto-registration complete"
     else
         log_warn "Auto-registration script not found, skipping..."

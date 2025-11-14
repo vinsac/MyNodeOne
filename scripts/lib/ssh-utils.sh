@@ -307,6 +307,12 @@ ssh_with_control() {
     ssh $ssh_opts "$@"
 }
 
+# Wrapper for SCP commands using ControlMaster
+scp_with_control() {
+    local ssh_opts="${SSH_CONTROL_OPTS:-}"
+    scp $ssh_opts "$@"
+}
+
 ###############################################################################
 # Export functions for use in other scripts
 ###############################################################################
@@ -316,6 +322,7 @@ export -f cleanup_ssh_control_master
 export -f validate_ssh_early
 export -f setup_reverse_ssh
 export -f ssh_with_control
+export -f scp_with_control
 export -f log_info
 export -f log_success
 export -f log_warn

@@ -340,7 +340,7 @@ metadata:
   name: open-webui
   namespace: $NAMESPACE
   annotations:
-    ${CLUSTER_DOMAIN}.local/subdomain: "${APP_SUBDOMAIN}"
+    mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
 spec:
   selector:
     app: open-webui

@@ -180,53 +180,44 @@ push_sync_all() {
     local success_count=0
     local fail_count=0
     
-    # Push to management laptops
-    local laptops=$(echo "$registry" | jq -r '.management_laptops[] | @json')
-    if [[ -n "$laptops" ]]; then
-        log_info "Syncing management laptops..."
-        while IFS= read -r node; do
-            local ip=$(echo "$node" | jq -r '.ip')
-            local user=$(echo "$node" | jq -r '.ssh_user')
-            
-            if push_sync_to_node "management_laptops" "$ip" "$user"; then
+    # Safely process a node type
+    process_node_type() {
+        local node_type="$1"
+        local node_key="$2"
+        
+        # Check if the key exists and is an array
+        if ! echo "$registry" | jq -e ". | has(\"$node_key\") and .\"$node_key\" | is_array" > /dev/null; then
+            log_warn "Registry is missing or has invalid format for '$node_key'. Skipping."
+            return
+        fi
+        
+        local nodes=$(echo "$registry" | jq -c '.["'$node_key'"][]')
+        if [[ -z "$nodes" ]]; then
+            log_info "No nodes of type '$node_key' to sync."
+            return
+        fi
+
+        log_info "Syncing $node_key..."
+        while IFS= read -r node_json; do
+            local ip=$(echo "$node_json" | jq -r '.ip')
+            local user=$(echo "$node_json" | jq -r '.ssh_user')
+
+            if [[ -z "$ip" || -z "$user" ]]; then
+                log_warn "Skipping node with missing IP or user in '$node_key': $node_json"
+                continue
+            fi
+
+            if push_sync_to_node "$node_key" "$ip" "$user"; then
                 ((success_count++))
             else
                 ((fail_count++))
             fi
-        done <<< "$laptops"
-    fi
-    
-    # Push to VPS nodes
-    local vps=$(echo "$registry" | jq -r '.vps_nodes[] | @json')
-    if [[ -n "$vps" ]]; then
-        log_info "Syncing VPS nodes..."
-        while IFS= read -r node; do
-            local ip=$(echo "$node" | jq -r '.ip')
-            local user=$(echo "$node" | jq -r '.ssh_user')
-            
-            if push_sync_to_node "vps_nodes" "$ip" "$user"; then
-                ((success_count++))
-            else
-                ((fail_count++))
-            fi
-        done <<< "$vps"
-    fi
-    
-    # Push to worker nodes
-    local workers=$(echo "$registry" | jq -r '.worker_nodes[] | @json')
-    if [[ -n "$workers" ]]; then
-        log_info "Syncing worker nodes..."
-        while IFS= read -r node; do
-            local ip=$(echo "$node" | jq -r '.ip')
-            local user=$(echo "$node" | jq -r '.ssh_user')
-            
-            if push_sync_to_node "worker_nodes" "$ip" "$user"; then
-                ((success_count++))
-            else
-                ((fail_count++))
-            fi
-        done <<< "$workers"
-    fi
+        done <<< "$nodes"
+    }
+
+    process_node_type "Management Laptops" "management_laptops"
+    process_node_type "VPS Nodes" "vps_nodes"
+    process_node_type "Worker Nodes" "worker_nodes"
     
     echo ""
     log_success "Sync complete: $success_count succeeded, $fail_count failed"

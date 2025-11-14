@@ -165,26 +165,26 @@ setup_reverse_ssh() {
             REMOTE_ACTUAL_HOME=\"/root\"
         fi
 
-        # 1. Ensure root user has an SSH key
-        if [ ! -f /root/.ssh/id_ed25519 ]; then
-            echo '[INFO] Generating SSH key for root user...'
-            ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '' -C 'root@control-plane'
+        # 1. Ensure root user has a MyNodeOne-specific SSH key
+        if [ ! -f /root/.ssh/mynodeone_id_ed25519 ]; then
+            echo '[INFO] Generating MyNodeOne SSH key for root user...'
+            ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '' -C 'root@control-plane-mynodeone'
         fi
 
-        # 2. Ensure actual user has an SSH key
-        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" ]; then
-            echo \"[INFO] Generating SSH key for user \$REMOTE_ACTUAL_USER...\"
+        # 2. Ensure actual user has a MyNodeOne-specific SSH key
+        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" ]; then
+            echo \"[INFO] Generating MyNodeOne SSH key for user \$REMOTE_ACTUAL_USER...\"
             sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
         fi
 
         # 3. Copy keys to VPS using ssh-copy-id (the robust way)
-        echo '[INFO] Copying root SSH key to VPS...'
-        ssh-copy-id -i /root/.ssh/id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$vps_user@$vps_ip\"
+        echo '[INFO] Copying root MyNodeOne SSH key to VPS...'
+        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$vps_user@$vps_ip\"
 
         if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ]; then
-            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) SSH key to VPS...\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$vps_user@$vps_ip\"
+            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to VPS...\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$vps_user@$vps_ip\"
         fi
     "
 

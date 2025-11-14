@@ -51,18 +51,17 @@ log_error() {
 fetch_cluster_info() {
     local control_plane_ip=""
     local ssh_user=""
-    
+
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  📡 Fetching Cluster Configuration"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     log_info "To auto-detect your cluster settings, I need your control plane details"
     echo
-    
+
     # Prompt for control plane IP
     while [ -z "$control_plane_ip" ]; do
         read -p "? Control plane Tailscale IP (e.g., 100.x.x.x): " control_plane_ip
-        
         if [ -z "$control_plane_ip" ]; then
             log_warn "IP address is required"
         elif ! [[ "$control_plane_ip" =~ ^100\. ]]; then
@@ -70,189 +69,69 @@ fetch_cluster_info() {
             control_plane_ip=""
         fi
     done
-    
+
     # Prompt for SSH username
     read -p "? SSH username on control plane [root]: " ssh_user
     ssh_user="${ssh_user:-root}"
     echo
-    
+
     # Test SSH connection
     log_info "Testing SSH connection to $ssh_user@$control_plane_ip..."
-    
     if ! $SSH_CMD -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
-        log_error "Passwordless SSH not configured!"
-        echo
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  ⚠️  SSH Keys Not Exchanged"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo
-        echo "SSH keys must be exchanged BEFORE running installation."
-        echo "This prevents password prompts during installation."
-        echo
-        echo "Exit this wizard and run these commands first:"
-        echo
-        echo "  # Generate SSH key:"
-        echo "  ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''"
-        echo
-        echo "  # Copy key to control plane:"
-        echo "  ssh-copy-id $ssh_user@$control_plane_ip"
-        echo
-        echo "  # Test (should NOT ask for password):"
-        echo "  ssh $ssh_user@$control_plane_ip 'echo OK'"
-        echo
-        echo "  # Then run pre-flight checks:"
-        echo "  cd ~/MyNodeOne"
-        echo "  ./scripts/check-prerequisites.sh vps $control_plane_ip $ssh_user"
-        echo
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo
-        read -p "Press Enter to continue anyway (NOT recommended) or Ctrl+C to exit: " -r
-        echo
-        
-        # Try with password - MUST NOT suppress stderr so user can see password prompt
-        if ! $SSH_CMD -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit"; then
-            echo
-            log_error "Cannot connect to control plane"
-            log_info "Please ensure:"
-            echo "  1. Control plane is running and accessible"
-            echo "  2. Tailscale is connected on both machines"
-            echo "  3. SSH is enabled on control plane"
-            echo "  4. You have SSH access to the control plane"
-            return 1
-        fi
+        log_error "Passwordless SSH connection failed."
+        log_info "Please ensure you have exchanged SSH keys and can connect without a password."
+        return 1
     fi
-    
     log_success "SSH connection successful"
-    echo
-    
-    # Ask for sudo password upfront (if needed)
-    local sudo_password=""
-    echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔑 Sudo Password Required"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    log_info "To fetch the kubeconfig, we need sudo access on the control plane"
-    echo
-    
-    # Check if passwordless sudo works first
-    if $SSH_CMD "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
-        log_success "Passwordless sudo detected"
-    else
-        log_info "Passwordless sudo not available - password required"
-        echo
-        read -s -p "Enter sudo password for $ssh_user on control plane: " sudo_password
-        echo
-        echo
+
+    # Check for passwordless sudo
+    log_info "Checking for passwordless sudo on control plane..."
+    if ! $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo -n true" 2>/dev/null; then
+        log_error "Passwordless sudo is not configured on the control plane."
+        log_info "Please run 'setup-control-plane-sudo.sh' on the control plane and try again."
+        return 1
     fi
-    
+    log_success "Passwordless sudo detected"
+    echo
+
     # Fetch kubeconfig
     log_info "Fetching Kubernetes configuration from control plane..."
-    
     mkdir -p "$ACTUAL_HOME/.kube"
-    
-    # Run SSH command with or without password
-    if [ -z "$sudo_password" ]; then
-        # Passwordless sudo
-        $SSH_CMD "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$ACTUAL_HOME/.kube/config.raw" 2>/dev/null
-    else
-        # Pass password to sudo via stdin - use printf for safer password handling
-        $SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\n' '$sudo_password' | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>&1" | \
-        grep -v "^[sudo]" | grep -v "^sudo:" > "$ACTUAL_HOME/.kube/config.raw"
+    if ! $SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$ACTUAL_HOME/.kube/config.raw" 2>/dev/null; then
+        log_error "Failed to fetch kubeconfig."
+        return 1
     fi
-    
-    local ssh_exit=$?
-    
-    if [ $ssh_exit -eq 0 ] && [ -s "$ACTUAL_HOME/.kube/config.raw" ]; then
+
+    if [ -s "$ACTUAL_HOME/.kube/config.raw" ]; then
         # Process the file to remove connection messages and update IP
         grep -v "Connection to.*closed" "$ACTUAL_HOME/.kube/config.raw" | \
-        grep -v "^$" | \
-        sed "s/127.0.0.1/$control_plane_ip/g" > "$ACTUAL_HOME/.kube/config.tmp"
-        
+        sed "s/127.0.0.1/$control_plane_ip/g" > "$ACTUAL_HOME/.kube/config"
         rm -f "$ACTUAL_HOME/.kube/config.raw"
-        
-        # Check if we actually got content
-        if [ ! -s "$ACTUAL_HOME/.kube/config.tmp" ]; then
-            log_error "Retrieved empty kubeconfig"
-            log_info "Possible reasons:"
-            echo "  • k3s is not installed on control plane"
-            echo "  • k3s is not running"
-            echo "  • Insufficient permissions"
-            rm -f "$ACTUAL_HOME/.kube/config.tmp"
-            return 1
-        fi
-        
-        log_success "Kubeconfig retrieved"
-        
-        # Save kubeconfig (don't require local kubectl for validation)
-        mv "$ACTUAL_HOME/.kube/config.tmp" "$ACTUAL_HOME/.kube/config"
         chmod 600 "$ACTUAL_HOME/.kube/config"
-        echo
-        
-        # Fetch cluster info directly from control plane (doesn't require local kubectl)
+        log_success "Kubeconfig retrieved"
+
+        # Fetch cluster info directly from control plane
         log_info "Reading cluster configuration from control plane..."
-        
-        # Use SSH to run kubectl on the control plane
-        local cluster_name=""
-        local cluster_domain=""
-        
-        if [ -z "$sudo_password" ]; then
-            # Passwordless sudo
-            cluster_name=$($SSH_CMD "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
-            cluster_domain=$($SSH_CMD "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
-        else
-            # With password - use printf for safer password handling
-            # Note: sudo prompt and result are on same line, so use sed to strip prefix, not grep to remove line
-            cluster_name=$($SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
-            cluster_domain=$($SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
-        fi
-        
+        cluster_name=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}'" 2>/dev/null || echo "")
+        cluster_domain=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}'" 2>/dev/null || echo "")
+
         if [ -n "$cluster_name" ] && [ -n "$cluster_domain" ]; then
             log_success "Cluster info retrieved:"
             echo "  • Cluster Name: $cluster_name"
             echo "  • Domain: ${cluster_domain}.local"
-            echo
-            
-            # Fetch MyNodeOne repo path from authoritative cluster config
+
+            # Fetch MyNodeOne repo path
             log_info "Fetching MyNodeOne repository path from cluster..."
-            local repo_path=""
-            
-            # Try to get from cluster configmap (authoritative source)
-            if [ -z "$sudo_password" ]; then
-                repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
-            else
-                repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" "printf '%s\\n' '$sudo_password' | sudo -S kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>&1" | sed 's/^\[sudo\] password for [^:]*: //' | grep -v "^sudo:" || echo "")
-            fi
-            
+            repo_path=$($SSH_CMD -o BatchMode=yes "$ssh_user@$control_plane_ip" "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}'" 2>/dev/null || echo "")
+
             if [ -n "$repo_path" ]; then
                 log_success "Found authoritative path: $repo_path"
             else
-                # Fallback: search filesystem (for backwards compatibility with older clusters)
-                log_info "No path in cluster config, searching filesystem..."
-                repo_path=$($SSH_CMD "$ssh_user@$control_plane_ip" \
-                    "find $ACTUAL_HOME /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
-                
-                if [ -z "$repo_path" ]; then
-                    # Try standard locations
-                    for path in "$ACTUAL_HOME/MyNodeOne" /opt/MyNodeOne; do
-                        if $SSH_CMD "$ssh_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
-                            repo_path="$path"
-                            break
-                        fi
-                    done
-                fi
-                
-                if [ -n "$repo_path" ]; then
-                    log_success "Found MyNodeOne at: $repo_path"
-                else
-                    log_warn "Could not detect MyNodeOne path (will auto-detect later)"
-                fi
+                log_warn "Could not detect MyNodeOne repo path. You may need to specify it manually."
             fi
-            
+
             # Save to config
             mkdir -p "$CONFIG_DIR"
-            
-            # Create or update config file
             cat > "$CONFIG_DIR/config.env" <<EOF
 # MyNodeOne Configuration
 # Auto-generated on $(date)
@@ -262,22 +141,17 @@ CLUSTER_DOMAIN="$cluster_domain"
 CONTROL_PLANE_IP="$control_plane_ip"
 CONTROL_PLANE_SSH_USER="$ssh_user"
 EOF
-            
-            # Add repo path if detected
             if [ -n "$repo_path" ]; then
                 echo "CONTROL_PLANE_REPO_PATH=\"$repo_path\"" >> "$CONFIG_DIR/config.env"
             fi
-            
             log_success "Configuration saved to $CONFIG_DIR/config.env"
             return 0
         else
-            log_warn "Could not find cluster-info configmap"
-            log_info "The control plane may not have been fully initialized"
+            log_warn "Could not find cluster-info configmap on control plane."
             return 1
         fi
     else
-        log_error "Failed to fetch kubeconfig from control plane"
-        log_info "Make sure k3s is installed and running on the control plane"
+        log_error "Failed to retrieve a valid kubeconfig from the control plane."
         return 1
     fi
 }

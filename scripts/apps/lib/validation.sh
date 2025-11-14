@@ -31,23 +31,20 @@ validate_prerequisites() {
     
     # Check 1: kubectl available
     if ! command -v kubectl &> /dev/null; then
-        echo -e "${RED}Error: kubectl not found. Please install Kubernetes first.${NC}"
-        echo "Run: sudo ./scripts/bootstrap-control-plane.sh"
+        echo -e "${RED}Error: kubectl not found. Please install it first.${NC}"
         exit 1
     fi
     
     # Check 2: Cluster accessible
-    if ! kubectl get nodes &> /dev/null; then
+    if ! sudo kubectl get nodes &> /dev/null; then
         echo -e "${RED}Error: Cannot connect to Kubernetes cluster.${NC}"
-        echo "Please ensure:"
-        echo "  • K3s is running: systemctl status k3s"
-        echo "  • KUBECONFIG is set: export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+        echo "Please ensure the control plane is installed and your ~/.kube/config is correct."
         exit 1
     fi
     
     # Check 3: Storage available (optional)
     if [ "$require_storage" = "true" ]; then
-        if ! kubectl get storageclass longhorn &> /dev/null; then
+        if ! sudo kubectl get storageclass longhorn &> /dev/null; then
             echo -e "${YELLOW}Warning: Longhorn storage class not found.${NC}"
             echo "Installation may fail without persistent storage."
             read -p "Continue anyway? [y/N]: " continue_without_storage
@@ -114,7 +111,7 @@ validate_and_sanitize_subdomain() {
 check_namespace_exists() {
     local namespace="$1"
     
-    if kubectl get namespace "$namespace" &> /dev/null; then
+    if sudo kubectl get namespace "$namespace" &> /dev/null; then
         return 0
     else
         return 1

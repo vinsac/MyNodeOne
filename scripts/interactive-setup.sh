@@ -396,6 +396,9 @@ configure_cluster_info() {
             fi
         else
             print_warning "Could not auto-fetch cluster info - will ask manually"
+            # Clear existing values so we actually ask the user
+            existing_cluster_name=""
+            existing_cluster_domain=""
             echo
         fi
     fi

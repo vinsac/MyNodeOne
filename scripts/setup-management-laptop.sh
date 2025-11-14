@@ -513,27 +513,37 @@ main() {
     
     # Sync configs to actual user (if running as sudo)
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        print_header "Step 8: Syncing Configs to User"
         local user_home=$(eval echo ~$SUDO_USER)
         
-        # Copy mynodeone config
-        if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
-            sudo mkdir -p "$user_home/.mynodeone"
-            sudo cp $ACTUAL_HOME/.mynodeone/config.env "$user_home/.mynodeone/config.env"
-            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone"
-            log_success "Synced MyNodeOne config to $SUDO_USER"
+        # Only sync if ACTUAL_HOME is different from user_home
+        # (i.e., if files were created in /root but should be in user's home)
+        if [ "$ACTUAL_HOME" != "$user_home" ]; then
+            print_header "Step 8: Syncing Configs to User"
+            
+            # Copy mynodeone config
+            if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+                sudo mkdir -p "$user_home/.mynodeone"
+                sudo cp $ACTUAL_HOME/.mynodeone/config.env "$user_home/.mynodeone/config.env"
+                sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone"
+                log_success "Synced MyNodeOne config to $SUDO_USER"
+            fi
+            
+            # Copy kubeconfig
+            if [ -f "$ACTUAL_HOME/.kube/config" ]; then
+                sudo mkdir -p "$user_home/.kube"
+                sudo cp $ACTUAL_HOME/.kube/config "$user_home/.kube/config"
+                sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube"
+                sudo chmod 600 "$user_home/.kube/config"
+                log_success "Synced kubeconfig to $SUDO_USER"
+            fi
+            
+            log_info "User $SUDO_USER can now run kubectl without sudo"
+        else
+            # Files are already in the right place, just ensure proper ownership
+            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone" 2>/dev/null || true
+            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube" 2>/dev/null || true
+            sudo chmod 600 "$user_home/.kube/config" 2>/dev/null || true
         fi
-        
-        # Copy kubeconfig
-        if [ -f "$ACTUAL_HOME/.kube/config" ]; then
-            sudo mkdir -p "$user_home/.kube"
-            sudo cp $ACTUAL_HOME/.kube/config "$user_home/.kube/config"
-            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube"
-            sudo chmod 600 "$user_home/.kube/config"
-            log_success "Synced kubeconfig to $SUDO_USER"
-        fi
-        
-        log_info "User $SUDO_USER can now run kubectl without sudo"
     fi
     echo
     

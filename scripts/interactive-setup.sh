@@ -471,12 +471,12 @@ configure_cluster_info() {
         if validate_k8s_label "$NODE_LOCATION"; then
             break
         else
-            print_warn "Invalid location: '$NODE_LOCATION'"
-            print_warn "Location must:"
-            print_warn "  • Start and end with a letter or number"
-            print_warn "  • Contain only letters, numbers, hyphens (-), underscores (_), or dots (.)"
-            print_warn "  • Be at most 63 characters"
-            print_warn "  • Not contain quotes or special characters"
+            print_warning "Invalid location: '$NODE_LOCATION'"
+            print_warning "Location must:"
+            print_warning "  • Start and end with a letter or number"
+            print_warning "  • Contain only letters, numbers, hyphens (-), underscores (_), or dots (.)"
+            print_warning "  • Be at most 63 characters"
+            print_warning "  • Not contain quotes or special characters"
             echo
             print_info "Examples: home, toronto, office-1, aws-us-east, digitalocean-nyc"
             echo

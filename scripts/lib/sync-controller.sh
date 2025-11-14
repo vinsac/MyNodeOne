@@ -198,7 +198,7 @@ push_sync_all() {
         fi
 
         log_info "Syncing $node_key..."
-        while IFS= read -r node_json; do
+        echo "$nodes" | { while IFS= read -r node_json; do
             local ip=$(echo "$node_json" | jq -r '.ip')
             local user=$(echo "$node_json" | jq -r '.ssh_user')
 
@@ -212,7 +212,7 @@ push_sync_all() {
             else
                 ((fail_count++))
             fi
-        done <<< "$nodes"
+        done || true; }
     }
 
     process_node_type "Management Laptops" "management_laptops"

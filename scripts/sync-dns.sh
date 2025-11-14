@@ -78,7 +78,11 @@ if ! command -v kubectl &>/dev/null; then
         jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
             to_entries[] |
             select(.value.ip != null) |
-            "\(.value.ip)\t\(.value.subdomain).\($domain)"
+            if .value.subdomain == "" then
+                "\(.value.ip)\t\($domain)"
+            else
+                "\(.value.ip)\t\(.value.subdomain).\($domain)"
+            end
         ' 2>/dev/null || echo "")
 else
     # Use kubectl directly
@@ -90,7 +94,11 @@ else
         jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
             to_entries[] |
             select(.value.ip != null) |
-            "\(.value.ip)\t\(.value.subdomain).\($domain)"
+            if .value.subdomain == "" then
+                "\(.value.ip)\t\($domain)"
+            else
+                "\(.value.ip)\t\(.value.subdomain).\($domain)"
+            end
         ' 2>/dev/null || echo "")
 fi
 

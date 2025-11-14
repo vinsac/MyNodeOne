@@ -196,159 +196,53 @@ sudo sysctl -p
 
 ---
 
-## 🚀 Step 3: Install MyNodeOne
+## 🚀 Step 3: Run the Automated VPS Setup
 
-### 3.1 Clone Repository
+This is the easiest and most important step. You will run a single command **from your Control Plane** which will automatically configure the VPS.
+
+### 3.1 Get Your VPS Information
+
+You will need:
+- The **username** for your VPS (e.g., `sammy`, `ubuntu`, or `root`).
+- The **public IP address** of your VPS.
+
+### 3.2 Run the `setup-edge-node.sh` Script
+
+Log into your **Control Plane** machine via SSH. Navigate to the `MyNodeOne` directory and run the following command, replacing the user and IP with your VPS details.
 
 ```bash
-# On your VPS:
-cd ~
-git clone https://github.com/vinsac/MyNodeOne.git
-cd MyNodeOne
+# ON YOUR CONTROL PLANE:
+cd ~/MyNodeOne
+sudo ./scripts/setup-edge-node.sh <vps_username>@<vps_public_ip>
 ```
 
-### 3.2 Run Installation Script
-
+**Example:**
 ```bash
-# Make script executable
-chmod +x scripts/bootstrap-control-plane.sh
-
-# Run installation (takes 10-30 minutes)
-sudo ./scripts/bootstrap-control-plane.sh
+sudo ./scripts/setup-edge-node.sh sammy@45.8.133.192
 ```
 
-**What this does:**
-- Installs Kubernetes (k3s)
-- Installs storage (Longhorn)
-- Installs load balancer (MetalLB)
-- Installs DNS (CoreDNS)
-- Installs monitoring (Prometheus/Grafana)
-- Configures networking
+### What This Command Does Automatically
 
-### 3.3 Common VPS Installation Errors & Fixes
+This script handles everything for you:
 
-#### Error: "No suitable disk found"
+1.  **Copies SSH Key**: Securely copies the control plane's `mynodeone_id_ed25519.pub` key to the VPS, authorizing it to connect.
+2.  **Installs Software**: Installs `caddy` (for reverse proxying and auto-HTTPS) and other necessary tools on the VPS.
+3.  **Hardens SSH**: Disables password login on the VPS, enforcing key-only authentication.
+4.  **Establishes Reverse Tunnel**: Starts the `autossh` service on the control plane, creating a persistent reverse SSH tunnel to the VPS.
+5.  **Registers the Node**: Adds the VPS to the `sync-controller-registry` so it receives automatic configuration updates.
 
-**Problem:** VPS usually has only one disk (`/dev/vda` or `/dev/sda`)
+### 3.3 Enter Your Domains
 
-**Fix:**
-```bash
-# Check your disks
-lsblk
+The script will prompt you to enter the public domain names you want to use. You can enter multiple domains, separated by spaces.
 
-# If you only have the root disk, MyNodeOne will use it automatically
-# No action needed - installation will continue
+```
+? Enter the domain(s) for this VPS (e.g., my-app.com www.my-app.com), separated by spaces:
+> my.domain.one another.domain.two
 ```
 
-#### Error: "MetalLB IP pool conflict"
-
-**Problem:** VPS public IP conflicts with MetalLB range
-
-**Fix:** Use Tailscale IPs for MetalLB:
-```bash
-# Edit MetalLB config to use Tailscale IP range
-# See Step 4 below
-```
-
-#### Error: "Cannot access cluster"
-
-**Problem:** Kubernetes API not accessible
-
-**Fix:**
-```bash
-# Check k3s status
-sudo systemctl status k3s
-
-# Restart if needed
-sudo systemctl restart k3s
-
-# Get kubeconfig
-mkdir -p ~/.kube
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $USER:$USER ~/.kube/config
-```
-
-#### Error: "Tailscale not connected"
-
-**Problem:** Tailscale authentication failed
-
-**Fix:**
-```bash
-# Check Tailscale status
-sudo tailscale status
-
-# If not connected, restart authentication
-sudo tailscale down
-sudo tailscale up
-
-# Follow the URL to authenticate again
-```
+Caddy will automatically acquire SSL certificates for these domains.
 
 ---
-
-## 🌐 Step 4: Configure Networking for VPS
-
-### 4.1 Configure MetalLB for Tailscale
-
-Since your VPS uses Tailscale, configure MetalLB to use Tailscale IP addresses:
-
-```bash
-# Get your Tailscale IP
-TAILSCALE_IP=$(tailscale ip -4)
-echo "Your Tailscale IP: $TAILSCALE_IP"
-
-# Configure MetalLB to use a range around your Tailscale IP
-# Example: If Tailscale IP is 100.101.102.103, use 100.101.102.103-100.101.102.110
-
-cat << EOF | kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: metallb-system
-  name: config
-data:
-  config: |
-    address-pools:
-    - name: default
-      protocol: layer2
-      addresses:
-      - ${TAILSCALE_IP}/32
-EOF
-```
-
-### 4.2 Alternative: Use Public IP (Less Secure)
-
-**⚠️ WARNING: This exposes services to the internet!**
-
-Only do this if you understand the security implications.
-
-```bash
-# Get your public IP
-PUBLIC_IP=$(curl -s ifconfig.me)
-echo "Your public IP: $PUBLIC_IP"
-
-# Configure MetalLB with public IP
-cat << EOF | kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: metallb-system
-  name: config
-data:
-  config: |
-    address-pools:
-    - name: default
-      protocol: layer2
-      addresses:
-      - ${PUBLIC_IP}/32
-EOF
-```
-
-**Security Note:** If using public IP:
-- Set up SSL certificates
-- Enable authentication on all apps
-- Use strong passwords
-- Consider VPN/Tailscale anyway
 
 ---
 

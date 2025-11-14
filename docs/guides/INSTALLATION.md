@@ -441,7 +441,7 @@ sudo tailscale up
 
 ```bash
 # On control plane:
-cat /root/mynodeone-join-token.txt
+cat ~/mynodeone-join-token.txt
 # Copy this token
 ```
 

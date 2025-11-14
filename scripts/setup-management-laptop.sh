@@ -94,7 +94,7 @@ retry_command() {
 
 # Validate kubeconfig health
 validate_kubeconfig() {
-    local kubeconfig="${1:-$HOME/.kube/config}"
+    local kubeconfig="${1:-$ACTUAL_HOME/.kube/config}"
     
     if [ ! -f "$kubeconfig" ]; then
         log_debug "Kubeconfig not found: $kubeconfig"
@@ -131,41 +131,28 @@ fix_kubeconfig() {
     log_info "Fetching fresh kubeconfig from control plane..."
     
     # Create backup of existing config
-    if [ -f "$HOME/.kube/config" ]; then
-        cp "$HOME/.kube/config" "$HOME/.kube/config.bak.$(date +%Y%m%d_%H%M%S)"
+    if [ -f "$ACTUAL_HOME/.kube/config" ]; then
+        cp "$ACTUAL_HOME/.kube/config" "$ACTUAL_HOME/.kube/config.bak.$(date +%Y%m%d_%H%M%S)"
         log_debug "Backed up existing kubeconfig"
     fi
     
     # Fetch fresh kubeconfig
-    mkdir -p "$HOME/.kube"
+    mkdir -p "$ACTUAL_HOME/.kube"
     
     if ssh -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" \
         "sudo cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | \
-        sed "s/127.0.0.1/$control_plane_ip/g" > "$HOME/.kube/config.new"; then
+        sed "s/127.0.0.1/$control_plane_ip/g" > "$ACTUAL_HOME/.kube/config.new"; then
         
         # Validate new config before replacing
-        if validate_kubeconfig "$HOME/.kube/config.new"; then
-            mv "$HOME/.kube/config.new" "$HOME/.kube/config"
-            chmod 600 "$HOME/.kube/config"
-            
-            # Update both user and root configs for sudo operations
-            # No need to copy to /root/.kube anymore, as scripts use ACTUAL_HOME
-            
-            # Also update actual user's kubeconfig if running as sudo
-            if [ -n "${SUDO_USER:-}" ]; then
-                local user_home=$(eval echo ~$SUDO_USER)
-                sudo mkdir -p "$user_home/.kube"
-                sudo cp "$HOME/.kube/config" "$user_home/.kube/config"
-                sudo chown $SUDO_USER:$SUDO_USER "$user_home/.kube/config"
-                sudo chmod 600 "$user_home/.kube/config"
-                log_info "Updated kubeconfig for user: $SUDO_USER"
-            fi
-            
-            log_success "Kubeconfig updated and validated"
+        if validate_kubeconfig "$ACTUAL_HOME/.kube/config.new"; then
+            mv "$ACTUAL_HOME/.kube/config.new" "$ACTUAL_HOME/.kube/config"
+            chmod 600 "$ACTUAL_HOME/.kube/config"
+            chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config"
+            log_success "Kubeconfig updated and validated for user '$ACTUAL_USER'"
             return 0
         else
             log_error "New kubeconfig failed validation"
-            rm -f "$HOME/.kube/config.new"
+            rm -f "$ACTUAL_HOME/.kube/config.new"
             return 1
         fi
     else
@@ -511,48 +498,13 @@ main() {
     fi
     echo
     
-    # Sync configs to actual user AND root (bidirectional sync)
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        local user_home=$(eval echo ~$SUDO_USER)
-        
-        # Only sync if ACTUAL_HOME is different from user_home
-        # (i.e., if files were created in /root but should be in user's home)
-        if [ "$ACTUAL_HOME" != "$user_home" ]; then
-            print_header "Step 8: Syncing Configs to User"
-            
-            # Copy mynodeone config
-            if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
-                sudo mkdir -p "$user_home/.mynodeone"
-                sudo cp $ACTUAL_HOME/.mynodeone/config.env "$user_home/.mynodeone/config.env"
-                sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone"
-                log_success "Synced MyNodeOne config to $SUDO_USER"
-            fi
-            
-            # Copy kubeconfig
-            if [ -f "$ACTUAL_HOME/.kube/config" ]; then
-                sudo mkdir -p "$user_home/.kube"
-                sudo cp $ACTUAL_HOME/.kube/config "$user_home/.kube/config"
-                sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube"
-                sudo chmod 600 "$user_home/.kube/config"
-                log_success "Synced kubeconfig to $SUDO_USER"
-            fi
-            
-            log_info "User $SUDO_USER can now run kubectl without sudo"
-        else
-            # Files are already in the right place, just ensure proper ownership
-            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone" 2>/dev/null || true
-            sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube" 2>/dev/null || true
-            sudo chmod 600 "$user_home/.kube/config" 2>/dev/null || true
-        fi
-        
-        # CRITICAL: Also ensure root has the same config (prevents stale config issues)
-        # This fixes the bug where root's config had old domain (minicloud) while user had new (mycloud)
-        if [ -f "$user_home/.mynodeone/config.env" ]; then
-            sudo mkdir -p "/root/.mynodeone"
-            sudo cp "$user_home/.mynodeone/config.env" "/root/.mynodeone/config.env"
-            log_success "Synced config to /root (ensures consistency for sudo commands)"
-        fi
-    fi
+    # Ensure correct ownership of config files
+    print_header "Step 8: Finalizing Permissions"
+    log_info "Ensuring correct ownership for config files..."
+    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.mynodeone" 2>/dev/null || true
+    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube" 2>/dev/null || true
+    sudo chmod 600 "$ACTUAL_HOME/.kube/config" 2>/dev/null || true
+    log_success "Permissions finalized for user '$ACTUAL_USER'"
     echo
     
     # Step 8: Sync service registry to ensure all apps are registered

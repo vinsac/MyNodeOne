@@ -221,6 +221,11 @@ push_sync_all() {
     
     echo ""
     log_success "Sync complete: $success_count succeeded, $fail_count failed"
+    
+    if [[ $fail_count -gt 0 ]]; then
+        return 1
+    fi
+    return 0
 }
 
 # Watch for ConfigMap changes and auto-push
@@ -241,7 +246,9 @@ watch_and_push() {
             log_info "Triggering sync to all nodes..."
             echo ""
             
-            push_sync_all
+            if ! push_sync_all; then
+                log_error "Sync cycle completed with one or more failures."
+            fi
             
             last_version="$current_version"
             echo ""

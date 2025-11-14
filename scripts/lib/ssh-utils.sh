@@ -235,50 +235,33 @@ setup_reverse_ssh() {
     local output
     output=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "$remote_script" 2>&1)
     
-    # Parse output and install keys
-    local in_script_key=false
-    local in_ssh_key=false
-    
-    while IFS= read -r line; do
-        # Filter out noise
-        if [[ "$line" =~ ^\[sudo\]|^Warning:|^Connection ]]; then
-            continue
-        fi
-        
-        # Display informational messages
-        if [[ "$line" =~ ^\[INFO\]|^\[SUCCESS\] ]]; then
-            echo "$line"
-            continue
-        fi
-        
-        # Handle key markers
-        if [[ "$line" == "=== SCRIPT_USER_KEY ===" ]]; then
-            in_script_key=true
-            in_ssh_key=false
-            continue
-        elif [[ "$line" == "=== SSH_USER_KEY ===" ]]; then
-            in_script_key=false
-            in_ssh_key=true
-            continue
-        fi
-        
-        # Install SSH public keys
-        if [[ "$line" =~ ^ssh- ]]; then
-            if [ "$in_script_key" = true ]; then
-                echo "$line" >> "$vps_ssh_dir/authorized_keys"
-                log_success "Added script user key from control plane"
-            elif [ "$in_ssh_key" = true ]; then
-                echo "$line" >> "$vps_ssh_dir/authorized_keys"
-                log_success "Added SSH user key from control plane"
-            fi
-        fi
-    done <<< "$output"
-    
-    # Ensure proper permissions and ownership
-    chown "$vps_user:$vps_user" "$vps_ssh_dir/authorized_keys" 2>/dev/null || true
-    chown "$vps_user:$vps_user" "$vps_ssh_dir" 2>/dev/null || true
-    chmod 600 "$vps_ssh_dir/authorized_keys" 2>/dev/null || true
-    chmod 700 "$vps_ssh_dir" 2>/dev/null || true
+    # Extract keys from the output
+    local script_user_key=$(echo "$output" | awk '/=== SCRIPT_USER_KEY ===/{f=1;next} /=== SSH_USER_KEY ===/{f=0} f' | head -n 1)
+    local ssh_user_key=$(echo "$output" | awk '/=== SSH_USER_KEY ===/{f=1;next} f' | head -n 1)
+
+    # Display informational messages from the remote script
+    echo "$output" | grep -E '^\[INFO\]|^\[SUCCESS\]'
+
+    # Create a remote script to run on the VPS as the correct user
+    # This is the definitive fix for the ownership issue.
+    read -r -d '' vps_setup_script << EOM
+#!/bin/bash
+mkdir -p "$vps_ssh_dir" && chmod 700 "$vps_ssh_dir"
+touch "$vps_ssh_dir/authorized_keys" && chmod 600 "$vps_ssh_dir/authorized_keys"
+
+if [ -n "$script_user_key" ] && ! grep -qF "$script_user_key" "$vps_ssh_dir/authorized_keys"; then
+    echo "$script_user_key" >> "$vps_ssh_dir/authorized_keys"
+    echo "[SUCCESS] Added script user key from control plane"
+fi
+
+if [ -n "$ssh_user_key" ] && ! grep -qF "$ssh_user_key" "$vps_ssh_dir/authorized_keys"; then
+    echo "$ssh_user_key" >> "$vps_ssh_dir/authorized_keys"
+    echo "[SUCCESS] Added SSH user key from control plane"
+fi
+EOM
+
+    # Run the setup script on the VPS as the target user
+    echo "$vps_setup_script" | ssh $ssh_opts "$vps_user@$vps_ip" "bash -s"
     
     echo ""
     log_info "Verifying reverse SSH access..."

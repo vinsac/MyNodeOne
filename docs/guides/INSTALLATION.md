@@ -212,293 +212,98 @@ tailscale ip -4
 
 # SECTION 2: VPS Edge Node Installation
 
-**Add a VPS with public IP to make your apps accessible from the internet.**
+**Add a VPS with a public IP to make your apps accessible from the internet.**
 
 ---
 
 ## What is a VPS Edge Node?
 
-- **Public-facing reverse proxy** - Routes internet traffic to your cluster
-- **SSL/TLS termination** - Handles HTTPS certificates automatically  
-- **Requires:** A VPS with public IPv4 address
-- **Popular providers:** Contabo, Hetzner, DigitalOcean, Linode, Vultr, AWS
+- **Public Gateway**: A cheap cloud server that acts as a secure entry point to your cluster.
+- **Reverse Proxy**: It routes public internet traffic back to your home control plane through a secure tunnel.
+- **Auto-HTTPS**: Automatically gets and renews SSL/TLS certificates for your domains.
+- **Providers**: Works with any cloud provider (Contabo, Hetzner, DigitalOcean, Linode, etc.).
 
 ---
 
-## ⚠️ Prerequisites - MUST BE DONE FIRST
+## Prerequisites
 
-> **🔴 STOP!** Before installing VPS, verify these are complete:
+### On Your Control Plane:
 
-### On Control Plane (Must Be Ready):
-
-```bash
-# 1. Verify control plane is running:
-sudo kubectl get nodes
-# Must show: "Ready"
-
-# 2. Verify passwordless sudo is configured:
-sudo kubectl version --client
-# Must NOT ask for password
-
-# 3. Get control plane Tailscale IP:
-tailscale ip -4
-# Example: 100.116.16.117
-# SAVE THIS IP - you'll need it!
-```
-
-**If ANY of these fail, go back to [Section 1](#section-1-control-plane-installation) and complete it first!**
+- ✅ **Section 1 Complete**: You must have a fully installed and running Control Plane.
+- ✅ **Tailscale IP Ready**: You need the Tailscale IP of your Control Plane.
+  ```bash
+  # On Control Plane, run this to get the IP:
+  tailscale ip -4
+  ```
 
 ### On Your VPS:
 
-#### 1. Provision Fresh VPS
+1.  **Provision a Fresh VPS**
+    - ✅ Ubuntu 24.04 LTS (or 22.04/20.04).
+    - ✅ At least 1GB RAM, 1 CPU core.
+    - ✅ A **public IPv4 address** is required.
+    - ✅ You can SSH into it as `root` or a user with `sudo` privileges.
 
-- ✅ Ubuntu 24.04 LTS (or 22.04/20.04)
-- ✅ At least 1GB RAM, 1 CPU core
-- ✅ **Public IPv4 address** (required!)
-- ✅ SSH access (as root or sudo user)
+2.  **Install Tailscale on the VPS**
+    ```bash
+    # SSH into your new VPS
+    # Install Tailscale
+    curl -fsSL https://tailscale.com/install.sh | sh
 
-#### 2. Create Sudo User (RECOMMENDED)
+    # Start Tailscale and authenticate
+    sudo tailscale up
+    ```
+    - Follow the URL it provides to authenticate in your browser.
+    - Verify it's connected: `tailscale status`
 
-**Don't run as root in production!**
+--- 
 
-```bash
-# SSH to VPS as root:
-ssh root@your-vps-ip
+## Installation Steps (The Easy Way)
 
-# Create sudo user:
-sudo adduser vpsuser
-sudo usermod -aG sudo vpsuser
+This entire process is automated by a single script that you run **from your Control Plane**.
 
-# Switch to new user:
-su - vpsuser
+### Step 1: Run the `setup-edge-node.sh` Script
 
-# All following commands run as vpsuser
-```
-
-#### 3. Install Tailscale on VPS
-
-```bash
-# Install Tailscale
-curl -fsSL https://tailscale.com/install.sh | sh
-
-# Connect to your Tailscale network
-sudo tailscale up
-# Open browser URL to authenticate
-
-# Verify connection
-tailscale status
-tailscale ip -4
-# Example: 100.123.101.75
-# Note this IP!
-```
-
-#### 4. ⚠️ CRITICAL: Exchange SSH Keys (VPS → Control Plane)
-
-**🔴 This is the #1 most commonly skipped step! DO NOT SKIP THIS!**
+Log into your **Control Plane** machine. Navigate to the `MyNodeOne` directory and run the following command, replacing the user and IP with your VPS details.
 
 ```bash
-# On VPS, generate SSH key:
-ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N ''
-
-# Copy SSH key to control plane:
-ssh-copy-id <your-username>@<control-plane-tailscale-ip>
-
-# Example:
-ssh-copy-id vinaysachdeva@100.116.16.117
-# Enter password when prompted (last time!)
-
-# Test SSH (should NOT ask for password):
-ssh vinaysachdeva@100.116.16.117 'echo OK'
-# Expected output: OK
-
-# 🔴 CRITICAL TEST - Verify passwordless sudo works remotely:
-ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
-# Expected: Version output WITHOUT password prompt
+# ON YOUR CONTROL PLANE:
+cd ~/MyNodeOne
+sudo ./scripts/setup-edge-node.sh <vps_username>@<vps_public_ip>
 ```
 
-**If the last command asks for password:**
-- Passwordless sudo is NOT configured on control plane
-- Go back to control plane and run: `./scripts/setup-control-plane-sudo.sh`
-- Then test again
-
----
-
-## Installation Steps
-
-### Step 1: ⚠️ CRITICAL FIRST - Exchange SSH Keys
-
-**🛑 STOP! Do this BEFORE downloading or running ANYTHING!**
-
-**Important:** Run these commands as your **regular user** (not with sudo):
-
+**Example:**
 ```bash
-# On VPS, generate SSH key (as regular user, NOT with sudo):
-ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N ''
-
-# Copy SSH key to control plane (enter password one last time):
-ssh-copy-id <your-username>@<control-plane-tailscale-ip>
-
-# Example:
-ssh-copy-id vinaysachdeva@100.116.16.117
-# Enter password when prompted (LAST TIME you'll need it!)
-
-# Test SSH (should NOT ask for password):
-ssh vinaysachdeva@100.116.16.117 'echo OK'
-# Expected: OK (no password prompt)
-
-# 🔴 CRITICAL TEST - Verify passwordless sudo:
-ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
-# Expected: Version output WITHOUT asking for password
+sudo ./scripts/setup-edge-node.sh sammy@45.8.133.192
 ```
 
-**Why not use sudo for these commands?**
-- SSH keys must be in YOUR user's home directory (~/.ssh/)
-- The installation script will automatically use YOUR keys even when run with sudo
-- If you run ssh-keygen with sudo, keys go to /root/.ssh/ (wrong location!)
+### Step 2: Follow the Prompts
 
-**✅ If both tests pass:** Continue to Step 2  
-**❌ If sudo asks for password:** Run on control plane: `./scripts/setup-control-plane-sudo.sh`
+The script will guide you through the setup:
 
----
+1.  **Enter Your Domains**: When prompted, enter the public domain(s) you want to point to your cluster (e.g., `app.my-domain.com`). Caddy will handle SSL for them.
+2.  **Password Prompt**: You will be asked for the VPS user's password once to allow the script to copy its SSH key.
 
-### Step 2: Download MyNodeOne on VPS
+### What the Script Does Automatically
 
-```bash
-# On VPS:
-git clone https://github.com/vinsac/MyNodeOne.git
-cd MyNodeOne
+- **Copies SSH Key**: Securely copies the control plane's public key to the VPS, enabling passwordless access for management.
+- **Installs Software**: Installs `caddy` (for reverse proxying) and other tools on the VPS.
+- **Hardens Security**: Configures the VPS firewall and SSH for better security.
+- **Establishes Reverse Tunnel**: Starts a persistent, self-healing reverse SSH tunnel from the control plane to the VPS.
+- **Registers the Node**: Adds the VPS to the cluster's registry so it receives automatic updates.
 
-# Verify you have latest code:
-git log --oneline -1
-```
-
-### Step 3: Run Pre-flight Checks
-
-**ALWAYS run pre-flight checks BEFORE installation!**
-
-```bash
-# On VPS:
-./scripts/check-prerequisites.sh vps <control-plane-ip> <ssh-user>
-
-# Example:
-./scripts/check-prerequisites.sh vps 100.116.16.117 vinaysachdeva
-```
-
-**Expected output if ready:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  🔍 Pre-flight Checks: vps
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[✓] SSH connection: OK
-[✓] Passwordless sudo: OK
-[✓] Kubernetes cluster: RUNNING
-[✓] Tailscale connected: 100.123.101.75
-[✓] Docker: NOT INSTALLED (will be installed)
-[✓] Ports 80, 443: AVAILABLE
-[✓] No IP conflicts detected
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ Ready to proceed with vps installation!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-**If ANY check fails:**
-
-| Error | Fix |
-|-------|-----|
-| `SSH connection: FAILED` | Go back to Step 1 - Exchange SSH keys! |
-| `Passwordless sudo: NOT CONFIGURED` | Fix control plane sudo setup |
-| `Kubernetes cluster: NOT RUNNING` | Check control plane is running |
-| `Ports in use: 80 443` | Stop services using these ports |
-
-**DO NOT PROCEED until all checks pass!**
-
-### Step 4: Run VPS Installation
-
-**✅ Prerequisites complete? SSH keys work? Pre-flight checks passed?**
-
-```bash
-# On VPS:
-sudo ./scripts/mynodeone
-```
-
-**Interactive prompts:**
-
-1. **Ready to start?** → `y`
-2. **Select node type (1-4):** → `3` (VPS Edge Node)
-3. **Control plane Tailscale IP:** → `100.116.16.117` (your control plane IP)
-4. **SSH username on control plane:** → `vinaysachdeva` (your username)
-5. **Node name:** → Accept default or enter custom name
-6. **Location:** → Enter provider-location (e.g., `contabo-europe`, `digitalocean-nyc`)
-7. **Confirm public IP:** → Verify your VPS public IPv4 address
-8. **Email for SSL certificates:** → `your-email@example.com`
-9. **Proceed with installation?** → `y`
-10. **Use STAGING mode?** → `y` (recommended for first install - unlimited cert requests!)
-
-**Installation takes 5-10 minutes.**
-
-**Success looks like:**
-```
-✅ VPS Edge Node setup complete! 🎉
-
-Next steps:
-  1. Point your DNS records to this IP: 45.8.133.192
-  2. Add application routes in: /etc/traefik/dynamic/mynodeone-routes.yml
-```
-
-### Step 5: Verify VPS Installation
-
-```bash
-# Check Traefik is running:
-docker ps
-# Should show: traefik container with status "Up"
-
-# Check ports are listening:
-sudo netstat -tlnp | grep -E ':(80|443)'
-# Should show Traefik listening on both ports
-
-# Check Traefik logs:
-docker logs traefik
-# Should NOT show permission errors
-```
-
-### Step 6: Configure DNS for Your Domain
-
-**Point your domain to your VPS public IP:**
-
-```
-# In your DNS provider (Cloudflare, Namecheap, etc.):
-A     @     45.8.133.192   3600
-A     *     45.8.133.192   3600
-
-# Replace 45.8.133.192 with YOUR VPS public IP
-```
-
-**Verify DNS propagation:**
-```bash
-# On VPS:
-~/MyNodeOne/scripts/check-dns-ready.sh yourdomain.com <your-vps-public-ip>
-
-# Example:
-~/MyNodeOne/scripts/check-dns-ready.sh example.com 45.8.133.192
-```
-
----
+--- 
 
 ## ✅ VPS Edge Node Installation Complete!
 
 **What you have now:**
-- ✅ Public-facing reverse proxy running
-- ✅ SSL certificates automatically managed
-- ✅ VPS registered in your cluster
-- ✅ Firewall configured
-- ✅ Ready to route public traffic to your apps
+- ✅ A secure public entry point for your cluster.
+- ✅ An active reverse tunnel routing traffic back to your control plane.
+- ✅ Automatic SSL for your domains.
 
 **Next Steps:**
-- Add application routes in `/etc/traefik/dynamic/mynodeone-routes.yml`
-- Deploy public-facing applications to your cluster
-- Monitor certificates: `~/MyNodeOne/scripts/check-certificates.sh`
+- **Point Your DNS**: In your domain registrar, create an **A record** for your domain pointing to your VPS's public IP address.
+- **Deploy an App**: Use the app store scripts in `scripts/apps/` to deploy an application and make it public.
 
 ---
 ---

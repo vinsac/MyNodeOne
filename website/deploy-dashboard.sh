@@ -89,6 +89,9 @@ kind: Service
 metadata:
   name: dashboard
   namespace: $NAMESPACE
+  annotations:
+    ${CLUSTER_DOMAIN}.local/subdomain: ""
+    mynodeone.io/subdomain: ""
 spec:
   type: LoadBalancer
   ports:

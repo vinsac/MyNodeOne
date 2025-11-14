@@ -28,6 +28,23 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Load cluster domain from config or cluster configmap
+load_cluster_domain() {
+    # Try to get from cluster configmap first (authoritative)
+    local domain=$(kubectl get configmap -n kube-system cluster-info \
+        -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+    
+    if [[ -n "$domain" ]]; then
+        export CLUSTER_DOMAIN="$domain"
+    else
+        # Fallback to default
+        export CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
+    fi
+}
+
+# Load cluster domain at script start
+load_cluster_domain
+
 # Initialize registry configmap if it doesn't exist
 init_registry() {
     if ! kubectl get configmap -n kube-system service-registry &>/dev/null; then
@@ -148,9 +165,18 @@ sync_registry() {
             *-frontend) subdomain="${name%-frontend}" ;;
         esac
         
-        # Check if service has subdomain annotation
+        # Check if service has subdomain annotation (check both formats)
+        # Format 1: mynodeone.io/subdomain (standard)
         local annotation=$(kubectl get svc -n "$namespace" "$name" \
             -o jsonpath='{.metadata.annotations.mynodeone\.io/subdomain}' 2>/dev/null || echo "")
+        
+        # Format 2: <cluster-domain>.local/subdomain (app-specific)
+        if [[ -z "$annotation" ]]; then
+            # Try to get cluster domain from config
+            local cluster_domain="${CLUSTER_DOMAIN:-mycloud}"
+            annotation=$(kubectl get svc -n "$namespace" "$name" \
+                -o jsonpath="{.metadata.annotations.${cluster_domain}\.local/subdomain}" 2>/dev/null || echo "")
+        fi
         
         if [[ -n "$annotation" ]]; then
             subdomain="$annotation"

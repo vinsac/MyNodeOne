@@ -547,6 +547,43 @@ main() {
     fi
     echo
     
+    # Step 8: Sync service registry to ensure all apps are registered
+    print_header "Step 8: Syncing Service Registry"
+    
+    log_info "Ensuring all services are registered in DNS..."
+    
+    # Check if we can access the control plane
+    if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null 2>&1; then
+        # Sync service registry on control plane via kubectl
+        if kubectl get configmap -n kube-system cluster-info &>/dev/null 2>&1; then
+            log_info "Running service registry sync on control plane..."
+            
+            # Get repo path from cluster config
+            REPO_PATH=$(kubectl get configmap -n kube-system cluster-info \
+                -o jsonpath='{.data.repo-path}' 2>/dev/null || echo "")
+            
+            if [ -n "$REPO_PATH" ] && [ -n "${CONTROL_PLANE_IP:-}" ] && [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
+                # Run sync on control plane via SSH
+                ssh "${CONTROL_PLANE_SSH_USER}@${CONTROL_PLANE_IP}" \
+                    "cd '$REPO_PATH' && sudo ./scripts/lib/service-registry.sh sync" 2>&1 | \
+                    grep -E "Synced|Registered" || true
+                
+                log_success "Service registry synced on control plane"
+                
+                # Now sync DNS on this laptop
+                log_info "Updating local DNS entries..."
+                sudo ./scripts/sync-dns.sh > /dev/null 2>&1 || log_warn "DNS sync had issues (non-critical)"
+            else
+                log_warn "Could not sync service registry (missing control plane info)"
+            fi
+        else
+            log_info "Service registry will be synced automatically"
+        fi
+    else
+        log_warn "kubectl not available, skipping service registry sync"
+    fi
+    echo
+    
     # Run validation tests
     print_header "Step 9: Validating Installation"
     

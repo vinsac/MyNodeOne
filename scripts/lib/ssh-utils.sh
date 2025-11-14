@@ -140,128 +140,61 @@ setup_reverse_ssh() {
     local control_plane_ip="$2"
     local vps_user="$3"
     local vps_ip="$4"
-    local vps_ssh_dir="$5"  # Actual user's .ssh directory
-    
+    local vps_ssh_dir="$5" # Not used anymore, but kept for compatibility
+
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  🔐 Reverse SSH Setup (Control Plane → VPS)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    
+
     log_info "Setting up SSH keys on control plane for automation..."
-    log_info "This enables passwordless route sync (manage-app-visibility.sh)"
+    log_info "This enables passwordless route sync."
     echo ""
-    
-    # Use SSH ControlMaster if available
+
     local ssh_opts="${SSH_CONTROL_OPTS:-}"
-    
-    # Run remote setup script to generate/fetch SSH keys
+
+    # Simplified remote script to generate keys and copy them using ssh-copy-id
     local remote_script="
-        # Detect actual user on control plane (handle sudo)
+        set -e
+        # Detect actual user on control plane
         REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
         if [ -n \"\${SUDO_USER:-}\" ] && [ \"\$SUDO_USER\" != \"root\" ]; then
             REMOTE_ACTUAL_HOME=\$(getent passwd \"\$SUDO_USER\" | cut -d: -f6)
         else
-            REMOTE_ACTUAL_HOME=\"\$HOME\"
+            REMOTE_ACTUAL_HOME=\"/root\"
         fi
-        
-        echo \"[INFO] Setting up SSH keys for user: \$REMOTE_ACTUAL_USER\"
-        
-        # 1. Ensure actual user has SSH key (used when scripts run with sudo)
-        if ! sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\"; then
-            echo \"[INFO] Generating SSH key for \$REMOTE_ACTUAL_USER (script user)...\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\" 2>/dev/null || true
-            sudo -u \"\$REMOTE_ACTUAL_USER\" chmod 700 \"\$REMOTE_ACTUAL_HOME/.ssh\" 2>/dev/null || true
-            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-scripts\" 2>/dev/null || {
-                echo \"[WARN] Could not generate SSH key for \$REMOTE_ACTUAL_USER\"
-            }
-            if sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\"; then
-                echo \"[SUCCESS] SSH key generated for \$REMOTE_ACTUAL_USER\"
-            fi
-        else
-            echo \"[INFO] SSH key already exists for \$REMOTE_ACTUAL_USER\"
+
+        # 1. Ensure root user has an SSH key
+        if [ ! -f /root/.ssh/id_ed25519 ]; then
+            echo '[INFO] Generating SSH key for root user...'
+            ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '' -C 'root@control-plane'
         fi
-        
-        # 2. Also ensure current SSH user has key
-        if [ ! -f ~/.ssh/id_ed25519 ]; then
-            echo \"[INFO] Generating SSH key for SSH user...\"
-            ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N '' -C 'control-plane-ssh-user'
-            echo \"[SUCCESS] SSH key generated for SSH user\"
-        else
-            echo \"[INFO] SSH key already exists for SSH user\"
+
+        # 2. Ensure actual user has an SSH key
+        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" ]; then
+            echo \"[INFO] Generating SSH key for user \$REMOTE_ACTUAL_USER...\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane\"
         fi
-        
-        # 3. Pre-accept VPS host key for both users
-        echo \"[INFO] Pre-accepting host key for VPS ($vps_ip)...\"
-        
-        # For script user (actual user)
-        sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keyscan -H $vps_ip >> \"\$REMOTE_ACTUAL_HOME/.ssh/known_hosts\" 2>/dev/null || true
-        
-        # For SSH user
-        ssh-keyscan -H $vps_ip >> ~/.ssh/known_hosts 2>/dev/null || true
-        
-        echo \"[SUCCESS] Host key pre-accepted\"
-        
-        # 4. Test reverse SSH connections
-        echo \"[INFO] Testing reverse SSH connections...\"
-        
-        # Test as script user
-        if sudo -u \"\$REMOTE_ACTUAL_USER\" ssh -o BatchMode=yes -o ConnectTimeout=5 $vps_user@$vps_ip 'echo OK' 2>/dev/null | grep -q OK; then
-            echo \"[SUCCESS] Script user SSH test passed\"
-        else
-            # Try to setup the connection
-            echo \"[INFO] Setting up script user SSH access...\"
-            if sudo test -f \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\"; then
-                echo \"=== SCRIPT_USER_KEY ===\"
-                sudo cat \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\" 2>/dev/null || echo \"[WARN] Could not read script user key\"
-            else
-                echo \"[WARN] Script user key file not found: \$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\"
-            fi
-        fi
-        
-        # Test as SSH user
-        if ssh -o BatchMode=yes -o ConnectTimeout=5 $vps_user@$vps_ip 'echo OK' 2>/dev/null | grep -q OK; then
-            echo \"[SUCCESS] SSH user test passed\"
-        else
-            echo \"[INFO] Setting up SSH user access...\"
-            if [ -f ~/.ssh/id_ed25519.pub ]; then
-                echo \"=== SSH_USER_KEY ===\"
-                cat ~/.ssh/id_ed25519.pub
-            fi
+
+        # 3. Copy keys to VPS using ssh-copy-id (the robust way)
+        echo '[INFO] Copying root SSH key to VPS...'
+        ssh-copy-id -i /root/.ssh/id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$vps_user@$vps_ip\"
+
+        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ]; then
+            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) SSH key to VPS...\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$vps_user@$vps_ip\"
         fi
     "
-    
-    # Execute remote script and capture keys to install
-    local output
-    output=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "$remote_script" 2>&1)
-    
-    # Extract keys from the output
-    local script_user_key=$(echo "$output" | awk '/=== SCRIPT_USER_KEY ===/{f=1;next} /=== SSH_USER_KEY ===/{f=0} f' | head -n 1)
-    local ssh_user_key=$(echo "$output" | awk '/=== SSH_USER_KEY ===/{f=1;next} f' | head -n 1)
 
-    # Display informational messages from the remote script
-    echo "$output" | grep -E '^\[INFO\]|^\[SUCCESS\]'
-
-    # Create a remote script to run on the VPS as the correct user
-    # This is the definitive fix for the ownership issue.
-    read -r -d '' vps_setup_script << EOM
-#!/bin/bash
-mkdir -p "$vps_ssh_dir" && chmod 700 "$vps_ssh_dir"
-touch "$vps_ssh_dir/authorized_keys" && chmod 600 "$vps_ssh_dir/authorized_keys"
-
-if [ -n "$script_user_key" ] && ! grep -qF "$script_user_key" "$vps_ssh_dir/authorized_keys"; then
-    echo "$script_user_key" >> "$vps_ssh_dir/authorized_keys"
-    echo "[SUCCESS] Added script user key from control plane"
-fi
-
-if [ -n "$ssh_user_key" ] && ! grep -qF "$ssh_user_key" "$vps_ssh_dir/authorized_keys"; then
-    echo "$ssh_user_key" >> "$vps_ssh_dir/authorized_keys"
-    echo "[SUCCESS] Added SSH user key from control plane"
-fi
-EOM
-
-    # Run the setup script on the VPS as the target user
-    echo "$vps_setup_script" | ssh $ssh_opts "$vps_user@$vps_ip" "bash -s"
+    # Execute the script on the control plane
+    # This may prompt for the VPS password for ssh-copy-id
+    log_info "Running key setup on control plane. You may be prompted for the VPS password."
+    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash -c '$remote_script'"; then
+        log_error "Failed to execute remote key setup script on control plane."
+        return 1
+    fi
     
     echo ""
     log_info "Verifying reverse SSH access..."

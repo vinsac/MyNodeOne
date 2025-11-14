@@ -568,7 +568,7 @@ auto_register_vps() {
     # Check if setup script exists
     if [ -f "$SCRIPT_DIR/setup-vps-node.sh" ]; then
         # Skip pre-flight checks since we already ran them
-        bash "$SCRIPT_DIR/setup-vps-node.sh" --skip-preflight || true
+        bash "$SCRIPT_DIR/setup-vps-node.sh" --skip-preflight
         log_success "VPS auto-registration complete"
     else
         log_warn "Auto-registration script not found, skipping..."

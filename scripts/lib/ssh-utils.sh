@@ -274,7 +274,9 @@ setup_reverse_ssh() {
         fi
     done <<< "$output"
     
-    # Ensure proper permissions
+    # Ensure proper permissions and ownership
+    chown "$vps_user:$vps_user" "$vps_ssh_dir/authorized_keys" 2>/dev/null || true
+    chown "$vps_user:$vps_user" "$vps_ssh_dir" 2>/dev/null || true
     chmod 600 "$vps_ssh_dir/authorized_keys" 2>/dev/null || true
     chmod 700 "$vps_ssh_dir" 2>/dev/null || true
     

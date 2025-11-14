@@ -1962,7 +1962,6 @@ main() {
     echo
     
     check_requirements
-    configure_passwordless_sudo
     install_dependencies
     configure_firewall
     optimize_system_for_containers

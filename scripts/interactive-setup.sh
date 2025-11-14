@@ -345,6 +345,7 @@ configure_cluster_info() {
     # Try to get existing cluster info (for management laptops and workers)
     local existing_cluster_name=""
     local existing_cluster_domain=""
+    local auto_fetched=false
     
     # Check if there's an existing config file
     if [ -f "$CONFIG_DIR/config.env" ]; then
@@ -385,6 +386,7 @@ configure_cluster_info() {
                 fi
                 
                 if [ -n "$existing_cluster_name" ] && [ -n "$existing_cluster_domain" ]; then
+                    auto_fetched=true
                     print_success "Successfully auto-detected cluster configuration!"
                     print_info "  Cluster: $existing_cluster_name"
                     print_info "  Domain: ${existing_cluster_domain}.local"
@@ -403,8 +405,8 @@ configure_cluster_info() {
         fi
     fi
     
-    # If this is not a control plane, try to get info from kubectl
-    if [ "$NODE_ROLE" != "Control Plane" ]; then
+    # If this is not a control plane, try to get info from kubectl (only if we didn't just auto-fetch)
+    if [ "$NODE_ROLE" != "Control Plane" ] && [ "$auto_fetched" = false ]; then
         if command -v kubectl &> /dev/null && kubectl cluster-info &> /dev/null; then
             print_info "Detected existing Kubernetes cluster connection"
             
@@ -432,10 +434,13 @@ configure_cluster_info() {
     if [ "$NODE_ROLE" != "Control Plane" ] && [ -n "$existing_cluster_name" ]; then
         CLUSTER_NAME="$existing_cluster_name"
         CLUSTER_DOMAIN="$existing_cluster_domain"
-        print_info "Using existing cluster configuration:"
-        print_info "  Name: $CLUSTER_NAME"
-        print_info "  Domain: ${CLUSTER_DOMAIN}.local"
-        echo
+        # Only print "Using existing" message if we didn't just auto-fetch
+        if [ "$auto_fetched" = false ]; then
+            print_info "Using existing cluster configuration:"
+            print_info "  Name: $CLUSTER_NAME"
+            print_info "  Domain: ${CLUSTER_DOMAIN}.local"
+            echo
+        fi
     else
         # Ask for cluster name (control plane or no existing config)
         prompt_input "Give your cluster a name" CLUSTER_NAME "$default_cluster_name"

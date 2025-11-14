@@ -662,7 +662,6 @@ kubectl get secret -n monitoring grafana -o jsonpath="{.data.admin-password}" | 
 
 1. **✅ Install more apps:**
    ```bash
-   cd ~/MyNodeOne
    sudo ./scripts/app-store.sh
    ```
 

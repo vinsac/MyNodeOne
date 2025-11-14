@@ -346,7 +346,7 @@ tailscale ip -4
 
 ```bash
 # On VPS, generate SSH key:
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
+ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N ''
 
 # Copy SSH key to control plane:
 ssh-copy-id <your-username>@<control-plane-tailscale-ip>
@@ -381,7 +381,7 @@ ssh vinaysachdeva@100.116.16.117 'sudo kubectl version --client'
 
 ```bash
 # On VPS, generate SSH key (as regular user, NOT with sudo):
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
+ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N ''
 
 # Copy SSH key to control plane (enter password one last time):
 ssh-copy-id <your-username>@<control-plane-tailscale-ip>
@@ -599,7 +599,7 @@ tailscale status
 
 ```bash
 # On laptop:
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
+ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N ''
 ssh-copy-id vinaysachdeva@<control-plane-ip>
 
 # Test:

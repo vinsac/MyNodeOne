@@ -187,7 +187,7 @@ push_sync_all() {
         fi
 
         # Check if the key exists and is an array
-        if ! echo "$registry" | jq -e ". | has(\"$node_key\") and .\"$node_key\" | is_array" > /dev/null; then
+        if ! echo "$registry" | jq -e ". | has(\"$node_key\") and (.\"$node_key\" | type) == \"array\"" > /dev/null; then
             log_warn "Registry is missing or has invalid format for '$node_key'. Skipping."
             return
         fi

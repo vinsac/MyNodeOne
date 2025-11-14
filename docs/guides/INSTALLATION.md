@@ -145,7 +145,7 @@ sudo ./scripts/mynodeone
 ✅ Your MyNodeOne node has been set up successfully! 🎉
 
 Next steps:
-  1. Review credentials in /root/mynodeone-*-credentials.txt
+  1. Review credentials in your home directory (`~/mynodeone-*-credentials.txt`)
   2. Check status: kubectl get nodes
   3. Deploy apps: kubectl apply -f manifests/examples/
 ```

@@ -123,7 +123,7 @@ sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S)
 log_info "Removing old DNS entries..."
 
 # Capture what we're removing for reporting
-OLD_ENTRIES=$(grep "\.${CLUSTER_DOMAIN}\.local\|\.minicloud\.local\|\.mynodeone\.local" /etc/hosts 2>/dev/null | wc -l || echo "0")
+OLD_ENTRIES=$(grep -c "\.${CLUSTER_DOMAIN}\.local\|\.minicloud\.local\|\.mynodeone\.local" /etc/hosts 2>/dev/null || echo "0")
 
 # Method 1: Remove entries within MyNodeOne markers
 sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts

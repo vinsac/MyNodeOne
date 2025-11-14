@@ -511,7 +511,7 @@ main() {
     fi
     echo
     
-    # Sync configs to actual user (if running as sudo)
+    # Sync configs to actual user AND root (bidirectional sync)
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         local user_home=$(eval echo ~$SUDO_USER)
         
@@ -543,6 +543,14 @@ main() {
             sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.mynodeone" 2>/dev/null || true
             sudo chown -R $SUDO_USER:$SUDO_USER "$user_home/.kube" 2>/dev/null || true
             sudo chmod 600 "$user_home/.kube/config" 2>/dev/null || true
+        fi
+        
+        # CRITICAL: Also ensure root has the same config (prevents stale config issues)
+        # This fixes the bug where root's config had old domain (minicloud) while user had new (mycloud)
+        if [ -f "$user_home/.mynodeone/config.env" ]; then
+            sudo mkdir -p "/root/.mynodeone"
+            sudo cp "$user_home/.mynodeone/config.env" "/root/.mynodeone/config.env"
+            log_success "Synced config to /root (ensures consistency for sudo commands)"
         fi
     fi
     echo

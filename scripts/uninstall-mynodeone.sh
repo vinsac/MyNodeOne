@@ -389,11 +389,25 @@ echo
 # Step 7: Remove DNS configurations
 log_info "[7/12] Removing DNS configurations..."
 
-# Remove from /etc/hosts
-if grep -q "# MyNodeOne" /etc/hosts 2>/dev/null; then
+# Remove from /etc/hosts (aggressive cleanup)
+if [ -f /etc/hosts ]; then
     cp /etc/hosts /etc/hosts.bak.$(date +%Y%m%d_%H%M%S)
-    sed -i '/# MyNodeOne/,/# End MyNodeOne/d' /etc/hosts
-    log_success "Removed /etc/hosts entries"
+    
+    # Method 1: Remove entries between markers
+    sed -i '/# MyNodeOne/,/# End MyNodeOne/d' /etc/hosts 2>/dev/null || true
+    sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
+    
+    # Method 2: Remove all .local domain entries (mycloud, minicloud, mynodeone)
+    sed -i '/\.mycloud\.local/d' /etc/hosts 2>/dev/null || true
+    sed -i '/\.minicloud\.local/d' /etc/hosts 2>/dev/null || true
+    sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
+    
+    # Method 3: Remove entries matching config domain (if available)
+    if [ -n "${CLUSTER_DOMAIN:-}" ]; then
+        sed -i "/\.${CLUSTER_DOMAIN}\.local/d" /etc/hosts 2>/dev/null || true
+    fi
+    
+    log_success "Removed /etc/hosts entries (cleaned all .local domains)"
 fi
 
 # Remove dnsmasq configs

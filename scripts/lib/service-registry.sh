@@ -203,7 +203,11 @@ export_dns() {
     echo "$services" | jq -r --arg domain "$domain" '
         to_entries[] |
         select(.value.ip != null) |
-        "\(.value.ip)\t\(.value.subdomain).\($domain)"
+        if .value.subdomain == "" then
+            "\(.value.ip)\t\($domain)"
+        else
+            "\(.value.ip)\t\(.value.subdomain).\($domain)"
+        end
     '
 }
 

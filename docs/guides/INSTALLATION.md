@@ -150,56 +150,8 @@ Next steps:
   3. Deploy apps: kubectl apply -f manifests/examples/
 ```
 
-### Step 3: ⚠️ MANDATORY - Configure Passwordless Sudo
 
-> **🔴 CRITICAL:** This step is **MANDATORY** if you plan to add VPS edge nodes or management laptops!
->
-> **Why?** VPS and management nodes need to run commands on the control plane remotely via SSH. Without passwordless sudo, these commands will hang waiting for a password.
->
-> **When?** **RIGHT NOW**, immediately after control plane installation completes.
-
-**Run this command:**
-
-```bash
-cd ~/MyNodeOne
-./scripts/setup-control-plane-sudo.sh
-# Both with and without 'sudo' work:
-# sudo ./scripts/setup-control-plane-sudo.sh
-```
-
-**Expected output:**
-```
-🔐 MyNodeOne Control Plane - Passwordless Sudo Configuration
-
-[INFO] Configuring passwordless sudo for: yourusername
-[✓] Sudoers file installed
-[✓] Sudoers syntax verified
-[✓] kubectl passwordless sudo: OK
-[✓] Script passwordless sudo: OK
-[✓] Remote sudo pattern: OK
-
-[✓] Passwordless sudo configured successfully!
-```
-
-**Verify it worked:**
-```bash
-# Should run WITHOUT asking for password:
-sudo kubectl version --client
-# Expected: Version output, no password prompt
-```
-
-**Which nodes need this script?**
-
-| Node Type | Run This Script? |
-|-----------|------------------|
-| **Control Plane** | ✅ **YES** (run it now!) |
-| **VPS Edge Node** | ❌ NO |
-| **Management Laptop** | ❌ NO |
-| **Worker Node** | ❌ NO |
-
-> 💡 **Remember:** Only the control plane needs passwordless sudo because other nodes connect **TO** it, not vice versa.
-
-### Step 4: (Optional) Apply Security Hardening
+### Step 3: (Optional) Apply Security Hardening
 
 **Recommended for production deployments:**
 
@@ -214,7 +166,7 @@ sudo ./scripts/enable-security-hardening.sh
 - Resource quotas
 - Audit logging
 
-### Step 5: Verify Control Plane is Ready
+### Step 4: Verify Control Plane is Ready
 
 ```bash
 # Check node status

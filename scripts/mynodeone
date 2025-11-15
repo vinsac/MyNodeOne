@@ -45,6 +45,9 @@ fi
 # Track if we're in the middle of critical operations
 CRITICAL_OPERATION=false
 
+# Track if user selected node management flow on an existing installation
+MANAGE_NODES_ONLY=false
+
 # Cleanup function for interrupt handling
 cleanup_on_interrupt() {
     echo
@@ -349,9 +352,9 @@ check_existing_installation() {
 
         case $option in
             1)
-                # This will skip the main setup and go directly to node selection
-                select_node_type
-                exit 0 # Exit after node management is complete
+                print_info "Node management mode selected."
+                MANAGE_NODES_ONLY=true
+                return 0
                 ;;
             2)
                 print_info "Reconfiguring..."
@@ -1338,7 +1341,11 @@ main() {
     check_system_resources || exit 1
     check_existing_installation
     
-    system_cleanup
+    if [ "$MANAGE_NODES_ONLY" = true ]; then
+        print_info "Skipping system cleanup for node management mode."
+    else
+        system_cleanup
+    fi
     
     # Show documentation FIRST so users know what's coming
     show_documentation_info

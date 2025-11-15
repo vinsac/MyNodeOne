@@ -76,9 +76,8 @@ check_requirements() {
     fi
     
     # Verify configuration
-    if [ -z "${TAILSCALE_IP:-}" ] || [ -z "${CONTROL_PLANE_IP:-}" ] || [ -z "${VPS_PUBLIC_IP:-}" ]; then
-        log_error "Configuration incomplete. Required variables are missing."
-        log_error "Please run the interactive setup or provide user@ip as an argument."
+    if [ -z "$TAILSCALE_IP" ] || [ -z "$VPS_PUBLIC_IP" ] || [ -z "$CONTROL_PLANE_IP" ]; then
+        log_error "Configuration incomplete. Please run: ./scripts/interactive-setup.sh"
         exit 1
     fi
     
@@ -500,33 +499,6 @@ main() {
     echo "  MyNodeOne VPS Edge Node Setup"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-
-    # --- Argument Parsing ---
-    if [ "$#" -eq 1 ]; then
-        # Standalone mode: Parse user@ip from the first argument
-        log_info "Running in standalone mode with command-line argument."
-        VPS_ARG="$1"
-        export VPS_USER="${VPS_ARG%@*}"
-        export VPS_PUBLIC_IP="${VPS_ARG#*@}"
-
-        if [ "$VPS_USER" = "$VPS_PUBLIC_IP" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_PUBLIC_IP" ]; then
-            log_error "Invalid argument format. Please use: <vps_username>@<vps_public_ip>"
-            exit 1
-        fi
-
-        log_info "Target VPS User: $VPS_USER"
-        log_info "Target VPS Public IP: $VPS_PUBLIC_IP"
-
-    elif [ "$#" -eq 0 ]; then
-        # Interactive mode: Variables should be set in config.env
-        log_info "Running in interactive mode, expecting variables from config file."
-        # No action needed, variables are sourced from config.env
-    else
-        log_error "Invalid number of arguments. Usage: $0 [<vps_username>@<vps_public_ip>]"
-        exit 1
-    fi
-    echo
-    # --- End Argument Parsing ---
 
     log_info "Ensuring correct home directory permissions for user: $ACTUAL_USER..."
     sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"

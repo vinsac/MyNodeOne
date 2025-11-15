@@ -340,35 +340,29 @@ check_existing_installation() {
         fi
         
         echo "Options:"
-        echo "  1) Add or Manage Nodes (VPS, Worker, etc.)"
-        echo "  2) Reconfigure Control Plane"
-        echo "  3) Reinstall Everything (Fresh Start)"
-        echo "  4) Cancel"
+        echo "  1) Reconfigure (update configuration, keep existing setup)"
+        echo "  2) Reinstall (remove everything, fresh start)"
+        echo "  3) Cancel"
         echo
-        read -p "Select option (1-4): " option
-
+        read -p "Select option (1-3): " option
+        
         case $option in
             1)
-                # This will skip the main setup and go directly to node selection
-                select_node_type
-                exit 0 # Exit after node management is complete
+                print_info "Reconfiguring..."
+                return 0
                 ;;
             2)
-                print_info "Reconfiguring..."
-                return 0 # Proceed with main setup flow
-                ;;
-            3)
                 print_warning "This will remove existing MyNodeOne installation"
                 if prompt_confirm "Are you sure you want to reinstall?"; then
                     # Backup existing config
                     cp "$ACTUAL_HOME/.mynodeone/config.env" "$ACTUAL_HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)"
                     print_info "Config backed up. Proceeding with reinstall..."
-                    return 0 # Proceed with main setup flow
+                    return 0
                 else
                     exit 0
                 fi
                 ;;
-            4)
+            3)
                 print_info "Installation cancelled"
                 exit 0
                 ;;

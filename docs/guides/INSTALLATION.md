@@ -38,6 +38,8 @@ Learn how to:
 
 **🎯 START HERE - This is your first node!**
 
+> **Cloud Deployment Note:** Planning to run your Control Plane on a cloud server (VPS/VDS) instead of a physical machine at home? Read the [**Cloud Control Plane Use Case**](../use-cases/cloud-control-plane.md) first for critical security setup instructions.
+
 ---
 
 ## What is a Control Plane?
@@ -242,11 +244,29 @@ tailscale ip -4
     - ✅ Ubuntu 24.04 LTS (or 22.04/20.04).
     - ✅ At least 1GB RAM, 1 CPU core.
     - ✅ A **public IPv4 address** is required.
-    - ✅ You can SSH into it as `root` or a user with `sudo` privileges.
 
-2.  **Install Tailscale on the VPS**
+2.  **Create a Sudo User (Important Security Step)**
+    - For security, **do not use the `root` user** for the MyNodeOne setup. Connect to your new VPS as `root` one time to create a new, dedicated user.
+    - This new user will be used in the `setup-edge-node.sh` command.
+
     ```bash
-    # SSH into your new VPS
+    # ON YOUR NEW VPS (connect as root):
+
+    # 1. Create the new user (e.g., 'sammy')
+    adduser sammy
+
+    # 2. Add the user to the 'sudo' group to grant admin privileges
+    usermod -aG sudo sammy
+
+    # 3. Log out from root and log back in as your new user to continue
+    exit
+    ```
+    - From now on, all commands on the VPS should be run as this new user (`sammy` in this example).
+
+3.  **Install Tailscale on the VPS**
+    ```bash
+    # SSH into your new VPS (as your new sudo user, e.g., 'sammy')
+
     # Install Tailscale
     curl -fsSL https://tailscale.com/install.sh | sh
 
@@ -291,6 +311,8 @@ The script will guide you through the setup:
 - **Hardens Security**: Configures the VPS firewall and SSH for better security.
 - **Establishes Reverse Tunnel**: Starts a persistent, self-healing reverse SSH tunnel from the control plane to the VPS.
 - **Registers the Node**: Adds the VPS to the cluster's registry so it receives automatic updates.
+
+> **Important Security Note:** This process is designed to be run from the Control Plane for a critical security reason. The Control Plane initiates the connection outwards to the VPS. This ensures your Control Plane is never exposed to the public internet, dramatically reducing the system's attack surface. For a more detailed explanation, please read our [Architecture Overview](./../reference/ARCHITECTURE-OVERVIEW.md).
 
 ### Alternative Installation Methods
 

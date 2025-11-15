@@ -9,7 +9,8 @@ Complete guide for cluster administration, suitable for non-technical users.
 3. [Web Dashboard](#web-dashboard)
 4. [Storage Management](#storage-management)
 5. [Common Tasks](#common-tasks)
-6. [Troubleshooting](#troubleshooting)
+6. [Cluster Node Management](#cluster-node-management)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -303,6 +304,65 @@ kubectl set image deployment/<app-name> \
   <container-name>=<new-image>:tag \
   -n <namespace>
 ```
+
+---
+
+## Cluster Node Management
+
+This section covers how to add or remove nodes from your MyNodeOne cluster.
+
+### Adding a New Node
+
+To add a new node (such as a VPS, Worker, or another Management Laptop), follow the relevant sections in the [**Installation Guide**](./INSTALLATION.md). The setup scripts will handle the registration automatically.
+
+### Permanently Removing a Node
+
+If you permanently decommission a node (e.g., you delete your VPS instance), you must **manually remove it** from the cluster registry. This is a deliberate safety measure to prevent accidental removal due to a temporary network outage.
+
+The `sync-controller` will not remove an unreachable node automatically. It will simply log an error and continue trying to sync with it until you remove it from the registry.
+
+**To permanently remove a node:**
+
+1.  **SSH into your Control Plane.** All cluster management commands must be run from there.
+
+2.  **Edit the cluster registry ConfigMap:**
+
+    ```bash
+    sudo kubectl edit configmap sync-controller-registry -n kube-system
+    ```
+
+3.  **Remove the node's JSON entry.** This command opens a text editor. Find the correct node array (`vps_nodes`, `worker_nodes`, or `management_laptops`) and delete the entire JSON object `{...}` for the node you want to remove.
+
+    For example, to remove `my-old-vps-to-remove`, you would delete the highlighted lines:
+
+    ```json
+    "vps_nodes": [
+      {
+        "ip": "100.XX.XX.XX",
+        "name": "my-vps-1",
+        "ssh_user": "sammy"
+      },
+      {
+        "ip": "100.YY.YY.YY",
+        "name": "my-old-vps-to-remove",
+        "ssh_user": "sammy"
+      }
+    ]
+    ```
+
+    After deletion, the section should look like this:
+
+    ```json
+    "vps_nodes": [
+      {
+        "ip": "100.XX.XX.XX",
+        "name": "my-vps-1",
+        "ssh_user": "sammy"
+      }
+    ]
+    ```
+
+4.  **Save and close the editor.** Kubernetes will automatically apply the change. The `sync-controller` will read the updated list on its next cycle and will stop trying to contact the removed node.
 
 ---
 

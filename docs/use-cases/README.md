@@ -381,7 +381,8 @@ Each guide has step-by-step deployment instructions
 
 Click any use case for complete implementation guide:
 
-- **[Enterprise SaaS](use-cases/enterprise-saas.md)** - Compliance & data isolation
+- **[Enterprise SaaS](./enterprise-saas.md)**: Deploying a multi-tenant SaaS application with isolated namespaces and resources.
+- **[Cloud Control Plane](./cloud-control-plane.md)**: Best practices for securely deploying and managing a Control Plane that runs on a public cloud server (VPS/VDS).
 - **[Dev/Test/QA](use-cases/devtest-qa.md)** - Development environments
 - **[Education](use-cases/education.md)** - Teaching & learning
 - **[Personal Cloud](use-cases/personal-cloud.md)** - Home use

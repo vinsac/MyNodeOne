@@ -292,6 +292,29 @@ The script will guide you through the setup:
 - **Establishes Reverse Tunnel**: Starts a persistent, self-healing reverse SSH tunnel from the control plane to the VPS.
 - **Registers the Node**: Adds the VPS to the cluster's registry so it receives automatic updates.
 
+### Alternative Installation Methods
+
+#### Using the Interactive Wizard
+
+If you prefer a guided setup, you can use the main `mynodeone` interactive script instead of the direct `setup-edge-node.sh` script. Both achieve the same result.
+
+```bash
+# ON YOUR CONTROL PLANE:
+cd ~/MyNodeOne
+sudo ./scripts/mynodeone
+```
+- When prompted, select **Option 3: VPS Edge Node** and follow the questions.
+
+#### From a Management Laptop (Advanced)
+
+If you have already set up a Management Laptop (Section 3), you can trigger the VPS installation remotely without needing to SSH into the Control Plane first.
+
+```bash
+# Run this command FROM YOUR MANAGEMENT LAPTOP
+ssh <your-user>@<control-plane-ip> 'cd ~/MyNodeOne && sudo ./scripts/setup-edge-node.sh <vps_user>@<vps_public_ip>'
+```
+- This command logs into your Control Plane and executes the setup script from there, providing a convenient way to manage your entire cluster from one place.
+
 --- 
 
 ## ✅ VPS Edge Node Installation Complete!

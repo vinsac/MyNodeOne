@@ -19,7 +19,7 @@ if [ -f "$SCRIPT_DIR/lib/validation.sh" ]; then
 fi
 
 # Colors
-RED='\033[0;31m'
+RED='\033[0;31m'check_system
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
@@ -337,6 +337,98 @@ configure_node_type() {
     
     print_success "Node type: $NODE_ROLE"
     echo
+}
+
+configure_vps_installation() {
+    print_header "VPS Edge Node Installation"
+    
+    echo "VPS Edge Nodes must be installed from the Control Plane for security."
+    echo
+    echo "This orchestrated installation approach ensures:"
+    echo "   ✓ VPS cannot access control plane (one-way security)"
+    echo "   ✓ Control plane manages VPS configuration"
+    echo "   ✓ Proper credential and permission setup"
+    echo
+    echo "Requirements:"
+    echo "   • VPS must have Tailscale installed and connected"
+    echo "   • Passwordless sudo configured on VPS"
+    echo "   • SSH access from control plane to VPS"
+    echo
+    
+    print_success "Using orchestrated installation from control plane"
+    return 0
+}
+
+configure_vps_details() {
+    print_header "VPS Configuration"
+    
+    print_info "Please provide VPS details for orchestrated installation..."
+    echo
+    
+    # VPS Node Name
+    print_info "Node name will be used to identify this VPS in the cluster"
+    prompt_input "VPS Node Name (e.g., vps-edge-01, nyc-edge, etc.)" VPS_NODE_NAME
+    if [ -z "$VPS_NODE_NAME" ]; then
+        print_error "Node name is required"
+        return 1
+    fi
+    
+    # VPS Tailscale/Private IP
+    prompt_input "VPS Tailscale IP (for secure cluster communication)" VPS_TAILSCALE_IP
+    validate_ip "$VPS_TAILSCALE_IP" || {
+        print_error "Invalid IP address"
+        return 1
+    }
+    
+    # VPS SSH User
+    prompt_input "VPS SSH username" VPS_SSH_USER "root"
+    
+    # VPS Public IP
+    prompt_input "VPS Public IPv4 address (internet-facing)" VPS_PUBLIC_IP
+    validate_ip "$VPS_PUBLIC_IP" || {
+        print_error "Invalid IP address"
+        return 1
+    }
+    
+    # VPS Domain
+    prompt_input "VPS Primary Domain (e.g., vps.example.com)" VPS_DOMAIN
+    if [ -z "$VPS_DOMAIN" ]; then
+        print_error "Domain is required"
+        return 1
+    fi
+    
+    # SSL Email for Let's Encrypt
+    print_info "Email address for Let's Encrypt SSL certificate notifications"
+    prompt_input "SSL Email address" SSL_EMAIL
+    if [ -z "$SSL_EMAIL" ]; then
+        print_error "Email is required for SSL certificates"
+        return 1
+    fi
+    
+    # Optional: VPS Location/Region
+    prompt_input "VPS Location (optional, e.g., NYC, London, Singapore)" VPS_LOCATION "unspecified"
+    
+    echo
+    print_success "VPS configuration collected"
+    echo
+    echo "Summary:"
+    echo "  Node Name:       $VPS_NODE_NAME"
+    echo "  Tailscale IP:    $VPS_TAILSCALE_IP"
+    echo "  Public IP:       $VPS_PUBLIC_IP"
+    echo "  Domain:          $VPS_DOMAIN"
+    echo "  SSL Email:       $SSL_EMAIL"
+    echo "  Location:        $VPS_LOCATION"
+    echo "  SSH User:        $VPS_SSH_USER"
+    echo
+    
+    # Export for use in orchestration
+    export VPS_NODE_NAME
+    export VPS_TAILSCALE_IP
+    export VPS_SSH_USER
+    export VPS_PUBLIC_IP
+    export VPS_DOMAIN
+    export SSL_EMAIL
+    export VPS_LOCATION
 }
 
 configure_cluster_info() {
@@ -790,7 +882,104 @@ show_next_steps() {
 main() {
     welcome
     detect_environment
-    configure_node_type
+    
+    # Skip node type selection if NODE_TYPE is already set (from mynodeone script)
+    if [ -z "${NODE_TYPE:-}" ]; then
+        configure_node_type
+    else
+        print_info "Node type already selected: $NODE_ROLE"
+    fi
+    
+    # Special handling for VPS Edge Node - orchestrated installation only
+    if [ "$NODE_TYPE" = "edge" ]; then
+        # Show VPS installation info
+        configure_vps_installation
+        
+        # Gather VPS details
+        if ! configure_vps_details; then
+            print_error "Failed to collect VPS details"
+            exit 1
+        fi
+        
+        # For VPS orchestration, we're ON the control plane, so detect cluster info locally
+        print_header "Control Plane Configuration"
+        print_info "Detecting local cluster configuration..."
+        echo
+        
+        # Try to get cluster info from kubectl (we're on control plane)
+        if command -v kubectl &> /dev/null && kubectl cluster-info &> /dev/null; then
+            CLUSTER_NAME=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>/dev/null || echo "mynodeone")
+            CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
+            
+            # Get control plane Tailscale IP
+            if command -v tailscale &> /dev/null; then
+                CONTROL_PLANE_IP=$(tailscale ip -4 2>/dev/null | head -n1)
+            fi
+            
+            # Fallback: detect from existing config
+            if [ -z "$CONTROL_PLANE_IP" ] && [ -f "$CONFIG_DIR/config.env" ]; then
+                source "$CONFIG_DIR/config.env"
+                CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-}"
+            fi
+            
+            if [ -n "$CLUSTER_NAME" ] && [ -n "$CLUSTER_DOMAIN" ] && [ -n "$CONTROL_PLANE_IP" ]; then
+                # Set control plane SSH user (current user)
+                CONTROL_PLANE_SSH_USER="$ACTUAL_USER"
+                
+                print_success "Cluster configuration detected"
+                print_info "  Cluster Name: $CLUSTER_NAME"
+                print_info "  Cluster Domain: $CLUSTER_DOMAIN"
+                print_info "  Control Plane IP: $CONTROL_PLANE_IP"
+                print_info "  Control Plane User: $CONTROL_PLANE_SSH_USER"
+                echo
+                
+                # Export for use in config generation
+                export CLUSTER_NAME
+                export CLUSTER_DOMAIN
+                export CONTROL_PLANE_IP
+                export CONTROL_PLANE_SSH_USER
+            else
+                print_error "Failed to detect complete cluster configuration"
+                print_info "Please ensure:"
+                print_info "  • Kubernetes is running (kubectl cluster-info)"
+                print_info "  • Tailscale is connected (tailscale status)"
+                exit 1
+            fi
+        else
+            print_error "kubectl not available or cluster not running"
+            print_info "VPS orchestration must be run from an active control plane"
+            exit 1
+        fi
+        
+        # Mark that we're doing orchestrated installation
+        echo "VPS_ORCHESTRATED=true" > "$CONFIG_DIR/vps-orchestrated.flag"
+        
+        # Signal to mynodeone script to trigger orchestration
+        print_success "VPS details collected. Ready to orchestrate installation."
+        echo
+        print_info "Returning to main installer to begin orchestration..."
+        
+        # Save minimal config for orchestration
+        mkdir -p "$CONFIG_DIR"
+        cat > "$CONFIG_FILE" << EOF
+NODE_TYPE="edge"
+NODE_ROLE="VPS Edge Node"
+VPS_NODE_NAME="$VPS_NODE_NAME"
+VPS_TAILSCALE_IP="$VPS_TAILSCALE_IP"
+VPS_SSH_USER="$VPS_SSH_USER"
+VPS_PUBLIC_IP="$VPS_PUBLIC_IP"
+VPS_DOMAIN="$VPS_DOMAIN"
+VPS_LOCATION="$VPS_LOCATION"
+SSL_EMAIL="$SSL_EMAIL"
+CLUSTER_NAME="${CLUSTER_NAME:-}"
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-}"
+CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-}"
+CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-$ACTUAL_USER}"
+VPS_ORCHESTRATED=true
+EOF
+        return 0
+    fi
+    
     configure_cluster_info
     
     if [ "$NODE_TYPE" != "management" ]; then
@@ -806,5 +995,7 @@ main() {
     echo
 }
 
-# Run main function
-main "$@"
+# Run main function only if script is executed directly (not sourced)
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    main "$@"
+fi

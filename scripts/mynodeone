@@ -13,6 +13,31 @@
 
 set -euo pipefail
 
+# Parse command-line arguments
+CONFIG_FILE_ARG=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --config-file)
+            CONFIG_FILE_ARG="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: sudo $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --config-file <path>    Use pre-generated config file (for remote VPS installation)"
+            echo "  --help, -h              Show this help message"
+            echo ""
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # Check if running as root/sudo
 if [ "$EUID" -ne 0 ]; then 
     echo "ERROR: This script must be run as root or with sudo"
@@ -274,52 +299,46 @@ check_distro() {
 }
 
 check_system_resources() {
-    print_info "Validating system resources..."
+    print_info "Checking system resources..."
     
     # Check RAM
     local ram_gb=$(free -g | awk '/^Mem:/{print $2}')
-    local min_ram=4
+    print_info "RAM: ${ram_gb}GB"
     
-    if [ "$ram_gb" -lt "$min_ram" ]; then
-        print_error "Insufficient RAM: ${ram_gb}GB (minimum ${min_ram}GB required for control plane)"
-        echo
-        echo "Your system has ${ram_gb}GB RAM, but control plane requires at least ${min_ram}GB."
-        echo
-        echo "Options:"
-        echo "  1. Add more RAM to this machine"
-        echo "  2. Use this as a worker node instead (requires 2GB minimum)"
-        echo "  3. Use a different machine with more RAM"
-        return 1
+    # Show recommendations
+    echo
+    echo "  💡 RAM Recommendations by Node Type:"
+    echo "     • Control Plane:    4GB minimum, 8GB+ recommended"
+    echo "     • Worker Node:      2GB minimum, 4GB+ recommended"
+    echo "     • VPS Edge Node:    1GB minimum, 2GB+ recommended"
+    echo "     • Management PC:    2GB minimum"
+    echo
+    
+    if [ "$ram_gb" -lt 2 ]; then
+        print_warning "Low RAM detected (${ram_gb}GB). Some node types may not perform well."
+        echo "  Consider adding more RAM if you plan to run a Control Plane or Worker node."
     fi
     
     # Check disk space
     local disk_gb=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
-    local min_disk=20
+    print_info "Available disk space: ${disk_gb}GB"
     
-    if [ "$disk_gb" -lt "$min_disk" ]; then
-        print_error "Insufficient disk space: ${disk_gb}GB available (minimum ${min_disk}GB required)"
-        echo
-        echo "Free up space with:"
-        echo "  sudo apt-get clean"
-        echo "  sudo apt-get autoremove"
-        echo "  sudo journalctl --vacuum-time=7d"
-        echo
-        return 1
+    if [ "$disk_gb" -lt 10 ]; then
+        print_warning "Low disk space (${disk_gb}GB available). Consider freeing up space."
+        echo "  Recommended: 20GB+ for Control Plane, 10GB+ for other nodes"
     fi
     
     # Check CPU cores
     local cpu_cores=$(nproc)
-    local min_cores=2
+    print_info "CPU cores: ${cpu_cores}"
     
-    if [ "$cpu_cores" -lt "$min_cores" ]; then
-        print_warning "Low CPU cores: ${cpu_cores} (recommended ${min_cores}+ for smooth operation)"
-        echo "Installation will proceed but performance may be limited."
-        if ! prompt_confirm "Continue anyway?"; then
-            return 1
-        fi
+    if [ "$cpu_cores" -lt 2 ]; then
+        print_warning "Low CPU cores (${cpu_cores}). Performance may be limited."
+        echo "  Recommended: 2+ cores for smooth operation"
     fi
     
-    print_success "System resources OK: ${ram_gb}GB RAM, ${disk_gb}GB free disk, ${cpu_cores} CPU cores"
+    echo
+    print_success "System resource check complete"
     return 0
 }
 
@@ -1112,11 +1131,14 @@ setup_raid_array() {
             grep "^ARRAY" /etc/mdadm/mdadm.conf || echo "No arrays configured"
         fi
         echo
-        print_error "Cannot create RAID - /dev/md0 is in use"
+        print_error "Insufficient RAM: ${ram_gb}GB (minimum ${min_ram}GB required for control plane)"
+        echo
+        echo "Your system has ${ram_gb}GB RAM, but control plane requires at least ${min_ram}GB."
+        echo
         echo "Options:"
-        echo "  1. Use a different RAID device number (edit script)"
-        echo "  2. Remove existing RAID: mdadm --stop /dev/md0"
-        echo "  3. Choose a different storage option"
+        echo "  1. Add more RAM to this machine"
+        echo "  2. Use this as a worker node instead (requires 2GB minimum)"
+        echo "  3. Use a different machine with more RAM"
         return 1
     fi
     
@@ -1317,47 +1339,102 @@ main() {
     # Export UNATTENDED so child scripts inherit it
     export UNATTENDED="${UNATTENDED:-0}"
     
+    # If config file was provided via --config-file, use it and skip interactive setup
+    if [ -n "$CONFIG_FILE_ARG" ]; then
+        print_info "Using provided config file: $CONFIG_FILE_ARG"
+        
+        if [ ! -f "$CONFIG_FILE_ARG" ]; then
+            print_error "Config file not found: $CONFIG_FILE_ARG"
+            exit 1
+        fi
+        
+        # Source the config file
+        source "$CONFIG_FILE_ARG"
+        export CONFIG_FILE="$CONFIG_FILE_ARG"
+        
+        # Validate required variables
+        if [ -z "${NODE_TYPE:-}" ]; then
+            print_error "Invalid config file: NODE_TYPE not set"
+            exit 1
+        fi
+        
+        print_success "Config loaded: NODE_TYPE=$NODE_TYPE"
+        
+        # Skip to installation directly
+        SKIP_INTERACTIVE=true
+    else
+        SKIP_INTERACTIVE=false
+    fi
+    
     # Show legal disclaimer FIRST (before welcome)
     source "$SCRIPT_DIR/show-disclaimer.sh"
     
     welcome
     check_root
     
-    # Pre-flight checks
-    print_header "Pre-Flight Checks"
-    check_dependencies || exit 1
-    check_architecture
-    check_distro
-    check_network || exit 1
-    check_system_resources || exit 1
-    check_existing_installation
-    
-    system_cleanup
-    
-    # Show documentation FIRST so users know what's coming
-    show_documentation_info
-    
-    # Run interactive setup wizard to get configuration
-    print_header "Configuration Wizard"
-    print_info "This wizard will help you configure your node..."
-    echo
-    
-    if ! prompt_confirm "Ready to start the configuration wizard?" "y"; then
-        print_info "Installation cancelled."
-        exit 0
-    fi
-    
-    # Call interactive setup - it handles node type selection
-    bash "$SCRIPT_DIR/interactive-setup.sh"
-    
-    # Load the configuration created by interactive setup
-    export CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
-    if [ -f "$CONFIG_FILE" ]; then
-        source "$CONFIG_FILE"
+    # If using config file, run pre-flight checks and proceed to installation
+    if [ "$SKIP_INTERACTIVE" = true ]; then
+        print_header "Pre-Flight Checks"
+        check_dependencies || exit 1
+        check_architecture
+        check_distro
+        check_network || exit 1
+        check_system_resources || exit 1
+        
+        # Skip directly to installation
+        print_info "Skipping interactive setup (using provided config)"
     else
-        print_error "Configuration file not found. Setup may have failed."
-        print_error "Expected location: $CONFIG_FILE"
-        exit 1
+        # Interactive mode: Get node type FIRST before other checks
+        print_header "Node Type Selection"
+        print_info "First, let's determine what type of node this will be..."
+        echo
+        
+        # Source helper functions from interactive-setup.sh
+        source "$SCRIPT_DIR/interactive-setup.sh"
+        
+        # Call node type selection function directly
+        configure_node_type
+        
+        # Export NODE_TYPE so it's available for subsequent checks
+        export NODE_TYPE
+        export NODE_ROLE
+        
+        # Now run pre-flight checks with node type known
+        print_header "Pre-Flight Checks"
+        check_dependencies || exit 1
+        check_architecture
+        check_distro
+        check_network || exit 1
+        check_system_resources || exit 1
+        check_existing_installation
+        
+        system_cleanup
+        
+        # Show documentation FIRST so users know what's coming
+        show_documentation_info
+        
+        # Continue with rest of interactive setup wizard for remaining configuration
+        print_header "Configuration Wizard"
+        print_info "Now let's configure the remaining settings for your $NODE_ROLE..."
+        echo
+        
+        if ! prompt_confirm "Ready to continue with configuration?" "y"; then
+            print_info "Installation cancelled."
+            exit 0
+        fi
+        
+        # Call interactive setup - but skip node type selection since we already did it
+        # We'll need to modify interactive-setup.sh to skip node type if NODE_TYPE is set
+        bash "$SCRIPT_DIR/interactive-setup.sh"
+        
+        # Load the configuration created by interactive setup
+        export CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+        if [ -f "$CONFIG_FILE" ]; then
+            source "$CONFIG_FILE"
+        else
+            print_error "Configuration file not found after setup wizard. Exiting."
+            exit 1
+        fi
     fi
     
     # Now do disk detection and setup if this is a storage node
@@ -1453,8 +1530,69 @@ main() {
                 bash "$SCRIPT_DIR/add-worker-node.sh"
                 ;;
             edge)
-                print_info "Running edge node setup..."
-                bash "$SCRIPT_DIR/setup-edge-node.sh"
+                # VPS Edge Nodes are ONLY installed via orchestration from control plane
+                if [ "${VPS_ORCHESTRATED:-false}" != "true" ]; then
+                    print_error "VPS Edge Nodes must be installed from the Control Plane"
+                    echo
+                    echo "For security reasons, VPS installation must be orchestrated from the control plane."
+                    echo
+                    echo "To install a VPS Edge Node:"
+                    echo "  1. SSH into your Control Plane"
+                    echo "  2. Run: sudo ./scripts/mynodeone"
+                    echo "  3. Select: 3) VPS Edge Node"
+                    echo "  4. Provide VPS details when prompted"
+                    echo
+                    exit 1
+                fi
+                
+                print_info "Starting orchestrated VPS installation..."
+                echo
+                
+                # Export required variables for orchestrator
+                export PROJECT_ROOT
+                export ACTUAL_USER
+                export ACTUAL_HOME
+                
+                # Source the VPS orchestrator
+                source "$SCRIPT_DIR/lib/vps-orchestrator.sh"
+                
+                # Validate required variables
+                if [ -z "${VPS_NODE_NAME:-}" ]; then
+                    print_error "Missing VPS_NODE_NAME"
+                    exit 1
+                fi
+                
+                if [ -z "${VPS_TAILSCALE_IP:-}" ] || [ -z "${VPS_SSH_USER:-}" ] || [ -z "${VPS_PUBLIC_IP:-}" ] || [ -z "${VPS_DOMAIN:-}" ]; then
+                    print_error "Missing required VPS configuration variables"
+                    exit 1
+                fi
+                
+                if [ -z "${SSL_EMAIL:-}" ]; then
+                    print_error "Missing SSL_EMAIL for Let's Encrypt certificates"
+                    exit 1
+                fi
+                
+                if [ -z "${CONTROL_PLANE_IP:-}" ] || [ -z "${CLUSTER_NAME:-}" ] || [ -z "${CLUSTER_DOMAIN:-}" ]; then
+                    print_error "Missing required cluster configuration variables"
+                    exit 1
+                fi
+                
+                # Run orchestration
+                if ! orchestrate_vps_installation \
+                    "$VPS_NODE_NAME" \
+                    "$VPS_TAILSCALE_IP" \
+                    "$VPS_SSH_USER" \
+                    "$VPS_PUBLIC_IP" \
+                    "$VPS_DOMAIN" \
+                    "$SSL_EMAIL" \
+                    "${VPS_LOCATION:-unspecified}" \
+                    "$CONTROL_PLANE_IP" \
+                    "${CONTROL_PLANE_SSH_USER:-$ACTUAL_USER}" \
+                    "$CLUSTER_NAME" \
+                    "$CLUSTER_DOMAIN"; then
+                    print_error "VPS orchestration failed"
+                    exit 1
+                fi
                 ;;
             management)
                 print_info "Running management laptop setup..."

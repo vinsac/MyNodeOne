@@ -1428,10 +1428,13 @@ main() {
         check_system_resources || exit 1
         check_existing_installation
         
-        system_cleanup
-        
-        # Show documentation FIRST so users know what's coming
-        show_documentation_info
+        # Skip system cleanup and documentation if we're adding a remote node
+        if [ "$ADDING_REMOTE_NODE" = false ]; then
+            system_cleanup
+            
+            # Show documentation FIRST so users know what's coming
+            show_documentation_info
+        fi
         
         # Continue with rest of interactive setup wizard for remaining configuration
         print_header "Configuration Wizard"

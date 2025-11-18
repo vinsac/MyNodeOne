@@ -344,9 +344,16 @@ check_system_resources() {
 
 check_existing_installation() {
     if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
-        print_warning "MyNodeOne appears to be already configured"
+        print_warning "MyNodeOne appears to be already configured on this machine"
         echo
         echo "Existing configuration found at: $ACTUAL_HOME/.mynodeone/config.env"
+        echo
+        
+        # Load existing config to show what's installed
+        source "$ACTUAL_HOME/.mynodeone/config.env"
+        if [ -n "${NODE_TYPE:-}" ]; then
+            print_info "Current node type: $NODE_TYPE"
+        fi
         echo
         
         # In unattended mode, auto-select reinstall
@@ -358,20 +365,30 @@ check_existing_installation() {
             return 0
         fi
         
-        echo "Options:"
-        echo "  1) Reconfigure (update configuration, keep existing setup)"
-        echo "  2) Reinstall (remove everything, fresh start)"
-        echo "  3) Cancel"
+        echo "What would you like to do?"
         echo
-        read -p "Select option (1-3): " option
+        echo "  1) Add/manage a remote node (VPS Edge Node, Worker, or Management Laptop)"
+        echo "  2) Reconfigure this node (update configuration, keep existing setup)"
+        echo "  3) Reinstall this node (remove everything, fresh start)"
+        echo "  4) Cancel"
+        echo
+        read -p "Select option (1-4): " option
         
         case $option in
             1)
-                print_info "Reconfiguring..."
+                print_success "Proceeding to add/manage a remote node"
+                print_info "You'll be prompted to select the node type in the next step"
+                echo
+                # Set flag to skip local system setup steps
+                ADDING_REMOTE_NODE=true
                 return 0
                 ;;
             2)
-                print_warning "This will remove existing MyNodeOne installation"
+                print_info "Reconfiguring this node..."
+                return 0
+                ;;
+            3)
+                print_warning "This will remove existing MyNodeOne installation on THIS machine"
                 if prompt_confirm "Are you sure you want to reinstall?"; then
                     # Backup existing config
                     cp "$ACTUAL_HOME/.mynodeone/config.env" "$ACTUAL_HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)"
@@ -381,12 +398,12 @@ check_existing_installation() {
                     exit 0
                 fi
                 ;;
-            3)
+            4)
                 print_info "Installation cancelled"
                 exit 0
                 ;;
             *)
-                print_error "Invalid option"
+                print_error "Invalid option. Please choose 1-4."
                 exit 1
                 ;;
         esac
@@ -1334,6 +1351,9 @@ show_documentation_info() {
     echo "  • Setup Options: $PROJECT_ROOT/docs/setup-options-guide.md"
     echo
 }
+
+# Global flag to track if we're adding a remote node (skip local system setup)
+ADDING_REMOTE_NODE=false
 
 main() {
     # Export UNATTENDED so child scripts inherit it

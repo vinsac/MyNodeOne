@@ -83,14 +83,25 @@ echo ""
 # Detect VPS Tailscale IP
 VPS_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 
-# Fetch service registry from control plane
-log_info "Fetching service registry from control plane..."
-
+# Fetch service registry - support multiple methods
+SERVICES=""
 CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 
-SERVICES=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "sudo kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null" \
-    2>/dev/null || echo "{}")
+# Method 1: Check if file path provided as argument
+if [[ -n "${1:-}" ]] && [[ -f "$1" ]]; then
+    log_info "Loading service registry from file: $1"
+    SERVICES=$(cat "$1")
+# Method 2: Check if data provided via stdin
+elif [[ ! -t 0 ]]; then
+    log_info "Loading service registry from stdin..."
+    SERVICES=$(cat)
+# Method 3: Fetch from control plane via SSH
+else
+    log_info "Fetching service registry from control plane..."
+    SERVICES=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "sudo kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null" \
+        2>/dev/null || echo "{}")
+fi
 
 if [[ "$SERVICES" == "{}" ]] || [[ -z "$SERVICES" ]]; then
     log_warn "No services found in registry"

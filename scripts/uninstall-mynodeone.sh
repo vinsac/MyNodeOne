@@ -358,7 +358,18 @@ if [ "$REMOVE_K8S" = true ]; then
         /usr/local/bin/k3s-agent-uninstall.sh 2>/dev/null || true
         log_success "K3s agent uninstalled"
     else
-        log_info "K3s not installed"
+        log_warn "K3s uninstall script not found (may not be installed)"
+    fi
+    
+    # Remove Rancher directories (K3s leftovers)
+    if [ -d /etc/rancher ]; then
+        rm -rf /etc/rancher
+        log_success "Removed /etc/rancher/"
+    fi
+    
+    if [ -d /var/lib/rancher ]; then
+        rm -rf /var/lib/rancher
+        log_success "Removed /var/lib/rancher/"
     fi
 else
     log_info "[5/12] Keeping Kubernetes cluster (skipped)"
@@ -417,6 +428,14 @@ if [ -d /etc/dnsmasq.d ]; then
     if systemctl is-active --quiet dnsmasq 2>/dev/null; then
         systemctl restart dnsmasq 2>/dev/null || true
     fi
+fi
+
+# Stop and disable dnsmasq if it's in failed state
+if systemctl is-failed --quiet dnsmasq 2>/dev/null; then
+    systemctl stop dnsmasq 2>/dev/null || true
+    systemctl disable dnsmasq 2>/dev/null || true
+    systemctl reset-failed dnsmasq 2>/dev/null || true
+    log_success "Stopped and disabled dnsmasq"
 fi
 
 # Remove Avahi configs
@@ -502,6 +521,30 @@ if [ "$KEEP_CONFIG" = false ]; then
     if [ -d "/root/.kube" ]; then
         rm -rf /root/.kube
         log_success "Removed /root/.kube/"
+    fi
+    
+    # Remove SSH keys (MyNodeOne specific)
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        user_home=$(eval echo ~$SUDO_USER)
+        if ls "$user_home/.ssh/mynodeone"* &>/dev/null; then
+            rm -f "$user_home/.ssh/mynodeone"*
+            log_success "Removed MyNodeOne SSH keys from $user_home/.ssh/"
+        fi
+    fi
+    
+    # Remove root SSH keys (used for sync)
+    if ls /root/.ssh/id_ed25519* &>/dev/null 2>&1 || ls /root/.ssh/id_rsa* &>/dev/null 2>&1; then
+        rm -f /root/.ssh/id_ed25519* /root/.ssh/id_rsa* 2>/dev/null || true
+        log_success "Removed root SSH keys"
+    fi
+    
+    # Remove credential files
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        user_home=$(eval echo ~$SUDO_USER)
+        if ls "$user_home/mynodeone-"*"-credentials.txt" &>/dev/null; then
+            rm -f "$user_home/mynodeone-"*"-credentials.txt"
+            log_success "Removed credential files"
+        fi
     fi
     
     # Remove user configs if running as sudo

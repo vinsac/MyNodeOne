@@ -196,13 +196,14 @@ else
 
     echo "  services:" >> "$TEMP_FILE"
 
-    echo "$PUBLIC_SERVICES" | jq -r --arg cp_ip "$CONTROL_PLANE_IP" '
+    echo "$PUBLIC_SERVICES" | jq -r '
         .subdomain as $sub |
+        .ip as $service_ip |
         .port as $port |
         "    \($sub)-service:",
         "      loadBalancer:",
         "        servers:",
-        "          - url: \"http://\($cp_ip):\($port)\"",
+        "          - url: \"http://\($service_ip):\($port)\"",
         ""
     ' >> "$TEMP_FILE"
 

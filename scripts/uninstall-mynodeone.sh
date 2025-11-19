@@ -492,14 +492,23 @@ echo
 # Step 9: Remove Tailscale (optional)
 if [ "$REMOVE_TAILSCALE" = true ]; then
     log_info "[9/12] Removing Tailscale..."
-    if command -v tailscale &> /dev/null; then
+    if command -v tailscale &> /dev/null || dpkg -l | grep -q tailscale; then
+        # Stop Tailscale service
         tailscale down 2>/dev/null || true
+        
+        # Try official uninstall script first
         if [ -f /usr/bin/tailscale-uninstall.sh ]; then
             /usr/bin/tailscale-uninstall.sh 2>/dev/null || true
-        else
-            apt-get remove -y tailscale 2>/dev/null || true
         fi
-        log_success "Tailscale removed"
+        
+        # Purge packages (removes config files too)
+        apt-get purge -y tailscale tailscale-archive-keyring 2>/dev/null || true
+        dpkg --purge tailscale tailscale-archive-keyring 2>/dev/null || true
+        
+        # Remove directories
+        rm -rf /var/lib/tailscale /etc/tailscale 2>/dev/null || true
+        
+        log_success "Tailscale completely removed"
     else
         log_info "Tailscale not installed"
     fi

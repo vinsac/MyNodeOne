@@ -49,6 +49,32 @@ else
     ACTUAL_HOME="$HOME"
 fi
 
+# Ensure MyNodeOne repository is available
+log_info "Step 0: Ensuring MyNodeOne repository is available..."
+if [ ! -d "$ACTUAL_HOME/MyNodeOne" ]; then
+    log_info "Cloning MyNodeOne repository..."
+    if command -v git &> /dev/null; then
+        sudo -u "$ACTUAL_USER" git clone https://github.com/vinsac/MyNodeOne.git "$ACTUAL_HOME/MyNodeOne" 2>&1 | grep -v "Cloning into" || true
+        log_success "MyNodeOne repository cloned"
+    else
+        log_error "Git not installed. Installing git..."
+        apt-get update -qq && apt-get install -y -qq git
+        sudo -u "$ACTUAL_USER" git clone https://github.com/vinsac/MyNodeOne.git "$ACTUAL_HOME/MyNodeOne" 2>&1 | grep -v "Cloning into" || true
+        log_success "MyNodeOne repository cloned"
+    fi
+else
+    log_success "MyNodeOne repository already exists"
+fi
+
+# Create lowercase symlink for sync-controller compatibility
+if [ ! -L "$ACTUAL_HOME/mynodeone" ] && [ ! -d "$ACTUAL_HOME/mynodeone" ]; then
+    log_info "Creating symlink ~/mynodeone -> ~/MyNodeOne for sync compatibility..."
+    sudo -u "$ACTUAL_USER" ln -s "$ACTUAL_HOME/MyNodeOne" "$ACTUAL_HOME/mynodeone"
+    log_success "Symlink created"
+elif [ -L "$ACTUAL_HOME/mynodeone" ]; then
+    log_success "Symlink ~/mynodeone already exists"
+fi
+
 log_info "Running as: $ACTUAL_USER"
 
 # Load configuration
@@ -273,24 +299,37 @@ if command -v ssh &> /dev/null && [ -n "${CONTROL_PLANE_IP:-}" ]; then
     log_info "Detected provider: $PROVIDER"
     
     # Try to register VPS node
-    log_info "Registering VPS node..."
+    # Register in sync-controller registry (for automated sync)
+    log_info "Registering VPS in sync-controller..."
+    if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+        "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
+        "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/sync-controller.sh register vps_nodes \
+        ${TAILSCALE_IP:-unknown} \
+        ${NODE_NAME:-vps-edge-01} \
+        ${VPS_SSH_USER:-$ACTUAL_USER}" 2>/dev/null; then
+        log_success "VPS registered in sync-controller"
+    else
+        log_warn "Could not auto-register in sync-controller"
+        echo "You can manually register later:"
+        echo "  cd ~/MyNodeOne"
+        echo "  sudo ./scripts/lib/sync-controller.sh register vps_nodes ${TAILSCALE_IP} ${NODE_NAME} ${VPS_SSH_USER}"
+    fi
+    
+    # Register in domain registry (for domain management)
+    log_info "Registering VPS in domain-registry..."
     if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
         "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
         "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
         ${TAILSCALE_IP:-unknown} \
         ${VPS_PUBLIC_IP:-unknown} \
-        ${VPS_LOCATION:-unknown} \
-        $PROVIDER" 2>/dev/null; then
-        log_success "VPS node registered in domain-registry"
+        ${VPS_DOMAIN:-unknown} \
+        ${NODE_NAME:-vps-edge-01}" 2>/dev/null; then
+        log_success "VPS registered in domain-registry"
     else
-        log_warn "Could not auto-register VPS (SSH may require setup)"
-        echo "You can manually register later:"
-        echo "  cd ~/MyNodeOne"
-        echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps \\"
-        echo "    ${TAILSCALE_IP:-unknown} ${VPS_PUBLIC_IP:-unknown} ${VPS_LOCATION:-unknown} $PROVIDER"
+        log_warn "Could not auto-register VPS in domain-registry"
     fi
     
-    # Try to register domain if configured
+    # Register domain if configured
     if [ -n "${VPS_DOMAIN:-}" ]; then
         log_info "Registering domain: $VPS_DOMAIN..."
         if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
@@ -301,16 +340,18 @@ if command -v ssh &> /dev/null && [ -n "${CONTROL_PLANE_IP:-}" ]; then
             log_success "Domain registered: $VPS_DOMAIN"
         else
             log_warn "Could not auto-register domain"
-            echo "You can manually register later:"
-            echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'Description'"
         fi
     fi
     
-    # Trigger sync controller to pick up changes
-    log_info "Triggering sync controller..."
-    ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+    # Trigger initial sync to push service registry to VPS
+    log_info "Triggering initial sync..."
+    if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
         "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
-        "sudo systemctl restart mynodeone-sync-controller" 2>/dev/null || true
+        "cd ~/MyNodeOne && sudo ./scripts/lib/sync-controller.sh push" 2>/dev/null; then
+        log_success "Initial sync completed"
+    else
+        log_warn "Initial sync failed - will retry automatically"
+    fi
     
     log_success "Registration complete"
 else

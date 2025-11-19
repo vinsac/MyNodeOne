@@ -103,6 +103,10 @@ setup_ssh_access() {
             if sudo -u "$ACTUAL_USER" ssh -i "$ssh_key" -o BatchMode=yes -o ConnectTimeout=5 "$vps_user@$vps_ip" "exit" 2>/dev/null; then
                 print_success "SSH passwordless access verified for user"
                 
+                # Add VPS to root's known_hosts to prevent host key verification failures
+                print_info "Adding VPS to root's known_hosts..."
+                ssh-keyscan -H "$vps_ip" >> /root/.ssh/known_hosts 2>/dev/null
+                
                 # Verify root SSH works
                 if ssh -o BatchMode=yes -o ConnectTimeout=5 "$vps_user@$vps_ip" "exit" 2>/dev/null; then
                     print_success "SSH passwordless access verified for root"
@@ -224,6 +228,9 @@ LONGHORN_PATH="/var/lib/longhorn"
 # Network Configuration
 ENABLE_TRAEFIK="true"
 ENABLE_CERT_MANAGER="true"
+
+# Public Domain Configuration
+PUBLIC_DOMAIN="$vps_domain"
 
 # Installation Flags
 SKIP_INTERACTIVE="true"

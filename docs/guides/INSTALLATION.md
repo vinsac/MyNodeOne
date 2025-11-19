@@ -93,7 +93,29 @@ sudo systemctl status ssh
 # Expected: "active (running)"
 ```
 
-#### 3. Tailscale (secure VPN networking)
+#### 3. Passwordless Sudo (for automation)
+
+**Required for automated sync and cluster management.**
+
+```bash
+# Test if you already have passwordless sudo
+sudo -n echo "Passwordless sudo works!"
+
+# If it asks for password, you need to configure it:
+# The installation script will configure this automatically,
+# or you can set it up manually:
+
+# Create sudoers file (replace 'yourusername' with your actual username)
+echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/yourusername
+sudo chmod 0440 /etc/sudoers.d/yourusername
+
+# Verify it works
+sudo -n echo "Success!"
+```
+
+**Note:** The control plane installation script will configure this automatically at the end. This is just for reference if you want to set it up beforehand.
+
+#### 4. Tailscale (secure VPN networking)
 
 ```bash
 # Install Tailscale
@@ -191,9 +213,21 @@ tailscale ip -4
 
 **What you have now:**
 - ✅ Kubernetes cluster running
-- ✅ Passwordless sudo configured
-- ✅ Ready to add other nodes
+- ✅ Passwordless sudo configured automatically
+- ✅ All services synced and accessible via `.local` domains
+- ✅ Ready to add other nodes (VPS, workers, management laptops)
 - ✅ Control plane Tailscale IP noted
+
+**Passwordless Sudo:**
+The installation automatically configures passwordless sudo for your user. This enables:
+- Running `kubectl` commands without password prompts
+- Automated sync operations to VPS nodes
+- Seamless cluster management
+
+If for any reason it wasn't configured, run:
+```bash
+sudo ./scripts/setup-control-plane-sudo.sh
+```
 
 **Next Steps - Choose What You Need:**
 

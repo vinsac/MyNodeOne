@@ -2009,6 +2009,29 @@ main() {
     log_success "All services registered and DNS updated"
     echo
     
+    # Configure passwordless sudo for automation
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Final Step: Configuring Passwordless Sudo"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "Setting up passwordless sudo for cluster management..."
+    
+    if [ -f "$SCRIPT_DIR/setup-control-plane-sudo.sh" ]; then
+        bash "$SCRIPT_DIR/setup-control-plane-sudo.sh"
+        
+        # Verify it worked
+        if sudo -n kubectl version --client &>/dev/null; then
+            log_success "✓ Passwordless sudo configured successfully"
+        else
+            log_warn "⚠ Passwordless sudo configuration incomplete"
+            log_warn "You may need to run manually: sudo $SCRIPT_DIR/setup-control-plane-sudo.sh"
+        fi
+    else
+        log_warn "setup-control-plane-sudo.sh not found, skipping"
+    fi
+    echo
+    
     # In unattended mode, display credentials at the end
     if [ "${UNATTENDED:-0}" = "1" ]; then
         display_final_credentials_unattended

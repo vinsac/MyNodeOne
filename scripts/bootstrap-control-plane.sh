@@ -1998,6 +1998,17 @@ main() {
     # Offer to deploy LLM chat app
     offer_llm_chat
     
+    # Final sync: Ensure all services are registered and DNS is updated
+    log_info "Final sync: Registering all services and updating DNS..."
+    if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+    fi
+    if [ -f "$SCRIPT_DIR/sync-dns.sh" ]; then
+        bash "$SCRIPT_DIR/sync-dns.sh" 2>/dev/null || true
+    fi
+    log_success "All services registered and DNS updated"
+    echo
+    
     # In unattended mode, display credentials at the end
     if [ "${UNATTENDED:-0}" = "1" ]; then
         display_final_credentials_unattended

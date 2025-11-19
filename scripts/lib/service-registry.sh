@@ -112,6 +112,9 @@ get_service() {
 # Sync registry with actual cluster state
 # Discovers all LoadBalancer services and updates registry
 sync_registry() {
+    # Relax error handling for this function to handle partial failures
+    set +e
+    
     log_info "Syncing service registry with cluster state..."
     
     init_registry
@@ -122,6 +125,7 @@ sync_registry() {
         .items[] | 
         select(.spec.type == "LoadBalancer") |
         select(.status.loadBalancer.ingress != null) |
+        select(.status.loadBalancer.ingress[0].ip != null) |
         {
             name: .metadata.name,
             namespace: .metadata.namespace,
@@ -134,34 +138,104 @@ sync_registry() {
         return 0
     fi
     
+    # Count total services found
+    local total=$(echo "$services" | wc -l)
+    log_info "Found $total LoadBalancer services"
+    
     local count=0
+    local failed=0
     while IFS= read -r svc; do
-        local name=$(echo "$svc" | jq -r '.name')
-        local namespace=$(echo "$svc" | jq -r '.namespace')
-        local ip=$(echo "$svc" | jq -r '.ip')
-        local port=$(echo "$svc" | jq -r '.port')
+        # Skip empty lines
+        [[ -z "$svc" ]] && continue
         
-        # Try to determine subdomain from common patterns
-        local subdomain="$name"
-        case "$name" in
-            *-server) subdomain="${name%-server}" ;;
-            *-frontend) subdomain="${name%-frontend}" ;;
-        esac
+        local name=$(echo "$svc" | jq -r '.name' 2>/dev/null || echo "")
+        local namespace=$(echo "$svc" | jq -r '.namespace' 2>/dev/null || echo "")
+        local ip=$(echo "$svc" | jq -r '.ip' 2>/dev/null || echo "")
+        local port=$(echo "$svc" | jq -r '.port' 2>/dev/null || echo "")
         
-        # Check if service has subdomain annotation
-        # Uses standard Kubernetes annotation format: mynodeone.io/subdomain
+        # Skip if parsing failed
+        if [[ -z "$name" ]] || [[ -z "$namespace" ]]; then
+            log_info "Skipping malformed service entry"
+            ((failed++))
+            continue
+        fi
+        
+        # Skip if IP is null or empty
+        if [[ -z "$ip" ]] || [[ "$ip" == "null" ]]; then
+            log_info "Skipping $namespace/$name (no IP yet)"
+            ((failed++))
+            continue
+        fi
+        
+        # Check if service has subdomain annotation first
         local annotation=$(kubectl get svc -n "$namespace" "$name" \
             -o jsonpath='{.metadata.annotations.mynodeone\.io/subdomain}' 2>/dev/null || echo "")
         
+        # Determine subdomain based on annotation or service name mapping
+        local subdomain=""
         if [[ -n "$annotation" ]]; then
             subdomain="$annotation"
+        else
+            # Map common service names to friendly subdomains
+            case "$name" in
+                dashboard)
+                    subdomain="dashboard"
+                    ;;
+                open-webui)
+                    subdomain="chat"
+                    ;;
+                demo)
+                    subdomain="demo"
+                    ;;
+                demo-chat-app)
+                    subdomain="demo-chat"
+                    ;;
+                argocd-server)
+                    subdomain="argocd"
+                    ;;
+                kube-prometheus-stack-grafana)
+                    subdomain="grafana"
+                    ;;
+                minio-console)
+                    subdomain="minio"
+                    ;;
+                minio)
+                    subdomain="minio-api"
+                    ;;
+                longhorn-frontend)
+                    subdomain="longhorn"
+                    ;;
+                traefik)
+                    subdomain="traefik"
+                    ;;
+                *-server)
+                    subdomain="${name%-server}"
+                    ;;
+                *-frontend)
+                    subdomain="${name%-frontend}"
+                    ;;
+                *)
+                    subdomain="$name"
+                    ;;
+            esac
         fi
         
-        register_service "$name" "$subdomain" "$namespace" "$name" "$port" "false" &>/dev/null
-        ((count++))
+        # Register service
+        if register_service "$name" "$subdomain" "$namespace" "$name" "$port" "false" 2>&1 | grep -q "Registered"; then
+            ((count++))
+        else
+            log_info "Failed to register $namespace/$name"
+            ((failed++))
+        fi
     done <<< "$services"
     
     log_success "Synced $count services"
+    if [[ $failed -gt 0 ]]; then
+        log_info "Skipped/Failed: $failed services"
+    fi
+    
+    # Restore strict error handling
+    set -e
 }
 
 # Export registry to DNS format for /etc/hosts

@@ -1,10 +1,13 @@
 #!/bin/bash
 
 ###############################################################################
-# Setup VPS Node for Enterprise Registry
+# VPS Edge Node Local Setup
 # 
-# Auto-registers VPS and configures for automatic sync
-# Run this on each VPS edge node
+# This script runs ON the VPS to perform local installation.
+# It is called by mynodeone when VPS_ORCHESTRATED=true.
+# 
+# This script does NOT connect back to the control plane.
+# The control plane orchestrates this script via SSH.
 ###############################################################################
 
 set -euo pipefail
@@ -33,512 +36,311 @@ log_error() {
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🌍 VPS Node Registration"
+echo "  🌍 VPS Edge Node Local Setup"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Detect actual user and their home directory FIRST (before loading config)
-# This MUST be before any config loading or SSH operations
-ACTUAL_USER_EARLY="${SUDO_USER:-$(whoami)}"
+# Detect actual user
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    # Running under sudo - use actual user's home directory
-    ACTUAL_HOME_EARLY=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-else
-    # Running normally
-    ACTUAL_HOME_EARLY="$HOME"
-fi
-
-# Load configuration from ACTUAL user's home
-if [ ! -f "$ACTUAL_HOME_EARLY/.mynodeone/config.env" ]; then
-    log_error "Configuration not found!"
-    log_error "Expected location: $ACTUAL_HOME_EARLY/.mynodeone/config.env"
-    echo "Please run the VPS edge node installation first:"
-    echo "  sudo ./scripts/mynodeone"
-    echo "  Select option: 3 (VPS Edge Node)"
-    exit 1
-fi
-
-source "$ACTUAL_HOME_EARLY/.mynodeone/config.env"
-
-# Source libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/preflight-checks.sh"
-source "$SCRIPT_DIR/lib/ssh-utils.sh"
-
-# Parse arguments
-SKIP_PREFLIGHT=false
-if [ "${1:-}" = "--skip-preflight" ]; then
-    SKIP_PREFLIGHT=true
-    log_info "Skipping pre-flight checks (already run by setup-edge-node.sh)"
-fi
-
-# Run pre-flight checks unless skipped
-if [ "$SKIP_PREFLIGHT" = false ]; then
-    log_info "Running pre-flight checks..."
-    if ! run_preflight_checks "vps" "$CONTROL_PLANE_IP" "${CONTROL_PLANE_SSH_USER:-$(whoami)}"; then
-        log_error "Pre-flight checks failed. Please fix the issues above and try again."
-        echo ""
-        echo "💡 Tip: Run this to see what needs to be fixed:"
-        echo "   ./scripts/check-prerequisites.sh vps $CONTROL_PLANE_IP"
-        exit 1
-    fi
-fi
-
-# Detect the ACTUAL user (not the sudo-elevated user)
-# When running with sudo, $SUDO_USER contains the real user
-if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-    CURRENT_VPS_USER="$SUDO_USER"
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    log_info "Running as user: $CURRENT_VPS_USER (via sudo)"
-    log_success "✓ Using actual user '$CURRENT_VPS_USER' for SSH access (not root)"
-else
-    CURRENT_VPS_USER=$(whoami)
-    ACTUAL_HOME="$HOME"
-    log_info "Running as user: $CURRENT_VPS_USER"
-    
-    # Security check: warn if actually logged in as root
-    if [ "$CURRENT_VPS_USER" = "root" ]; then
-        log_warn "⚠️  Logged in as root user!"
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  🔒 Security Best Practice"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        echo "For production VPS servers, it's recommended to:"
-        echo "  1. Create a dedicated sudo user instead of using root"
-        echo "  2. Disable root SSH login"
-        echo ""
-        echo "To create a sudo user, run these commands:"
-        echo "  sudo adduser mynodeone"
-        echo "  sudo usermod -aG sudo mynodeone"
-        echo "  su - mynodeone"
-        echo ""
-        echo "Then run this script again as the new user."
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        read -p "Continue as root anyway? [y/N]: " -r
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Please create a sudo user and run again"
-            exit 0
-        fi
-        echo ""
-    fi
-fi
-
-# Setup passwordless sudo for the current user
-setup_passwordless_sudo "$CURRENT_VPS_USER"
-
-# Get VPS details
-TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
-# Prefer configured VPS_PUBLIC_IP, otherwise auto-detect IPv4
-if [ -n "${VPS_PUBLIC_IP:-}" ]; then
-    PUBLIC_IP="$VPS_PUBLIC_IP"
-else
-    # Force IPv4 with -4 flag
-    PUBLIC_IP=$(curl -4 -s ifconfig.me 2>/dev/null || curl -s ipv4.icanhazip.com 2>/dev/null || echo "")
-fi
-HOSTNAME=$(hostname)
-
-if [ -z "$TAILSCALE_IP" ]; then
-    log_error "Tailscale not detected"
-    echo "Please ensure Tailscale is installed and running"
-    exit 1
-fi
-
-# Configure Tailscale to accept subnet routes from control plane
-log_info "Configuring Tailscale to accept subnet routes..."
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Tailscale Subnet Routes"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "The VPS needs to access services in your Kubernetes cluster."
-echo "This requires accepting subnet routes from the control plane."
-echo ""
-echo "This will enable routing to cluster LoadBalancer IPs."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-
-# Always run tailscale up --accept-routes (it's idempotent)
-if tailscale up --accept-routes; then
-    log_success "Tailscale configured to accept subnet routes"
-else
-    log_warn "Could not configure Tailscale routes automatically"
-    log_warn "You may need to manually approve routes in Tailscale admin"
-fi
-
-log_info "VPS Details:"
-echo "  • Tailscale IP: $TAILSCALE_IP"
-echo "  • Public IP: $PUBLIC_IP"
-echo "  • Hostname: $HOSTNAME"
-echo ""
-
-# Check required config
-if [ -z "${CONTROL_PLANE_IP:-}" ]; then
-    log_error "CONTROL_PLANE_IP not set in $ACTUAL_HOME_EARLY/.mynodeone/config.env"
-    exit 1
-fi
-
-if [ -z "${PUBLIC_DOMAIN:-}" ]; then
-    log_warn "PUBLIC_DOMAIN not set in $ACTUAL_HOME_EARLY/.mynodeone/config.env"
-    echo ""
-    echo "A public domain is needed for SSL certificates and external access."
-    echo "You can set this up later if you don't have one yet."
-    echo ""
-    read -p "Enter your public domain (or press Enter to skip): " user_domain
-    
-    if [ -n "$user_domain" ]; then
-        echo "PUBLIC_DOMAIN=\"$user_domain\"" >> "$ACTUAL_HOME_EARLY/.mynodeone/config.env"
-        PUBLIC_DOMAIN="$user_domain"
-        log_success "Domain configured: $PUBLIC_DOMAIN"
-    else
-        log_warn "Skipping domain configuration. You can add it later to $ACTUAL_HOME_EARLY/.mynodeone/config.env"
-        PUBLIC_DOMAIN=""
-    fi
-fi
-
-echo ""
-log_info "Registering with control plane..."
-echo ""
-
-# IMPROVEMENT 3: Automated reverse SSH setup with root key configuration
-CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
-
-# Generate SSH key for VPS user if needed
-SSH_KEY_PATH="$ACTUAL_HOME/.ssh/id_rsa"
-if [ ! -f "$SSH_KEY_PATH" ]; then
-    log_info "Generating SSH key for user $CURRENT_VPS_USER..."
-    
-    # Ensure .ssh directory exists with correct permissions
-    sudo -u "$CURRENT_VPS_USER" mkdir -p "$ACTUAL_HOME/.ssh"
-    sudo -u "$CURRENT_VPS_USER" chmod 700 "$ACTUAL_HOME/.ssh"
-    
-    # Generate key as actual user (not root!)
-    sudo -u "$CURRENT_VPS_USER" ssh-keygen -t rsa -b 4096 -f "$SSH_KEY_PATH" -N "" -C "vps-$HOSTNAME"
-    log_success "SSH key generated for $CURRENT_VPS_USER"
-fi
-
-# Check if VPS → Control Plane SSH is already working
-if ssh -o BatchMode=yes -o ConnectTimeout=5 "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "exit" 2>/dev/null; then
-    log_success "SSH key authentication already configured (VPS → Control Plane)"
-else
-    log_info "Setting up SSH key for VPS → Control Plane..."
-    echo ""
-    echo "You'll be prompted for password ONE LAST TIME"
-    echo ""
-    
-    # Copy SSH key to control plane
-    if sudo -u "$CURRENT_VPS_USER" ssh-copy-id -o StrictHostKeyChecking=no "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" 2>/dev/null; then
-        log_success "SSH key installed on control plane"
-    else
-        log_warn "Could not install SSH key automatically"
-        log_warn "You will be prompted for passwords during setup"
-    fi
-fi
-
-# IMPROVEMENT 3: Setup reverse SSH (Control Plane → VPS) with automated root keys
-log_info "Setting up reverse SSH access (Control Plane → VPS)..."
-setup_reverse_ssh "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP" "$CURRENT_VPS_USER" "$TAILSCALE_IP" "$ACTUAL_HOME/.ssh"
-echo ""
-
-# Register this VPS in the multi-domain registry
-REGION="${NODE_LOCATION:-unknown}"
-PROVIDER="unknown"
-
-# Try to detect provider
-if curl -s --max-time 2 http://169.254.169.254/metadata/v1/vendor-data | grep -q "Contabo"; then
-    PROVIDER="contabo"
-elif curl -s --max-time 2 http://169.254.169.254/metadata/v1/ 2>/dev/null | grep -q "digitalocean"; then
-    PROVIDER="digitalocean"
-elif curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ 2>/dev/null | grep -q "ami"; then
-    PROVIDER="aws"
-fi
-
-log_info "Detected provider: $PROVIDER, region: $REGION"
-
-# Register VPS in multi-domain registry
-log_info "Registering VPS in multi-domain registry..."
-ssh_with_control -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
-    $TAILSCALE_IP $PUBLIC_IP $REGION $PROVIDER" 2>&1 | grep -v "Warning: Permanently added"
-
-if [ $? -eq 0 ]; then
-    log_success "VPS registered in multi-domain registry"
-else
-    log_error "VPS registration failed in multi-domain registry"
-    log_error "This may cause routing issues. Please register manually:"
-    log_error "  kubectl patch configmap domain-registry -n kube-system ..."
-fi
-
-# Register domain in cluster if PUBLIC_DOMAIN is configured
-if [ -n "$PUBLIC_DOMAIN" ]; then
-    log_info "Registering domain in cluster: $PUBLIC_DOMAIN"
-    
-    ssh_with_control -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-domain \
-        $PUBLIC_DOMAIN 'VPS edge node domain'" 2>&1 | grep -v "Warning: Permanently added"
-    
-    if [ $? -eq 0 ]; then
-        log_success "Domain registered in cluster: $PUBLIC_DOMAIN"
-        
-        # VALIDATION: Verify domain was actually registered
-        log_info "Validating domain registration..."
-        DOMAIN_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-            "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.domains | has(\"$PUBLIC_DOMAIN\")'" 2>/dev/null || echo "false")
-        
-        if [ "$DOMAIN_CHECK" = "true" ]; then
-            log_success "✓ Domain registration verified in ConfigMap"
-            
-            # VALIDATION: Verify registry structure is correct
-            log_info "Validating registry structure..."
-            STRUCTURE_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-                "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r 'has(\"domains\") and has(\"vps_nodes\")'" 2>/dev/null || echo "false")
-            
-            if [ "$STRUCTURE_CHECK" = "true" ]; then
-                log_success "✓ Registry structure validated (unified format)"
-            else
-                log_warn "⚠ Registry structure may be incorrect"
-                log_info "Expected: {\"domains\":{...}, \"vps_nodes\":[...]}"
-            fi
-        else
-            log_warn "⚠ Could not verify domain registration"
-            log_warn "Domain may be in old structure format"
-        fi
-    else
-        log_error "Domain registration failed"
-        log_error "Manual registration: ./scripts/lib/multi-domain-registry.sh register-domain $PUBLIC_DOMAIN"
-    fi
-fi
-
-# Register VPS in sync controller (uses new registry manager)
-log_info "Registering VPS in sync controller..."
-log_info "Using VPS user: $CURRENT_VPS_USER"
-
-REGISTER_OUTPUT=$(ssh_with_control -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register vps_nodes \
-    $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER" 2>&1)
-
-REGISTER_EXIT=$?
-
-# Filter out benign warnings
-FILTERED_OUTPUT=$(echo "$REGISTER_OUTPUT" | grep -v "Warning: Permanently added")
-
-# Check for sudo environment variable error
-if echo "$REGISTER_OUTPUT" | grep -q "not allowed to set the following environment variables"; then
-    log_error "Sudo configuration issue on control plane"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔧 Fix Required on Control Plane"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "The sudo configuration needs to be updated to allow"
-    echo "environment variables required for VPS registration."
-    echo ""
-    echo "Run this command on the control plane:"
-    echo ""
-    echo "  cd ~/MyNodeOne"
-    echo "  ./scripts/setup-control-plane-sudo.sh"
-    echo ""
-    echo "Then try the VPS installation again."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    exit 1
-fi
-
-if [ $REGISTER_EXIT -eq 0 ]; then
-    log_success "VPS registered in sync controller"
-    
-    # VALIDATION: Verify VPS was actually registered
-    log_info "Validating VPS registration..."
-    VPS_CHECK=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.ip==\"$TAILSCALE_IP\") | .ssh_user'" 2>/dev/null || echo "")
-    
-    if [ "$VPS_CHECK" = "$CURRENT_VPS_USER" ]; then
-        log_success "✓ VPS registration verified in ConfigMap"
-        log_success "✓ Registered with user: $VPS_CHECK"
-    else
-        log_warn "⚠ Could not verify VPS registration (expected user: $CURRENT_VPS_USER, got: ${VPS_CHECK:-none})"
-    fi
-    
-    # CRITICAL: Validate IP matches what we expect
-    log_info "Validating registered IP matches current Tailscale IP..."
-    REGISTERED_IP=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.name==\"$HOSTNAME\") | .ip'" 2>/dev/null || echo "")
-    
-    if [ "$REGISTERED_IP" = "$TAILSCALE_IP" ]; then
-        log_success "✓ IP validation passed: $REGISTERED_IP"
-    else
-        log_error "IP MISMATCH DETECTED!"
-        echo ""
-        echo "Expected Tailscale IP: $TAILSCALE_IP"
-        echo "Registered IP: ${REGISTERED_IP:-none}"
-        echo ""
-        echo "This usually means:"
-        echo "  1. Stale registration from previous installation"
-        echo "  2. Tailscale IP changed"
-        echo ""
-        echo "Fix: Unregister and re-register:"
-        echo "  ./scripts/unregister-vps.sh ${REGISTERED_IP:-unknown}"
-        echo "  Then run this script again"
-        exit 1
-    fi
-    
-    # Also validate in domain-registry
-    log_info "Validating IP in domain-registry..."
-    DOMAIN_REG_IP=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "sudo kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.vps_nodes[] | select(.hostname==\"$HOSTNAME\") | .tailscale_ip'" 2>/dev/null || echo "")
-    
-    if [ "$DOMAIN_REG_IP" = "$TAILSCALE_IP" ]; then
-        log_success "✓ Domain registry IP validated: $DOMAIN_REG_IP"
-    elif [ -z "$DOMAIN_REG_IP" ]; then
-        log_warn "⚠ VPS not found in domain-registry (may be registered later)"
-    else
-        log_error "IP mismatch in domain-registry!"
-        echo "Expected: $TAILSCALE_IP, Got: $DOMAIN_REG_IP"
-        echo "Run: ./scripts/unregister-vps.sh $DOMAIN_REG_IP"
-        exit 1
-    fi
-else
-    log_error "VPS registration failed in sync controller"
-    log_error "Routes may not sync automatically. Manual registration:"
-    log_error "  ./scripts/lib/node-registry-manager.sh register vps_nodes $TAILSCALE_IP $HOSTNAME $CURRENT_VPS_USER"
-    exit 1
-fi
-
-echo ""
-log_info "Installing sync script on VPS..."
-
-# Create scripts directory structure
-mkdir -p ~/MyNodeOne/scripts/lib
-
-# Fetch sync script from control plane
-if scp "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP:~/MyNodeOne/scripts/sync-vps-routes.sh" \
-    ~/MyNodeOne/scripts/sync-vps-routes.sh 2>/dev/null; then
-    chmod +x ~/MyNodeOne/scripts/sync-vps-routes.sh
-    log_success "Sync script installed"
-else
-    log_warn "Could not fetch sync script from control plane"
-    log_info "Creating minimal sync script..."
-    
-    # Create a minimal sync script that uses SSH to control plane
-    cat > ~/MyNodeOne/scripts/sync-vps-routes.sh << 'EOFSCRIPT'
-#!/bin/bash
-set -euo pipefail
-
-# Detect actual user's home directory
-ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_USER="$SUDO_USER"
     ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 else
+    ACTUAL_USER=$(whoami)
     ACTUAL_HOME="$HOME"
 fi
+
+log_info "Running as: $ACTUAL_USER"
 
 # Load configuration
-source "$ACTUAL_HOME/.mynodeone/config.env"
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [ ! -f "$CONFIG_FILE" ]; then
+    log_error "Configuration not found: $CONFIG_FILE"
+    log_error "This script should be called by mynodeone with VPS_ORCHESTRATED=true"
+    exit 1
+fi
 
-VPS_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null)
+source "$CONFIG_FILE"
 
-echo "[INFO] Syncing routes from control plane..."
+log_success "Configuration loaded"
+log_info "Node Name: ${NODE_NAME:-unknown}"
+log_info "VPS Domain: ${VPS_DOMAIN:-unknown}"
+log_info "Control Plane: ${CONTROL_PLANE_IP:-unknown}"
+echo
 
-# Fetch routes from control plane
-ssh "${CONTROL_PLANE_SSH_USER:-root}@${CONTROL_PLANE_IP}" \
-    "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh export-vps-routes $VPS_TAILSCALE_IP ${CONTROL_PLANE_IP}" \
-    > /tmp/mynodeone-routes.yml
-
-# Install routes
-sudo mkdir -p /etc/traefik/dynamic
-sudo cp /tmp/mynodeone-routes.yml /etc/traefik/dynamic/mynodeone-routes.yml
-sudo chmod 644 /etc/traefik/dynamic/mynodeone-routes.yml
-rm -f /tmp/mynodeone-routes.yml
-
-# Restart Traefik
-cd /etc/traefik && sudo docker compose restart
-
-echo "[SUCCESS] Routes synced and Traefik restarted"
-EOFSCRIPT
+# Step 1: Install Docker
+log_info "Step 1: Installing Docker..."
+if command -v docker &> /dev/null; then
+    log_success "Docker already installed: $(docker --version)"
+else
+    log_info "Installing Docker..."
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh
+    rm -f /tmp/get-docker.sh
     
-    chmod +x ~/MyNodeOne/scripts/sync-vps-routes.sh
-    log_success "Minimal sync script created"
+    # Add user to docker group
+    usermod -aG docker "$ACTUAL_USER"
+    
+    log_success "Docker installed successfully"
 fi
+echo
 
-log_info "Running initial sync..."
-if ~/MyNodeOne/scripts/sync-vps-routes.sh 2>&1 | tail -5; then
-    log_success "Initial sync completed"
+# Step 2: Install Docker Compose
+log_info "Step 2: Installing Docker Compose..."
+if command -v docker-compose &> /dev/null; then
+    log_success "Docker Compose already installed: $(docker-compose --version)"
 else
-    log_info "Initial sync skipped (no routes configured yet)"
-    log_info "Routes will be pushed from control plane when apps are made public"
+    log_info "Installing Docker Compose..."
+    DOCKER_COMPOSE_VERSION="2.24.5"
+    curl -L "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    log_success "Docker Compose installed successfully"
+fi
+echo
+
+# Step 3: Configure firewall
+log_info "Step 3: Configuring firewall..."
+if command -v ufw &> /dev/null; then
+    log_info "Configuring UFW firewall..."
+    
+    # Allow SSH
+    ufw allow 22/tcp
+    
+    # Allow HTTP/HTTPS for Traefik
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    
+    # Enable firewall
+    ufw --force enable
+    
+    log_success "Firewall configured"
+else
+    log_warn "UFW not installed, skipping firewall configuration"
+fi
+echo
+
+# Step 4: Setup Traefik
+log_info "Step 4: Setting up Traefik..."
+TRAEFIK_DIR="$ACTUAL_HOME/traefik"
+mkdir -p "$TRAEFIK_DIR/config"
+mkdir -p "$TRAEFIK_DIR/letsencrypt"
+
+# Create Traefik static configuration
+cat > "$TRAEFIK_DIR/traefik.yml" << 'TRAEFIK_CONFIG'
+api:
+  dashboard: true
+  insecure: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: traefik
+  file:
+    directory: "/etc/traefik/config"
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "REPLACE_SSL_EMAIL"
+      storage: "/letsencrypt/acme.json"
+      httpChallenge:
+        entryPoint: web
+
+log:
+  level: INFO
+TRAEFIK_CONFIG
+
+# Update email in config
+sed -i "s/REPLACE_SSL_EMAIL/${SSL_EMAIL:-admin@${VPS_DOMAIN:-localhost}}/g" "$TRAEFIK_DIR/traefik.yml"
+chown -R "$ACTUAL_USER:$ACTUAL_USER" "$TRAEFIK_DIR"
+chmod 600 "$TRAEFIK_DIR/traefik.yml"
+log_success "Traefik configuration created"
+echo
+
+# Step 5: Create Traefik docker-compose file
+log_info "Step 5: Creating Traefik service..."
+cat > "$TRAEFIK_DIR/docker-compose.yml" << 'COMPOSE_CONFIG'
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.11
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./config:/etc/traefik/config:ro
+      - ./letsencrypt:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.REPLACE_VPS_DOMAIN`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+COMPOSE_CONFIG
+
+# Update domain in compose file
+sed -i "s/REPLACE_VPS_DOMAIN/${VPS_DOMAIN:-localhost}/g" "$TRAEFIK_DIR/docker-compose.yml"
+chown -R "$ACTUAL_USER:$ACTUAL_USER" "$TRAEFIK_DIR"
+log_success "Traefik service configured"
+echo
+
+# Step 6: Start Traefik
+log_info "Step 6: Starting Traefik..."
+
+# Create network
+if ! docker network inspect traefik &> /dev/null; then
+    docker network create traefik
+    log_success "Traefik network created"
 fi
 
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ VPS Node Configured!"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
+# Start Traefik
+cd "$TRAEFIK_DIR"
+sudo -u "$ACTUAL_USER" docker-compose up -d
 
-log_success "What's configured:"
-echo "  • Registered in control plane registry"
-echo "  • Auto-sync enabled for new apps"
-echo "  • Traefik routes configured"
-echo "  • Domain: $PUBLIC_DOMAIN"
-echo ""
+if docker ps | grep -q traefik; then
+    log_success "Traefik started successfully"
+else
+    log_error "Failed to start Traefik"
+    exit 1
+fi
+echo
 
-log_info "This VPS will now automatically:"
-echo "  • Receive route updates when apps are installed"
-echo "  • Update Traefik configuration"
-echo "  • Obtain SSL certificates from Let's Encrypt"
-echo ""
+# Step 7: Create node info file
+log_info "Step 7: Creating node information file..."
+NODE_INFO_FILE="$ACTUAL_HOME/.mynodeone/node-info.json"
+cat > "$NODE_INFO_FILE" << NODE_INFO
+{
+  "node_name": "${NODE_NAME}",
+  "node_type": "edge",
+  "vps_domain": "${VPS_DOMAIN}",
+  "vps_public_ip": "${VPS_PUBLIC_IP}",
+  "tailscale_ip": "${TAILSCALE_IP}",
+  "control_plane_ip": "${CONTROL_PLANE_IP}",
+  "setup_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "status": "active"
+}
+NODE_INFO
 
-log_info "Point your DNS records to this VPS:"
-echo "  Type: A"
-echo "  Name: * (wildcard) or specific subdomains"
-echo "  Value: $PUBLIC_IP"
-echo "  TTL: 300"
-echo ""
+chown "$ACTUAL_USER:$ACTUAL_USER" "$NODE_INFO_FILE"
+log_success "Node information saved"
+echo
 
-# Run validation tests
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🔍 Validating VPS Edge Node Setup"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
+# Step 8: Register VPS with Control Plane
+log_info "Step 8: Registering VPS with Control Plane..."
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
-    if bash "$SCRIPT_DIR/lib/validate-installation.sh" vps-edge; then
-        log_success "✅ VPS validation passed!"
-    else
-        log_warn "⚠️  Some validation tests failed (see above)"
+# Check if we have SSH access to control plane
+if command -v ssh &> /dev/null && [ -n "${CONTROL_PLANE_IP:-}" ]; then
+    log_info "Control Plane IP: $CONTROL_PLANE_IP"
+    
+    # Detect provider (optional)
+    PROVIDER="unknown"
+    if curl -s --max-time 2 http://169.254.169.254/metadata/v1/vendor-data 2>/dev/null | grep -q "Contabo"; then
+        PROVIDER="contabo"
+    elif curl -s --max-time 2 http://169.254.169.254/metadata/v1/ 2>/dev/null | grep -q "digitalocean"; then
+        PROVIDER="digitalocean"
+    elif curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ 2>/dev/null | grep -q "ami"; then
+        PROVIDER="aws"
     fi
+    
+    log_info "Detected provider: $PROVIDER"
+    
+    # Try to register VPS node
+    log_info "Registering VPS node..."
+    if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+        "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
+        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
+        ${TAILSCALE_IP:-unknown} \
+        ${VPS_PUBLIC_IP:-unknown} \
+        ${VPS_LOCATION:-unknown} \
+        $PROVIDER" 2>/dev/null; then
+        log_success "VPS node registered in domain-registry"
+    else
+        log_warn "Could not auto-register VPS (SSH may require setup)"
+        echo "You can manually register later:"
+        echo "  cd ~/MyNodeOne"
+        echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps \\"
+        echo "    ${TAILSCALE_IP:-unknown} ${VPS_PUBLIC_IP:-unknown} ${VPS_LOCATION:-unknown} $PROVIDER"
+    fi
+    
+    # Try to register domain if configured
+    if [ -n "${VPS_DOMAIN:-}" ]; then
+        log_info "Registering domain: $VPS_DOMAIN..."
+        if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+            "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
+            "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-domain \
+            ${VPS_DOMAIN} \
+            'VPS edge node domain'" 2>/dev/null; then
+            log_success "Domain registered: $VPS_DOMAIN"
+        else
+            log_warn "Could not auto-register domain"
+            echo "You can manually register later:"
+            echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'Description'"
+        fi
+    fi
+    
+    # Trigger sync controller to pick up changes
+    log_info "Triggering sync controller..."
+    ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+        "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
+        "sudo systemctl restart mynodeone-sync-controller" 2>/dev/null || true
+    
+    log_success "Registration complete"
 else
-    log_warn "Validation script not found, skipping tests"
+    log_warn "Skipping auto-registration (SSH not configured or CONTROL_PLANE_IP not set)"
+    echo ""
+    echo "To manually register this VPS on the control plane, run:"
+    echo "  cd ~/MyNodeOne"
+    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps ${TAILSCALE_IP:-unknown} ${VPS_PUBLIC_IP:-unknown} ${VPS_LOCATION:-unknown} unknown"
+    if [ -n "${VPS_DOMAIN:-}" ]; then
+        echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
+    fi
 fi
-echo ""
+echo
 
-# CRITICAL: Final end-to-end SSH validation
+# Final summary
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🔐 Final SSH Connectivity Check"
+log_success "VPS Edge Node setup complete! 🎉"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-log_info "Testing end-to-end SSH (required for route sync)..."
-
-# Test reverse SSH from control plane to this VPS
-# This simulates what the sync-controller and other scripts will do.
-if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "sudo ssh -o BatchMode=yes -o ConnectTimeout=5 $CURRENT_VPS_USER@$TAILSCALE_IP 'echo OK'" 2>/dev/null | grep -q "OK"; then
-    log_success "✅ Reverse SSH confirmed (control plane → VPS)"
-    log_success "Scripts can now sync routes without passwords."
-else
-    log_error "❌ Reverse SSH FAILED."
-    echo ""
-    echo "The control plane cannot automatically connect to this VPS."
-    echo "This means 'sync-controller.sh' and 'manage-app-visibility.sh' will fail."
-    echo ""
-    echo "To fix this, run the following command on your CONTROL PLANE:"
-    echo "  ssh-copy-id -i /root/.ssh/id_ed25519.pub $CURRENT_VPS_USER@$TAILSCALE_IP"
-    echo ""
-    echo "(You may need to generate the key first: sudo ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N '')"
-    echo ""
+echo
+echo "✓ Docker installed and running"
+echo "✓ Traefik configured and running"
+echo "✓ Firewall configured"
+echo "✓ SSL certificates will be issued automatically"
+echo
+echo "Next steps:"
+echo "  1. Verify Traefik: docker ps | grep traefik"
+echo "  2. Check logs: docker logs traefik"
+echo "  3. Point DNS to this VPS: ${VPS_PUBLIC_IP:-your-vps-ip}"
+echo
+if [ -n "${VPS_DOMAIN:-}" ]; then
+    echo "Traefik dashboard: https://traefik.${VPS_DOMAIN}"
 fi
-echo ""
-
-log_success "VPS node registration complete! 🎉"
-echo ""
+echo

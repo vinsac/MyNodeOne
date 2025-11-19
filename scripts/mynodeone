@@ -1561,62 +1561,20 @@ main() {
                     echo
                     echo "To install a VPS Edge Node:"
                     echo "  1. SSH into your Control Plane"
-                    echo "  2. Run: sudo ./scripts/mynodeone"
-                    echo "  3. Select: 3) VPS Edge Node"
-                    echo "  4. Provide VPS details when prompted"
+                    echo "  2. Run: sudo ./scripts/add-vps-edge-node.sh"
+                    echo "  3. Provide VPS details when prompted"
                     echo
                     exit 1
                 fi
                 
-                print_info "Starting orchestrated VPS installation..."
+                # This script is running ON the VPS (orchestrated from control plane)
+                print_info "Running VPS Edge Node local installation..."
                 echo
                 
-                # Export required variables for orchestrator
-                export PROJECT_ROOT
-                export ACTUAL_USER
-                export ACTUAL_HOME
-                
-                # Source the VPS orchestrator
-                source "$SCRIPT_DIR/lib/vps-orchestrator.sh"
-                
-                # Validate required variables
-                if [ -z "${VPS_NODE_NAME:-}" ]; then
-                    print_error "Missing VPS_NODE_NAME"
-                    exit 1
-                fi
-                
-                if [ -z "${VPS_TAILSCALE_IP:-}" ] || [ -z "${VPS_SSH_USER:-}" ] || [ -z "${VPS_PUBLIC_IP:-}" ] || [ -z "${VPS_DOMAIN:-}" ]; then
-                    print_error "Missing required VPS configuration variables"
-                    exit 1
-                fi
-                
-                if [ -z "${SSL_EMAIL:-}" ]; then
-                    print_error "Missing SSL_EMAIL for Let's Encrypt certificates"
-                    exit 1
-                fi
-                
-                if [ -z "${CONTROL_PLANE_IP:-}" ] || [ -z "${CLUSTER_NAME:-}" ] || [ -z "${CLUSTER_DOMAIN:-}" ]; then
-                    print_error "Missing required cluster configuration variables"
-                    exit 1
-                fi
-                
-                # Run orchestration
-                if ! orchestrate_vps_installation \
-                    "$VPS_NODE_NAME" \
-                    "$VPS_TAILSCALE_IP" \
-                    "$VPS_SSH_USER" \
-                    "$VPS_PUBLIC_IP" \
-                    "$VPS_DOMAIN" \
-                    "$SSL_EMAIL" \
-                    "${VPS_LOCATION:-unspecified}" \
-                    "$CONTROL_PLANE_IP" \
-                    "${CONTROL_PLANE_SSH_USER:-$ACTUAL_USER}" \
-                    "$CLUSTER_NAME" \
-                    "$CLUSTER_DOMAIN"; then
-                    print_error "VPS orchestration failed"
-                    exit 1
-                fi
+                # Run the VPS setup script
+                bash "$SCRIPT_DIR/setup-vps-node.sh"
                 ;;
+
             management)
                 print_info "Running management laptop setup..."
                 bash "$SCRIPT_DIR/setup-management-laptop.sh"

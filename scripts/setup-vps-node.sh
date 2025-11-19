@@ -259,8 +259,23 @@ else
 fi
 echo
 
-# Step 7: Create node info file
-log_info "Step 7: Creating node information file..."
+# Step 7: Configure Tailscale to accept subnet routes
+log_info "Step 7: Configuring Tailscale to accept subnet routes..."
+if command -v tailscale &> /dev/null; then
+    if tailscale set --accept-routes=true 2>/dev/null; then
+        log_success "Tailscale configured to accept subnet routes"
+        log_info "This allows VPS to reach MetalLB service IPs on control plane"
+    else
+        log_warn "Could not configure Tailscale automatically"
+        log_warn "Run manually: sudo tailscale set --accept-routes=true"
+    fi
+else
+    log_warn "Tailscale not found - subnet routing not configured"
+fi
+echo
+
+# Step 8: Create node info file
+log_info "Step 8: Creating node information file..."
 NODE_INFO_FILE="$ACTUAL_HOME/.mynodeone/node-info.json"
 cat > "$NODE_INFO_FILE" << NODE_INFO
 {
@@ -279,8 +294,8 @@ chown "$ACTUAL_USER:$ACTUAL_USER" "$NODE_INFO_FILE"
 log_success "Node information saved"
 echo
 
-# Step 8: Register VPS with Control Plane
-log_info "Step 8: Registering VPS with Control Plane..."
+# Step 9: Register VPS with Control Plane
+log_info "Step 9: Registering VPS with Control Plane..."
 
 # Check if we have SSH access to control plane
 if command -v ssh &> /dev/null && [ -n "${CONTROL_PLANE_IP:-}" ]; then

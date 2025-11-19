@@ -37,10 +37,21 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    log_error "Do not run this script as root. Run as: sudo ./scripts/setup-control-plane-sudo.sh"
+# Detect actual user (works with or without sudo)
+if [ -n "${SUDO_USER:-}" ]; then
+    # Running with sudo - use SUDO_USER
+    ACTUAL_USER="$SUDO_USER"
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+elif [ "$EUID" -eq 0 ]; then
+    # Running as root without sudo - not allowed
+    log_error "Do not run this script directly as root."
+    log_error "Run as your regular user: ./scripts/setup-control-plane-sudo.sh"
+    log_error "Or with sudo: sudo ./scripts/setup-control-plane-sudo.sh"
     exit 1
+else
+    # Running as regular user without sudo
+    ACTUAL_USER="$USER"
+    ACTUAL_HOME="$HOME"
 fi
 
 echo ""
@@ -49,11 +60,11 @@ echo "  🔐 MyNodeOne Control Plane - Passwordless Sudo Configuration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-CURRENT_USER=$(whoami)
 MYNODEONE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-log_info "Configuring passwordless sudo for: $CURRENT_USER"
+log_info "Configuring passwordless sudo for: $ACTUAL_USER"
 log_info "MyNodeOne directory: $MYNODEONE_DIR"
+log_info "User home directory: $ACTUAL_HOME"
 echo ""
 
 # Create sudoers configuration
@@ -64,20 +75,20 @@ cat > /tmp/mynodeone-sudo << EOF
 # 
 # Purpose: Enable automated operations from VPS and management nodes
 # Generated: $(date)
-# User: $CURRENT_USER
+# User: $ACTUAL_USER
 #
 # Security Note: This allows the user to run kubectl and MyNodeOne scripts
 # without interactive password prompts. Only grant this to trusted users.
 
 # Allow specific environment variables to pass through sudo
 # Required for VPS registration scripts
-Defaults:$CURRENT_USER env_keep += "SKIP_SSH_VALIDATION"
+Defaults:$ACTUAL_USER env_keep += "SKIP_SSH_VALIDATION"
 
 # Allow kubectl without password (required for cluster management)
-$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/local/bin/kubectl, /usr/bin/kubectl
+$ACTUAL_USER ALL=(ALL) NOPASSWD: /usr/local/bin/kubectl, /usr/bin/kubectl
 
 # Allow MyNodeOne scripts without password (required for automation)
-$CURRENT_USER ALL=(ALL) NOPASSWD: $MYNODEONE_DIR/scripts/*.sh, $MYNODEONE_DIR/scripts/lib/*.sh
+$ACTUAL_USER ALL=(ALL) NOPASSWD: $MYNODEONE_DIR/scripts/*.sh, $MYNODEONE_DIR/scripts/lib/*.sh
 EOF
 
 # Install sudoers file
@@ -140,7 +151,7 @@ echo "   • MyNodeOne scripts can run without password"
 echo "   • Remote automation from VPS/management nodes will work"
 echo ""
 echo "⚠️  Security Note:"
-echo "   This allows user '$CURRENT_USER' to run kubectl and MyNodeOne"
+echo "   This allows user '$ACTUAL_USER' to run kubectl and MyNodeOne"
 echo "   scripts without password prompts. Only grant this to trusted users."
 echo ""
 echo "📋 Next Steps:"
@@ -149,6 +160,6 @@ echo "   2. You can now install management laptops"
 echo "   3. Automated operations will work without password prompts"
 echo ""
 echo "🔍 To verify from VPS or management laptop:"
-echo "   ssh $CURRENT_USER@<control-plane-ip> 'sudo kubectl version --client'"
+echo "   ssh $ACTUAL_USER@<control-plane-ip> 'sudo kubectl version --client'"
 echo "   (Should show version without asking for password)"
 echo ""

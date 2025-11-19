@@ -34,6 +34,14 @@ log_error() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_MANAGER="$SCRIPT_DIR/node-registry-manager.sh"
 
+# Detect actual user's home directory (for sudo compatibility)
+ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    ACTUAL_HOME="$HOME"
+fi
+
 # Initialize node registry (uses new registry manager)
 init_node_registry() {
     # Sync from ConfigMap to ensure we have latest data
@@ -74,7 +82,7 @@ push_sync_to_node() {
     local ssh_user="$3"
     local max_retries=3
     local retry_delay=5
-    local registry_file="$HOME/.mynodeone/node-registry.json"
+    local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
     
     
     log_info "Pushing sync to $node_ip..."
@@ -98,10 +106,35 @@ push_sync_to_node() {
     esac
     
     # Try SSH push with retries
+    # Use actual user's SSH (with their agent) when running under sudo
+    local ssh_opts="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
+    local ssh_cmd="ssh"
+    
+    # If running under sudo, run SSH as the actual user to access their SSH agent
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        # Get user's SSH agent socket
+        local user_ssh_auth_sock=$(sudo -u "$SUDO_USER" printenv SSH_AUTH_SOCK 2>/dev/null)
+        if [ -z "$user_ssh_auth_sock" ]; then
+            # Try common locations
+            user_ssh_auth_sock="/run/user/$(id -u $SUDO_USER)/keyring/ssh"
+            if [ ! -S "$user_ssh_auth_sock" ]; then
+                user_ssh_auth_sock="/run/user/$(id -u $SUDO_USER)/gnupg/S.gpg-agent.ssh"
+            fi
+        fi
+        
+        if [ -S "$user_ssh_auth_sock" ]; then
+            # Run as actual user with their SSH agent
+            ssh_cmd="sudo -u $SUDO_USER SSH_AUTH_SOCK=$user_ssh_auth_sock ssh"
+        else
+            # Fallback: run as user without agent (will use key files)
+            ssh_cmd="sudo -u $SUDO_USER ssh"
+        fi
+    fi
+    
     local attempt=1
     while [[ $attempt -le $max_retries ]]; do
-        if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$ssh_user@$node_ip" \
-            "cd ~/MyNodeOne && sudo ./scripts/$sync_script" &>/dev/null < /dev/null; then
+        if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+            "cd ~/mynodeone && sudo ./scripts/$sync_script" &>/dev/null < /dev/null; then
             log_success "Synced: $node_ip"
             
             # Update last_sync time in ConfigMap
@@ -164,7 +197,7 @@ push_sync_all() {
     
     # Get registry from ConfigMap via registry manager
     local config_dir=$("$REGISTRY_MANAGER" sync-from 2>&1 | grep -oP '(?<=to local cache\n).*' || echo "$HOME/.mynodeone")
-    local registry_file="$HOME/.mynodeone/node-registry.json"
+    local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
     
     if [[ ! -f "$registry_file" ]]; then
         log_error "Registry file not found after sync: $registry_file"
@@ -285,7 +318,7 @@ health_check() {
     log_info "Running health check on registered nodes..."
     
     init_node_registry
-    local registry_file="$HOME/.mynodeone/node-registry.json"
+    local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
     local registry=$(cat "$registry_file")
     
     echo ""

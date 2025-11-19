@@ -337,10 +337,23 @@ main() {
         deploy)
             check_kubectl
             deploy_demo_app
+            
+            # Sync service registry after deployment
+            log_info "Syncing service registry..."
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+                bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+            fi
             ;;
         remove|delete|undeploy)
             check_kubectl
             undeploy_demo_app
+            
+            # Sync service registry after removal
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+                bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+            fi
             ;;
         status)
             check_kubectl

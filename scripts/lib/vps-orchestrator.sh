@@ -65,19 +65,51 @@ setup_ssh_access() {
     # SSH doesn't work - need to copy key
     print_warning "SSH key not yet authorized on VPS"
     echo
-    echo "We need to copy the SSH public key to the VPS."
+    echo "We need to copy SSH public keys to the VPS for automated sync."
     echo "You will be prompted for the VPS password ONCE."
     echo
     
     while [ $retry_count -lt $max_retries ]; do
-        print_info "Attempt $((retry_count + 1))/$max_retries: Copying SSH key to VPS..."
+        print_info "Attempt $((retry_count + 1))/$max_retries: Copying SSH keys to VPS..."
         
+        # Copy user's SSH key
         if sudo -u "$ACTUAL_USER" ssh-copy-id -i "$ssh_key" -o StrictHostKeyChecking=no "$vps_user@$vps_ip" 2>/dev/null; then
-            print_success "SSH key copied successfully"
+            print_success "User SSH key copied successfully"
             
-            # Verify it works
+            # Also copy root's SSH key for sync-controller (which runs as root)
+            print_info "Copying root's SSH key for automated sync..."
+            if [ ! -f /root/.ssh/id_ed25519 ] && [ ! -f /root/.ssh/id_rsa ]; then
+                print_info "Generating SSH key for root..."
+                ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N "" -C "root@$(hostname)" >/dev/null 2>&1
+            fi
+            
+            # Copy root's key using the user's already-authenticated session
+            local root_key=""
+            if [ -f /root/.ssh/id_ed25519.pub ]; then
+                root_key=$(cat /root/.ssh/id_ed25519.pub)
+            elif [ -f /root/.ssh/id_rsa.pub ]; then
+                root_key=$(cat /root/.ssh/id_rsa.pub)
+            fi
+            
+            if [ -n "$root_key" ]; then
+                if sudo -u "$ACTUAL_USER" ssh "$vps_user@$vps_ip" "echo '$root_key' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" 2>/dev/null; then
+                    print_success "Root SSH key copied successfully"
+                else
+                    print_warning "Failed to copy root SSH key (sync will require password)"
+                fi
+            fi
+            
+            # Verify user SSH works
             if sudo -u "$ACTUAL_USER" ssh -i "$ssh_key" -o BatchMode=yes -o ConnectTimeout=5 "$vps_user@$vps_ip" "exit" 2>/dev/null; then
-                print_success "SSH passwordless access verified"
+                print_success "SSH passwordless access verified for user"
+                
+                # Verify root SSH works
+                if ssh -o BatchMode=yes -o ConnectTimeout=5 "$vps_user@$vps_ip" "exit" 2>/dev/null; then
+                    print_success "SSH passwordless access verified for root"
+                else
+                    print_warning "Root SSH still requires password (sync will prompt for password)"
+                fi
+                
                 return 0
             else
                 print_error "SSH key copied but authentication still fails"

@@ -396,6 +396,83 @@ The orchestration automatically installs:
 - ✅ Traefik reverse proxy with automatic HTTPS
 - ✅ Firewall and monitoring configured
 - ✅ Secure Tailscale mesh network to Control Plane
+- ✅ Automated sync system for configuration updates
+
+---
+
+## Making Services Public
+
+After installing your VPS, you can expose your applications to the internet.
+
+### Step 1: Configure DNS
+
+Point your domain to your VPS public IP:
+
+```
+Type: A
+Name: @ (or your domain)
+Value: <your-vps-public-ip>
+TTL: 300
+
+# For subdomains:
+Type: A
+Name: demo
+Value: <your-vps-public-ip>
+
+Type: A  
+Name: chat
+Value: <your-vps-public-ip>
+```
+
+### Step 2: Make Services Public
+
+Use the `manage-app-visibility.sh` script to expose services:
+
+```bash
+# ON YOUR CONTROL PLANE:
+cd ~/MyNodeOne
+
+# Make demo app public
+sudo ./scripts/manage-app-visibility.sh public demo demo yourdomain.com <vps-tailscale-ip>
+
+# Make LLM chat public
+sudo ./scripts/manage-app-visibility.sh public open-webui chat yourdomain.com <vps-tailscale-ip>
+
+# Example with actual values:
+sudo ./scripts/manage-app-visibility.sh public demo demo curiios.com 100.80.255.123
+sudo ./scripts/manage-app-visibility.sh public open-webui chat curiios.com 100.80.255.123
+```
+
+**What happens automatically:**
+1. Service is marked as `public: true` in the registry
+2. Configuration is pushed to the VPS via SSH
+3. VPS generates Traefik routes for the service
+4. Traefik requests Let's Encrypt SSL certificate
+5. Service becomes accessible at `https://subdomain.yourdomain.com`
+
+### Step 3: Verify Access
+
+Wait 2-5 minutes for SSL certificates, then test:
+
+```bash
+# Check if service is accessible
+curl -I https://demo.yourdomain.com
+curl -I https://chat.yourdomain.com
+```
+
+### Automated Sync System
+
+The sync system automatically propagates configuration changes:
+
+- **When you deploy/remove apps**: Service registry is updated
+- **When you make services public**: Configuration is pushed to VPS
+- **Manual sync**: `sudo ./scripts/lib/sync-controller.sh push`
+
+**How it works:**
+1. Control plane maintains service registry in Kubernetes ConfigMap
+2. When changes occur, sync-controller SSHes to registered VPS nodes
+3. VPS fetches updated registry and regenerates Traefik routes
+4. Traefik automatically reloads with new configuration
 
 **Next Steps:**
 

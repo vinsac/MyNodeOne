@@ -423,6 +423,12 @@ main() {
     # Check for remove flag
     if [ "$1" = "remove" ] || [ "$1" = "delete" ]; then
         remove_chat_app
+        
+        # Sync service registry after removal
+        log_info "Syncing service registry..."
+        if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+            bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+        fi
         exit 0
     fi
     
@@ -433,6 +439,12 @@ main() {
     get_access_info
     download_model
     print_summary
+    
+    # Sync service registry after deployment
+    log_info "Syncing service registry..."
+    if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+        bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+    fi
 }
 
 main "$@"

@@ -54,6 +54,7 @@ fi
 CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-}"
 PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
+TRAEFIK_CONFIG_DIR="${TRAEFIK_CONFIG_DIR:-$ACTUAL_HOME/traefik/config}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -140,7 +141,7 @@ fi
 # Generate Traefik routes
 log_info "Generating Traefik routes..."
 
-ROUTE_FILE="/etc/traefik/dynamic/mynodeone-routes.yml"
+ROUTE_FILE="$TRAEFIK_CONFIG_DIR/mynodeone-routes.yml"
 TEMP_FILE="/tmp/mynodeone-routes.yml"
 
 cat > "$TEMP_FILE" << 'HEADER'

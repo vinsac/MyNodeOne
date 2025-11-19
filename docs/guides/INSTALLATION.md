@@ -342,15 +342,42 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 **All steps are performed FROM your Control Plane** - the VPS will be configured remotely.
 
-### Step 1: Run the Interactive Installer on Control Plane
+### Choose Your Installation Method
+
+**Method 1: One-Click Installation (Recommended)** ⚡
+
+Fast, non-interactive installation with all parameters in one command:
+
+```bash
+# ON YOUR CONTROL PLANE:
+cd ~/MyNodeOne
+
+sudo ./scripts/install-vps-edge-node.sh \
+  --node-name "vps-edge-01" \
+  --tailscale-ip "100.80.255.123" \
+  --ssh-user "sammy" \
+  --public-ip "45.8.133.192" \
+  --domain "curiios.com" \
+  --email "vinaysachdeva27@gmail.com"
+```
+
+**Replace with your actual values:**
+- `--node-name`: Friendly name for your VPS (e.g., "vps-edge-01")
+- `--tailscale-ip`: VPS Tailscale IP (from `tailscale ip -4` on VPS)
+- `--ssh-user`: Your sudo user on VPS (e.g., "sammy")
+- `--public-ip`: VPS public IP address
+- `--domain`: Your public domain name
+- `--email`: Your email for SSL certificates
+
+**Method 2: Interactive Installation** 💬
+
+Step-by-step with prompts:
 
 ```bash
 # ON YOUR CONTROL PLANE:
 cd ~/MyNodeOne
 sudo ./scripts/mynodeone
 ```
-
-### Step 2: Select VPS Edge Node
 
 When prompted:
 ```
@@ -361,56 +388,33 @@ Select node type:
   4) Management Workstation
 ```
 
-Choose **3) VPS Edge Node**
+Choose **3) VPS Edge Node** and answer the prompts for VPS details
 
-### Step 3: Provide VPS Details
-
-The installer will ask for:
+**Interactive prompts will ask for:**
 
 1. **VPS Node Name** (e.g., `vps-edge-01`, `nyc-edge`)
-   - Internal identifier for this VPS
-
 2. **VPS Tailscale IP** (e.g., `100.101.237.15`)
-   - The Tailscale IP from step 3 above
-
 3. **VPS SSH Username** (e.g., `sammy`)
-   - The sudo user you created
-
 4. **VPS Public IPv4 Address** (e.g., `45.8.133.192`)
-   - The internet-facing IP address
-
-5. **VPS Primary Domain** (e.g., `vps.example.com`)
-   - Your domain that will point to this VPS
-
+5. **VPS Primary Domain** (e.g., `curiios.com`)
 6. **SSL Email Address** (e.g., `admin@example.com`)
-   - For Let's Encrypt certificate notifications
+7. **VPS Location** (Optional: e.g., `NYC`, `London`)
 
-7. **VPS Location** (Optional: e.g., `NYC`, `London`, `Singapore`)
-   - Helps identify VPS location
+---
 
-### Step 4: Review and Confirm
+### What Happens During Installation
 
-The installer will show a summary:
-```
-Summary:
-  Node Name:       vps-edge-01
-  Tailscale IP:    100.101.237.15
-  Public IP:       45.8.133.192
-  Domain:          vps.example.com
-  SSL Email:       admin@example.com
-  Location:        NYC
-  SSH User:        sammy
-```
-
-The installer will then automatically:
+The installer will show a summary and then automatically:
 - ✅ Detect Control Plane cluster configuration
 - ✅ Exchange SSH keys with the VPS
-- ✅ Verify passwordless sudo
+- ✅ Verify passwordless sudo on VPS
 - ✅ Generate VPS configuration file
 - ✅ Transfer MyNodeOne scripts to VPS
 - ✅ Execute installation remotely
-- ✅ Install Traefik reverse proxy
+- ✅ Install Traefik reverse proxy with Docker
 - ✅ Configure firewall and monitoring
+- ✅ Register VPS in sync controller
+- ✅ Push initial service registry
 
 ### What Gets Installed on the VPS
 

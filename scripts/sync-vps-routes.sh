@@ -230,11 +230,12 @@ rm -f "$TEMP_FILE"
 
 # Restart Traefik
 log_info "Restarting Traefik..."
-if cd /etc/traefik && sudo docker compose restart &>/dev/null; then
+TRAEFIK_DIR="$ACTUAL_HOME/traefik"
+if cd "$TRAEFIK_DIR" && sudo -u "$ACTUAL_USER" docker compose restart &>/dev/null; then
     log_success "Traefik restarted"
 else
     log_error "Failed to restart Traefik"
-    echo "  Manually restart: cd /etc/traefik && sudo docker compose restart"
+    echo "  Manually restart: cd $TRAEFIK_DIR && docker compose restart"
 fi
 
 # Show configured routes

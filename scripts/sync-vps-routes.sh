@@ -223,7 +223,7 @@ fi
 
 # Install new routes
 log_info "Installing new routes..."
-sudo mkdir -p /etc/traefik/dynamic
+sudo mkdir -p "$TRAEFIK_CONFIG_DIR"
 sudo cp "$TEMP_FILE" "$ROUTE_FILE"
 sudo chmod 644 "$ROUTE_FILE"
 rm -f "$TEMP_FILE"

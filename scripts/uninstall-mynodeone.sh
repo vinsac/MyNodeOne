@@ -538,13 +538,19 @@ if [ "$KEEP_CONFIG" = false ]; then
         log_success "Removed root SSH keys"
     fi
     
-    # Remove credential files
+    # Remove credential files and join tokens
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         user_home=$(eval echo ~$SUDO_USER)
-        if ls "$user_home/mynodeone-"*"-credentials.txt" &>/dev/null; then
-            rm -f "$user_home/mynodeone-"*"-credentials.txt"
-            log_success "Removed credential files"
+        if ls "$user_home/mynodeone-"*".txt" &>/dev/null; then
+            rm -f "$user_home/mynodeone-"*".txt"
+            log_success "Removed credential files and join tokens"
         fi
+    fi
+    
+    # Also check root's home directory
+    if ls /root/mynodeone-*.txt &>/dev/null 2>&1; then
+        rm -f /root/mynodeone-*.txt
+        log_success "Removed root credential files and join tokens"
     fi
     
     # Remove user configs if running as sudo

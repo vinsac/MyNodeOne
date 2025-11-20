@@ -294,91 +294,56 @@ chown "$ACTUAL_USER:$ACTUAL_USER" "$NODE_INFO_FILE"
 log_success "Node information saved"
 echo
 
-# Step 9: Register VPS with Control Plane
-log_info "Step 9: Registering VPS with Control Plane..."
+# Step 9: VPS Node Information
+log_info "Step 9: VPS Node Information..."
 
-# Check if we have SSH access to control plane
-if command -v ssh &> /dev/null && [ -n "${CONTROL_PLANE_IP:-}" ]; then
-    log_info "Control Plane IP: $CONTROL_PLANE_IP"
-    
-    # Detect provider (optional)
-    PROVIDER="unknown"
-    if curl -s --max-time 2 http://169.254.169.254/metadata/v1/vendor-data 2>/dev/null | grep -q "Contabo"; then
-        PROVIDER="contabo"
-    elif curl -s --max-time 2 http://169.254.169.254/metadata/v1/ 2>/dev/null | grep -q "digitalocean"; then
-        PROVIDER="digitalocean"
-    elif curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ 2>/dev/null | grep -q "ami"; then
-        PROVIDER="aws"
-    fi
-    
-    log_info "Detected provider: $PROVIDER"
-    
-    # Try to register VPS node
-    # Register in sync-controller registry (for automated sync)
-    log_info "Registering VPS in sync-controller..."
-    if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-        "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
-        "cd ~/MyNodeOne && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/sync-controller.sh register vps_nodes \
-        ${TAILSCALE_IP:-unknown} \
-        ${NODE_NAME:-vps-edge-01} \
-        ${VPS_SSH_USER:-$ACTUAL_USER}" 2>/dev/null; then
-        log_success "VPS registered in sync-controller"
-    else
-        log_warn "Could not auto-register in sync-controller"
-        echo "You can manually register later:"
-        echo "  cd ~/MyNodeOne"
-        echo "  sudo ./scripts/lib/sync-controller.sh register vps_nodes ${TAILSCALE_IP} ${NODE_NAME} ${VPS_SSH_USER}"
-    fi
-    
-    # Register in domain registry (for domain management)
-    log_info "Registering VPS in domain-registry..."
-    if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-        "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
-        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-vps \
-        ${TAILSCALE_IP:-unknown} \
-        ${VPS_PUBLIC_IP:-unknown} \
-        ${VPS_DOMAIN:-unknown} \
-        ${NODE_NAME:-vps-edge-01}" 2>/dev/null; then
-        log_success "VPS registered in domain-registry"
-    else
-        log_warn "Could not auto-register VPS in domain-registry"
-    fi
-    
-    # Register domain if configured
-    if [ -n "${VPS_DOMAIN:-}" ]; then
-        log_info "Registering domain: $VPS_DOMAIN..."
-        if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-            "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
-            "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh register-domain \
-            ${VPS_DOMAIN} \
-            'VPS edge node domain'" 2>/dev/null; then
-            log_success "Domain registered: $VPS_DOMAIN"
-        else
-            log_warn "Could not auto-register domain"
-        fi
-    fi
-    
-    # Trigger initial sync to push service registry to VPS
-    log_info "Triggering initial sync..."
-    if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-        "${ACTUAL_USER}@${CONTROL_PLANE_IP}" \
-        "cd ~/MyNodeOne && sudo ./scripts/lib/sync-controller.sh push" 2>/dev/null; then
-        log_success "Initial sync completed"
-    else
-        log_warn "Initial sync failed - will retry automatically"
-    fi
-    
-    log_success "Registration complete"
-else
-    log_warn "Skipping auto-registration (SSH not configured or CONTROL_PLANE_IP not set)"
-    echo ""
-    echo "To manually register this VPS on the control plane, run:"
-    echo "  cd ~/MyNodeOne"
-    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps ${TAILSCALE_IP:-unknown} ${VPS_PUBLIC_IP:-unknown} ${VPS_LOCATION:-unknown} unknown"
-    if [ -n "${VPS_DOMAIN:-}" ]; then
-        echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
-    fi
+# Detect provider (optional)
+PROVIDER="unknown"
+if curl -s --max-time 2 http://169.254.169.254/metadata/v1/vendor-data 2>/dev/null | grep -q "Contabo"; then
+    PROVIDER="contabo"
+elif curl -s --max-time 2 http://169.254.169.254/metadata/v1/ 2>/dev/null | grep -q "digitalocean"; then
+    PROVIDER="digitalocean"
+elif curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ 2>/dev/null | grep -q "ami"; then
+    PROVIDER="aws"
 fi
+
+log_info "Detected provider: $PROVIDER"
+log_info "Control Plane IP: ${CONTROL_PLANE_IP:-not set}"
+
+# Note: VPS registration is now handled by the control plane orchestrator
+# This ensures reliable registration using the existing SSH connection
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "ℹ VPS Registration"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "VPS registration is handled automatically by the control plane"
+echo "orchestrator after this setup completes successfully."
+echo ""
+echo "If you're running this script manually (not via orchestrator),"
+echo "you'll need to register this VPS on the control plane:"
+echo ""
+echo "  On Control Plane, run:"
+echo "  cd ~/MyNodeOne"
+echo "  sudo ./scripts/lib/sync-controller.sh register vps_nodes \\"
+echo "    ${TAILSCALE_IP:-<vps-tailscale-ip>} \\"
+echo "    ${NODE_NAME:-<node-name>} \\"
+echo "    ${VPS_SSH_USER:-<ssh-user>}"
+echo ""
+echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps \\"
+echo "    ${TAILSCALE_IP:-<vps-tailscale-ip>} \\"
+echo "    ${VPS_PUBLIC_IP:-<public-ip>} \\"
+echo "    ${VPS_LOCATION:-unknown} unknown"
+echo ""
+if [ -n "${VPS_DOMAIN:-}" ]; then
+    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain \\"
+    echo "    ${VPS_DOMAIN} 'VPS edge node domain'"
+    echo ""
+fi
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+log_success "VPS setup complete (registration handled by control plane)"
 echo
 
 # Final summary

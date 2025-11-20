@@ -2018,14 +2018,26 @@ main() {
     log_info "Setting up passwordless sudo for cluster management..."
     
     if [ -f "$SCRIPT_DIR/setup-control-plane-sudo.sh" ]; then
-        bash "$SCRIPT_DIR/setup-control-plane-sudo.sh"
-        
-        # Verify it worked
-        if sudo -n kubectl version --client &>/dev/null; then
+        # Run with error handling (don't fail installation if this fails)
+        if bash "$SCRIPT_DIR/setup-control-plane-sudo.sh" 2>&1; then
             log_success "✓ Passwordless sudo configured successfully"
         else
-            log_warn "⚠ Passwordless sudo configuration incomplete"
-            log_warn "You may need to run manually: sudo $SCRIPT_DIR/setup-control-plane-sudo.sh"
+            local exit_code=$?
+            if [ $exit_code -eq 0 ]; then
+                # Exit code 0 means it was already configured
+                log_success "✓ Passwordless sudo already configured"
+            else
+                log_warn "⚠ Passwordless sudo configuration had issues (non-critical)"
+                log_info "This won't affect cluster operation, but VPS sync may require passwords"
+            fi
+        fi
+        
+        # Final verification
+        if sudo -n kubectl version --client &>/dev/null 2>&1; then
+            log_success "✓ Verified: kubectl works without password"
+        else
+            log_warn "⚠ kubectl still requires password"
+            log_info "To fix manually: sudo $SCRIPT_DIR/setup-control-plane-sudo.sh"
         fi
     else
         log_warn "setup-control-plane-sudo.sh not found, skipping"

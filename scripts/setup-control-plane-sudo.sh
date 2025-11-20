@@ -67,6 +67,27 @@ log_info "MyNodeOne directory: $MYNODEONE_DIR"
 log_info "User home directory: $ACTUAL_HOME"
 echo ""
 
+# Check if already configured
+if [ -f /etc/sudoers.d/mynodeone ]; then
+    log_info "Passwordless sudo already configured, checking if update needed..."
+    
+    # Check if current config is valid
+    if sudo visudo -c -f /etc/sudoers.d/mynodeone &>/dev/null; then
+        # Test if it works
+        if sudo -n kubectl version --client &>/dev/null 2>&1; then
+            log_success "Passwordless sudo already working correctly"
+            echo ""
+            echo "✅ Configuration is up to date. No changes needed."
+            echo ""
+            exit 0
+        else
+            log_warn "Configuration exists but not working, will recreate..."
+        fi
+    else
+        log_warn "Existing configuration has syntax errors, will recreate..."
+    fi
+fi
+
 # Create sudoers configuration
 log_info "Creating sudoers configuration..."
 

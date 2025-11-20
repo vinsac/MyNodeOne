@@ -92,10 +92,19 @@ CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
 if [[ -n "${1:-}" ]] && [[ -f "$1" ]]; then
     log_info "Loading service registry from file: $1"
     SERVICES=$(cat "$1")
-# Method 2: Check if data provided via stdin
+# Method 2: Check if data provided via stdin (with timeout to avoid hanging)
 elif [[ ! -t 0 ]]; then
-    log_info "Loading service registry from stdin..."
-    SERVICES=$(cat)
+    log_info "Checking for data on stdin..."
+    # Try to read with 1 second timeout
+    if SERVICES=$(timeout 1 cat 2>/dev/null) && [[ -n "$SERVICES" ]]; then
+        log_info "Loaded service registry from stdin"
+    else
+        # No data on stdin, fall back to SSH
+        log_info "No data on stdin, fetching from control plane via SSH..."
+        SERVICES=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+            "sudo kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null" \
+            2>/dev/null || echo "{}")
+    fi
 # Method 3: Fetch from control plane via SSH
 else
     log_info "Fetching service registry from control plane..."
@@ -215,6 +224,39 @@ else
     echo "        permanent: true" >> "$TEMP_FILE"
 fi
 
+# Validate generated routes
+log_info "Validating generated routes..."
+
+# Check if file exists
+if [ ! -f "$TEMP_FILE" ]; then
+    log_error "Route file was not generated!"
+    exit 1
+fi
+
+# Check if file has content
+if [ ! -s "$TEMP_FILE" ]; then
+    log_error "Route file is empty!"
+    exit 1
+fi
+
+log_success "Route file generated successfully"
+
+# Validate YAML syntax if yq is available
+if command -v yq &>/dev/null; then
+    if yq eval "$TEMP_FILE" &>/dev/null; then
+        log_success "YAML syntax is valid"
+    else
+        log_error "Generated routes have invalid YAML syntax!"
+        echo "--- Invalid YAML ---"
+        cat "$TEMP_FILE"
+        echo "--- End ---"
+        rm -f "$TEMP_FILE"
+        exit 1
+    fi
+else
+    log_warn "yq not installed, skipping YAML validation"
+fi
+
 # Backup existing routes
 if [[ -f "$ROUTE_FILE" ]]; then
     log_info "Backing up existing routes..."
@@ -228,14 +270,58 @@ sudo cp "$TEMP_FILE" "$ROUTE_FILE"
 sudo chmod 644 "$ROUTE_FILE"
 rm -f "$TEMP_FILE"
 
+log_success "Routes installed to $ROUTE_FILE"
+
 # Restart Traefik
 log_info "Restarting Traefik..."
 TRAEFIK_DIR="$ACTUAL_HOME/traefik"
-if cd "$TRAEFIK_DIR" && sudo -u "$ACTUAL_USER" docker compose restart &>/dev/null; then
-    log_success "Traefik restarted"
+
+# Capture docker compose output
+restart_output=""
+if restart_output=$(cd "$TRAEFIK_DIR" && sudo -u "$ACTUAL_USER" docker compose restart 2>&1); then
+    log_success "Traefik restart command succeeded"
 else
-    log_error "Failed to restart Traefik"
-    echo "  Manually restart: cd $TRAEFIK_DIR && docker compose restart"
+    log_error "Traefik restart failed!"
+    echo "--- Docker Compose Output ---"
+    echo "$restart_output"
+    echo "--- End Output ---"
+    echo ""
+    echo "Troubleshooting:"
+    echo "  1. Check docker compose file: cat $TRAEFIK_DIR/docker-compose.yml"
+    echo "  2. Check Traefik logs: docker logs traefik --tail 50"
+    echo "  3. Manually restart: cd $TRAEFIK_DIR && docker compose restart"
+    exit 1
+fi
+
+# Verify Traefik is running
+log_info "Verifying Traefik status..."
+sleep 3
+
+if docker ps | grep -q traefik; then
+    log_success "✓ Traefik container is running"
+    
+    # Get container status
+    traefik_status=$(docker ps --filter "name=traefik" --format "{{.Status}}")
+    log_info "  Status: $traefik_status"
+else
+    log_error "✗ Traefik container is NOT running!"
+    echo ""
+    echo "--- Docker PS ---"
+    docker ps -a | grep traefik || echo "No Traefik container found"
+    echo ""
+    echo "--- Traefik Logs (last 50 lines) ---"
+    docker logs traefik --tail 50 2>&1 || echo "Cannot get logs"
+    echo "--- End Logs ---"
+    exit 1
+fi
+
+# Verify routes were loaded (if Traefik API is accessible)
+if curl -s http://localhost:8080/api/http/routers 2>/dev/null | jq -e 'length > 0' &>/dev/null; then
+    route_count=$(curl -s http://localhost:8080/api/http/routers 2>/dev/null | jq 'length')
+    log_success "✓ Traefik loaded $route_count routes"
+else
+    log_warn "⚠ Could not verify routes via Traefik API (API may not be exposed)"
+    log_info "  This is normal if Traefik dashboard is not enabled"
 fi
 
 # Show configured routes

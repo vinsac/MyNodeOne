@@ -133,34 +133,94 @@ push_sync_to_node() {
     
     local attempt=1
     while [[ $attempt -le $max_retries ]]; do
-        if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-            "cd ~/mynodeone && sudo ./scripts/$sync_script" &>/dev/null < /dev/null; then
-            log_success "Synced: $node_ip"
+        log_info "Attempt $attempt/$max_retries: Syncing to $node_ip..."
+        
+        # Capture output for debugging
+        local sync_output
+        local sync_exit_code
+        
+        # For VPS nodes, pass service registry data via stdin
+        if [[ "$node_type" == "vps_nodes" ]]; then
+            # Fetch service registry from ConfigMap
+            local service_registry=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath='{.data.services\.json}' 2>/dev/null || echo "{}")
             
-            # Update last_sync time in ConfigMap
-            if [[ -f "$registry_file" ]]; then
-                local registry=$(cat "$registry_file")
-                registry=$(echo "$registry" | jq \
-                    --arg type "$node_type" \
-                    --arg ip "$node_ip" \
-                    '.[$type] |= map(
-                        if .ip == $ip then
-                            .last_sync = (now | todate) |
-                            .status = "active"
-                        else . end
-                    )')
-                echo "$registry" > "$registry_file"
-                # Sync back to ConfigMap
-                "$REGISTRY_MANAGER" sync-to &>/dev/null || true
-            fi
-            
-            return 0
+            # Pass it to the VPS sync script via stdin
+            sync_output=$(echo "$service_registry" | $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1)
+            sync_exit_code=$?
         else
-            log_warn "Attempt $attempt/$max_retries failed for $node_ip"
-            if [[ $attempt -lt $max_retries ]]; then
-                sleep $retry_delay
-                ((retry_delay *= 2))  # Exponential backoff
+            # For other node types, no data needed
+            sync_output=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1 </dev/null)
+            sync_exit_code=$?
+        fi
+        
+        if [[ $sync_exit_code -eq 0 ]]; then
+            log_success "Sync command completed on $node_ip"
+            
+            # Verify sync actually worked
+            log_info "Verifying sync on $node_ip..."
+            local verification_passed=true
+            
+            if [[ "$node_type" == "vps_nodes" ]]; then
+                # Check if routes file was created
+                if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                    "test -f ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
+                    log_success "✓ Routes file exists on $node_ip"
+                else
+                    log_error "✗ Routes file NOT found on $node_ip"
+                    verification_passed=false
+                fi
+                
+                # Check if Traefik is running
+                if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                    "docker ps | grep -q traefik" 2>/dev/null; then
+                    log_success "✓ Traefik is running on $node_ip"
+                else
+                    log_error "✗ Traefik is NOT running on $node_ip"
+                    verification_passed=false
+                fi
             fi
+            
+            if [[ "$verification_passed" == "true" ]]; then
+                log_success "Synced and verified: $node_ip"
+                
+                # Update last_sync time in ConfigMap
+                if [[ -f "$registry_file" ]]; then
+                    local registry=$(cat "$registry_file")
+                    registry=$(echo "$registry" | jq \
+                        --arg type "$node_type" \
+                        --arg ip "$node_ip" \
+                        '.[$type] |= map(
+                            if .ip == $ip then
+                                .last_sync = (now | todate) |
+                                .status = "active"
+                            else . end
+                        )')
+                    echo "$registry" > "$registry_file"
+                    # Sync back to ConfigMap
+                    "$REGISTRY_MANAGER" sync-to &>/dev/null || true
+                fi
+                
+                return 0
+            else
+                log_error "Verification failed on $node_ip"
+                echo "--- Sync Output ---"
+                echo "$sync_output"
+                echo "--- End Output ---"
+            fi
+        else
+            log_error "Sync command failed on $node_ip (exit code: $sync_exit_code)"
+            echo "--- Error Output ---"
+            echo "$sync_output"
+            echo "--- End Error ---"
+        fi
+        
+        if [[ $attempt -lt $max_retries ]]; then
+            log_warn "Retrying in ${retry_delay}s..."
+            sleep $retry_delay
+            ((retry_delay *= 2))  # Exponential backoff
         fi
         ((attempt++))
     done

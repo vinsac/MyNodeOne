@@ -284,17 +284,52 @@ if [ $? -eq 0 ]; then
     fi
     echo
     
-    # 5. Trigger Initial Sync
+    # 5. Trigger Initial Sync with Verification
     if [ "$VERIFICATION_PASSED" = true ]; then
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "Step 5: Initial Sync"
+        echo "Step 5: Initial Sync and Verification"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         
-        if retry_command "Triggering initial sync" \
+        echo "ℹ Triggering initial sync to VPS..."
+        if retry_command "Syncing configuration" \
             sudo "$SCRIPT_DIR/lib/sync-controller.sh" push; then
-            echo "✅ Initial sync completed"
+            echo "✅ Sync command completed"
         else
-            echo "⚠ Initial sync failed (will retry automatically via sync controller)"
+            echo "❌ Sync command failed"
+            VERIFICATION_PASSED=false
+        fi
+        
+        # Verify sync actually worked on VPS
+        if [ "$VERIFICATION_PASSED" = true ]; then
+            echo ""
+            echo "ℹ Verifying VPS received configuration..."
+            
+            # Check if Traefik is running
+            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
+                "docker ps | grep -q traefik" 2>/dev/null; then
+                echo "✅ Traefik is running on VPS"
+            else
+                echo "❌ Traefik is NOT running on VPS"
+                VERIFICATION_PASSED=false
+            fi
+            
+            # Check if config directory exists
+            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
+                "test -d ~/traefik/config" 2>/dev/null; then
+                echo "✅ Traefik config directory exists"
+            else
+                echo "❌ Traefik config directory missing"
+                VERIFICATION_PASSED=false
+            fi
+            
+            # Check if mynodeone scripts directory exists
+            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
+                "test -d ~/mynodeone/scripts" 2>/dev/null; then
+                echo "✅ MyNodeOne scripts directory exists"
+            else
+                echo "❌ MyNodeOne scripts directory missing"
+                VERIFICATION_PASSED=false
+            fi
         fi
         echo
     fi

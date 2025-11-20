@@ -173,28 +173,132 @@ make_public() {
         fi
     fi
     
-    # Trigger sync
+    # Trigger sync with mandatory success
     log_info "Pushing configuration to VPS nodes..."
-    if retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push"; then
-        log_success "Configuration pushed successfully"
-    else
-        log_warn "Sync failed, but you can manually sync later"
-        echo "Run: sudo ./scripts/lib/sync-controller.sh push"
+    if ! retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push"; then
+        log_error "Failed to push configuration to VPS after 3 attempts"
+        echo ""
+        echo "Troubleshooting:"
+        echo "  1. Check VPS is reachable via Tailscale"
+        echo "  2. Verify SSH access: ssh <user>@<vps-ip>"
+        echo "  3. Check sync-controller logs above for errors"
+        echo "  4. Manually sync: sudo ./scripts/lib/sync-controller.sh push"
+        echo ""
+        return 1
     fi
     
-    # Verify configuration was applied
+    log_success "Configuration pushed successfully"
+    
+    # Verify configuration in ConfigMap
     sleep 2
     local is_public=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
         jq -r ".[\"$service_name\"].public" || echo "false")
     
-    if [ "$is_public" = "true" ]; then
-        log_success "✓ Verified: Service is now public"
-        return 0
-    else
-        log_error "✗ Verification failed: Service not marked as public"
+    if [ "$is_public" != "true" ]; then
+        log_error "✗ Service not marked as public in ConfigMap"
         return 1
     fi
+    
+    log_success "✓ Service marked as public in ConfigMap"
+    
+    # Get service details for verification
+    local service_info=$(kubectl get configmap -n kube-system service-registry \
+        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
+        jq -r ".[\"$service_name\"]")
+    local subdomain=$(echo "$service_info" | jq -r '.subdomain')
+    
+    # Verify routes on VPS nodes
+    if [ -n "$vps_nodes" ]; then
+        log_info "Verifying routes on VPS nodes..."
+        local verification_failed=false
+        
+        IFS=',' read -ra VPS_ARRAY <<< "$vps_nodes"
+        for vps_ip in "${VPS_ARRAY[@]}"; do
+            vps_ip=$(echo "$vps_ip" | xargs)  # Trim whitespace
+            
+            # Get VPS SSH user from registry
+            local vps_user=$(kubectl get configmap -n kube-system sync-controller-registry \
+                -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
+                jq -r ".vps_nodes[] | select(.ip==\"$vps_ip\") | .ssh_user" || echo "root")
+            
+            log_info "Checking VPS: $vps_ip (user: $vps_user)..."
+            
+            # Check if routes file exists and contains our service
+            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
+                "test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
+                log_success "  ✓ Routes file contains $service_name"
+            else
+                log_error "  ✗ Routes file missing or doesn't contain $service_name"
+                verification_failed=true
+            fi
+            
+            # Check if Traefik is running
+            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
+                "docker ps | grep -q traefik" 2>/dev/null; then
+                log_success "  ✓ Traefik is running"
+            else
+                log_error "  ✗ Traefik is NOT running"
+                verification_failed=true
+            fi
+        done
+        
+        if [ "$verification_failed" = true ]; then
+            log_error "VPS verification failed - routes may not be accessible"
+            echo ""
+            echo "Troubleshooting:"
+            echo "  1. SSH to VPS and check: docker logs traefik --tail 50"
+            echo "  2. Verify routes file: cat ~/traefik/config/mynodeone-routes.yml"
+            echo "  3. Manually sync: ssh <user>@<vps-ip> 'cd ~/mynodeone && sudo ./scripts/sync-vps-routes.sh'"
+            echo ""
+            return 1
+        fi
+        
+        log_success "✓ All VPS nodes verified"
+        
+        # Test HTTP endpoint accessibility
+        log_info "Testing endpoint accessibility..."
+        echo "  This may take 30-60 seconds for SSL certificate issuance..."
+        
+        IFS=',' read -ra DOMAIN_ARRAY <<< "$domains"
+        local test_domain="${DOMAIN_ARRAY[0]}"
+        local test_url="https://${subdomain}.${test_domain}"
+        
+        local max_attempts=12
+        local attempt=1
+        local endpoint_accessible=false
+        
+        while [ $attempt -le $max_attempts ]; do
+            if curl -I -k -m 10 "$test_url" 2>/dev/null | grep -q "HTTP.*[23]0[0-9]"; then
+                log_success "✓ Endpoint is accessible: $test_url"
+                endpoint_accessible=true
+                break
+            fi
+            
+            if [ $attempt -lt $max_attempts ]; then
+                echo "  Waiting for SSL certificate... ($attempt/$max_attempts)"
+                sleep 5
+            fi
+            attempt=$((attempt + 1))
+        done
+        
+        if [ "$endpoint_accessible" = false ]; then
+            log_warn "⚠ Endpoint not accessible after ${max_attempts} attempts"
+            echo ""
+            echo "This is normal if:"
+            echo "  • DNS records are not yet propagated (can take 5-10 minutes)"
+            echo "  • SSL certificate is still being issued (first time only)"
+            echo ""
+            echo "Check:"
+            echo "  1. DNS: dig $subdomain.$test_domain"
+            echo "  2. Traefik logs: ssh $vps_user@$vps_ip 'docker logs traefik --tail 50'"
+            echo "  3. Try again in 5 minutes: curl -I $test_url"
+            echo ""
+            # Don't fail here - DNS propagation can take time
+        fi
+    fi
+    
+    return 0
 }
 
 # Make app private

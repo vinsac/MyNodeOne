@@ -397,8 +397,39 @@ else
 fi
 echo
 
-# Step 7: Remove DNS configurations
-log_info "[7/12] Removing DNS configurations..."
+# Step 7: Disable IP forwarding (if it was enabled)
+log_info "[7/12] Disabling IP forwarding..."
+if sysctl net.ipv4.ip_forward 2>/dev/null | grep -q "= 1"; then
+    sysctl -w net.ipv4.ip_forward=0 > /dev/null 2>&1 || true
+    sysctl -w net.ipv6.conf.all.forwarding=0 > /dev/null 2>&1 || true
+    log_success "IP forwarding disabled"
+    
+    # Remove from sysctl.conf
+    if grep -q "net.ipv4.ip_forward" /etc/sysctl.conf 2>/dev/null; then
+        cp /etc/sysctl.conf /etc/sysctl.conf.bak.$(date +%Y%m%d_%H%M%S)
+        sed -i '/net\.ipv4\.ip_forward/d' /etc/sysctl.conf 2>/dev/null || true
+        sed -i '/net\.ipv6\.conf\.all\.forwarding/d' /etc/sysctl.conf 2>/dev/null || true
+        log_success "Removed IP forwarding from sysctl.conf"
+    fi
+    
+    # Remove from sysctl.d
+    if ls /etc/sysctl.d/*.conf &>/dev/null 2>&1; then
+        for conf_file in /etc/sysctl.d/*.conf; do
+            if grep -q "net.ipv4.ip_forward\|net.ipv6.conf.all.forwarding" "$conf_file" 2>/dev/null; then
+                cp "$conf_file" "$conf_file.bak.$(date +%Y%m%d_%H%M%S)"
+                sed -i '/net\.ipv4\.ip_forward/d' "$conf_file" 2>/dev/null || true
+                sed -i '/net\.ipv6\.conf\.all\.forwarding/d' "$conf_file" 2>/dev/null || true
+            fi
+        done
+        log_success "Removed IP forwarding from sysctl.d"
+    fi
+else
+    log_info "IP forwarding not enabled"
+fi
+echo
+
+# Step 8: Remove DNS configurations
+log_info "[8/12] Removing DNS configurations..."
 
 # Remove from /etc/hosts (aggressive cleanup)
 if [ -f /etc/hosts ]; then
@@ -449,8 +480,8 @@ fi
 log_success "DNS configurations removed"
 echo
 
-# Step 8: Remove systemd services and VPS components
-log_info "[8/12] Removing systemd services and VPS components..."
+# Step 9: Remove systemd services and VPS components
+log_info "[9/13] Removing systemd services and VPS components..."
 
 # Remove sync controller service (control plane)
 if [ -f /etc/systemd/system/mynodeone-sync-controller.service ]; then
@@ -489,9 +520,9 @@ fi
 log_success "Services and VPS components cleaned up"
 echo
 
-# Step 9: Remove Tailscale (optional)
+# Step 10: Remove Tailscale (optional)
 if [ "$REMOVE_TAILSCALE" = true ]; then
-    log_info "[9/12] Removing Tailscale..."
+    log_info "[10/13] Removing Tailscale..."
     if command -v tailscale &> /dev/null || dpkg -l | grep -q tailscale; then
         # Stop Tailscale service
         tailscale down 2>/dev/null || true
@@ -513,13 +544,13 @@ if [ "$REMOVE_TAILSCALE" = true ]; then
         log_info "Tailscale not installed"
     fi
 else
-    log_info "[9/12] Keeping Tailscale (skipped)"
+    log_info "[10/13] Keeping Tailscale (skipped)"
 fi
 echo
 
-# Step 10: Remove configuration files (both root and user)
+# Step 11: Remove configuration files (both root and user)
 if [ "$KEEP_CONFIG" = false ]; then
-    log_info "[10/12] Removing configuration files..."
+    log_info "[11/13] Removing configuration files..."
     
     # Remove root configs
     if [ -d "/root/.mynodeone" ]; then
@@ -592,13 +623,13 @@ if [ "$KEEP_CONFIG" = false ]; then
     
     log_success "Configuration files removed"
 else
-    log_info "[10/12] Keeping configuration files (skipped)"
+    log_info "[11/13] Keeping configuration files (skipped)"
 fi
 echo
 
-# Step 11: Remove Git repository and additional files
+# Step 12: Remove Git repository and additional files
 if [ "$KEEP_CONFIG" = false ]; then
-    log_info "[11/12] Removing Git repository and cache files..."
+    log_info "[12/13] Removing Git repository and cache files..."
     
     # Remove MyNodeOne git repository
     for dir in "$HOME/MyNodeOne" "/root/MyNodeOne"; do
@@ -645,12 +676,12 @@ if [ "$KEEP_CONFIG" = false ]; then
     
     log_success "Additional cleanup completed"
 else
-    log_info "[11/12] Keeping additional files (--keep-config specified)"
+    log_info "[12/13] Keeping additional files (--keep-config specified)"
 fi
 echo
 
-# Step 12: Final verification and cleanup
-log_info "[12/12] Final cleanup and verification..."
+# Step 13: Final verification and cleanup
+log_info "[13/13] Final cleanup and verification..."
 
 # Verify critical directories are removed
 cleanup_verified=true

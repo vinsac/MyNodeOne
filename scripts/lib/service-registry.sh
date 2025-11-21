@@ -167,9 +167,21 @@ sync_registry() {
             continue
         fi
         
-        # Check if service has subdomain annotation first
+        # Check if service has subdomain annotation
+        # Try multiple annotation formats for compatibility:
+        # 1. ${CLUSTER_DOMAIN}.local/subdomain (new dynamic format)
+        # 2. mynodeone.io/subdomain (legacy format)
+        local cluster_domain=$(kubectl get configmap -n kube-system cluster-info \
+            -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
+        
         local annotation=$(kubectl get svc -n "$namespace" "$name" \
-            -o jsonpath='{.metadata.annotations.mynodeone\.io/subdomain}' 2>/dev/null || echo "")
+            -o jsonpath="{.metadata.annotations.${cluster_domain}\.local/subdomain}" 2>/dev/null || echo "")
+        
+        # Fallback to legacy annotation if not found
+        if [[ -z "$annotation" ]]; then
+            annotation=$(kubectl get svc -n "$namespace" "$name" \
+                -o jsonpath='{.metadata.annotations.mynodeone\.io/subdomain}' 2>/dev/null || echo "")
+        fi
         
         # Determine subdomain based on annotation or service name mapping
         local subdomain=""

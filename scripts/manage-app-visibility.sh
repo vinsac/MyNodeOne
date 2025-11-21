@@ -224,12 +224,21 @@ make_public() {
             
             log_info "Checking VPS: $vps_ip (user: $vps_user)..."
             
-            # Check if routes file exists and contains our service (using subdomain, not service name)
-            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
-                "test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$subdomain' ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
-                log_success "  ✓ Routes file contains $subdomain"
+            # Check if routes file exists and contains our service
+            # Routes use subdomain as the key in YAML (e.g., "photos:" or "@:" for root domain)
+            # We check for both:
+            #   1. subdomain with colon (primary check - matches YAML key)
+            #   2. service name (fallback - for edge cases)
+            # This handles:
+            #   - Custom subdomains (immich service -> photos subdomain)
+            #   - Root domain services (subdomain = "@")
+            #   - Services without explicit subdomain (uses service name)
+            local route_check="test -f ~/traefik/config/mynodeone-routes.yml && (grep -q '$subdomain:' ~/traefik/config/mynodeone-routes.yml || grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml)"
+            
+            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
+                log_success "  ✓ Routes file contains service (subdomain: $subdomain)"
             else
-                log_error "  ✗ Routes file missing or doesn't contain $subdomain"
+                log_error "  ✗ Routes file missing or doesn't contain service (subdomain: $subdomain)"
                 verification_failed=true
             fi
             

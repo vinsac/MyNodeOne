@@ -123,7 +123,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 200Gi
+      storage: 1Ti
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -259,7 +259,7 @@ metadata:
   name: immich-server
   namespace: $NAMESPACE
   annotations:
-    mynodeone.io/subdomain: "$APP_SUBDOMAIN"
+    ${CLUSTER_DOMAIN}.local/subdomain: "$APP_SUBDOMAIN"
 spec:
   type: LoadBalancer
   ports:

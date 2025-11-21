@@ -224,12 +224,12 @@ make_public() {
             
             log_info "Checking VPS: $vps_ip (user: $vps_user)..."
             
-            # Check if routes file exists and contains our service
+            # Check if routes file exists and contains our service (using subdomain, not service name)
             if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
-                "test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
-                log_success "  ✓ Routes file contains $service_name"
+                "test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$subdomain' ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
+                log_success "  ✓ Routes file contains $subdomain"
             else
-                log_error "  ✗ Routes file missing or doesn't contain $service_name"
+                log_error "  ✗ Routes file missing or doesn't contain $subdomain"
                 verification_failed=true
             fi
             

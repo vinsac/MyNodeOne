@@ -187,11 +187,18 @@ setup_reverse_ssh() {
 
         # 3. Copy keys to VPS using ssh-copy-id (the robust way)
         echo '[INFO] Copying root MyNodeOne SSH key to VPS...'
-        sudo cat /root/.ssh/mynodeone_id_ed25519.pub | ssh-copy-id -f -i /dev/stdin -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $vps_user@$vps_ip
+        ROOT_PUB_KEY=$(sudo cat /root/.ssh/mynodeone_id_ed25519.pub)
+        
+        # Manually copy to authorized_keys using ssh
+        if echo "$ROOT_PUB_KEY" | ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$vps_user@$vps_ip"' "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"; then
+            echo "[INFO] Successfully copied root key"
+        else
+            echo "[WARN] Failed to copy root key via ssh."
+        fi
 
-        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ]; then
-            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to VPS...\"
-            ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $vps_user@$vps_ip
+        if [ "$REMOTE_ACTUAL_USER" != 'root' ]; then
+            echo "[INFO] Copying user ($REMOTE_ACTUAL_USER) MyNodeOne SSH key to VPS..."
+            ssh-copy-id -i "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$vps_user@$vps_ip"'
         fi
     "
 
@@ -285,20 +292,27 @@ setup_management_laptop_ssh() {
             ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
         fi
 
-        # 3. Copy keys to laptop using ssh-copy-id (the robust way)
+        # 3. Copy keys to laptop
         
         # Copy ROOT key (must run as sudo to read /root/.ssh)
         echo '[INFO] Copying root MyNodeOne SSH key to laptop...'
-        # We need to use sudo to read the key, but ssh-copy-id might be tricky with sudo if user doesn't have root ssh access
-        # Instead, use cat + ssh which is more reliable when we have sudo but not root login
-        sudo cat /root/.ssh/mynodeone_id_ed25519.pub | ssh-copy-id -f -i /dev/stdin -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $laptop_user@$laptop_ip
+        # Read the public key first
+        ROOT_PUB_KEY=$(sudo cat /root/.ssh/mynodeone_id_ed25519.pub)
+        
+        # Manually copy to authorized_keys using ssh
+        # We use strict options to avoid hanging
+        if echo "$ROOT_PUB_KEY" | ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$laptop_user@$laptop_ip"' "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"; then
+            echo "[INFO] Successfully copied root key"
+        else
+            echo "[WARN] Failed to copy root key via ssh. You may need to do this manually."
+        fi
 
         # Copy USER key
-        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ]; then
-            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop...\"
-            ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $laptop_user@$laptop_ip
+        if [ "$REMOTE_ACTUAL_USER" != 'root' ]; then
+            echo "[INFO] Copying user ($REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop..."
+            ssh-copy-id -i "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$laptop_user@$laptop_ip"'
         fi
-    "
+    '"
 
     # Execute the script on the control plane
     # PASS VIA STDIN to avoid quoting hell

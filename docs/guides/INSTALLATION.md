@@ -648,96 +648,21 @@ tailscale ip -4
 
 ---
 
-## 🔐 Security Requirements for Auto-Sync
-
-Management laptops require two security configurations for automatic DNS sync:
-
-### 1. Passwordless Sudo (Required)
-
-**Why:** The sync script needs to modify `/etc/hosts` without password prompts.
-
-**Configured automatically during installation.**
-
-**What it does:**
-- Allows `sudo` commands without password
-- Only for your user account
-- Required for automatic DNS updates
-
-**Manual configuration (if needed):**
-```bash
-# On laptop:
-echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/${USER}-nopasswd"
-sudo chmod 0440 "/etc/sudoers.d/${USER}-nopasswd"
-```
-
-**Verification:**
-```bash
-# Test passwordless sudo:
-sudo -n echo "Works"
-# Should print "Works" without password prompt
-```
-
-### 2. SSH Access from Control Plane (Required)
-
-**Why:** Control plane needs to SSH to your laptop to trigger DNS updates.
-
-**⚠️ MUST be configured manually** (requires Tailscale IP from Step 1)
-
-**What it does:**
-- Copies **both root's and user's** SSH keys to laptop
-- Root's key: Required for automatic sync service
-- User's key: Allows manual operations without sudo
-- Provides redundancy and flexibility
-
-**Configuration (required before installation):**
-```bash
-# On control plane (run as your user):
-
-# 1. Copy root's SSH key (required for sync service)
-sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
-    ssh username@laptop-tailscale-ip "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
-
-# 2. Copy your user's SSH key (for manual operations)
-cat ~/.ssh/mynodeone_id_ed25519.pub | \
-    ssh username@laptop-tailscale-ip "cat >> ~/.ssh/authorized_keys"
-
-# Example with actual values:
-sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
-    ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
-cat ~/.ssh/mynodeone_id_ed25519.pub | \
-    ssh vinaysachdeva@100.86.112.112 "cat >> ~/.ssh/authorized_keys"
-```
-
-**Verification:**
-```bash
-# On control plane:
-# Test as root (what sync service uses):
-sudo ssh username@laptop-tailscale-ip "echo 'Root SSH works!'"
-
-# Test as your user (for manual operations):
-ssh username@laptop-tailscale-ip "echo 'User SSH works!'"
-```
-
-**Security notes:**
-- ✅ SSH over encrypted Tailscale VPN only
-- ✅ Key-based authentication (no passwords)
-- ✅ Unidirectional: Control plane → Laptop (laptop never SSHes back)
-- ✅ Same security model as VPS nodes
-
----
-
 ### Step 2: Setup SSH Access (Control Plane → Laptop)
 
 **⚠️ IMPORTANT:** This step must be done **before** installing the management workstation.
 
-We'll copy **both** root's and your user's SSH keys for maximum compatibility and safety.
+**Why this is needed:**
+- Control plane's sync service needs to SSH to your laptop to push DNS updates
+- Service runs as root, so we need root's SSH key
+- We also copy your user's key for manual operations and flexibility
 
 ```bash
 # On control plane (run as your regular user):
 # Replace 'vinaysachdeva' with your laptop username
 # Replace '100.86.112.112' with your laptop's Tailscale IP from Step 1
 
-# 1. Copy root's SSH key (required for sync service)
+# 1. Copy root's SSH key (required for automatic sync service)
 sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
     ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
@@ -759,15 +684,10 @@ ssh vinaysachdeva@100.86.112.112 "echo 'User SSH works!'"
 ```
 
 **What this does:**
-- Copies **root's** SSH key → Required for automatic sync service
-- Copies **your user's** SSH key → Allows manual SSH without sudo
-- Provides redundancy and flexibility
-
-**Why both keys?**
-- **Root's key:** Sync-controller systemd service runs as root
-- **User's key:** Manual operations, troubleshooting, flexibility
-- **Safety:** If one key has issues, the other still works
-- **Matches VPS setup:** Same pattern used for VPS edge nodes
+- **Root's key:** Required for automatic sync service (systemd runs as root)
+- **User's key:** Allows manual SSH without sudo, troubleshooting
+- **Safety:** Redundancy if one key has issues
+- **Security:** SSH over encrypted Tailscale VPN only, key-based auth
 
 ---
 
@@ -789,27 +709,16 @@ sudo ./scripts/mynodeone
 
 **What the installation does automatically:**
 
-**Security Configuration:**
-- ✅ Configures passwordless sudo for your user
-  - Creates `/etc/sudoers.d/username-nopasswd`
-  - Allows `sudo` without password prompts
-  - Required for automatic `/etc/hosts` updates
-
-**Cluster Access:**
-- ✅ SSHes to control plane (using your credentials)
-- ✅ Copies kubeconfig from control plane
-- ✅ Configures kubectl for cluster access
-- ✅ Verifies connection to cluster
-
-**DNS Configuration:**
-- ✅ Updates /etc/hosts with .local domain names
-- ✅ Registers laptop in control plane sync registry
-- ✅ Runs initial DNS sync
+- ✅ **Configures passwordless sudo** (allows automatic `/etc/hosts` updates)
+- ✅ **Copies kubeconfig** from control plane (enables kubectl access)
+- ✅ **Updates /etc/hosts** with current .local domain names
+- ✅ **Registers laptop** in control plane sync registry
+- ✅ **Runs initial DNS sync**
 
 **Result:** 
 - ✅ kubectl works from laptop
 - ✅ Services accessible via .local domains
-- ✅ Auto-sync enabled (because SSH key was configured in Step 2)
+- ✅ Auto-sync enabled (DNS updates pushed automatically when apps are installed)
 
 ---
 
@@ -922,15 +831,22 @@ sudo -n echo "Works"
 
 ### Issue: "Permission denied (publickey)" when control plane tries to sync
 
-**Cause:** SSH key not exchanged
+**Cause:** SSH keys not properly configured
 
 **Fix:**
 ```bash
-# On control plane:
-ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-ip
+# On control plane, copy both keys:
+# 1. Root's key (required for sync service)
+sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
+    ssh username@laptop-ip "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
-# Verify:
-ssh username@laptop-ip "echo OK"
+# 2. User's key (for manual operations)
+cat ~/.ssh/mynodeone_id_ed25519.pub | \
+    ssh username@laptop-ip "cat >> ~/.ssh/authorized_keys"
+
+# Verify both:
+sudo ssh username@laptop-ip "echo 'Root SSH works'"
+ssh username@laptop-ip "echo 'User SSH works'"
 ```
 
 ### Issue: Auto-sync not working

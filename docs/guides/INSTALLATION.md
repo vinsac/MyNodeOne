@@ -657,14 +657,14 @@ tailscale ip -4
 - Service runs as root, so we need root's SSH key
 - We also copy your user's key for manual operations and flexibility
 
-**Run the automated setup script:**
+**Run the automated setup script (ON YOUR LAPTOP):**
 
 ```bash
 # On laptop, clone MyNodeOne first:
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
-# Run SSH setup script:
+# Run SSH setup script (it will SSH to control plane and set up keys):
 ./scripts/setup-management-laptop-ssh.sh \
     <control-plane-user> <control-plane-ip> \
     <laptop-user> <laptop-ip>
@@ -673,6 +673,12 @@ cd MyNodeOne
 ./scripts/setup-management-laptop-ssh.sh \
     vinaysachdeva 100.101.4.2 \
     vinay 100.101.4.3
+
+# The script will:
+# 1. SSH to control plane
+# 2. Generate mynodeone SSH keys on control plane (if missing)
+# 3. Copy those keys back to your laptop
+# 4. Verify SSH access works
 ```
 
 **What this script does automatically:**

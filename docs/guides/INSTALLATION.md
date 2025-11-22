@@ -643,9 +643,16 @@ Management laptops require two security configurations for automatic DNS sync:
 - Only for your user account
 - Required for automatic DNS updates
 
-**Manual verification:**
+**Manual configuration (if needed):**
 ```bash
-# After installation, test:
+# On laptop:
+echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/${USER}-nopasswd"
+sudo chmod 0440 "/etc/sudoers.d/${USER}-nopasswd"
+```
+
+**Verification:**
+```bash
+# Test passwordless sudo:
 sudo -n echo "Works"
 # Should print "Works" without password prompt
 ```
@@ -660,6 +667,24 @@ sudo -n echo "Works"
 - Control plane's SSH key added to your `~/.ssh/authorized_keys`
 - Allows control plane to run sync script remotely
 - Enables automatic DNS updates when apps are installed
+
+**Manual configuration (if needed):**
+```bash
+# On control plane:
+# Copy SSH key to laptop
+ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-tailscale-ip
+
+# Or manually:
+cat ~/.ssh/mynodeone_id_ed25519.pub | ssh username@laptop-ip \
+    "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+```
+
+**Verification:**
+```bash
+# On control plane, test SSH to laptop:
+ssh username@laptop-tailscale-ip "echo 'SSH works!'"
+# Should print message without password prompt
+```
 
 **Security notes:**
 - ✅ SSH over encrypted Tailscale VPN only

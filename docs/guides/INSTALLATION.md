@@ -684,29 +684,30 @@ sudo -n echo "Works"
 **⚠️ MUST be configured manually** (requires Tailscale IP from Step 1)
 
 **What it does:**
-- Control plane's SSH key added to your `~/.ssh/authorized_keys`
-- Allows control plane to run sync script remotely
+- Control plane's **root** SSH key added to your `~/.ssh/authorized_keys`
+- Allows control plane's sync service (runs as root) to SSH to laptop
 - Enables automatic DNS updates when apps are installed
 
 **Configuration (required before installation):**
 ```bash
-# On control plane:
-# Copy SSH key to laptop using Tailscale IP from Step 1
-ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-tailscale-ip
+# On control plane (run as your user):
+# Copy ROOT's SSH key to laptop (sync service runs as root!)
+sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
+    ssh username@laptop-tailscale-ip "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
 # Example:
-ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
+sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
+    ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
-# Or manually:
-cat ~/.ssh/mynodeone_id_ed25519.pub | ssh username@laptop-tailscale-ip \
-    "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+# Or using ssh-copy-id:
+sudo ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
 ```
 
 **Verification:**
 ```bash
-# On control plane, test SSH to laptop:
-ssh username@laptop-tailscale-ip "echo 'SSH works!'"
-# Should print message without password prompt
+# On control plane, test SSH as root to laptop:
+sudo ssh username@laptop-tailscale-ip "echo 'SSH works!'"
+# Should print "SSH works!" without password prompt
 ```
 
 **Security notes:**
@@ -721,23 +722,34 @@ ssh username@laptop-tailscale-ip "echo 'SSH works!'"
 
 **⚠️ IMPORTANT:** This step must be done **before** installing the management workstation.
 
+The sync-controller service runs as **root**, so we need to copy **root's SSH key** to the laptop.
+
 ```bash
-# On control plane:
-# Use the Tailscale IP from Step 1
-ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-tailscale-ip
+# On control plane (run as your regular user):
+# Replace 'vinaysachdeva' with your laptop username
+# Replace '100.86.112.112' with your laptop's Tailscale IP from Step 1
 
-# Example:
-ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
+# Method 1: Using cat and ssh (recommended - works reliably)
+sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
+    ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
-# Verify it works:
-ssh username@laptop-tailscale-ip "echo 'SSH works!'"
-# Should print message without password prompt
+# Method 2: Using ssh-copy-id as root (alternative)
+sudo ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
+
+# Verify it works (test as root):
+sudo ssh vinaysachdeva@100.86.112.112 "echo 'SSH works!'"
+# Should print "SSH works!" without password prompt
 ```
 
 **What this does:**
-- Copies control plane's public SSH key to laptop
-- Allows control plane to SSH to laptop
+- Copies **root's** public SSH key from control plane to laptop user's authorized_keys
+- Allows control plane's sync service (runs as root) to SSH to laptop
 - Required for automatic DNS sync
+
+**Why root's key?**
+- The sync-controller systemd service runs as root
+- It needs root's SSH key to connect to your laptop
+- Your laptop user account receives the connection (then uses passwordless sudo)
 
 ---
 
@@ -788,17 +800,26 @@ sudo ./scripts/mynodeone
 **Verify Security Configuration:**
 
 ```bash
+# On laptop:
+
 # 1. Test passwordless sudo
 sudo -n echo "Passwordless sudo works!"
 # Should print message without password prompt
 
-# 2. Verify SSH key was added
+# 2. Verify root's SSH key was added
 cat ~/.ssh/authorized_keys | grep mynodeone
-# Should show control plane's public key
+# Should show control plane's root public key
 
-# 3. Test SSH from control plane (on control plane, run):
-ssh username@laptop-tailscale-ip "echo 'SSH works!'"
-# Should print message without password
+# On control plane:
+
+# 3. Test SSH from control plane as root (critical!)
+sudo ssh username@laptop-tailscale-ip "echo 'SSH works!'"
+# Should print "SSH works!" without password prompt
+# This is what the sync service uses!
+
+# 4. Test the actual sync command
+sudo ssh username@laptop-tailscale-ip "cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
+# Should complete without errors
 ```
 
 **Verify Cluster Access:**

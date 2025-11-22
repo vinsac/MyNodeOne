@@ -684,30 +684,38 @@ sudo -n echo "Works"
 **⚠️ MUST be configured manually** (requires Tailscale IP from Step 1)
 
 **What it does:**
-- Control plane's **root** SSH key added to your `~/.ssh/authorized_keys`
-- Allows control plane's sync service (runs as root) to SSH to laptop
-- Enables automatic DNS updates when apps are installed
+- Copies **both root's and user's** SSH keys to laptop
+- Root's key: Required for automatic sync service
+- User's key: Allows manual operations without sudo
+- Provides redundancy and flexibility
 
 **Configuration (required before installation):**
 ```bash
 # On control plane (run as your user):
-# Copy ROOT's SSH key to laptop (sync service runs as root!)
+
+# 1. Copy root's SSH key (required for sync service)
 sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
     ssh username@laptop-tailscale-ip "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
-# Example:
+# 2. Copy your user's SSH key (for manual operations)
+cat ~/.ssh/mynodeone_id_ed25519.pub | \
+    ssh username@laptop-tailscale-ip "cat >> ~/.ssh/authorized_keys"
+
+# Example with actual values:
 sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
     ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
-
-# Or using ssh-copy-id:
-sudo ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
+cat ~/.ssh/mynodeone_id_ed25519.pub | \
+    ssh vinaysachdeva@100.86.112.112 "cat >> ~/.ssh/authorized_keys"
 ```
 
 **Verification:**
 ```bash
-# On control plane, test SSH as root to laptop:
-sudo ssh username@laptop-tailscale-ip "echo 'SSH works!'"
-# Should print "SSH works!" without password prompt
+# On control plane:
+# Test as root (what sync service uses):
+sudo ssh username@laptop-tailscale-ip "echo 'Root SSH works!'"
+
+# Test as your user (for manual operations):
+ssh username@laptop-tailscale-ip "echo 'User SSH works!'"
 ```
 
 **Security notes:**
@@ -722,34 +730,44 @@ sudo ssh username@laptop-tailscale-ip "echo 'SSH works!'"
 
 **⚠️ IMPORTANT:** This step must be done **before** installing the management workstation.
 
-The sync-controller service runs as **root**, so we need to copy **root's SSH key** to the laptop.
+We'll copy **both** root's and your user's SSH keys for maximum compatibility and safety.
 
 ```bash
 # On control plane (run as your regular user):
 # Replace 'vinaysachdeva' with your laptop username
 # Replace '100.86.112.112' with your laptop's Tailscale IP from Step 1
 
-# Method 1: Using cat and ssh (recommended - works reliably)
+# 1. Copy root's SSH key (required for sync service)
 sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
     ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
-# Method 2: Using ssh-copy-id as root (alternative)
-sudo ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
+# 2. Copy your user's SSH key (for manual operations)
+cat ~/.ssh/mynodeone_id_ed25519.pub | \
+    ssh vinaysachdeva@100.86.112.112 "cat >> ~/.ssh/authorized_keys"
 
-# Verify it works (test as root):
-sudo ssh vinaysachdeva@100.86.112.112 "echo 'SSH works!'"
-# Should print "SSH works!" without password prompt
+# Or if you don't have a user key yet, create one:
+if [ ! -f ~/.ssh/mynodeone_id_ed25519 ]; then
+    ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N '' -C "$(whoami)@control-plane-mynodeone"
+fi
+
+# Verify both keys work:
+# Test as root (what sync service uses):
+sudo ssh vinaysachdeva@100.86.112.112 "echo 'Root SSH works!'"
+
+# Test as your user (for manual operations):
+ssh vinaysachdeva@100.86.112.112 "echo 'User SSH works!'"
 ```
 
 **What this does:**
-- Copies **root's** public SSH key from control plane to laptop user's authorized_keys
-- Allows control plane's sync service (runs as root) to SSH to laptop
-- Required for automatic DNS sync
+- Copies **root's** SSH key → Required for automatic sync service
+- Copies **your user's** SSH key → Allows manual SSH without sudo
+- Provides redundancy and flexibility
 
-**Why root's key?**
-- The sync-controller systemd service runs as root
-- It needs root's SSH key to connect to your laptop
-- Your laptop user account receives the connection (then uses passwordless sudo)
+**Why both keys?**
+- **Root's key:** Sync-controller systemd service runs as root
+- **User's key:** Manual operations, troubleshooting, flexibility
+- **Safety:** If one key has issues, the other still works
+- **Matches VPS setup:** Same pattern used for VPS edge nodes
 
 ---
 
@@ -806,18 +824,21 @@ sudo ./scripts/mynodeone
 sudo -n echo "Passwordless sudo works!"
 # Should print message without password prompt
 
-# 2. Verify root's SSH key was added
+# 2. Verify both SSH keys were added
 cat ~/.ssh/authorized_keys | grep mynodeone
-# Should show control plane's root public key
+# Should show TWO keys: root's and user's
 
 # On control plane:
 
-# 3. Test SSH from control plane as root (critical!)
-sudo ssh username@laptop-tailscale-ip "echo 'SSH works!'"
-# Should print "SSH works!" without password prompt
-# This is what the sync service uses!
+# 3. Test SSH as root (what sync service uses - critical!)
+sudo ssh username@laptop-tailscale-ip "echo 'Root SSH works!'"
+# Should print "Root SSH works!" without password prompt
 
-# 4. Test the actual sync command
+# 4. Test SSH as your user (for manual operations)
+ssh username@laptop-tailscale-ip "echo 'User SSH works!'"
+# Should print "User SSH works!" without password prompt
+
+# 5. Test the actual sync command (as root)
 sudo ssh username@laptop-tailscale-ip "cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
 # Should complete without errors
 ```

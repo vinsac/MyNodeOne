@@ -154,36 +154,41 @@ setup_reverse_ssh() {
 
     local ssh_opts="${SSH_CONTROL_OPTS:-}"
     
-    # Find MyNodeOne repo on control plane
-    log_info "Locating MyNodeOne repository on control plane..."
-    local repo_path=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "
-        if [ -d ~/MyNodeOne ]; then
-            echo ~/MyNodeOne
-        elif [ -d /opt/mynodeone/MyNodeOne ]; then
-            echo /opt/mynodeone/MyNodeOne
-        else
-            echo ''
-        fi
-    ")
+    # Get the script directory (where this script is located)
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local helper_script="$script_dir/setup-vps-ssh-keys.sh"
     
-    if [ -z "$repo_path" ]; then
-        log_error "Could not find MyNodeOne repository on control plane"
-        log_error "Expected at ~/MyNodeOne or /opt/mynodeone/MyNodeOne"
+    if [ ! -f "$helper_script" ]; then
+        log_error "Helper script not found: $helper_script"
         return 1
     fi
     
-    log_info "Found repository at: $repo_path"
+    # Copy helper script to control plane /tmp (always use latest version)
+    log_info "Copying SSH setup script to control plane..."
+    local remote_script="/tmp/setup-vps-ssh-keys-$$.sh"
+    
+    if ! scp $ssh_opts "$helper_script" "$control_plane_user@$control_plane_ip:$remote_script" >/dev/null 2>&1; then
+        log_error "Failed to copy helper script to control plane"
+        return 1
+    fi
+    
+    # Make it executable
+    ssh $ssh_opts "$control_plane_user@$control_plane_ip" "chmod +x $remote_script" >/dev/null 2>&1
     
     # Execute the helper script on control plane
-    # This is much simpler and more robust than embedding the script
     log_info "Running SSH key setup script on control plane..."
     log_info "You may be prompted for the VPS password when copying keys."
     echo ""
     
-    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $repo_path/scripts/lib/setup-vps-ssh-keys.sh '$vps_user' '$vps_ip'"; then
+    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $remote_script '$vps_user' '$vps_ip'"; then
         log_error "Failed to execute SSH key setup script on control plane."
+        # Cleanup
+        ssh $ssh_opts "$control_plane_user@$control_plane_ip" "rm -f $remote_script" 2>/dev/null || true
         return 1
     fi
+    
+    # Cleanup
+    ssh $ssh_opts "$control_plane_user@$control_plane_ip" "rm -f $remote_script" 2>/dev/null || true
     
     echo ""
     log_info "Verifying reverse SSH access..."
@@ -228,36 +233,41 @@ setup_management_laptop_ssh() {
 
     local ssh_opts="${SSH_CONTROL_OPTS:-}"
     
-    # Find MyNodeOne repo on control plane
-    log_info "Locating MyNodeOne repository on control plane..."
-    local repo_path=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "
-        if [ -d ~/MyNodeOne ]; then
-            echo ~/MyNodeOne
-        elif [ -d /opt/mynodeone/MyNodeOne ]; then
-            echo /opt/mynodeone/MyNodeOne
-        else
-            echo ''
-        fi
-    ")
+    # Get the script directory (where this script is located)
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local helper_script="$script_dir/setup-laptop-ssh-keys.sh"
     
-    if [ -z "$repo_path" ]; then
-        log_error "Could not find MyNodeOne repository on control plane"
-        log_error "Expected at ~/MyNodeOne or /opt/mynodeone/MyNodeOne"
+    if [ ! -f "$helper_script" ]; then
+        log_error "Helper script not found: $helper_script"
         return 1
     fi
     
-    log_info "Found repository at: $repo_path"
+    # Copy helper script to control plane /tmp (always use latest version)
+    log_info "Copying SSH setup script to control plane..."
+    local remote_script="/tmp/setup-laptop-ssh-keys-$$.sh"
+    
+    if ! scp $ssh_opts "$helper_script" "$control_plane_user@$control_plane_ip:$remote_script" >/dev/null 2>&1; then
+        log_error "Failed to copy helper script to control plane"
+        return 1
+    fi
+    
+    # Make it executable
+    ssh $ssh_opts "$control_plane_user@$control_plane_ip" "chmod +x $remote_script" >/dev/null 2>&1
     
     # Execute the helper script on control plane
-    # This is much simpler and more robust than embedding the script
     log_info "Running SSH key setup script on control plane..."
     log_info "You may be prompted for the laptop password when copying keys."
     echo ""
     
-    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $repo_path/scripts/lib/setup-laptop-ssh-keys.sh '$laptop_user' '$laptop_ip'"; then
+    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $remote_script '$laptop_user' '$laptop_ip'"; then
         log_error "Failed to execute SSH key setup script on control plane."
+        # Cleanup
+        ssh $ssh_opts "$control_plane_user@$control_plane_ip" "rm -f $remote_script" 2>/dev/null || true
         return 1
     fi
+    
+    # Cleanup
+    ssh $ssh_opts "$control_plane_user@$control_plane_ip" "rm -f $remote_script" 2>/dev/null || true
     
     echo ""
     log_info "Verifying reverse SSH access..."

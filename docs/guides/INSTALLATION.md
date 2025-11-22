@@ -628,6 +628,47 @@ sudo kubectl version --client
 
 ---
 
+## 🔐 Important: Security Requirements
+
+Management laptops require two security configurations for automatic DNS sync:
+
+### 1. Passwordless Sudo (Required)
+
+**Why:** The sync script needs to modify `/etc/hosts` without password prompts.
+
+**Configured automatically during installation.**
+
+**What it does:**
+- Allows `sudo` commands without password
+- Only for your user account
+- Required for automatic DNS updates
+
+**Manual verification:**
+```bash
+# After installation, test:
+sudo -n echo "Works"
+# Should print "Works" without password prompt
+```
+
+### 2. SSH Access from Control Plane (Required)
+
+**Why:** Control plane needs to SSH to your laptop to trigger DNS updates.
+
+**Configured automatically during installation.**
+
+**What it does:**
+- Control plane's SSH key added to your `~/.ssh/authorized_keys`
+- Allows control plane to run sync script remotely
+- Enables automatic DNS updates when apps are installed
+
+**Security notes:**
+- ✅ SSH over encrypted Tailscale VPN only
+- ✅ Key-based authentication (no passwords)
+- ✅ Unidirectional: Control plane → Laptop (laptop never SSHes back)
+- ✅ Same security model as VPS nodes
+
+---
+
 ## Installation Steps
 
 ### Step 1: Install Tailscale on Laptop
@@ -640,20 +681,13 @@ sudo tailscale up
 
 # Verify connection
 tailscale status
+
+# Get your laptop's Tailscale IP (save this!)
+tailscale ip -4
+# Example: 100.86.112.112
 ```
 
-### Step 2: (Optional) Exchange SSH Keys
-
-```bash
-# On laptop:
-ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N ''
-ssh-copy-id vinaysachdeva@<control-plane-ip>
-
-# Test:
-ssh vinaysachdeva@<control-plane-ip> 'echo OK'
-```
-
-### Step 3: Install Management Workstation
+### Step 2: Install Management Workstation
 
 ```bash
 # On laptop:
@@ -669,14 +703,50 @@ sudo ./scripts/mynodeone
 1. **Control plane IP:** → Your control plane Tailscale IP
 2. **SSH username:** → Your username on control plane
 
-**What the installation does:**
+**What the installation does automatically:**
+
+**Security Configuration:**
+- ✅ Configures passwordless sudo for your user
+  - Creates `/etc/sudoers.d/username-nopasswd`
+  - Allows `sudo` without password prompts
+  - Required for automatic `/etc/hosts` updates
+
+- ✅ Exchanges SSH keys with control plane
+  - Copies control plane's public key to `~/.ssh/authorized_keys`
+  - Allows control plane to SSH to laptop
+  - Enables remote sync script execution
+
+**Cluster Access:**
 - ✅ Copies kubeconfig from control plane
 - ✅ Configures kubectl for cluster access
+- ✅ Verifies connection to cluster
+
+**DNS Configuration:**
 - ✅ Updates /etc/hosts with .local domain names
-- ✅ Registers laptop in control plane registry
+- ✅ Registers laptop in control plane sync registry
 - ✅ Enables automatic DNS sync when apps are installed
 
-### Step 4: Verify
+**Result:** Fully automated DNS updates with no manual intervention required!
+
+### Step 3: Verify Installation
+
+**Verify Security Configuration:**
+
+```bash
+# 1. Test passwordless sudo
+sudo -n echo "Passwordless sudo works!"
+# Should print message without password prompt
+
+# 2. Verify SSH key was added
+cat ~/.ssh/authorized_keys | grep mynodeone
+# Should show control plane's public key
+
+# 3. Test SSH from control plane (on control plane, run):
+ssh username@laptop-tailscale-ip "echo 'SSH works!'"
+# Should print message without password
+```
+
+**Verify Cluster Access:**
 
 ```bash
 # Should work without sudo:
@@ -685,6 +755,14 @@ kubectl get nodes
 
 kubectl get pods -A
 # Shows all pods
+```
+
+**Verify DNS Configuration:**
+
+```bash
+# Check /etc/hosts has MyNodeOne entries
+grep "MyNodeOne Services" /etc/hosts
+# Should show comment line
 
 # Access services via .local domains:
 curl http://grafana.minicloud.local
@@ -722,6 +800,82 @@ curl http://my-app.minicloud.local
 
 **Manual sync (if needed):**
 If you need to force an immediate sync:
+```bash
+cd ~/MyNodeOne
+sudo ./scripts/sync-dns.sh
+```
+
+---
+
+## 🔧 Troubleshooting Management Laptop
+
+### Issue: "sudo: a terminal is required to read the password"
+
+**Cause:** Passwordless sudo not configured
+
+**Fix:**
+```bash
+# On laptop:
+echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/${USER}-nopasswd"
+sudo chmod 0440 "/etc/sudoers.d/${USER}-nopasswd"
+
+# Verify:
+sudo -n echo "Works"
+```
+
+### Issue: "Permission denied (publickey)" when control plane tries to sync
+
+**Cause:** SSH key not exchanged
+
+**Fix:**
+```bash
+# On control plane:
+ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-ip
+
+# Verify:
+ssh username@laptop-ip "echo OK"
+```
+
+### Issue: Auto-sync not working
+
+**Symptoms:** New apps installed but not accessible via .local domains
+
+**Diagnosis:**
+```bash
+# 1. Check if laptop is registered
+# On control plane:
+sudo ./scripts/lib/sync-controller.sh health
+# Should show your laptop in "Management Laptops" section
+
+# 2. Check if sync-controller service is running
+# On control plane:
+sudo systemctl status mynodeone-sync-controller
+
+# 3. Test manual sync
+# On laptop:
+cd ~/MyNodeOne
+sudo ./scripts/sync-dns.sh
+```
+
+**Fix:**
+```bash
+# If not registered, register manually:
+# On control plane:
+sudo ./scripts/lib/sync-controller.sh register \
+    management_laptops \
+    <laptop-tailscale-ip> \
+    <laptop-hostname> \
+    <username>
+
+# Enable sync service if not running:
+sudo ./scripts/enable-sync-controller-service.sh
+```
+
+### Issue: Laptop was offline, now DNS is stale
+
+**Solution:** Sync happens automatically within 1 hour (periodic reconciliation)
+
+**Or force immediate sync:**
 ```bash
 cd ~/MyNodeOne
 sudo ./scripts/sync-dns.sh

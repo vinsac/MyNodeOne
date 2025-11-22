@@ -240,12 +240,13 @@ setup_management_laptop_ssh() {
     local ssh_opts="${SSH_CONTROL_OPTS:-}"
 
     # Remote script to generate keys and copy them using ssh-copy-id
+    # Note: $laptop_user and $laptop_ip are expanded here, before sending to remote
     local remote_script="
         set -e
         # Detect actual user on control plane
         REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
-        if [ -n \"\${SUDO_USER:-}\" ] && [ \"\$SUDO_USER\" != \"root\" ]; then
-            REMOTE_ACTUAL_HOME=\$(getent passwd \"\$SUDO_USER\" | cut -d: -f6)
+        if [ -n \"\${SUDO_USER:-}\" ] && [ \"\\\$SUDO_USER\" != \"root\" ]; then
+            REMOTE_ACTUAL_HOME=\$(getent passwd \"\\\$SUDO_USER\" | cut -d: -f6)
         else
             REMOTE_ACTUAL_HOME=\"/root\"
         fi
@@ -257,19 +258,19 @@ setup_management_laptop_ssh() {
         fi
 
         # 2. Ensure actual user has a MyNodeOne-specific SSH key
-        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" ]; then
-            echo \"[INFO] Generating MyNodeOne SSH key for user \$REMOTE_ACTUAL_USER...\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
+        if [ \"\\\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" ]; then
+            echo \"[INFO] Generating MyNodeOne SSH key for user \\\$REMOTE_ACTUAL_USER...\"
+            sudo -u \"\\\$REMOTE_ACTUAL_USER\" mkdir -p \"\\\$REMOTE_ACTUAL_HOME/.ssh\"
+            sudo -u \"\\\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\\\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
         fi
 
         # 3. Copy keys to laptop using ssh-copy-id (the robust way)
         echo '[INFO] Copying root MyNodeOne SSH key to laptop...'
-        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$laptop_user@$laptop_ip\"
+        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $laptop_user@$laptop_ip
 
-        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ]; then
-            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop...\"
-            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$laptop_user@$laptop_ip\"
+        if [ \"\\\$REMOTE_ACTUAL_USER\" != 'root' ]; then
+            echo \"[INFO] Copying user (\\\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop...\"
+            sudo -u \"\\\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $laptop_user@$laptop_ip
         fi
     "
 

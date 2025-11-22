@@ -657,45 +657,49 @@ tailscale ip -4
 - Service runs as root, so we need root's SSH key
 - We also copy your user's key for manual operations and flexibility
 
+**Run the automated setup script:**
+
 ```bash
-# On control plane (run as your regular user):
-# Replace 'vinaysachdeva' with your laptop username
-# Replace '100.86.112.112' with your laptop's Tailscale IP from Step 1
+# On laptop, clone MyNodeOne first:
+git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
 
-# 1. Copy root's SSH key (required for automatic sync service)
-sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
-    ssh vinaysachdeva@100.86.112.112 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+# Run SSH setup script:
+./scripts/setup-management-laptop-ssh.sh \
+    <control-plane-user> <control-plane-ip> \
+    <laptop-user> <laptop-ip>
 
-# 2. Copy your user's SSH key (for manual operations)
-cat ~/.ssh/mynodeone_id_ed25519.pub | \
-    ssh vinaysachdeva@100.86.112.112 "cat >> ~/.ssh/authorized_keys"
-
-# Or if you don't have a user key yet, create one:
-if [ ! -f ~/.ssh/mynodeone_id_ed25519 ]; then
-    ssh-keygen -t ed25519 -f ~/.ssh/mynodeone_id_ed25519 -N '' -C "$(whoami)@control-plane-mynodeone"
-fi
-
-# Verify both keys work:
-# Test as root (what sync service uses):
-sudo ssh vinaysachdeva@100.86.112.112 "echo 'Root SSH works!'"
-
-# Test as your user (for manual operations):
-ssh vinaysachdeva@100.86.112.112 "echo 'User SSH works!'"
+# Example:
+./scripts/setup-management-laptop-ssh.sh \
+    vinaysachdeva 100.101.4.2 \
+    vinay 100.101.4.3
 ```
 
-**What this does:**
-- **Root's key:** Required for automatic sync service (systemd runs as root)
-- **User's key:** Allows manual SSH without sudo, troubleshooting
-- **Safety:** Redundancy if one key has issues
-- **Security:** SSH over encrypted Tailscale VPN only, key-based auth
+**What this script does automatically:**
+1. ✅ **Generates SSH keys** on control plane (if they don't exist)
+   - Creates `/root/.ssh/mynodeone_id_ed25519` (for sync service)
+   - Creates `~/.ssh/mynodeone_id_ed25519` (for manual operations)
+2. ✅ **Copies keys to laptop** using `ssh-copy-id` (handles retries, edge cases)
+   - Root's key → Required for automatic sync service
+   - User's key → Allows manual SSH without sudo
+3. ✅ **Verifies SSH access** works from control plane to laptop
+4. ✅ **Handles edge cases:** missing keys, authentication failures, timeouts
+
+**You'll be prompted for:**
+- Control plane password (to SSH to control plane)
+- Laptop password (for ssh-copy-id to copy keys)
+
+**Security:**
+- ✅ SSH over encrypted Tailscale VPN only
+- ✅ Key-based authentication (no passwords after setup)
+- ✅ Both root and user keys for redundancy
 
 ---
 
 ### Step 3: Install Management Workstation
 
 ```bash
-# On laptop:
-git clone https://github.com/vinsac/MyNodeOne.git
+# On laptop (already cloned in Step 2):
 cd MyNodeOne
 
 # Run installation:
@@ -833,20 +837,18 @@ sudo -n echo "Works"
 
 **Cause:** SSH keys not properly configured
 
-**Fix:**
+**Fix: Re-run the SSH setup script:**
 ```bash
-# On control plane, copy both keys:
-# 1. Root's key (required for sync service)
-sudo cat /root/.ssh/mynodeone_id_ed25519.pub | \
-    ssh username@laptop-ip "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+# On laptop:
+cd ~/MyNodeOne
+./scripts/setup-management-laptop-ssh.sh \
+    <control-plane-user> <control-plane-ip> \
+    <laptop-user> <laptop-ip>
 
-# 2. User's key (for manual operations)
-cat ~/.ssh/mynodeone_id_ed25519.pub | \
-    ssh username@laptop-ip "cat >> ~/.ssh/authorized_keys"
-
-# Verify both:
-sudo ssh username@laptop-ip "echo 'Root SSH works'"
-ssh username@laptop-ip "echo 'User SSH works'"
+# This will:
+# - Generate missing SSH keys on control plane
+# - Copy both root's and user's keys to laptop
+# - Verify SSH access works
 ```
 
 ### Issue: Auto-sync not working

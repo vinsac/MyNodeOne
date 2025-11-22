@@ -217,6 +217,91 @@ setup_reverse_ssh() {
 }
 
 ###############################################################################
+# Setup Reverse SSH (from control plane to Management Laptop)
+# Handles both user and root SSH keys for script automation
+###############################################################################
+
+setup_management_laptop_ssh() {
+    local control_plane_user="$1"
+    local control_plane_ip="$2"
+    local laptop_user="$3"
+    local laptop_ip="$4"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🔐 Reverse SSH Setup (Control Plane → Management Laptop)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    log_info "Setting up SSH keys on control plane for automation..."
+    log_info "This enables passwordless DNS sync to your laptop."
+    echo ""
+
+    local ssh_opts="${SSH_CONTROL_OPTS:-}"
+
+    # Remote script to generate keys and copy them using ssh-copy-id
+    local remote_script="
+        set -e
+        # Detect actual user on control plane
+        REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
+        if [ -n \"\${SUDO_USER:-}\" ] && [ \"\$SUDO_USER\" != \"root\" ]; then
+            REMOTE_ACTUAL_HOME=\$(getent passwd \"\$SUDO_USER\" | cut -d: -f6)
+        else
+            REMOTE_ACTUAL_HOME=\"/root\"
+        fi
+
+        # 1. Ensure root user has a MyNodeOne-specific SSH key
+        if [ ! -f /root/.ssh/mynodeone_id_ed25519 ]; then
+            echo '[INFO] Generating MyNodeOne SSH key for root user...'
+            ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '' -C 'root@control-plane-mynodeone'
+        fi
+
+        # 2. Ensure actual user has a MyNodeOne-specific SSH key
+        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" ]; then
+            echo \"[INFO] Generating MyNodeOne SSH key for user \$REMOTE_ACTUAL_USER...\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" mkdir -p \"\$REMOTE_ACTUAL_HOME/.ssh\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
+        fi
+
+        # 3. Copy keys to laptop using ssh-copy-id (the robust way)
+        echo '[INFO] Copying root MyNodeOne SSH key to laptop...'
+        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$laptop_user@$laptop_ip\"
+
+        if [ \"\$REMOTE_ACTUAL_USER\" != 'root' ]; then
+            echo \"[INFO] Copying user (\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop...\"
+            sudo -u \"\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \"$laptop_user@$laptop_ip\"
+        fi
+    "
+
+    # Execute the script on the control plane
+    # This may prompt for the laptop password for ssh-copy-id
+    log_info "Running key setup on control plane. You may be prompted for the laptop password."
+    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash -c '$remote_script'"; then
+        log_error "Failed to execute remote key setup script on control plane."
+        return 1
+    fi
+    
+    echo ""
+    log_info "Verifying reverse SSH access..."
+    
+    # Verify reverse SSH works (test as root - what sync service uses)
+    if ssh $ssh_opts "$control_plane_user@$control_plane_ip" \
+        "sudo ssh -o BatchMode=yes -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' 2>/dev/null" 2>&1 | grep -q "OK"; then
+        log_success "✓ Reverse SSH verified (control plane → laptop) ✓"
+        log_success "✓ Scripts can now sync DNS without passwords ✓"
+        return 0
+    else
+        log_warn "⚠ Could not verify reverse SSH"
+        log_warn "You may need to manually accept host key on control plane"
+        echo ""
+        echo "Run this on control plane:"
+        echo "  sudo ssh -o StrictHostKeyChecking=accept-new $laptop_user@$laptop_ip 'echo OK'"
+        echo ""
+        return 1
+    fi
+}
+
+###############################################################################
 # Wrapper for SSH commands using ControlMaster
 ###############################################################################
 

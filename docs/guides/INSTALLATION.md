@@ -628,7 +628,27 @@ sudo kubectl version --client
 
 ---
 
-## 🔐 Important: Security Requirements
+## Installation Steps
+
+### Step 1: Install Tailscale on Laptop
+
+```bash
+# Download from: https://tailscale.com/download
+# Or on Ubuntu:
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+
+# Verify connection
+tailscale status
+
+# Get your laptop's Tailscale IP (save this!)
+tailscale ip -4
+# Example: 100.86.112.112
+```
+
+---
+
+## 🔐 Security Requirements for Auto-Sync
 
 Management laptops require two security configurations for automatic DNS sync:
 
@@ -661,21 +681,24 @@ sudo -n echo "Works"
 
 **Why:** Control plane needs to SSH to your laptop to trigger DNS updates.
 
-**Configured automatically during installation.**
+**⚠️ MUST be configured manually** (requires Tailscale IP from Step 1)
 
 **What it does:**
 - Control plane's SSH key added to your `~/.ssh/authorized_keys`
 - Allows control plane to run sync script remotely
 - Enables automatic DNS updates when apps are installed
 
-**Manual configuration (if needed):**
+**Configuration (required before installation):**
 ```bash
 # On control plane:
-# Copy SSH key to laptop
+# Copy SSH key to laptop using Tailscale IP from Step 1
 ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-tailscale-ip
 
+# Example:
+ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
+
 # Or manually:
-cat ~/.ssh/mynodeone_id_ed25519.pub | ssh username@laptop-ip \
+cat ~/.ssh/mynodeone_id_ed25519.pub | ssh username@laptop-tailscale-ip \
     "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 ```
 
@@ -694,25 +717,31 @@ ssh username@laptop-tailscale-ip "echo 'SSH works!'"
 
 ---
 
-## Installation Steps
+### Step 2: Setup SSH Access (Control Plane → Laptop)
 
-### Step 1: Install Tailscale on Laptop
+**⚠️ IMPORTANT:** This step must be done **before** installing the management workstation.
 
 ```bash
-# Download from: https://tailscale.com/download
-# Or on Ubuntu:
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+# On control plane:
+# Use the Tailscale IP from Step 1
+ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub username@laptop-tailscale-ip
 
-# Verify connection
-tailscale status
+# Example:
+ssh-copy-id -i ~/.ssh/mynodeone_id_ed25519.pub vinaysachdeva@100.86.112.112
 
-# Get your laptop's Tailscale IP (save this!)
-tailscale ip -4
-# Example: 100.86.112.112
+# Verify it works:
+ssh username@laptop-tailscale-ip "echo 'SSH works!'"
+# Should print message without password prompt
 ```
 
-### Step 2: Install Management Workstation
+**What this does:**
+- Copies control plane's public SSH key to laptop
+- Allows control plane to SSH to laptop
+- Required for automatic DNS sync
+
+---
+
+### Step 3: Install Management Workstation
 
 ```bash
 # On laptop:
@@ -736,12 +765,8 @@ sudo ./scripts/mynodeone
   - Allows `sudo` without password prompts
   - Required for automatic `/etc/hosts` updates
 
-- ✅ Exchanges SSH keys with control plane
-  - Copies control plane's public key to `~/.ssh/authorized_keys`
-  - Allows control plane to SSH to laptop
-  - Enables remote sync script execution
-
 **Cluster Access:**
+- ✅ SSHes to control plane (using your credentials)
 - ✅ Copies kubeconfig from control plane
 - ✅ Configures kubectl for cluster access
 - ✅ Verifies connection to cluster
@@ -749,11 +774,16 @@ sudo ./scripts/mynodeone
 **DNS Configuration:**
 - ✅ Updates /etc/hosts with .local domain names
 - ✅ Registers laptop in control plane sync registry
-- ✅ Enables automatic DNS sync when apps are installed
+- ✅ Runs initial DNS sync
 
-**Result:** Fully automated DNS updates with no manual intervention required!
+**Result:** 
+- ✅ kubectl works from laptop
+- ✅ Services accessible via .local domains
+- ✅ Auto-sync enabled (because SSH key was configured in Step 2)
 
-### Step 3: Verify Installation
+---
+
+### Step 4: Verify Installation
 
 **Verify Security Configuration:**
 

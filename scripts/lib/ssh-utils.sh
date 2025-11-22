@@ -44,8 +44,9 @@ setup_ssh_control_master() {
     
     log_info "Setting up SSH connection multiplexing..."
     
-    # Create SSH control socket
-    SSH_CONTROL_OPTS="-o ControlMaster=auto -o ControlPath=$control_path -o ControlPersist=600"
+    # Create SSH control socket with agent forwarding
+    # -A enables agent forwarding so control plane can use laptop's SSH credentials
+    SSH_CONTROL_OPTS="-A -o ControlMaster=auto -o ControlPath=$control_path -o ControlPersist=600"
     
     # Test connection and establish master
     if ssh $SSH_CONTROL_OPTS -o BatchMode=yes -o ConnectTimeout=5 "$remote_user@$remote_host" "exit" 2>/dev/null; then
@@ -60,6 +61,7 @@ setup_ssh_control_master() {
         if ssh $SSH_CONTROL_OPTS -o ConnectTimeout=10 "$remote_user@$remote_host" "exit" 2>/dev/null; then
             log_success "SSH ControlMaster established successfully"
             log_success "Subsequent connections will reuse this session (no more passwords!)"
+            log_success "SSH agent forwarding enabled for nested connections"
             export SSH_CONTROL_OPTS
             return 0
         else
@@ -254,16 +256,54 @@ setup_management_laptop_ssh() {
     # Make it executable
     ssh $ssh_opts "$control_plane_user@$control_plane_ip" "chmod +x $remote_script" >/dev/null 2>&1
     
-    # Execute the helper script on control plane
-    log_info "Running SSH key setup script on control plane..."
-    log_info "You may be prompted for the laptop password when copying keys."
+    # Step 1: Generate keys on control plane (doesn't need laptop access)
+    log_info "Generating SSH keys on control plane..."
     echo ""
     
-    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $remote_script '$laptop_user' '$laptop_ip'"; then
-        log_error "Failed to execute SSH key setup script on control plane."
+    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $remote_script generate-only"; then
+        log_error "Failed to generate SSH keys on control plane."
         # Cleanup
         ssh $ssh_opts "$control_plane_user@$control_plane_ip" "rm -f $remote_script" 2>/dev/null || true
         return 1
+    fi
+    
+    echo ""
+    log_info "Fetching public keys from control plane..."
+    
+    # Step 2: Fetch the public keys from control plane
+    local root_pub_key=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "sudo cat /root/.ssh/mynodeone_id_ed25519.pub" 2>/dev/null)
+    local user_pub_key=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "cat ~/.ssh/mynodeone_id_ed25519.pub" 2>/dev/null)
+    
+    if [ -z "$root_pub_key" ]; then
+        log_error "Failed to fetch root public key from control plane"
+        ssh $ssh_opts "$control_plane_user@$control_plane_ip" "rm -f $remote_script" 2>/dev/null || true
+        return 1
+    fi
+    
+    # Step 3: Append keys to laptop's authorized_keys (locally, no nested SSH!)
+    log_info "Adding control plane keys to laptop's authorized_keys..."
+    
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+    touch ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+    
+    # Check if root key already exists
+    if grep -qF "$root_pub_key" ~/.ssh/authorized_keys 2>/dev/null; then
+        log_info "Root key already in authorized_keys"
+    else
+        echo "$root_pub_key" >> ~/.ssh/authorized_keys
+        log_success "Added root key to authorized_keys"
+    fi
+    
+    # Check if user key already exists (if not root)
+    if [ -n "$user_pub_key" ]; then
+        if grep -qF "$user_pub_key" ~/.ssh/authorized_keys 2>/dev/null; then
+            log_info "User key already in authorized_keys"
+        else
+            echo "$user_pub_key" >> ~/.ssh/authorized_keys
+            log_success "Added user key to authorized_keys"
+        fi
     fi
     
     # Cleanup

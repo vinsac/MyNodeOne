@@ -15,13 +15,18 @@
 
 set -euo pipefail
 
-LAPTOP_USER="$1"
-LAPTOP_IP="$2"
+MODE="${1:-full}"
+LAPTOP_USER="${2:-}"
+LAPTOP_IP="${3:-}"
 MAX_RETRIES=3
 RETRY_DELAY=2
 
-echo "[INFO] Setting up SSH keys for management laptop access..."
-echo "[INFO] Target: $LAPTOP_USER@$LAPTOP_IP"
+if [ "$MODE" = "generate-only" ]; then
+    echo "[INFO] Generating SSH keys on control plane (generate-only mode)..."
+else
+    echo "[INFO] Setting up SSH keys for management laptop access..."
+    echo "[INFO] Target: $LAPTOP_USER@$LAPTOP_IP"
+fi
 
 # Detect actual user on control plane
 REMOTE_ACTUAL_USER="${SUDO_USER:-$(whoami)}"
@@ -133,6 +138,18 @@ if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
             exit 1
         fi
     fi
+fi
+
+# If generate-only mode, exit here (keys are generated, copying will be done from laptop side)
+if [ "$MODE" = "generate-only" ]; then
+    echo ""
+    echo "[SUCCESS] ✅ SSH keys generated successfully!"
+    echo "[INFO] Keys are ready at:"
+    echo "  - Root: $ROOT_KEY_PATH"
+    if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
+        echo "  - User: $USER_KEY_PATH"
+    fi
+    exit 0
 fi
 
 ###############################################################################

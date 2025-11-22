@@ -312,7 +312,7 @@ setup_management_laptop_ssh() {
             echo "[INFO] Copying user ($REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop..."
             ssh-copy-id -i "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$laptop_user@$laptop_ip"'
         fi
-    ''
+    '
 
     # Execute the script on the control plane
     # PASS VIA STDIN to avoid quoting hell

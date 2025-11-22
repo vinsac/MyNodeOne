@@ -153,66 +153,35 @@ setup_reverse_ssh() {
     echo ""
 
     local ssh_opts="${SSH_CONTROL_OPTS:-}"
-
-    # Simplified remote script to generate keys and copy them using ssh-copy-id
-    # Note: $vps_user and $vps_ip are expanded here, before sending to remote
-    local remote_script='
-        set -e
-        # Detect actual user on control plane
-        REMOTE_ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-        
-        if [ "$REMOTE_ACTUAL_USER" = "root" ]; then
-            REMOTE_ACTUAL_HOME="/root"
-        else
-            REMOTE_ACTUAL_HOME=$(getent passwd "$REMOTE_ACTUAL_USER" | cut -d: -f6)
-        fi
-        
-        echo "[DEBUG] Running as user: $REMOTE_ACTUAL_USER"
-        
-        # 1. Ensure root user has a MyNodeOne-specific SSH key
-        # MUST RUN AS ROOT
-        if sudo [ ! -f /root/.ssh/mynodeone_id_ed25519 ]; then
-            echo '"'"'[INFO] Generating MyNodeOne SSH key for root user...'"'"'
-            sudo ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '"'"''"'"' -C '"'"'root@control-plane-mynodeone'"'"'
-            sudo chmod 600 /root/.ssh/mynodeone_id_ed25519
-            sudo chmod 644 /root/.ssh/mynodeone_id_ed25519.pub
-        fi
-
-        # 2. Ensure actual user has a MyNodeOne-specific SSH key
-        if [ "$REMOTE_ACTUAL_USER" != "root" ] && [ ! -f "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519" ]; then
-            echo "[INFO] Generating MyNodeOne SSH key for user $REMOTE_ACTUAL_USER..."
-            mkdir -p "$REMOTE_ACTUAL_HOME/.ssh"
-            ssh-keygen -t ed25519 -f "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519" -N '"'"''"'"' -C "$REMOTE_ACTUAL_USER@control-plane-mynodeone"
-        fi
-
-        # 3. Copy keys to VPS using ssh-copy-id (the robust way)
-        echo '"'"'[INFO] Copying root MyNodeOne SSH key to VPS...'"'"'
-        ROOT_PUB_KEY=$(sudo cat /root/.ssh/mynodeone_id_ed25519.pub)
-        
-        # Manually copy to authorized_keys using ssh
-        if echo "$ROOT_PUB_KEY" | ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$vps_user@$vps_ip"' "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"; then
-            echo "[INFO] Successfully copied root key"
-        else
-            echo "[WARN] Failed to copy root key via ssh."
-        fi
-
-        if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
-            echo "[INFO] Copying user ($REMOTE_ACTUAL_USER) MyNodeOne SSH key to VPS..."
-            ssh-copy-id -i "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$vps_user@$vps_ip"'
-        fi
-    '
-
-    # Execute the script on the control plane
-    # PASS VIA STDIN to avoid quoting hell
-    log_info "Running key setup on control plane. You may be prompted for the VPS password."
     
-    # Debug output
-    echo "---------------- DEBUG: REMOTE SCRIPT ----------------"
-    echo "$remote_script"
-    echo "------------------------------------------------------"
-
-    if ! echo "$remote_script" | ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash -s"; then
-        log_error "Failed to execute remote key setup script on control plane."
+    # Find MyNodeOne repo on control plane
+    log_info "Locating MyNodeOne repository on control plane..."
+    local repo_path=$(ssh $ssh_opts "$control_plane_user@$control_plane_ip" "
+        if [ -d ~/MyNodeOne ]; then
+            echo ~/MyNodeOne
+        elif [ -d /opt/mynodeone/MyNodeOne ]; then
+            echo /opt/mynodeone/MyNodeOne
+        else
+            echo ''
+        fi
+    ")
+    
+    if [ -z "$repo_path" ]; then
+        log_error "Could not find MyNodeOne repository on control plane"
+        log_error "Expected at ~/MyNodeOne or /opt/mynodeone/MyNodeOne"
+        return 1
+    fi
+    
+    log_info "Found repository at: $repo_path"
+    
+    # Execute the helper script on control plane
+    # This is much simpler and more robust than embedding the script
+    log_info "Running SSH key setup script on control plane..."
+    log_info "You may be prompted for the VPS password when copying keys."
+    echo ""
+    
+    if ! ssh $ssh_opts "$control_plane_user@$control_plane_ip" "bash $repo_path/scripts/lib/setup-vps-ssh-keys.sh '$vps_user' '$vps_ip'"; then
+        log_error "Failed to execute SSH key setup script on control plane."
         return 1
     fi
     

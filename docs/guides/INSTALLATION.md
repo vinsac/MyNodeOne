@@ -669,7 +669,11 @@ sudo ./scripts/mynodeone
 1. **Control plane IP:** → Your control plane Tailscale IP
 2. **SSH username:** → Your username on control plane
 
-**Installation copies kubeconfig and configures kubectl.**
+**What the installation does:**
+- ✅ Copies kubeconfig from control plane
+- ✅ Configures kubectl for cluster access
+- ✅ Updates /etc/hosts with .local domain names
+- ✅ Registers laptop in control plane registry
 
 ### Step 4: Verify
 
@@ -680,13 +684,51 @@ kubectl get nodes
 
 kubectl get pods -A
 # Shows all pods
+
+# Access services via .local domains:
+curl http://grafana.minicloud.local
+curl http://photos.minicloud.local
+# Replace 'minicloud' with your cluster domain
+```
+
+### Step 5: Syncing DNS After New Apps
+
+When you install new apps on the control plane, update DNS on your laptop:
+
+```bash
+cd ~/MyNodeOne
+sudo ./scripts/sync-dns.sh
+```
+
+This updates /etc/hosts with new service entries so you can access them via .local domains.
+
+**Example workflow:**
+```bash
+# 1. Install app on control plane (via SSH or from laptop)
+kubectl apply -f my-app.yaml
+
+# 2. Wait for app to get LoadBalancer IP
+kubectl get svc -n my-app
+
+# 3. Sync DNS on your laptop
+cd ~/MyNodeOne
+sudo ./scripts/sync-dns.sh
+
+# 4. Access via .local domain
+curl http://my-app.minicloud.local
 ```
 
 ---
 
 ## ✅ Management Laptop Setup Complete!
 
-You can now manage your cluster from your laptop!
+**What you can do now:**
+- ✅ Manage cluster from your laptop using kubectl
+- ✅ Access services via .local domain names
+- ✅ Deploy apps without SSHing to control plane
+- ✅ View logs, restart pods, manage resources
+
+**Remember:** After installing new apps, run `sudo ./scripts/sync-dns.sh` to update .local domains!
 
 ---
 ---

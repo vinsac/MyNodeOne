@@ -156,38 +156,38 @@ setup_reverse_ssh() {
 
     # Simplified remote script to generate keys and copy them using ssh-copy-id
     # Note: $vps_user and $vps_ip are expanded here, before sending to remote
-    local remote_script="
+    local remote_script='
         set -e
         # Detect actual user on control plane
-        REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
-        if [ -n \"\${SUDO_USER:-}\" ] && [ \"\\\$SUDO_USER\" != \"root\" ]; then
-            REMOTE_ACTUAL_HOME=\$(getent passwd \"\\\$SUDO_USER\" | cut -d: -f6)
+        REMOTE_ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            REMOTE_ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
         else
-            REMOTE_ACTUAL_HOME=\"/root\"
+            REMOTE_ACTUAL_HOME="/root"
         fi
 
         # 1. Ensure root user has a MyNodeOne-specific SSH key
         if [ ! -f /root/.ssh/mynodeone_id_ed25519 ]; then
-            echo '[INFO] Generating MyNodeOne SSH key for root user...'
-            ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '' -C 'root@control-plane-mynodeone'
+            echo '"'"'[INFO] Generating MyNodeOne SSH key for root user...'"'"'
+            ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '"'"''"'"' -C '"'"'root@control-plane-mynodeone'"'"'
         fi
 
         # 2. Ensure actual user has a MyNodeOne-specific SSH key
-        if [ \"\\\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" ]; then
-            echo \"[INFO] Generating MyNodeOne SSH key for user \\\$REMOTE_ACTUAL_USER...\"
-            sudo -u \"\\\$REMOTE_ACTUAL_USER\" mkdir -p \"\\\$REMOTE_ACTUAL_HOME/.ssh\"
-            sudo -u \"\\\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\\\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
+        if [ "$REMOTE_ACTUAL_USER" != "root" ] && [ ! -f "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519" ]; then
+            echo "[INFO] Generating MyNodeOne SSH key for user $REMOTE_ACTUAL_USER..."
+            sudo -u "$REMOTE_ACTUAL_USER" mkdir -p "$REMOTE_ACTUAL_HOME/.ssh"
+            sudo -u "$REMOTE_ACTUAL_USER" ssh-keygen -t ed25519 -f "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519" -N '"'"''"'"' -C "$REMOTE_ACTUAL_USER@control-plane-mynodeone"
         fi
 
         # 3. Copy keys to VPS using ssh-copy-id (the robust way)
-        echo '[INFO] Copying root MyNodeOne SSH key to VPS...'
-        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $vps_user@$vps_ip
+        echo '"'"'[INFO] Copying root MyNodeOne SSH key to VPS...'"'"'
+        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$vps_user@$vps_ip"'
 
-        if [ \"\\\$REMOTE_ACTUAL_USER\" != 'root' ]; then
-            echo \"[INFO] Copying user (\\\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to VPS...\"
-            sudo -u \"\\\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $vps_user@$vps_ip
+        if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
+            echo "[INFO] Copying user ($REMOTE_ACTUAL_USER) MyNodeOne SSH key to VPS..."
+            sudo -u "$REMOTE_ACTUAL_USER" ssh-copy-id -i "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$vps_user@$vps_ip"'
         fi
-    "
+    '
 
     # Execute the script on the control plane
     # This may prompt for the VPS password for ssh-copy-id
@@ -242,38 +242,38 @@ setup_management_laptop_ssh() {
 
     # Remote script to generate keys and copy them using ssh-copy-id
     # Note: $laptop_user and $laptop_ip are expanded here, before sending to remote
-    local remote_script="
+    local remote_script='
         set -e
         # Detect actual user on control plane
-        REMOTE_ACTUAL_USER=\"\${SUDO_USER:-\$(whoami)}\"
-        if [ -n \"\${SUDO_USER:-}\" ] && [ \"\\\$SUDO_USER\" != \"root\" ]; then
-            REMOTE_ACTUAL_HOME=\$(getent passwd \"\\\$SUDO_USER\" | cut -d: -f6)
+        REMOTE_ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            REMOTE_ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
         else
-            REMOTE_ACTUAL_HOME=\"/root\"
+            REMOTE_ACTUAL_HOME="/root"
         fi
 
         # 1. Ensure root user has a MyNodeOne-specific SSH key
         if [ ! -f /root/.ssh/mynodeone_id_ed25519 ]; then
-            echo '[INFO] Generating MyNodeOne SSH key for root user...'
-            ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '' -C 'root@control-plane-mynodeone'
+            echo '"'"'[INFO] Generating MyNodeOne SSH key for root user...'"'"'
+            ssh-keygen -t ed25519 -f /root/.ssh/mynodeone_id_ed25519 -N '"'"''"'"' -C '"'"'root@control-plane-mynodeone'"'"'
         fi
 
         # 2. Ensure actual user has a MyNodeOne-specific SSH key
-        if [ \"\\\$REMOTE_ACTUAL_USER\" != 'root' ] && [ ! -f \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" ]; then
-            echo \"[INFO] Generating MyNodeOne SSH key for user \\\$REMOTE_ACTUAL_USER...\"
-            sudo -u \"\\\$REMOTE_ACTUAL_USER\" mkdir -p \"\\\$REMOTE_ACTUAL_HOME/.ssh\"
-            sudo -u \"\\\$REMOTE_ACTUAL_USER\" ssh-keygen -t ed25519 -f \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519\" -N '' -C \"\\\$REMOTE_ACTUAL_USER@control-plane-mynodeone\"
+        if [ "$REMOTE_ACTUAL_USER" != "root" ] && [ ! -f "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519" ]; then
+            echo "[INFO] Generating MyNodeOne SSH key for user $REMOTE_ACTUAL_USER..."
+            sudo -u "$REMOTE_ACTUAL_USER" mkdir -p "$REMOTE_ACTUAL_HOME/.ssh"
+            sudo -u "$REMOTE_ACTUAL_USER" ssh-keygen -t ed25519 -f "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519" -N '"'"''"'"' -C "$REMOTE_ACTUAL_USER@control-plane-mynodeone"
         fi
 
         # 3. Copy keys to laptop using ssh-copy-id (the robust way)
-        echo '[INFO] Copying root MyNodeOne SSH key to laptop...'
-        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $laptop_user@$laptop_ip
+        echo '"'"'[INFO] Copying root MyNodeOne SSH key to laptop...'"'"'
+        ssh-copy-id -i /root/.ssh/mynodeone_id_ed25519.pub -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$laptop_user@$laptop_ip"'
 
-        if [ \"\\\$REMOTE_ACTUAL_USER\" != 'root' ]; then
-            echo \"[INFO] Copying user (\\\$REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop...\"
-            sudo -u \"\\\$REMOTE_ACTUAL_USER\" ssh-copy-id -i \"\\\$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $laptop_user@$laptop_ip
+        if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
+            echo "[INFO] Copying user ($REMOTE_ACTUAL_USER) MyNodeOne SSH key to laptop..."
+            sudo -u "$REMOTE_ACTUAL_USER" ssh-copy-id -i "$REMOTE_ACTUAL_HOME/.ssh/mynodeone_id_ed25519.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 '"$laptop_user@$laptop_ip"'
         fi
-    "
+    '
 
     # Execute the script on the control plane
     # This may prompt for the laptop password for ssh-copy-id

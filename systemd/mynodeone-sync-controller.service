@@ -1,15 +1,22 @@
 [Unit]
-Description=MyNodeOne Sync Controller - Event-Driven Config Push
+Description=MyNodeOne Sync Controller - Event-Driven Config Push with Reconciliation
 After=network.target k3s.service
 Requires=k3s.service
+Documentation=https://github.com/vinsac/MyNodeOne
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/path/to/MyNodeOne
-ExecStart=/path/to/MyNodeOne/scripts/lib/sync-controller.sh watch
+WorkingDirectory=/root/MyNodeOne
+# Use daemon mode: watch for changes + reconcile every hour
+# This ensures offline nodes (laptops) get synced when they come online
+ExecStart=/root/MyNodeOne/scripts/lib/sync-controller.sh daemon 1
 Restart=always
 RestartSec=10
+
+# Environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="KUBECONFIG=/root/.kube/config"
 
 # Logging
 StandardOutput=journal
@@ -19,6 +26,9 @@ SyslogIdentifier=mynodeone-sync
 # Security
 PrivateTmp=yes
 NoNewPrivileges=true
+
+# Resource limits
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target

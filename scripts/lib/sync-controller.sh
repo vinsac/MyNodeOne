@@ -131,6 +131,28 @@ push_sync_to_node() {
         fi
     fi
     
+    # Check if node is reachable before attempting sync
+    if ! $ssh_cmd $ssh_opts "$ssh_user@$node_ip" "echo 'ping' 2>/dev/null" >/dev/null 2>&1; then
+        log_warn "Node $node_ip is not reachable (offline or network issue)"
+        log_info "Will retry on next reconciliation cycle"
+        
+        # Mark node as pending_sync for retry later
+        if [[ -f "$registry_file" ]]; then
+            local registry=$(cat "$registry_file")
+            registry=$(echo "$registry" | jq \
+                --arg type "$node_type" \
+                --arg ip "$node_ip" \
+                '.[$type] |= map(
+                    if .ip == $ip then
+                        .status = "pending_sync" |
+                        .last_attempt = (now | todate)
+                    else . end
+                )')
+            echo "$registry" > "$registry_file"
+        fi
+        return 1
+    fi
+    
     local attempt=1
     while [[ $attempt -le $max_retries ]]; do
         log_info "Attempt $attempt/$max_retries: Syncing to $node_ip..."
@@ -365,16 +387,51 @@ watch_and_push() {
 }
 
 # Periodic reconciliation (safety net)
+# Retries failed nodes and does full sync at regular intervals
 periodic_reconciliation() {
     local interval_hours="${1:-1}"
     
-    log_info "Starting periodic reconciliation (every $interval_hours hour(s))..."
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "  Starting Periodic Reconciliation Service"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "Interval: Every $interval_hours hour(s)"
+    log_info "Purpose: Retry offline nodes, ensure consistency"
+    echo ""
     
     while true; do
         sleep $((interval_hours * 3600))
         
-        log_info "Running scheduled reconciliation..."
-        push_sync_all
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_info "  Scheduled Reconciliation - $(date)"
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        # Show nodes pending sync
+        init_node_registry
+        local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
+        local registry=$(cat "$registry_file")
+        
+        local pending_count=$(echo "$registry" | jq '[.management_laptops[], .vps_nodes[], .worker_nodes[]] | map(select(.status == "pending_sync")) | length')
+        
+        if [[ "$pending_count" -gt 0 ]]; then
+            log_info "Found $pending_count node(s) pending sync (offline or failed)"
+            log_info "Attempting to sync..."
+            echo ""
+        else
+            log_info "No pending nodes. Running full sync for consistency..."
+            echo ""
+        fi
+        
+        # Run full sync (will retry pending nodes)
+        if push_sync_all; then
+            log_success "Reconciliation completed successfully"
+        else
+            log_warn "Reconciliation completed with some failures (will retry next cycle)"
+        fi
+        
+        echo ""
+        log_info "Next reconciliation in $interval_hours hour(s)..."
+        echo ""
     done
 }
 
@@ -411,6 +468,29 @@ health_check() {
     echo ""
 }
 
+# Combined watch + reconcile mode (recommended for production)
+daemon_mode() {
+    local reconcile_hours="${1:-1}"
+    
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "  Starting Sync Controller Daemon"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "Mode: Watch + Periodic Reconciliation"
+    log_info "• Watches for ConfigMap changes (immediate sync)"
+    log_info "• Reconciles every $reconcile_hours hour(s) (retry offline nodes)"
+    echo ""
+    
+    # Start periodic reconciliation in background
+    periodic_reconciliation "$reconcile_hours" &
+    local reconcile_pid=$!
+    
+    # Trap signals to cleanup background process
+    trap "kill $reconcile_pid 2>/dev/null; exit" SIGINT SIGTERM
+    
+    # Run watch in foreground
+    watch_and_push
+}
+
 # Main command dispatcher
 case "${1:-}" in
     register)
@@ -424,6 +504,9 @@ case "${1:-}" in
         ;;
     reconcile)
         periodic_reconciliation "${2:-1}"
+        ;;
+    daemon)
+        daemon_mode "${2:-1}"
         ;;
     health)
         health_check
@@ -443,10 +526,14 @@ Commands:
   push                          Immediately push sync to all registered nodes
 
   watch                         Watch for ConfigMap changes and auto-push
-                                (Run as systemd service for production)
+                                Syncs immediately when apps are installed
 
   reconcile [hours]             Periodic reconciliation (default: 1 hour)
-                                Safety net for missed events
+                                Retries offline nodes, ensures consistency
+
+  daemon [hours]                Combined watch + reconcile (RECOMMENDED)
+                                Immediate sync on changes + hourly retry
+                                Best for production with offline laptops
 
   health                        Check health status of all nodes
 
@@ -458,16 +545,19 @@ Examples:
   # One-time push to all nodes
   sync-controller.sh push
 
-  # Watch for changes (production mode)
+  # Production mode (watch + reconcile every 1 hour)
+  sync-controller.sh daemon 1
+
+  # Watch only (immediate sync, no retry)
   sync-controller.sh watch
 
-  # Run reconciliation every 4 hours
-  sync-controller.sh reconcile 4
+  # Reconcile only (retry every 2 hours)
+  sync-controller.sh reconcile 2
 
   # Check node health
   sync-controller.sh health
 
-Production Setup:
+Production Setup (Recommended):
   1. Register all nodes
   2. Run as systemd service:
      sudo systemctl start mynodeone-sync-controller

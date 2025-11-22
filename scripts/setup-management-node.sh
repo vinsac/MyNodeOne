@@ -212,9 +212,16 @@ echo "  • Registered in control plane registry"
 echo "  • DNS entries configured in /etc/hosts"
 echo "  • kubectl access to cluster"
 echo "  • Access services via .local domains"
+echo "  • Automatic DNS sync enabled"
 echo ""
 
-log_info "To sync DNS after installing new apps:"
+log_info "How auto-sync works:"
+echo "  • When apps are installed, control plane pushes DNS updates"
+echo "  • Your laptop receives updates automatically via SSH"
+echo "  • New services become accessible within ~10 seconds"
+echo ""
+
+log_info "Manual sync (if needed):"
 echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
 echo ""
 

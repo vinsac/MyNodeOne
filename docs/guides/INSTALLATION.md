@@ -674,6 +674,7 @@ sudo ./scripts/mynodeone
 - ✅ Configures kubectl for cluster access
 - ✅ Updates /etc/hosts with .local domain names
 - ✅ Registers laptop in control plane registry
+- ✅ Enables automatic DNS sync when apps are installed
 
 ### Step 4: Verify
 
@@ -691,16 +692,18 @@ curl http://photos.minicloud.local
 # Replace 'minicloud' with your cluster domain
 ```
 
-### Step 5: Syncing DNS After New Apps
+---
 
-When you install new apps on the control plane, update DNS on your laptop:
+## ✅ Management Laptop Setup Complete!
 
-```bash
-cd ~/MyNodeOne
-sudo ./scripts/sync-dns.sh
-```
+**What you can do now:**
+- ✅ Manage cluster from your laptop using kubectl
+- ✅ Access services via .local domain names automatically
+- ✅ Deploy apps without SSHing to control plane
+- ✅ View logs, restart pods, manage resources
 
-This updates /etc/hosts with new service entries so you can access them via .local domains.
+**Automatic DNS Sync:**
+When you install new apps on the control plane, DNS entries are **automatically synced** to your laptop! Just wait a few seconds and the new service will be accessible via its .local domain.
 
 **Example workflow:**
 ```bash
@@ -710,25 +713,19 @@ kubectl apply -f my-app.yaml
 # 2. Wait for app to get LoadBalancer IP
 kubectl get svc -n my-app
 
-# 3. Sync DNS on your laptop
-cd ~/MyNodeOne
-sudo ./scripts/sync-dns.sh
+# 3. DNS automatically syncs (no action needed!)
+# Wait ~10 seconds for auto-sync
 
 # 4. Access via .local domain
 curl http://my-app.minicloud.local
 ```
 
----
-
-## ✅ Management Laptop Setup Complete!
-
-**What you can do now:**
-- ✅ Manage cluster from your laptop using kubectl
-- ✅ Access services via .local domain names
-- ✅ Deploy apps without SSHing to control plane
-- ✅ View logs, restart pods, manage resources
-
-**Remember:** After installing new apps, run `sudo ./scripts/sync-dns.sh` to update .local domains!
+**Manual sync (if needed):**
+If you need to force an immediate sync:
+```bash
+cd ~/MyNodeOne
+sudo ./scripts/sync-dns.sh
+```
 
 ---
 ---

@@ -181,6 +181,17 @@ push_sync_to_node() {
                     log_error "✗ Traefik is NOT running on $node_ip"
                     verification_passed=false
                 fi
+            elif [[ "$node_type" == "management_laptops" ]]; then
+                # Check if /etc/hosts has MyNodeOne entries
+                local dns_count=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                    "grep -c 'MyNodeOne Services' /etc/hosts 2>/dev/null || echo 0" 2>/dev/null)
+                
+                if [[ "$dns_count" -gt 0 ]]; then
+                    log_success "✓ DNS entries synced on $node_ip"
+                else
+                    log_error "✗ DNS entries NOT found on $node_ip"
+                    verification_passed=false
+                fi
             fi
             
             if [[ "$verification_passed" == "true" ]]; then
@@ -273,12 +284,6 @@ push_sync_all() {
         local node_type="$1"
         local node_key="$2"
         
-        # Skip syncing to management laptops (they don't need route syncing)
-        if [[ "$node_key" == "management_laptops" ]]; then
-            log_info "Skipping sync for management laptops (use kubectl directly)"
-            return 0
-        fi
-
         # Check if the key exists and is an array
         if ! echo "$registry" | jq -e ". | has(\"$node_key\") and (.\"$node_key\" | type) == \"array\"" > /dev/null; then
             log_warn "Registry is missing or has invalid format for '$node_key'. Skipping."

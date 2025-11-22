@@ -315,20 +315,24 @@ setup_management_laptop_ssh() {
     # Step 4: Accept host key from control plane (both as user and root)
     # First as the regular user
     ssh $ssh_opts "$control_plane_user@$control_plane_ip" \
-        "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' >/dev/null 2>&1" || true
+        "ssh -i ~/.ssh/mynodeone_id_ed25519 -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' >/dev/null 2>&1" || true
     
-    # Then as root (what the sync service uses)
+    # Then as root (what the sync service uses) - must specify the key explicitly
+    log_info "Accepting host key as root..."
     ssh $ssh_opts "$control_plane_user@$control_plane_ip" \
-        "sudo ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' >/dev/null 2>&1" || true
+        "sudo ssh -i /root/.ssh/mynodeone_id_ed25519 -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' 2>&1" || {
+        log_warn "Root host key acceptance may have failed (this is OK if sudo requires password)"
+    }
     
-    log_success "Host key accepted"
+    log_success "Host key acceptance attempted"
     
     echo ""
     log_info "Verifying reverse SSH access..."
     
     # Verify reverse SSH works (test as root - what sync service uses)
+    # Must specify the mynodeone key explicitly
     if ssh $ssh_opts "$control_plane_user@$control_plane_ip" \
-        "sudo ssh -o BatchMode=yes -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' 2>/dev/null" 2>&1 | grep -q "OK"; then
+        "sudo ssh -i /root/.ssh/mynodeone_id_ed25519 -o BatchMode=yes -o ConnectTimeout=5 $laptop_user@$laptop_ip 'echo OK' 2>/dev/null" 2>&1 | grep -q "OK"; then
         log_success "✓ Reverse SSH verified (control plane → laptop) ✓"
         log_success "✓ Scripts can now sync DNS without passwords ✓"
         return 0
@@ -337,7 +341,7 @@ setup_management_laptop_ssh() {
         log_warn "This might be a transient issue. Try running the verification manually:"
         echo ""
         echo "On control plane, run:"
-        echo "  sudo ssh $laptop_user@$laptop_ip 'echo OK'"
+        echo "  sudo ssh -i /root/.ssh/mynodeone_id_ed25519 $laptop_user@$laptop_ip 'echo OK'"
         echo ""
         log_warn "If that works, the setup is complete despite this warning."
         return 0  # Don't fail - keys are installed, verification might just be timing issue

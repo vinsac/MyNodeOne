@@ -7,10 +7,10 @@ Documentation=https://github.com/vinsac/MyNodeOne
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/MyNodeOne
+WorkingDirectory=MYNODEONE_INSTALL_PATH
 # Use daemon mode: watch for changes + reconcile every hour
 # This ensures offline nodes (laptops) get synced when they come online
-ExecStart=/root/MyNodeOne/scripts/lib/sync-controller.sh daemon 1
+ExecStart=MYNODEONE_INSTALL_PATH/scripts/lib/sync-controller.sh daemon 1
 Restart=always
 RestartSec=10
 

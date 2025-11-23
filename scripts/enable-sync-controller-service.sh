@@ -69,7 +69,7 @@ log_success "Service file found"
 # Update service file with actual paths
 log_info "Updating service file with actual paths..."
 TEMP_SERVICE="/tmp/mynodeone-sync-controller.service"
-sed "s|/root/MyNodeOne|$REPO_ROOT|g" "$SERVICE_FILE" > "$TEMP_SERVICE"
+sed "s|MYNODEONE_INSTALL_PATH|$REPO_ROOT|g" "$SERVICE_FILE" > "$TEMP_SERVICE"
 
 # Detect actual user's home and kubeconfig
 ACTUAL_USER="${SUDO_USER:-root}"

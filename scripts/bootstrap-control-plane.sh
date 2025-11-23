@@ -1271,7 +1271,7 @@ initialize_service_registries() {
         log_info "Installing sync controller service..."
         
         # Update the service file with correct paths
-        sed "s|/path/to/MyNodeOne|$PROJECT_ROOT|g" \
+        sed "s|MYNODEONE_INSTALL_PATH|$PROJECT_ROOT|g" \
             "$PROJECT_ROOT/systemd/mynodeone-sync-controller.service" | \
             sudo tee /etc/systemd/system/mynodeone-sync-controller.service > /dev/null
         
@@ -1279,9 +1279,33 @@ initialize_service_registries() {
         sudo systemctl enable mynodeone-sync-controller
         sudo systemctl start mynodeone-sync-controller
         
-        log_success "Sync controller service installed and started"
+        # Verify service actually started
+        sleep 2
+        if sudo systemctl is-active --quiet mynodeone-sync-controller; then
+            log_success "Sync controller service installed and started"
+        else
+            log_error "Sync controller service failed to start"
+            log_error "Check logs: sudo journalctl -u mynodeone-sync-controller -n 50"
+            # Don't fail installation, but warn user
+            log_warn "Continuing installation, but sync controller needs attention"
+        fi
     else
         log_info "Sync controller service already installed"
+        # Verify it's running
+        if sudo systemctl is-active --quiet mynodeone-sync-controller; then
+            log_success "Sync controller service is running"
+        else
+            log_warn "Sync controller service exists but is not running"
+            log_info "Restarting service..."
+            sudo systemctl restart mynodeone-sync-controller
+            sleep 2
+            if sudo systemctl is-active --quiet mynodeone-sync-controller; then
+                log_success "Sync controller service restarted successfully"
+            else
+                log_error "Sync controller service failed to start"
+                log_error "Check logs: sudo journalctl -u mynodeone-sync-controller -n 50"
+            fi
+        fi
     fi
     
     echo

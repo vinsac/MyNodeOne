@@ -45,13 +45,25 @@ if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
 
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
-
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🌐 Syncing DNS Entries from Control Plane"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+
+# Fetch cluster domain from cluster (authoritative source)
+if command -v kubectl &>/dev/null; then
+    CLUSTER_DOMAIN=$(kubectl get cm cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+    if [[ -n "$CLUSTER_DOMAIN" ]]; then
+        log_info "Using cluster domain from cluster: $CLUSTER_DOMAIN"
+    fi
+fi
+
+# Fallback to config file or default
+if [[ -z "$CLUSTER_DOMAIN" ]]; then
+    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+    log_warn "Could not fetch cluster domain from cluster, using: $CLUSTER_DOMAIN"
+fi
 
 # Check if kubectl is configured
 if ! command -v kubectl &>/dev/null; then
@@ -72,38 +84,44 @@ if ! command -v kubectl &>/dev/null; then
     
     log_info "Fetching DNS entries from $CONTROL_PLANE_IP via SSH..."
     
-    # Fetch DNS entries via SSH
+    # Fetch DNS entries via SSH and deduplicate
     DNS_ENTRIES=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "sudo kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null" | \
         jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
-            to_entries[] |
-            select(.value.ip != null) |
-            if .value.subdomain == "" then
-                "\(.value.ip)\t\($domain)"
-            elif .value.subdomain == "dashboard" then
+            # Group by subdomain and IP to deduplicate
+            [to_entries[] | select(.value.ip != null) | .value] |
+            group_by(.subdomain + "|" + .ip) |
+            map(.[0]) |
+            .[] |
+            if .subdomain == "" then
+                "\(.ip)\t\($domain)"
+            elif .subdomain == "dashboard" then
                 # Dashboard gets both subdomain AND bare domain entries
-                "\(.value.ip)\t\(.value.subdomain).\($domain)\n\(.value.ip)\t\($domain)"
+                "\(.ip)\t\(.subdomain).\($domain)\n\(.ip)\t\($domain)"
             else
-                "\(.value.ip)\t\(.value.subdomain).\($domain)"
+                "\(.ip)\t\(.subdomain).\($domain)"
             end
         ' 2>/dev/null || echo "")
 else
     # Use kubectl directly
     log_info "Fetching DNS entries from cluster..."
     
-    # Get service registry
+    # Get service registry and deduplicate by subdomain+IP
     DNS_ENTRIES=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath='{.data.services\.json}' 2>/dev/null | \
         jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
-            to_entries[] |
-            select(.value.ip != null) |
-            if .value.subdomain == "" then
-                "\(.value.ip)\t\($domain)"
-            elif .value.subdomain == "dashboard" then
+            # Group by subdomain and IP to deduplicate
+            [to_entries[] | select(.value.ip != null) | .value] |
+            group_by(.subdomain + "|" + .ip) |
+            map(.[0]) |
+            .[] |
+            if .subdomain == "" then
+                "\(.ip)\t\($domain)"
+            elif .subdomain == "dashboard" then
                 # Dashboard gets both subdomain AND bare domain entries
-                "\(.value.ip)\t\(.value.subdomain).\($domain)\n\(.value.ip)\t\($domain)"
+                "\(.ip)\t\(.subdomain).\($domain)\n\(.ip)\t\($domain)"
             else
-                "\(.value.ip)\t\(.value.subdomain).\($domain)"
+                "\(.ip)\t\(.subdomain).\($domain)"
             end
         ' 2>/dev/null || echo "")
 fi

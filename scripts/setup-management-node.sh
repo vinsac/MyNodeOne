@@ -226,11 +226,14 @@ echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
 echo ""
 
 # Show current services
-SERVICE_COUNT=$(grep "mycloud.local" /etc/hosts 2>/dev/null | wc -l || echo "0")
+SERVICE_COUNT=$(grep "mycloud.local" /etc/hosts 2>/dev/null | wc -l)
+if [ -z "$SERVICE_COUNT" ]; then
+    SERVICE_COUNT=0
+fi
 log_info "Currently configured services: $SERVICE_COUNT"
 echo ""
 
-if [ $SERVICE_COUNT -gt 0 ]; then
+if [ "$SERVICE_COUNT" -gt 0 ]; then
     echo "Available services:"
     grep "mycloud.local" /etc/hosts | awk '{print "  • http://" $2}' | sort
     echo ""

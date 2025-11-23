@@ -193,16 +193,24 @@ push_sync_to_node() {
             local verification_passed=true
             
             if [[ "$node_type" == "vps_nodes" ]]; then
-                # Check if routes file was created
-                if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                    "test -f ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
-                    log_success "✓ Routes file exists on $node_ip"
+                # Check if sync output indicates no public services (this is OK, not an error)
+                if echo "$sync_output" | grep -q "No public services configured"; then
+                    log_info "ℹ No public services configured yet (this is normal for new installations)"
+                    log_info "Routes file will be created when you make an app public"
+                    # This is success - VPS is ready, just waiting for public apps
+                    verification_passed=true
                 else
-                    log_error "✗ Routes file NOT found on $node_ip"
-                    verification_passed=false
+                    # Check if routes file was created
+                    if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                        "test -f ~/traefik/config/mynodeone-routes.yml" 2>/dev/null; then
+                        log_success "✓ Routes file exists on $node_ip"
+                    else
+                        log_error "✗ Routes file NOT found on $node_ip"
+                        verification_passed=false
+                    fi
                 fi
                 
-                # Check if Traefik is running
+                # Always check if Traefik is running (this is critical)
                 if $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
                     "docker ps | grep -q traefik" 2>/dev/null; then
                     log_success "✓ Traefik is running on $node_ip"

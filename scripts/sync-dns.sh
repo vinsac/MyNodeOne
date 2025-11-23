@@ -80,6 +80,9 @@ if ! command -v kubectl &>/dev/null; then
             select(.value.ip != null) |
             if .value.subdomain == "" then
                 "\(.value.ip)\t\($domain)"
+            elif .value.subdomain == "dashboard" then
+                # Dashboard gets both subdomain AND bare domain entries
+                "\(.value.ip)\t\(.value.subdomain).\($domain)\n\(.value.ip)\t\($domain)"
             else
                 "\(.value.ip)\t\(.value.subdomain).\($domain)"
             end
@@ -96,6 +99,9 @@ else
             select(.value.ip != null) |
             if .value.subdomain == "" then
                 "\(.value.ip)\t\($domain)"
+            elif .value.subdomain == "dashboard" then
+                # Dashboard gets both subdomain AND bare domain entries
+                "\(.value.ip)\t\(.value.subdomain).\($domain)\n\(.value.ip)\t\($domain)"
             else
                 "\(.value.ip)\t\(.value.subdomain).\($domain)"
             end

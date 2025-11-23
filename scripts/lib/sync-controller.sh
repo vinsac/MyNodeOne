@@ -219,15 +219,23 @@ push_sync_to_node() {
                     verification_passed=false
                 fi
             elif [[ "$node_type" == "management_laptops" ]]; then
-                # Check if /etc/hosts has MyNodeOne entries
-                local dns_count=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                    "grep -c 'MyNodeOne Services' /etc/hosts 2>/dev/null || echo 0" 2>/dev/null)
-                
-                if [[ "$dns_count" -gt 0 ]]; then
-                    log_success "✓ DNS entries synced on $node_ip"
+                # Check if sync output indicates no services (this is OK, not an error)
+                if echo "$sync_output" | grep -q "No services found in registry"; then
+                    log_info "ℹ No services in registry yet (this is normal for new installations)"
+                    log_info "DNS entries will be added when apps are installed"
+                    # This is success - laptop is ready, just waiting for apps
+                    verification_passed=true
                 else
-                    log_error "✗ DNS entries NOT found on $node_ip"
-                    verification_passed=false
+                    # Check if /etc/hosts has MyNodeOne entries
+                    local dns_count=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                        "grep -c 'MyNodeOne Services' /etc/hosts 2>/dev/null || echo 0" 2>/dev/null)
+                    
+                    if [[ "$dns_count" -gt 0 ]]; then
+                        log_success "✓ DNS entries synced on $node_ip"
+                    else
+                        log_error "✗ DNS entries NOT found on $node_ip"
+                        verification_passed=false
+                    fi
                 fi
             fi
             

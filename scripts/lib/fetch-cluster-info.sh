@@ -75,11 +75,13 @@ fetch_cluster_info() {
     ssh_user="${ssh_user:-root}"
     echo
 
-    # Test SSH connection
+    # Test SSH connection (allow password authentication)
     log_info "Testing SSH connection to $ssh_user@$control_plane_ip..."
-    if ! $SSH_CMD -o BatchMode=yes -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit" 2>/dev/null; then
-        log_error "Passwordless SSH connection failed."
-        log_info "Please ensure you have exchanged SSH keys and can connect without a password."
+    log_info "You may be prompted for your SSH password..."
+    echo
+    if ! $SSH_CMD -o ConnectTimeout=10 "$ssh_user@$control_plane_ip" "exit"; then
+        log_error "SSH connection failed."
+        log_info "Please check your credentials and network connectivity."
         return 1
     fi
     log_success "SSH connection successful"

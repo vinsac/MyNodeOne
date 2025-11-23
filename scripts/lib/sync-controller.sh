@@ -130,6 +130,11 @@ push_sync_to_node() {
             # Fallback: run as user without agent (will use key files)
             ssh_cmd="sudo -u $SUDO_USER ssh"
         fi
+    else
+        # Running as root (systemd service) - use explicit key file
+        if [ -f "/root/.ssh/mynodeone_id_ed25519" ]; then
+            ssh_opts="$ssh_opts -i /root/.ssh/mynodeone_id_ed25519"
+        fi
     fi
     
     # Check if node is reachable before attempting sync

@@ -353,18 +353,18 @@ Fast, non-interactive installation with all parameters in one command:
 cd ~/MyNodeOne
 
 sudo ./scripts/install-vps-edge-node.sh \
-  --node-name "vps-edge-01" \
-  --tailscale-ip "100.80.255.123" \
-  --ssh-user "sammy" \
+  --name "vps-edge-01" \
+  --ip "100.80.255.123" \
+  --user "sammy" \
   --public-ip "45.8.133.192" \
   --domain "curiios.com" \
   --email "vinaysachdeva27@gmail.com"
 ```
 
 **Replace with your actual values:**
-- `--node-name`: Friendly name for your VPS (e.g., "vps-edge-01")
-- `--tailscale-ip`: VPS Tailscale IP (from `tailscale ip -4` on VPS)
-- `--ssh-user`: Your sudo user on VPS (e.g., "sammy")
+- `--name`: Friendly name for your VPS (e.g., "vps-edge-01")
+- `--ip`: VPS Tailscale IP (from `tailscale ip -4` on VPS)
+- `--user`: Your sudo user on VPS (e.g., "sammy")
 - `--public-ip`: VPS public IP address
 - `--domain`: Your public domain name
 - `--email`: Your email for SSL certificates

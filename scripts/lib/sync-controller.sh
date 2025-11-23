@@ -173,12 +173,13 @@ push_sync_to_node() {
             local service_registry=$(kubectl get configmap -n kube-system service-registry \
                 -o jsonpath='{.data.services\.json}' 2>/dev/null || echo "{}")
             
-            # Pass it to the VPS sync script via stdin
+            # VPS nodes have scripts in ~/mynodeone/scripts/ (transferred by orchestrator)
+            # Pass service registry via stdin
             sync_output=$(echo "$service_registry" | $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                "cd '$repo_path' && sudo ./scripts/$sync_script" 2>&1)
+                "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1)
             sync_exit_code=$?
         else
-            # For other node types, no data needed
+            # For other node types (laptops, workers), use repo path
             sync_output=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
                 "cd '$repo_path' && sudo ./scripts/$sync_script" 2>&1 </dev/null)
             sync_exit_code=$?

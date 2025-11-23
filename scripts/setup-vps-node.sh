@@ -259,8 +259,26 @@ else
 fi
 echo
 
-# Step 7: Configure Tailscale to accept subnet routes
-log_info "Step 7: Configuring Tailscale to accept subnet routes..."
+# Step 7: Install sync script for automatic route updates
+log_info "Step 7: Installing sync script..."
+
+# Create scripts directory if it doesn't exist
+mkdir -p "$ACTUAL_HOME/scripts"
+
+# Check if we have the sync script locally (from orchestrator transfer)
+if [ -f "/tmp/sync-vps-routes.sh" ]; then
+    cp /tmp/sync-vps-routes.sh "$ACTUAL_HOME/scripts/sync-vps-routes.sh"
+    chmod +x "$ACTUAL_HOME/scripts/sync-vps-routes.sh"
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/scripts/sync-vps-routes.sh"
+    log_success "Sync script installed from transfer"
+else
+    log_warn "Sync script not found in /tmp - will be synced later by control plane"
+    log_info "The control plane will push the sync script on first sync"
+fi
+echo
+
+# Step 8: Configure Tailscale to accept subnet routes
+log_info "Step 8: Configuring Tailscale to accept subnet routes..."
 if command -v tailscale &> /dev/null; then
     if tailscale set --accept-routes=true 2>/dev/null; then
         log_success "Tailscale configured to accept subnet routes"

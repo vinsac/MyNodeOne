@@ -253,6 +253,7 @@ register_node() {
     local name="${3:-}"
     local ssh_user="${4:-}"
     local webhook_port="${5:-8080}"
+    local repo_path="${6:-}"
     local skip_ssh_validation="${SKIP_SSH_VALIDATION:-false}"
     
     log_info "Registering node: $node_type at $ip..."
@@ -322,12 +323,14 @@ register_node() {
         --arg name "$name" \
         --arg ssh_user "$ssh_user" \
         --argjson webhook_port "$webhook_port" \
+        --arg repo_path "$repo_path" \
         --arg timestamp "$(date -Iseconds)" \
         '{
             ip: $ip,
             name: $name,
             ssh_user: $ssh_user,
             webhook_port: $webhook_port,
+            repo_path: $repo_path,
             registered: $timestamp,
             last_sync: null,
             status: "active"

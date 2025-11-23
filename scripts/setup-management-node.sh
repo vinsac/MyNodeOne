@@ -166,12 +166,17 @@ fi
 if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
     log_info "Using MyNodeOne at: $CONTROL_PLANE_REPO_PATH"
     
+    # Get laptop's repo path (where this script is running from)
+    LAPTOP_REPO_PATH="$(cd "$SCRIPT_DIR/.." && pwd)"
+    log_info "Laptop repo path: $LAPTOP_REPO_PATH"
+    
     # Register using new registry manager (auto-detects user, validates in ConfigMap)
     # SKIP_SSH_VALIDATION=true because management laptops don't need SSH server
+    # Pass laptop repo path so sync-controller knows where to run scripts
     log_info "Registering in enterprise registry..."
     ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
         "cd '$CONTROL_PLANE_REPO_PATH' && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register management_laptops \
-        $TAILSCALE_IP $HOSTNAME $USERNAME" 2>&1 | grep -v "Warning: Permanently added"
+        $TAILSCALE_IP $HOSTNAME $USERNAME 8080 '$LAPTOP_REPO_PATH'" 2>&1 | grep -v "Warning: Permanently added"
     
     if [ $? -eq 0 ]; then
         log_success "Laptop registered in sync controller"

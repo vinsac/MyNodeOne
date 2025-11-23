@@ -80,6 +80,7 @@ push_sync_to_node() {
     local node_type="$1"
     local node_ip="$2"
     local ssh_user="$3"
+    local repo_path="${4:-~/mynodeone}"  # Default to ~/mynodeone for backwards compatibility
     local max_retries=3
     local retry_delay=5
     local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
@@ -169,12 +170,12 @@ push_sync_to_node() {
             
             # Pass it to the VPS sync script via stdin
             sync_output=$(echo "$service_registry" | $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1)
+                "cd '$repo_path' && sudo ./scripts/$sync_script" 2>&1)
             sync_exit_code=$?
         else
             # For other node types, no data needed
             sync_output=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1 </dev/null)
+                "cd '$repo_path' && sudo ./scripts/$sync_script" 2>&1 </dev/null)
             sync_exit_code=$?
         fi
         
@@ -325,13 +326,14 @@ push_sync_all() {
         for node_json in "${nodes_array[@]}"; do
             local ip=$(echo "$node_json" | jq -r '.ip')
             local user=$(echo "$node_json" | jq -r '.ssh_user')
+            local repo_path=$(echo "$node_json" | jq -r '.repo_path // "~/mynodeone"')
 
             if [[ -z "$ip" || -z "$user" ]]; then
                 log_warn "Skipping node with missing IP or user in '$node_key': $node_json"
                 continue
             fi
 
-            if push_sync_to_node "$node_key" "$ip" "$user"; then
+            if push_sync_to_node "$node_key" "$ip" "$user" "$repo_path"; then
                 ((success_count+=1))
             else
                 ((fail_count+=1))

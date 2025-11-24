@@ -1308,11 +1308,29 @@ initialize_service_registries() {
         fi
     fi
     
+    # Register control plane itself as a management laptop
+    # This ensures it receives DNS updates when apps are installed from remote laptops
+    log_info "Registering control plane for automatic DNS updates..."
+    
+    CONTROL_PLANE_HOSTNAME=$(hostname)
+    CONTROL_PLANE_USER="${SUDO_USER:-$(whoami)}"
+    
+    if bash "$SCRIPT_DIR/lib/node-registry-manager.sh" register \
+        "management_laptops" "$TAILSCALE_IP" "$CONTROL_PLANE_HOSTNAME" \
+        "$CONTROL_PLANE_USER" "" "$PROJECT_ROOT" 2>/dev/null; then
+        log_success "✓ Control plane registered for DNS sync"
+        log_info "  • Control plane will receive DNS updates from remote installations"
+        log_info "  • Local installations will update DNS immediately"
+    else
+        log_warn "Could not register control plane (DNS sync may require manual updates)"
+    fi
+    
     echo
     log_success "Registry system ready!"
     log_info "  • Service registry: Tracks all cluster services"
     log_info "  • Multi-domain registry: Supports multiple domains and VPS"
     log_info "  • Sync controller: Auto-pushes config changes to all nodes"
+    log_info "  • Control plane: Receives automatic DNS updates"
     echo
 }
 

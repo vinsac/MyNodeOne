@@ -167,6 +167,13 @@ push_sync_to_node() {
         local sync_output
         local sync_exit_code
         
+        # Check if this is localhost (control plane syncing to itself)
+        local is_localhost=false
+        local local_ip=$(tailscale ip -4 2>/dev/null || echo "")
+        if [[ "$node_ip" == "$local_ip" ]] || [[ "$node_ip" == "127.0.0.1" ]] || [[ "$node_ip" == "localhost" ]]; then
+            is_localhost=true
+        fi
+        
         # For VPS nodes, pass service registry data via stdin
         if [[ "$node_type" == "vps_nodes" ]]; then
             # Fetch service registry from ConfigMap
@@ -177,6 +184,11 @@ push_sync_to_node() {
             # Pass service registry via stdin
             sync_output=$(echo "$service_registry" | $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
                 "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1)
+            sync_exit_code=$?
+        elif [[ "$is_localhost" == "true" ]]; then
+            # For localhost, run directly without SSH
+            log_info "Detected localhost - running sync directly (no SSH)"
+            sync_output=$(cd "$repo_path" && sudo ./scripts/$sync_script 2>&1)
             sync_exit_code=$?
         else
             # For other node types (laptops, workers), use repo path
@@ -227,8 +239,14 @@ push_sync_to_node() {
                     verification_passed=true
                 else
                     # Check if /etc/hosts has MyNodeOne entries
-                    local dns_count=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                        "grep -c 'MyNodeOne Services' /etc/hosts 2>/dev/null || echo 0" 2>/dev/null)
+                    if [[ "$is_localhost" == "true" ]]; then
+                        # For localhost, check directly
+                        local dns_count=$(grep -c 'MyNodeOne Services' /etc/hosts 2>/dev/null || echo 0)
+                    else
+                        # For remote nodes, use SSH
+                        local dns_count=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                            "grep -c 'MyNodeOne Services' /etc/hosts 2>/dev/null || echo 0" 2>/dev/null)
+                    fi
                     
                     if [[ "$dns_count" -gt 0 ]]; then
                         log_success "✓ DNS entries synced on $node_ip"

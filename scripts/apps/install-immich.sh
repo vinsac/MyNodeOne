@@ -424,7 +424,21 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
                 echo ""
             fi
             
-            # Explicitly trigger sync to all nodes
+            # Check if running on control plane
+            IS_CONTROL_PLANE=false
+            if kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q "$(hostname)"; then
+                IS_CONTROL_PLANE=true
+            fi
+            
+            # If on control plane, update local DNS immediately (no SSH overhead)
+            if [ "$IS_CONTROL_PLANE" = "true" ]; then
+                echo "🔄 Updating control plane DNS..."
+                if sudo bash "$SCRIPT_DIR/../sync-dns.sh" --quiet 2>/dev/null; then
+                    echo "✓ Control plane DNS updated"
+                fi
+            fi
+            
+            # Trigger sync to all remote nodes (laptops, VPS)
             echo "🔄 Triggering sync to all nodes..."
             if [ -f "$SCRIPT_DIR/../lib/sync-controller.sh" ]; then
                 if sudo bash "$SCRIPT_DIR/../lib/sync-controller.sh" push >/dev/null 2>&1; then

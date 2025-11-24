@@ -188,7 +188,12 @@ push_sync_to_node() {
         elif [[ "$is_localhost" == "true" ]]; then
             # For localhost, run directly without SSH
             log_info "Detected localhost - running sync directly (no SSH)"
-            sync_output=$(cd "$repo_path" && sudo ./scripts/$sync_script 2>&1)
+            # Note: sync-controller runs as root (systemd service), so no sudo needed
+            if [ "$(id -u)" -eq 0 ]; then
+                sync_output=$(cd "$repo_path" && ./scripts/$sync_script 2>&1)
+            else
+                sync_output=$(cd "$repo_path" && sudo ./scripts/$sync_script 2>&1)
+            fi
             sync_exit_code=$?
         else
             # For other node types (laptops, workers), use repo path

@@ -1315,14 +1315,16 @@ initialize_service_registries() {
     CONTROL_PLANE_HOSTNAME=$(hostname)
     CONTROL_PLANE_USER="${SUDO_USER:-$(whoami)}"
     
-    if bash "$SCRIPT_DIR/lib/node-registry-manager.sh" register \
+    # Use sudo for registration (needs root to update ConfigMap)
+    if sudo bash "$SCRIPT_DIR/lib/node-registry-manager.sh" register \
         "management_laptops" "$TAILSCALE_IP" "$CONTROL_PLANE_HOSTNAME" \
-        "$CONTROL_PLANE_USER" "" "$PROJECT_ROOT" 2>/dev/null; then
+        "$CONTROL_PLANE_USER" "" "$PROJECT_ROOT"; then
         log_success "✓ Control plane registered for DNS sync"
         log_info "  • Control plane will receive DNS updates from remote installations"
         log_info "  • Local installations will update DNS immediately"
     else
         log_warn "Could not register control plane (DNS sync may require manual updates)"
+        log_info "You can register manually later: sudo ./scripts/lib/node-registry-manager.sh register ..."
     fi
     
     echo

@@ -146,8 +146,30 @@ sync_from_configmap() {
     fi
     
     # Save to local cache
-    mkdir -p "$CONFIG_DIR"
+    # Detect actual user (handle sudo context)
+    local actual_user="${SUDO_USER:-$(whoami)}"
+    local actual_home
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        actual_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        actual_home="$HOME"
+    fi
+    
+    # Create config directory with correct ownership
+    if [ ! -d "$CONFIG_DIR" ]; then
+        mkdir -p "$CONFIG_DIR"
+        if [ "$actual_user" != "root" ] && [ "$(whoami)" = "root" ]; then
+            chown "$actual_user:$actual_user" "$CONFIG_DIR"
+        fi
+    fi
+    
+    # Write registry data
     echo "$registry_data" | jq '.' > "$LOCAL_CACHE"
+    
+    # Fix ownership if running as root
+    if [ "$actual_user" != "root" ] && [ "$(whoami)" = "root" ]; then
+        chown "$actual_user:$actual_user" "$LOCAL_CACHE"
+    fi
     
     # VALIDATION: Verify local cache is readable
     if ! jq empty "$LOCAL_CACHE" 2>/dev/null; then

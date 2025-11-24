@@ -31,7 +31,20 @@ CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+
+# Get cluster domain from cluster-info ConfigMap (authoritative source)
+if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+fi
+
+# If not found, ask user
+if [ -z "$CLUSTER_DOMAIN" ]; then
+    echo -e "${YELLOW}⚠️  Could not detect cluster domain from cluster-info ConfigMap${NC}"
+    echo ""
+    read -p "Enter your cluster domain [default: minicloud]: " USER_CLUSTER_DOMAIN
+    CLUSTER_DOMAIN="${USER_CLUSTER_DOMAIN:-minicloud}"
+    echo ""
+fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  Installing Immich (Google Photos Alternative)${NC}"
@@ -382,13 +395,7 @@ if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
 
-# Get cluster domain from cluster-info ConfigMap (authoritative source)
-if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
-    CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
-fi
-
-# Fallback to config file or default
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-minicloud}"
+# Cluster domain already fetched at the beginning of the script
 
 # Register service in service registry
 if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
@@ -397,17 +404,39 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
     # Register with custom subdomain
     if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
         if bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
-            "immich-server" "$APP_SUBDOMAIN" "$NAMESPACE" "immich-server" "80" "false" 2>/dev/null; then
+            "immich-server" "$APP_SUBDOMAIN" "$NAMESPACE" "immich-server" "80" "false"; then
             echo "✓ Service registered in registry"
             echo ""
-            echo "🔄 Triggering automatic sync to all nodes..."
             
-            # Sync controller will automatically push to all registered nodes
-            # This includes management laptops (DNS) and VPS nodes (routes)
-            sleep 2
+            # Verify registration
+            echo "🔍 Verifying registration..."
+            REGISTERED_SUBDOMAIN=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath='{.data.services\.json}' 2>/dev/null | \
+                jq -r '."immich-server".subdomain' 2>/dev/null || echo "")
             
-            echo "✓ Sync triggered! DNS entries will update automatically"
+            if [ "$REGISTERED_SUBDOMAIN" = "$APP_SUBDOMAIN" ]; then
+                echo "✓ Verified: Service registered with subdomain '$APP_SUBDOMAIN'"
+                echo ""
+            else
+                echo -e "${YELLOW}⚠️  Registration verification failed${NC}"
+                echo "   Expected subdomain: $APP_SUBDOMAIN"
+                echo "   Got: $REGISTERED_SUBDOMAIN"
+                echo ""
+            fi
+            
+            # Explicitly trigger sync to all nodes
+            echo "🔄 Triggering sync to all nodes..."
+            if [ -f "$SCRIPT_DIR/../lib/sync-controller.sh" ]; then
+                if sudo bash "$SCRIPT_DIR/../lib/sync-controller.sh" push >/dev/null 2>&1; then
+                    echo "✓ Sync completed successfully"
+                else
+                    echo -e "${YELLOW}⚠️  Manual sync failed - sync-controller daemon will retry${NC}"
+                fi
+            else
+                echo -e "${YELLOW}⚠️  Sync controller not found - DNS will update on next reconciliation${NC}"
+            fi
             echo ""
+            
             echo "✓ Access Immich at:"
             echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
             echo ""

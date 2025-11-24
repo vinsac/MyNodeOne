@@ -381,24 +381,59 @@ CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
+# Get cluster domain from cluster-info ConfigMap (authoritative source)
 if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
-    echo "🌐 Updating local DNS entries..."
-    if sudo bash "$SCRIPT_DIR/../update-laptop-dns.sh" --quiet 2>/dev/null; then
-        echo ""
-        echo "✓ Local DNS updated! Access Immich at:"
-        echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-        echo ""
-        echo "📱 For mobile app, use: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-        echo ""
+    CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+fi
+
+# Fallback to config file or default
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-minicloud}"
+
+# Register service in service registry
+if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    echo "📝 Registering service in registry..."
+    
+    # Register with custom subdomain
+    if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+        if bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
+            "immich-server" "$APP_SUBDOMAIN" "$NAMESPACE" "immich-server" "80" "false" 2>/dev/null; then
+            echo "✓ Service registered in registry"
+            echo ""
+            echo "🔄 Triggering automatic sync to all nodes..."
+            
+            # Sync controller will automatically push to all registered nodes
+            # This includes management laptops (DNS) and VPS nodes (routes)
+            sleep 2
+            
+            echo "✓ Sync triggered! DNS entries will update automatically"
+            echo ""
+            echo "✓ Access Immich at:"
+            echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+            echo ""
+            echo "📱 For mobile app, use: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+            echo ""
+        else
+            echo "⚠️  Could not register service (will update DNS manually)"
+            echo ""
+            
+            # Fallback to manual DNS update
+            if sudo bash "$SCRIPT_DIR/../sync-dns.sh" --quiet 2>/dev/null; then
+                echo "✓ Local DNS updated manually"
+            fi
+        fi
+    else
+        # Fallback to manual DNS update if service-registry.sh not found
+        echo "🌐 Updating local DNS entries..."
+        if sudo bash "$SCRIPT_DIR/../sync-dns.sh" --quiet 2>/dev/null; then
+            echo "✓ Local DNS updated"
+        fi
     fi
 else
     # Not on a machine with kubectl configured
     echo ""
     echo "💡 To access via .local domain on any Tailscale-connected machine:"
-    echo "   Run: sudo ./scripts/update-laptop-dns.sh"
-    echo "   Then access: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+    echo "   Run: sudo ./scripts/sync-dns.sh"
     echo ""
 fi
 

@@ -109,6 +109,25 @@ else
     exit 1
 fi
 
+# Install kubectl if not present
+if ! command -v kubectl &> /dev/null; then
+    log_info "Installing kubectl..."
+    
+    # Download kubectl
+    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" 2>/dev/null
+    
+    # Install it
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    rm kubectl
+    
+    log_success "kubectl installed"
+    echo ""
+else
+    log_info "kubectl already installed"
+    echo ""
+fi
+
 # Check if we already have the path saved in config
 CONTROL_PLANE_REPO_PATH="${CONTROL_PLANE_REPO_PATH:-}"
 

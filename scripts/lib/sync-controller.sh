@@ -137,26 +137,36 @@ push_sync_to_node() {
         fi
     fi
     
-    # Check if node is reachable before attempting sync
-    if ! $ssh_cmd $ssh_opts "$ssh_user@$node_ip" "echo 'ping' 2>/dev/null" >/dev/null 2>&1; then
-        log_warn "Node $node_ip is not reachable (offline or network issue)"
-        log_info "Will retry on next reconciliation cycle"
-        
-        # Mark node as pending_sync for retry later
-        if [[ -f "$registry_file" ]]; then
-            local registry=$(cat "$registry_file")
-            registry=$(echo "$registry" | jq \
-                --arg type "$node_type" \
-                --arg ip "$node_ip" \
-                '.[$type] |= map(
-                    if .ip == $ip then
-                        .status = "pending_sync" |
-                        .last_attempt = (now | todate)
-                    else . end
-                )')
-            echo "$registry" > "$registry_file"
+    # Check if this is localhost (control plane syncing to itself)
+    # IMPORTANT: Do this BEFORE SSH reachability check to avoid password prompts
+    local is_localhost=false
+    local local_ip=$(tailscale ip -4 2>/dev/null || echo "")
+    if [[ "$node_ip" == "$local_ip" ]] || [[ "$node_ip" == "127.0.0.1" ]] || [[ "$node_ip" == "localhost" ]]; then
+        is_localhost=true
+    fi
+    
+    # Check if node is reachable before attempting sync (skip for localhost)
+    if [[ "$is_localhost" != "true" ]]; then
+        if ! $ssh_cmd $ssh_opts "$ssh_user@$node_ip" "echo 'ping' 2>/dev/null" >/dev/null 2>&1; then
+            log_warn "Node $node_ip is not reachable (offline or network issue)"
+            log_info "Will retry on next reconciliation cycle"
+            
+            # Mark node as pending_sync for retry later
+            if [[ -f "$registry_file" ]]; then
+                local registry=$(cat "$registry_file")
+                registry=$(echo "$registry" | jq \
+                    --arg type "$node_type" \
+                    --arg ip "$node_ip" \
+                    '.[$type] |= map(
+                        if .ip == $ip then
+                            .status = "pending_sync" |
+                            .last_attempt = (now | todate)
+                        else . end
+                    )')
+                echo "$registry" > "$registry_file"
+            fi
+            return 1
         fi
-        return 1
     fi
     
     local attempt=1
@@ -166,13 +176,6 @@ push_sync_to_node() {
         # Capture output for debugging
         local sync_output
         local sync_exit_code
-        
-        # Check if this is localhost (control plane syncing to itself)
-        local is_localhost=false
-        local local_ip=$(tailscale ip -4 2>/dev/null || echo "")
-        if [[ "$node_ip" == "$local_ip" ]] || [[ "$node_ip" == "127.0.0.1" ]] || [[ "$node_ip" == "localhost" ]]; then
-            is_localhost=true
-        fi
         
         # For VPS nodes, pass service registry data via stdin
         if [[ "$node_type" == "vps_nodes" ]]; then

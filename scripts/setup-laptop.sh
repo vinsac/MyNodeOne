@@ -34,6 +34,11 @@ fi
 # Use configured domain or fallback to mynodeone
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
+# Tool versions (pinned for reproducible installs)
+KUBECTL_VERSION="v1.28.5"
+HELM_VERSION="v3.15.3"
+K9S_VERSION="v0.32.5"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -194,8 +199,8 @@ install_kubectl() {
         fi
     else
         # Linux
-        log_info "Downloading kubectl for Linux..."
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        log_info "Downloading kubectl ${KUBECTL_VERSION} for Linux..."
+        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
         chmod +x kubectl
         sudo mv kubectl /usr/local/bin/
     fi
@@ -326,8 +331,30 @@ install_helpful_tools() {
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         # Install helm
         if ! command -v helm &> /dev/null; then
-            log_info "Installing helm..."
-            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            log_info "Installing helm ${HELM_VERSION}..."
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                if command -v brew &> /dev/null; then
+                    brew install helm
+                else
+                    log_info "Downloading helm ${HELM_VERSION} for macOS..."
+                    local HELM_OS="darwin"
+                    local HELM_ARCH="amd64"
+                    curl -LO "https://get.helm.sh/helm-${HELM_VERSION}-${HELM_OS}-${HELM_ARCH}.tar.gz"
+                    tar -zxf "helm-${HELM_VERSION}-${HELM_OS}-${HELM_ARCH}.tar.gz"
+                    sudo mv "${HELM_OS}-${HELM_ARCH}/helm" /usr/local/bin/helm
+                    sudo chmod +x /usr/local/bin/helm
+                    rm -rf "helm-${HELM_VERSION}-${HELM_OS}-${HELM_ARCH}.tar.gz" "${HELM_OS}-${HELM_ARCH}"
+                fi
+            else
+                log_info "Downloading helm ${HELM_VERSION} for Linux..."
+                local HELM_OS="linux"
+                local HELM_ARCH="amd64"
+                curl -LO "https://get.helm.sh/helm-${HELM_VERSION}-${HELM_OS}-${HELM_ARCH}.tar.gz"
+                tar -zxf "helm-${HELM_VERSION}-${HELM_OS}-${HELM_ARCH}.tar.gz"
+                sudo mv "${HELM_OS}-${HELM_ARCH}/helm" /usr/local/bin/helm
+                sudo chmod +x /usr/local/bin/helm
+                rm -rf "helm-${HELM_VERSION}-${HELM_OS}-${HELM_ARCH}.tar.gz" "${HELM_OS}-${HELM_ARCH}"
+            fi
         fi
         
         # Install k9s
@@ -339,7 +366,7 @@ install_helpful_tools() {
                 fi
             else
                 # Linux
-                K9S_VERSION=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | grep tag_name | cut -d '"' -f 4)
+                log_info "Installing k9s ${K9S_VERSION}..."
                 curl -sL "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_amd64.tar.gz" | sudo tar xz -C /usr/local/bin k9s
             fi
         fi

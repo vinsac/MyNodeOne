@@ -100,6 +100,8 @@ If the SSH service is not `active (running)` or you see errors, re-run the `sudo
 
 **Required for automated sync and cluster management. Run these commands on the control plane machine to configure passwordless sudo for your user.**
 
+**Important:** Before running the commands below, replace `yourusername` with your own Linux username in both the sudoers line and the filename.
+
 ```bash
 # Create sudoers file (replace 'yourusername' with your actual username)
 echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/yourusername
@@ -110,6 +112,8 @@ sudo -n echo "Success!"
 ```
 
 #### 4. Tailscale (secure VPN networking)
+
+**Before you start:** Create a free account at https://tailscale.com and sign in. During installation you will be asked to authenticate with this account.
 
 ```bash
 # Install curl (if not already installed)
@@ -125,7 +129,7 @@ sudo tailscale up
 # Verify connection
 tailscale status
 tailscale ip -4
-# Note this IP - you'll need it for VPS/management setup!
+# Note this IP - you'll need it for VPS/management workstation setup!
 ```
 
 ---
@@ -159,7 +163,7 @@ sudo ./scripts/mynodeone
 4. **Domain name:** → Enter a domain (e.g., `minicloud.local`)
 5. **Deploy demo app?** → `y` (recommended for testing)
 
-**Installation takes 5-10 minutes.**
+**Installation takes 45-60 minutes.**
 
 **Success looks like:**
 ```
@@ -174,7 +178,9 @@ Next steps:
 
 ### Step 3: (Optional) Apply Security Hardening
 
-**Recommended for production deployments:**
+**Recommended for production deployments.**
+
+**Note:** The installation wizard in Step 2 already applies these hardening settings, so you do not need to run this separately during a normal installation. This step is available if you skipped hardening during installation or want to apply it later.
 
 ```bash
 cd ~/MyNodeOne
@@ -201,7 +207,7 @@ sudo kubectl get pods -A
 # Get your Tailscale IP (SAVE THIS!)
 tailscale ip -4
 # Example: 100.116.16.117
-# You'll need this for VPS/management/worker setup
+# You'll need this for VPS/management workstation/worker node setup
 ```
 
 ---

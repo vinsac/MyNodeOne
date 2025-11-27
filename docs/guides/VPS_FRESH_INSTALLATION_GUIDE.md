@@ -312,7 +312,6 @@ sudo ./scripts/manage-app-visibility.sh
 
 - `VPS_INSTALLATION_TEST_GUIDE.md` - Detailed testing procedures
 - `VPS_PRE_INSTALLATION_SSH_SETUP.md` - Optional SSH pre-setup
-- `READY_FOR_REINSTALL.md` - Pre-installation checklist
 - `VPS_SETUP_FIXES.md` - Technical details of fixes
 
 ---

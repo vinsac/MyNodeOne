@@ -59,38 +59,15 @@ Be respectful, inclusive, and constructive. We're building a community tool for 
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/mynodeone.git
-cd mynodeone
+git clone https://github.com/yourusername/MyNodeOne.git
+cd MyNodeOne
 
-# Add upstream remote
-git remote add upstream https://github.com/original/mynodeone.git
+# Add upstream remote (canonical repository)
+git remote add upstream https://github.com/vinsac/MyNodeOne.git
 
 # Create test environment (optional)
 # Use a VM or spare machine for testing
 ```
-
-## Areas for Contribution
-
-### High Priority
-- [ ] GPU support for LLM workloads
-- [ ] Database operators (PostgreSQL, MySQL, MongoDB)
-- [ ] Automated backup and restore
-- [ ] Multi-region support
-- [ ] Improved monitoring dashboards
-
-### Medium Priority
-- [ ] CI/CD pipeline improvements
-- [ ] More example applications
-- [ ] Performance optimizations
-- [ ] Better error handling
-- [ ] Additional documentation
-
-### Easy First Issues
-- [ ] Documentation improvements
-- [ ] Example applications
-- [ ] Bug fixes
-- [ ] Script improvements
-- [ ] README updates
 
 ## Coding Standards
 
@@ -134,7 +111,7 @@ Before submitting a PR:
    sudo ./scripts/add-worker-node.sh
    ```
 
-3. **Test app deployment**
+3. **Test app deployment (example)**
    ```bash
    kubectl apply -f manifests/examples/hello-world-app.yaml
    ```
@@ -198,18 +175,6 @@ attach after node restart.
 Fixes #456
 ```
 
-## Documentation Structure
-
-```
-docs/
-├── architecture.md      # System architecture
-├── operations.md        # Day-to-day operations
-├── troubleshooting.md   # Common issues
-└── scaling.md          # Scaling guide
-```
-
-When adding new features, update relevant documentation.
-
 ## Release Process
 
 Maintainers handle releases:
@@ -220,12 +185,6 @@ Maintainers handle releases:
 4. Build and test release
 5. Publish release notes
 6. Update documentation
-
-## Questions?
-
-- Open a GitHub issue with the "question" label
-- Join our community chat (if available)
-- Email maintainers
 
 ## Recognition
 

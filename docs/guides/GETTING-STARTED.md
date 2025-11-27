@@ -55,11 +55,11 @@ If you want to understand before installing, read the sections below.
 ### Already installed?
 1. **[docs/operations.md](docs/operations.md)** - Daily management
 2. **[docs/architecture.md](docs/architecture.md)** - How it works
-3. **[FAQ.md](FAQ.md)** - Common questions
+3. **[../reference/FAQ.md](../reference/FAQ.md)** - Common questions
 
 ### Something not working?
 1. **[docs/troubleshooting.md](docs/troubleshooting.md)** - Problem solving
-2. **[FAQ.md](FAQ.md)** - 50+ questions answered
+2. **[../reference/FAQ.md](../reference/FAQ.md)** - 50+ questions answered
 
 ---
 
@@ -259,7 +259,7 @@ docs/scaling.md (grow your cloud)
 
 ### Before installing (15 minutes)
 1. Read [INSTALLATION.md](INSTALLATION.md) - see step-by-step
-2. Skim [FAQ.md](FAQ.md) - common questions
+2. Skim [../reference/FAQ.md](../reference/FAQ.md) - common questions
 3. Decide your scenario (learning, home, or production)
 
 ### Ready to install?
@@ -305,7 +305,7 @@ MyNodeOne installs to `/opt/mynodeone` and doesn't touch your documents, photos,
 
 ### What if I get stuck?
 1. Check [docs/troubleshooting.md](docs/troubleshooting.md)
-2. Check [FAQ.md](FAQ.md) - 50+ questions answered
+2. Check [../reference/FAQ.md](../reference/FAQ.md) - 50+ questions answered
 3. Look up error messages in [GLOSSARY.md](GLOSSARY.md)
 4. Open an issue on GitHub
 
@@ -355,7 +355,7 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 - **[docs/networking.md](docs/networking.md)** - Tailscale + alternatives
 
 ### Help and community
-- **[FAQ.md](FAQ.md)** - 50+ questions answered
+- **[../reference/FAQ.md](../reference/FAQ.md)** - 50+ questions answered
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute
 
 ### Technical deep dives

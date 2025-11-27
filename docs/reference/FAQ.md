@@ -4,7 +4,7 @@
 
 ### What is MyNodeOne?
 
-MyNodeOne is a production-ready private cloud infrastructure that turns **consumer hardware** into an AWS-like environment. Use old laptops, mini PCs, Raspberry Pis, or any regular computers you already own. It uses open-source tools like Kubernetes (K3s), MinIO, Longhorn, and more to provide enterprise features without expensive enterprise gear or monthly cloud bills.
+MyNodeOne is a private cloud platform that turns **consumer hardware** into a robust environment for running your own applications and services. You can use old laptops, mini PCs, Raspberry Pis, or other regular computers you already own. It uses open-source tools like Kubernetes (K3s), MinIO, Longhorn, and more to provide many of the capabilities of cloud platforms without requiring expensive enterprise hardware or monthly cloud bills.
 
 ### Why should I use MyNodeOne instead of AWS/GCP/Azure?
 
@@ -18,13 +18,13 @@ MyNodeOne is a production-ready private cloud infrastructure that turns **consum
 
 **Yes!** MyNodeOne includes enterprise-grade security:
 
-**Built-in Security (Automatic):**
-- ✅ Firewall (UFW) on all nodes
-- ✅ SSH brute-force protection (fail2ban)
-- ✅ Strong 32-character random passwords
-- ✅ Encrypted network traffic (Tailscale/WireGuard)
-- ✅ Secure credential storage (chmod 600)
-- ✅ No default passwords
+**Built-in security (automatic):**
+- Firewall (UFW) on all nodes
+- SSH brute-force protection (fail2ban)
+- Strong 32-character random passwords
+- Encrypted network traffic (Tailscale/WireGuard)
+- Secure credential storage (chmod 600)
+- No default passwords
 
 **Optional Hardening (One Command):**
 ```bash

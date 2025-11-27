@@ -1,10 +1,10 @@
-# 🌱 Absolute Beginner's Guide to MyNodeOne
+# Absolute beginner's guide to MyNodeOne
 
 **Never used Linux or command line before?** This guide is for you!
 
 ---
 
-## 🎯 What You'll Learn
+## What you'll learn
 
 This guide teaches you the **absolute basics** you need to install MyNodeOne:
 - How to open a terminal
@@ -16,7 +16,7 @@ This guide teaches you the **absolute basics** you need to install MyNodeOne:
 
 ---
 
-## 📺 Step 0: Opening the Terminal
+## Step 0: opening the terminal
 
 The terminal is where you type commands. Here's how to open it:
 
@@ -43,13 +43,13 @@ This is called the "command prompt" - it's waiting for you to type something!
 
 ---
 
-## 📋 Copying and Pasting Commands
+## Copying and pasting commands
 
-### In the Terminal:
+### In the terminal:
 
-**❌ DON'T use Ctrl+C and Ctrl+V** (these mean something different in terminal!)
+**Do not use Ctrl+C and Ctrl+V** (these mean something different in the terminal).
 
-**✅ DO use these instead:**
+Use these instead:
 
 **To Copy:**
 - Highlight text with your mouse
@@ -61,11 +61,11 @@ This is called the "command prompt" - it's waiting for you to type something!
 - OR right-click and select "Paste"
 - OR middle-click your mouse (on some systems)
 
-**Pro Tip:** You can also right-click in the terminal for a menu!
+You can also right-click in the terminal for a menu.
 
 ---
 
-## 🔐 Understanding `sudo` and Passwords
+## Understanding `sudo` and passwords
 
 ### What is `sudo`?
 
@@ -73,7 +73,7 @@ This is called the "command prompt" - it's waiting for you to type something!
 
 **Why needed:** Some commands need permission to modify system files (like installing software).
 
-### What Happens When You Type `sudo`?
+### What happens when you type `sudo`?
 
 1. You type: `sudo apt update`
 2. Press Enter
@@ -95,7 +95,7 @@ $ sudo apt update
 
 ---
 
-## 📚 Understanding Basic Commands
+## Understanding basic commands
 
 Let's break down the commands you'll use:
 
@@ -172,9 +172,9 @@ sudo ./scripts/mynodeone
 
 ---
 
-## 🎨 What to Expect - Visual Guide
+## What to expect: visual guide
 
-### Normal Output Looks Like This:
+### Normal output looks like this
 
 ```bash
 $ sudo apt update
@@ -186,16 +186,16 @@ Reading package lists... Done
 Building dependency tree... Done
 ```
 
-**✅ This is GOOD!** Lots of text, "Done" at the end.
+This is expected. You will see lots of text and "Done" at the end.
 
-### Error Looks Like This:
+### Error looks like this
 
 ```bash
 $ git clone https://wrong-url.git
 fatal: unable to access 'https://wrong-url.git/': Could not resolve host: wrong-url.git
 ```
 
-**❌ This is an ERROR!** Words like "fatal", "error", "failed".
+This indicates an error. Look for words like "fatal", "error", or "failed".
 
 **What to do:**
 1. Read the error message (it often tells you what's wrong)
@@ -205,7 +205,7 @@ fatal: unable to access 'https://wrong-url.git/': Could not resolve host: wrong-
 
 ---
 
-## 🔄 Common Scenarios
+## Common scenarios
 
 ### Scenario 1: Command Seems Stuck
 
@@ -253,9 +253,9 @@ gi: command not found
 
 ---
 
-## 🧭 Navigation Basics
+## Navigation basics
 
-### Where Am I?
+### Where am I?
 
 Type: `pwd` (Print Working Directory)
 ```bash
@@ -263,7 +263,7 @@ $ pwd
 /home/john
 ```
 
-### What's Here?
+### What's here?
 
 Type: `ls` (List contents)
 ```bash
@@ -271,7 +271,7 @@ $ ls
 Desktop  Documents  Downloads  MyNodeOne  Pictures
 ```
 
-### Go to Home Folder
+### Go to home folder
 
 Type: `cd ~` or just `cd`
 ```bash
@@ -282,7 +282,7 @@ $ pwd
 
 ---
 
-## ⏱️ Time Expectations
+## Time expectations
 
 Here's how long each step typically takes:
 
@@ -298,28 +298,27 @@ Here's how long each step typically takes:
 
 ---
 
-## ❓ Common Questions
+## Common questions
 
 ### Q: Can I close the terminal window?
 
-**During installation:** ❌ NO! Wait until it's finished.  
-**After commands complete:** ✅ Yes, you can close it.
+**During installation:** Do not close the terminal window. Wait until it is finished.  
+**After commands complete:** You can close it normally.
 
 ### Q: What if I make a mistake?
 
-**Good news:** Most commands can be undone or re-run!  
-**The installer:** Has safety checks and asks for confirmation.
+Most commands can be undone or re-run. The installer has safety checks and asks for confirmation.
 
 ### Q: Do I need to be online?
 
-**Yes!** You need internet to:
+You need internet to:
 - Download MyNodeOne
 - Install software packages
 - Set up Tailscale
 
 ### Q: What if something goes wrong?
 
-**Don't panic!** Here's what to do:
+If something goes wrong, do the following:
 1. Read the error message
 2. Check [docs/troubleshooting.md](docs/troubleshooting.md)
 3. Ask ChatGPT: "I got this error with MyNodeOne: [paste error]"
@@ -328,20 +327,20 @@ Here's how long each step typically takes:
 
 ---
 
-## 🎓 You're Ready!
+## You're ready
 
 You now know:
-- ✅ How to open terminal
-- ✅ How to copy/paste commands
-- ✅ What `sudo` means
-- ✅ What to expect when running commands
-- ✅ How to navigate and fix mistakes
+- How to open the terminal
+- How to copy and paste commands
+- What `sudo` means
+- What to expect when running commands
+- How to navigate and fix mistakes
 
 **Next step:** Go to [INSTALLATION.md](INSTALLATION.md) and start installing!
 
 ---
 
-## 🆘 Getting Help
+## Getting help
 
 **If you're stuck:**
 - Check [GLOSSARY.md](GLOSSARY.md) for technical terms
@@ -353,7 +352,7 @@ You now know:
 
 ---
 
-## 🎯 Quick Reference Card
+## Quick reference card
 
 **Copy this for easy reference:**
 

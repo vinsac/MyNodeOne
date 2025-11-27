@@ -1,57 +1,24 @@
 # MyNodeOne - Your Private Cloud Infrastructure
 
-> **Transform consumer hardware into enterprise cloud infrastructure**
-
-**Build your own AWS-like cloud using regular computers, old laptops, mini PCs, or servers you already own**
-
-**Version 1.0** - Production Ready • Consumer Hardware Focused • One Command Setup
+**Build your own private cloud using regular computers, old laptops, mini PCs, or servers you already own.**
 
 **Author:** [Vinay Sachdeva](https://github.com/vinsac)  
-**License:** MIT  
-**Status:** ✅ Production Ready
+**License:** MIT
+
+For comprehensive legal terms, see [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENSE`](LICENSE).
 
 ---
 
-## ⚠️ IMPORTANT LEGAL DISCLAIMER
-
-**READ BEFORE USING THIS SOFTWARE**
-
-🔴 **NO WARRANTY - USE AT YOUR OWN RISK**
-
-This software is provided "AS IS" with **ABSOLUTELY NO WARRANTY** of any kind. By using MyNodeOne, you acknowledge and accept:
-
-- ⚠️ **This software may contain security vulnerabilities**
-- ⚠️ **Data loss may occur** - Maintain your own backups
-- ⚠️ **No liability** - Authors assume NO responsibility for ANY damages (direct, indirect, consequential, or otherwise)
-- ⚠️ **You indemnify the authors** - You agree to hold harmless and fully indemnify the repository owner/developers from ALL claims
-- ⚠️ **Production use** - Using this in production is AT YOUR OWN RISK
-- ⚠️ **Security risks** - This software may have bugs, vulnerabilities, or design flaws
-- ⚠️ **No support** - No obligation to provide support, updates, or bug fixes
-- ⚠️ **Malicious use** - Authors disclaim ALL liability for illegal or malicious use
-- ⚠️ **Jurisdiction** - Any disputes must be resolved in Toronto, Ontario, Canada
-
-**📄 COMPREHENSIVE LEGAL TERMS:** Please read [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENSE`](LICENSE) for complete legal terms.
-
-**✋ By using this software, you agree to:**
-- Accept ALL risks (security, data loss, system failures, etc.)
-- Fully indemnify the authors from any and all claims
-- Submit to exclusive jurisdiction in Toronto, Canada
-- Take full responsibility for any consequences
-
-**IF YOU DO NOT AGREE, DO NOT USE THIS SOFTWARE.**
-
----
-
-## 💡 The Vision
+## The Vision
 
 **Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build an enterprise-grade private cloud using:
 
-- 🎮 **Your gaming PC** when you're not gaming (perfect control plane!)
-- 🖥️ **Old laptops** gathering dust
-- 💻 **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
-- 🏠 **Home servers** you already have
-- 🛒 **Used enterprise hardware** from eBay ($200-$500)
-- ⚡ **Mix and match** - use whatever you have!
+- **Your gaming PC** when you're not gaming (perfect control plane!)
+- **Old laptops** gathering dust
+- **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
+- **Home servers** you already have
+- **Used enterprise hardware** from eBay ($200-$500)
+- **Mix and match** - use whatever you have!
 
 **Popular Setup:** Gaming PC as control plane + old laptop as worker node = Powerful private cloud!
 

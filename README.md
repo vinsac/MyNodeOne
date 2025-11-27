@@ -2,6 +2,11 @@
 
 **Build your own private cloud using regular computers, old laptops, mini PCs, or servers you already own.**
 
+### Terminology
+
+- **Node**: A single machine (PC, laptop, mini PC, or server) that participates in your MyNodeOne cluster.
+- **MyNodeOne**: This project and tooling for setting up and managing your own private cloud. The name reflects the first machine you configure ("my node one"), but MyNodeOne supports clusters made up of multiple machines.
+
 **Author:** [Vinay Sachdeva](https://github.com/vinsac)  
 **License:** MIT
 

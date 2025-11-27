@@ -315,8 +315,13 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 3.  **Install Tailscale on the VPS**
     
+    Run these commands on your VPS as your sudo user (for example, `sammy`):
+    
     ```bash
     # ON YOUR VPS (as your sudo user 'sammy'):
+
+    # Install curl (if not already installed)
+    sudo apt install -y curl
 
     # Install Tailscale
     curl -fsSL https://tailscale.com/install.sh | sh
@@ -629,9 +634,12 @@ sudo kubectl version --client
 
 ### Step 1: Install Tailscale on Laptop
 
+Run these commands on your management laptop or workstation:
+
 ```bash
 # Download from: https://tailscale.com/download
-# Or on Ubuntu:
+# Or, on Ubuntu, install via script:
+sudo apt install -y curl
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 
@@ -933,7 +941,8 @@ sudo ./scripts/sync-dns.sh
 sudo apt update
 sudo apt install -y git openssh-server
 
-# Install Tailscale:
+# Install Tailscale (and curl if needed):
+sudo apt install -y curl
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```

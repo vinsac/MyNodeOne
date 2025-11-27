@@ -1,10 +1,10 @@
-# 👋 START HERE - New to MyNodeOne?
+# START HERE - New to MyNodeOne?
 
 **Welcome!** This is your starting point for building your private cloud with MyNodeOne.
 
 ---
 
-## 🌱 Brand New to Linux/Terminal?
+## Brand new to Linux/terminal?
 
 **Never used command line before?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
 
@@ -18,80 +18,54 @@ This guide teaches you:
 
 ---
 
-## 🏠 What is MyNodeOne?
-
-**MyNodeOne turns consumer hardware into enterprise cloud infrastructure.**
-
-Use regular computers you already own:
-- Old laptops
-- Mini PCs (Intel NUC, Beelink, etc.)
-- Raspberry Pi 4/5
-- Home servers
-- Used enterprise hardware ($150-500)
-
-**No expensive equipment needed. No monthly cloud bills. Your hardware, your cloud, your control.**
-
----
-
-## 🎯 Ready to Install?
+## Ready to install?
 
 ### If you're ready RIGHT NOW:
 → Go to **[INSTALLATION.md](INSTALLATION.md)** for step-by-step installation instructions!
 
 **That guide will tell you:**
-- ✅ Exactly which machine to use
-- ✅ Where to open terminal
-- ✅ What commands to run
-- ✅ What to expect at each step
+- Exactly which machine to use
+- Where to open terminal
+- What commands to run
+- What to expect at each step
 
 **Time:** 30 minutes from start to running cluster!
 
 ---
 
-## 📚 Want to Learn First?
+## Want to learn first?
 
 If you want to understand before installing, read the sections below.
 
 ---
 
-## 📖 What Should You Read?
+## What should you read?
 
 > **Lost?** Check the **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** for a complete map of all documentation.
 
-### Brand New? Read in This Order:
-1. **This file** - You're reading it! ✓ (understand what MyNodeOne is)
+### Brand new? Read in this order:
+1. **This file** - You're reading it! (understand what MyNodeOne is)
 2. **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** - If new to terminal (10 min)
 3. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - Understand your options (15 min)
 4. **[INSTALLATION.md](INSTALLATION.md)** - Install step-by-step (30 min actual install)
 
-### Ready to Install Now?
+### Ready to install now?
 → **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide with all commands
 
-### Already Installed?
+### Already installed?
 1. **[docs/operations.md](docs/operations.md)** - Daily management
 2. **[docs/architecture.md](docs/architecture.md)** - How it works
 3. **[FAQ.md](FAQ.md)** - Common questions
 
-### Something Not Working?
+### Something not working?
 1. **[docs/troubleshooting.md](docs/troubleshooting.md)** - Problem solving
 2. **[FAQ.md](FAQ.md)** - 50+ questions answered
 
 ---
 
-## 🎯 What is MyNodeOne?
+## What do you need?
 
-MyNodeOne turns your hardware into a **private cloud** like AWS, but:
-- ✅ **Save $30,000+/year** vs AWS
-- ✅ **Own your data** - stays on your machines
-- ✅ **One command setup** - fully automated
-- ✅ **Production-ready** - enterprise-grade tools
-- ✅ **100% free & open source** - MIT license
-
----
-
-## 💻 What Do You Need?
-
-### Minimum Requirements
+### Minimum requirements
 - **1 machine** with Ubuntu LTS
   - **Recommended:** Ubuntu 24.04 LTS (best tested)
   - **Also works:** Ubuntu 22.04 LTS, Ubuntu 20.04 LTS
@@ -103,15 +77,15 @@ MyNodeOne turns your hardware into a **private cloud** like AWS, but:
 
 That's it! Start with what you have, scale later.
 
-### Optional Additions
+### Optional additions
 - **VPS with public IP** ($5-15/month) - for public internet access
 - **More machines** - add workers later as you grow
 
-> **Need Help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
+> **Need help?** If you encounter any issues following these steps or understanding the commands, feel free to consult ChatGPT, Gemini, Claude, or other AI assistants for guidance.
 
 ---
 
-## 🛠️ What Does Installation Do?
+## What does installation do?
 
 The `sudo ./scripts/mynodeone` command:
 
@@ -128,11 +102,11 @@ The `sudo ./scripts/mynodeone` command:
 **Interaction:** Answer ~5 questions  
 **Everything else:** Automatic
 
-> 🤔 **Don't understand these terms?** Check the [GLOSSARY.md](GLOSSARY.md) for simple explanations!
+> **Don't understand these terms?** Check the [GLOSSARY.md](GLOSSARY.md) for simple explanations.
 
 ---
 
-## 🌐 Networking: Tailscale (Default)
+## Networking: Tailscale (default)
 
 **MyNodeOne uses Tailscale by default** for secure networking between machines.
 
@@ -143,30 +117,30 @@ The `sudo ./scripts/mynodeone` command:
 - Free for up to 20 devices
 
 ### Why Tailscale?
-- ✅ **5 minute setup** - fastest option
-- ✅ **Zero configuration** - just works
-- ✅ **Free for personal use**
-- ✅ **Perfect for MyNodeOne** - designed for this
+- Five minute setup - fastest option
+- Zero configuration - just works
+- Free for personal use
+- Well suited for MyNodeOne
 
-### Installation Handles It
+### Installation handles it
 The installation script automatically:
 - Installs Tailscale
 - Authenticates (opens browser)
 - Gets your IP
 - Configures everything
 
-**You don't need to do anything!**
+**You don't need to do anything.**
 
-### Want Alternatives?
+### Want alternatives?
 See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, WireGuard, etc.
 
 **Recommendation:** Stick with Tailscale (default).
 
 ---
 
-## 🎓 Common Scenarios
+## Common scenarios
 
-### Scenario 1: Just Learning
+### Scenario 1: Just learning
 **What you have:** 1 old laptop or desktop  
 **What to do:**
 1. Run `sudo ./scripts/mynodeone`
@@ -179,7 +153,7 @@ See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, 
 
 ---
 
-### Scenario 2: Home Server
+### Scenario 2: Home server
 **What you have:** 1 powerful home server (like yours: 256GB RAM)  
 **What to do:**
 1. Run `sudo ./scripts/mynodeone`
@@ -192,7 +166,7 @@ See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, 
 
 ---
 
-### Scenario 3: Public Website
+### Scenario 3: Public website
 **What you have:** 1 home server + 1 VPS  
 **What to do:**
 
@@ -221,7 +195,7 @@ sudo ./scripts/mynodeone
 
 ---
 
-### Scenario 4: Production Scale
+### Scenario 4: Production scale
 **What you have:** 3 servers + 2 VPS  
 **What to do:**
 
@@ -234,7 +208,7 @@ sudo ./scripts/mynodeone
 
 ---
 
-### Scenario 5: VPS-Only (No Home Hardware)
+### Scenario 5: VPS-only (no home hardware)
 **What you have:** No home hardware, just VPS  
 **What to do:**
 
@@ -254,10 +228,10 @@ sudo ./scripts/mynodeone
 
 ---
 
-## 🗺️ Documentation Map
+## Documentation map
 
 ```
-GETTING-STARTED.md ← YOU ARE HERE
+GETTING-STARTED.md ← you are here
     ↓
 README.md (overview)
     ↓
@@ -276,19 +250,19 @@ docs/scaling.md (grow your cloud)
 
 ---
 
-## 🎯 Next Steps
+## Next steps
 
-### Right Now (5 minutes)
-1. ✅ You're reading GETTING-STARTED.md
-2. 📖 Read [README.md](README.md) - Get the big picture
-3. 📖 Read [docs/setup-options-guide.md](docs/setup-options-guide.md) - Understand options
+### Right now (5 minutes)
+1. You're reading GETTING-STARTED.md
+2. Read [README.md](README.md) - get the big picture
+3. Read [docs/setup-options-guide.md](docs/setup-options-guide.md) - understand options
 
-### Before Installing (15 minutes)
-1. 📖 Read [INSTALLATION.md](INSTALLATION.md) - See step-by-step
-2. 📖 Skim [FAQ.md](FAQ.md) - Common questions
-3. 💡 Decide your scenario (Learning? Home? Production?)
+### Before installing (15 minutes)
+1. Read [INSTALLATION.md](INSTALLATION.md) - see step-by-step
+2. Skim [FAQ.md](FAQ.md) - common questions
+3. Decide your scenario (learning, home, or production)
 
-### Ready to Install?
+### Ready to install?
 ```bash
 # Clone using HTTPS (recommended for beginners):
 git clone https://github.com/vinsac/MyNodeOne.git
@@ -300,20 +274,20 @@ sudo ./scripts/mynodeone
 
 Have [INSTALLATION.md](INSTALLATION.md) open for reference!
 
-### After Installation (1 hour)
-1. 📖 Read [docs/operations.md](docs/operations.md) - Learn daily management
-2. 🚀 Deploy an example app from `manifests/examples/`
-3. 📊 Explore Grafana dashboards
-4. 🎨 Deploy the documentation website: `./website/deploy.sh`
+### After installation (1 hour)
+1. Read [docs/operations.md](docs/operations.md) - learn daily management
+2. Deploy an example app from `manifests/examples/`
+3. Explore Grafana dashboards
+4. Deploy the documentation website: `./website/deploy.sh`
 
-### Growing Your Cloud
-1. 📖 Read [docs/scaling.md](docs/scaling.md) - Add more nodes
-2. 🔧 Customize for your needs
-3. 🌟 Star the repo if you like it!
+### Growing your cloud
+1. Read [docs/scaling.md](docs/scaling.md) - add more nodes
+2. Customize for your needs
+3. Star the repo if you like it
 
 ---
 
-## ⚠️ Safety & Common Concerns
+## Safety and common concerns
 
 ### Will this break my computer?
 **No.** MyNodeOne only installs software in its own directories. Your personal files and existing setup remain untouched.
@@ -327,7 +301,7 @@ Yes! You can uninstall MyNodeOne completely. (We'll add an uninstall guide soon.
 ### What about my existing files?
 MyNodeOne installs to `/opt/mynodeone` and doesn't touch your documents, photos, etc.
 
-**⚠️ IMPORTANT:** If you choose to format a disk for storage, that disk's data WILL be erased. The script will warn you and ask for confirmation first!
+**Important:** If you choose to format a disk for storage, that disk's data will be erased. The script will warn you and ask for confirmation first.
 
 ### What if I get stuck?
 1. Check [docs/troubleshooting.md](docs/troubleshooting.md)
@@ -337,7 +311,7 @@ MyNodeOne installs to `/opt/mynodeone` and doesn't touch your documents, photos,
 
 ---
 
-## ❓ Quick Questions
+## Quick questions
 
 **Q: I have no idea what Kubernetes is. Can I still use this?**  
 A: Yes! You don't need to understand the technology. Just follow the steps. (But check [GLOSSARY.md](GLOSSARY.md) if curious!)
@@ -365,53 +339,53 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 
 ---
 
-## 📚 All Documentation
+## All documentation
 
-### Essential (Read First)
+### Essential (read first)
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** ← You are here
 - **[README.md](README.md)** - Project overview
 - **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
 - **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step guide
 
-### Reference Guides
+### Reference guides
 - **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works
 - **[docs/operations.md](docs/operations.md)** - Daily management
 - **[docs/troubleshooting.md](docs/troubleshooting.md)** - Fix problems
 - **[docs/scaling.md](docs/scaling.md)** - Add more nodes
 - **[docs/networking.md](docs/networking.md)** - Tailscale + alternatives
 
-### Help & Community
+### Help and community
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute
 
-### Technical Deep Dives
+### Technical deep dives
 - **[FINAL-SUMMARY.md](FINAL-SUMMARY.md)** - Complete implementation
 - **[ANSWERS-TO-QUESTIONS.md](ANSWERS-TO-QUESTIONS.md)** - Design decisions
 - **[COMPLETION-REPORT.md](COMPLETION-REPORT.md)** - What's been built
 
 ---
 
-## 🎉 Ready to Start?
+## Ready to start?
 
 1. **Read** [README.md](README.md) (5 min)
 2. **Read** [docs/setup-options-guide.md](docs/setup-options-guide.md) (15 min)
 3. **Run** `sudo ./scripts/mynodeone`
-4. **Celebrate** your new private cloud! 🎊
+4. **Celebrate** your new private cloud.
 
 ---
 
-## 💡 Pro Tips
+## Pro tips
 
-- ✅ **Use Tailscale (default)** - Don't change it unless you know why
-- ✅ **Start small** - One machine is fine, scale later
-- ✅ **Say YES to disk detection** - Let it configure storage
-- ✅ **Say YES to system cleanup** - Saves RAM and disk
-- ✅ **Keep documentation open** - Reference while installing
-- ✅ **Don't skip backups** - Set up after installation
+- **Use Tailscale (default)** - don't change it unless you know why
+- **Start small** - one machine is fine, scale later
+- **Say yes to disk detection** - let it configure storage
+- **Say yes to system cleanup** - saves RAM and disk
+- **Keep documentation open** - reference while installing
+- **Don't skip backups** - set up after installation
 
 ---
 
-## 🚀 One Command to Rule Them All
+## One command to run everything
 
 ```bash
 sudo ./scripts/mynodeone
@@ -419,11 +393,9 @@ sudo ./scripts/mynodeone
 
 That's it. Everything else is automatic.
 
-**Welcome to MyNodeOne!** 🎉
+**Welcome to MyNodeOne.**
 
 ---
-
-**Built with ❤️ for people who want their own cloud**
 
 **Questions?** Check [FAQ.md](FAQ.md)  
 **Problems?** See [docs/troubleshooting.md](docs/troubleshooting.md)  

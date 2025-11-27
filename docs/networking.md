@@ -556,4 +556,4 @@ sudo tailscale up
 For more help:
 - Tailscale Docs: https://tailscale.com/kb
 - Headscale Repo: https://github.com/juanfont/headscale
-- MyNodeOne FAQ: ../FAQ.md
+- MyNodeOne FAQ: ../reference/FAQ.md

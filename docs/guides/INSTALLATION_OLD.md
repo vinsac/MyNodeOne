@@ -913,15 +913,15 @@ ssh <control-plane-ip> "sudo systemctl status k3s"
 4. ✅ **Set up backups** - Deploy backup CronJob
 5. ✅ **Scale up** - Add more nodes as you grow
 
-## Need Help?
+## Need help?
 
-- **Prerequisites Guide:** [docs/INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md) ⭐ **MUST READ for VPS**
-- **Reliability Improvements:** [docs/RELIABILITY_IMPROVEMENTS.md](../RELIABILITY_IMPROVEMENTS.md)
-- **Production Ready Summary:** [docs/PRODUCTION_READY_SUMMARY.md](../PRODUCTION_READY_SUMMARY.md)
-- **Documentation:** See `docs/` folder
-- **FAQ:** Check `FAQ.md`
-- **Issues:** Open on GitHub
-- **Configuration:** Stored in `~/.mynodeone/config.env`
+- **Prerequisites guide:** [INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md) ⭐ **must read for VPS**
+- **Reliability improvements:** [RELIABILITY_IMPROVEMENTS.md](../RELIABILITY_IMPROVEMENTS.md)
+- **Production readiness summary:** [PRODUCTION_READY_SUMMARY.md](../PRODUCTION_READY_SUMMARY.md)
+- **Documentation:** see the `docs/` folder
+- **FAQ:** see `docs/reference/FAQ.md`
+- **Issues:** open on GitHub
+- **Configuration:** stored in `~/.mynodeone/config.env`
 
 ## Useful Commands
 

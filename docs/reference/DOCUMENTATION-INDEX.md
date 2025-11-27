@@ -13,21 +13,21 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"Step-by-step guide"** → [INSTALLATION.md](INSTALLATION.md)
 
 ### Understand MyNodeOne
-- **"What are the options?"** → [docs/setup-options-guide.md](docs/setup-options-guide.md)
-- **"How does it work?"** → [docs/architecture.md](docs/architecture.md)
-- **"What about networking?"** → [docs/networking.md](docs/networking.md)
+- **"What are the options?"** → [setup-options-guide.md](../setup-options-guide.md)
+- **"How does it work?"** → [architecture.md](../architecture.md)
+- **"What about networking?"** → [networking.md](../networking.md)
 - **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
 
-### Daily Usage
-- **"How do I manage it?"** → [docs/operations.md](docs/operations.md)
+### Daily usage
+- **"How do I manage it?"** → [operations.md](../operations.md)
 - **"Deploy an app"** → Check `manifests/examples/`
 - **"Check cluster health"** → Run `./scripts/cluster-status.sh`
-- **"Add more nodes"** → [docs/scaling.md](docs/scaling.md)
+- **"Add more nodes"** → [scaling.md](../scaling.md)
 
 ### Troubleshooting
-- **"Something broke"** → [docs/troubleshooting.md](docs/troubleshooting.md)
-- **"Common questions"** → [FAQ.md](FAQ.md)
-- **"Network issues"** → [docs/networking.md](docs/networking.md)
+- **"Something broke"** → [troubleshooting.md](../troubleshooting.md)
+- **"Common questions"** → [FAQ](FAQ.md)
+- **"Network issues"** → [networking.md](../networking.md)
 
 ### Advanced
 - **"Complete technical docs"** → [FINAL-SUMMARY.md](FINAL-SUMMARY.md)
@@ -53,22 +53,22 @@ mynodeone/
 │
 ├── docs/
 │   ├── guides/                   ← Step-by-step guides
-│   │   ├── POST_INSTALLATION_GUIDE.md  ← What to do after install ⭐
-│   │   ├── TERMINAL-BASICS.md          ← Terminal for beginners
+│   │   ├── POST_INSTALLATION_GUIDE.md  ← what to do after install
+│   │   ├── TERMINAL-BASICS.md          ← terminal for beginners
 │   │   ├── QUICK_START.md              ← 5-minute reference
-│   │   ├── APP_DEPLOYMENT_GUIDE.md     ← Deploy applications
-│   │   ├── DEMO_APP_GUIDE.md           ← First app walkthrough
-│   │   └── SECURITY_CREDENTIALS_GUIDE.md ← Security best practices
-│   ├── reference/                ← Reference documentation
-│   │   ├── GLOSSARY.md                 ← Term definitions
-│   │   └── ACCESS_INFORMATION.md       ← Service URLs
-│   ├── setup-options-guide.md    ← Setup options explained
+│   │   ├── APP_DEPLOYMENT_GUIDE.md     ← deploy applications
+│   │   ├── DEMO_APP_GUIDE.md           ← first app walkthrough
+│   │   └── SECURITY_CREDENTIALS_GUIDE.md ← security credentials
+│   ├── reference/                ← reference documentation
+│   │   ├── GLOSSARY.md                 ← term definitions
+│   │   └── ACCESS_INFORMATION.md       ← service URLs
+│   ├── setup-options-guide.md    ← setup options explained
 │   ├── networking.md             ← Tailscale guide
-│   ├── architecture.md           ← System architecture
-│   ├── operations.md             ← Daily operations
-│   ├── troubleshooting.md        ← Problem solving
-│   ├── scaling.md                ← Add nodes
-│   └── RELEASE-NOTES-v1.0.md     ← Version 1.0 notes
+│   ├── architecture.md           ← system architecture
+│   ├── operations.md             ← daily operations
+│   ├── troubleshooting.md        ← problem solving
+│   ├── scaling.md                ← add nodes
+│   └── RELEASE-NOTES-v1.0.md     ← version 1.0 notes
 │
 ├── manifests/examples/           ← Ready apps
 ├── website/                      ← Docs website
@@ -194,25 +194,25 @@ mynodeone/
 
 ## 📚 Documentation by Type
 
-### Guides (How-to)
-- [INSTALLATION.md](INSTALLATION.md) - Installation walkthrough
-- [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - VPS edge node & domain setup ⭐
-- [docs/guides/VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md) - VPS control plane setup
-- [docs/operations.md](docs/operations.md) - Daily management
-- [docs/scaling.md](docs/scaling.md) - Growth strategies
-- [docs/troubleshooting.md](docs/troubleshooting.md) - Problem solving
+### Guides (how-to)
+- [INSTALLATION.md](INSTALLATION.md) - installation walkthrough
+- [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - VPS edge node and domain setup
+- [VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md) - VPS control plane setup
+- [operations.md](../operations.md) - daily management
+- [scaling.md](../scaling.md) - growth strategies
+- [troubleshooting.md](../troubleshooting.md) - problem solving
 
-### Explanations (Understanding)
-- [README.md](README.md) - What is MyNodeOne?
-- [docs/architecture.md](docs/architecture.md) - How it works
-- [docs/setup-options-guide.md](docs/setup-options-guide.md) - Options explained
-- [docs/networking.md](docs/networking.md) - Networking explained
+### Explanations (understanding)
+- [README.md](README.md) - what MyNodeOne is
+- [architecture.md](../architecture.md) - how it works
+- [setup-options-guide.md](../setup-options-guide.md) - options explained
+- [networking.md](../networking.md) - networking explained
 
-### Reference (Lookup)
-- [FAQ.md](FAQ.md) - Q&A format
-- [FINAL-SUMMARY.md](FINAL-SUMMARY.md) - Technical specs
-- [ANSWERS-TO-QUESTIONS.md](ANSWERS-TO-QUESTIONS.md) - Design decisions
-- `scripts/` - All automation
+### Reference (lookup)
+- [FAQ](FAQ.md) - Q&A format
+- [FINAL-SUMMARY.md](FINAL-SUMMARY.md) - technical specs
+- [ANSWERS-TO-QUESTIONS.md](ANSWERS-TO-QUESTIONS.md) - design decisions
+- `scripts/` - all automation
 
 ### Tutorials (Learning)
 - [GETTING-STARTED.md](GETTING-STARTED.md) - Guided introduction

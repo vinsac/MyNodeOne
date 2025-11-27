@@ -32,15 +32,15 @@ MyNodeOne v1.0.0 is the first production-ready release of MyNodeOne - your priva
 - ✅ **Better error messages** - Clear explanations with recovery steps
 
 ### Documentation
-- ✅ **GLOSSARY.md** - 50+ terms explained simply
-- ✅ **GETTING-STARTED.md** - Beginner-friendly entry point
-- ✅ **INSTALLATION.md** - Detailed installation guide (renamed from NEW-INSTALLATION.md)
-- ✅ **Ubuntu/Git installation guidance** - Clear instructions for prerequisites
-- ✅ **Both HTTPS and SSH clone options** - User choice for repository cloning
-- ✅ **AI assistant references** - Guidance to use ChatGPT/Gemini for help
-- ✅ **6 user guides** - Architecture, operations, troubleshooting, scaling, networking, setup options
-- ✅ **FAQ.md** - 50+ questions answered
-- ✅ **Documentation website** - Deployable landing page
+- GLOSSARY.md - 50+ terms explained simply
+- GETTING-STARTED.md - Beginner-friendly entry point
+- INSTALLATION.md - Detailed installation guide (renamed from NEW-INSTALLATION.md)
+- Ubuntu/Git installation guidance - clear instructions for prerequisites
+- Both HTTPS and SSH clone options - user choice for repository cloning
+- AI assistant references - guidance to use ChatGPT/Gemini for help
+- Six user guides - architecture, operations, troubleshooting, scaling, networking, setup options
+- FAQ - see `docs/reference/FAQ.md` for 50+ questions answered
+- Documentation website - deployable landing page
 
 ---
 
@@ -151,10 +151,10 @@ sudo ./scripts/mynodeone
 ## 📚 Documentation Highlights
 
 ### For Beginners
-- **GETTING-STARTED.md** - Your entry point
-- **GLOSSARY.md** - Every term explained simply
-- **FAQ.md** - Common questions answered
-- **INSTALLATION.md** - Step-by-step guide
+- **GETTING-STARTED.md** - your entry point
+- **GLOSSARY.md** - every term explained simply
+- **FAQ** - see `docs/reference/FAQ.md` for common questions
+- **INSTALLATION.md** - step-by-step guide
 
 ### For Technical Users
 - **docs/architecture.md** - System design
@@ -275,7 +275,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 - **GitHub:** https://github.com/vinsac/MyNodeOne
 - **Quick Start:** [INSTALLATION.md](INSTALLATION.md)
 - **Guide:** [GETTING-STARTED.md](GETTING-STARTED.md)
-- **FAQ:** [FAQ.md](FAQ.md)
+- **FAQ:** [FAQ](docs/reference/FAQ.md)
 
 ### Community
 - **Issues:** https://github.com/vinsac/MyNodeOne/issues

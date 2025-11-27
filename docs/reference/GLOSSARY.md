@@ -393,12 +393,12 @@
 
 ---
 
-## 🔍 Need More Help?
+## 🔍 Need more help?
 
-- **Quick Questions:** Check [FAQ.md](FAQ.md)
-- **Getting Started:** Read [GETTING-STARTED.md](GETTING-STARTED.md)
-- **Detailed Guide:** See [INSTALLATION.md](INSTALLATION.md)
-- **Problems:** Check [docs/troubleshooting.md](docs/troubleshooting.md)
+- **Quick questions:** Check [FAQ](FAQ.md)
+- **Getting started:** Read [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
+- **Detailed guide:** See [INSTALLATION.md](../guides/INSTALLATION.md)
+- **Problems:** Check [troubleshooting.md](../troubleshooting.md)
 
 ---
 

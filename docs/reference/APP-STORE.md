@@ -352,19 +352,19 @@ Want to add a new app to the store?
 - ✅ Must display access info clearly
 - ✅ Should have reasonable resource defaults
 
-## 📚 More Information
+## 📚 More information
 
 - **Full installation scripts**: `scripts/apps/`
-- **App-specific docs**: See each app's official documentation
-- **Troubleshooting guide**: [docs/troubleshooting.md](docs/troubleshooting.md)
-- **Storage management**: [docs/storage-guide.md](docs/storage-guide.md)
-- **Scaling guide**: [docs/scaling.md](docs/scaling.md)
+- **App-specific docs**: see each app's official documentation
+- **Troubleshooting guide**: [troubleshooting.md](../troubleshooting.md)
+- **Storage management**: [storage-guide.md](../storage-guide.md)
+- **Scaling guide**: [scaling.md](../scaling.md)
 
-## 💬 Need Help?
+## 💬 Need help?
 
 - Open an issue on GitHub
-- Check the FAQ: [FAQ.md](FAQ.md)
-- Read troubleshooting guide: [docs/troubleshooting.md](docs/troubleshooting.md)
+- Check the FAQ: [FAQ](FAQ.md)
+- Read troubleshooting guide: [troubleshooting.md](../troubleshooting.md)
 
 ---
 

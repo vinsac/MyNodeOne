@@ -229,12 +229,12 @@ sudo systemctl restart k3s
 
 ---
 
-## 📚 More Resources
+## More resources
 
-- **Full Access Info**: [ACCESS_INFORMATION.md](./ACCESS_INFORMATION.md)
-- **Installation Guide**: [INSTALLATION.md](./INSTALLATION.md)
-- **Architecture**: [docs/architecture.md](./docs/architecture.md)
-- **FAQ**: [FAQ.md](./FAQ.md)
+- **Full access info**: [ACCESS_INFORMATION.md](./ACCESS_INFORMATION.md)
+- **Installation guide**: [INSTALLATION.md](./INSTALLATION.md)
+- **Architecture**: [architecture.md](../architecture.md)
+- **FAQ**: [FAQ](../reference/FAQ.md)
 
 ---
 

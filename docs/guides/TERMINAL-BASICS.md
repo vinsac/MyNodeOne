@@ -320,9 +320,9 @@ You need internet to:
 
 If something goes wrong, do the following:
 1. Read the error message
-2. Check [docs/troubleshooting.md](docs/troubleshooting.md)
+2. Check [troubleshooting.md](../troubleshooting.md)
 3. Ask ChatGPT: "I got this error with MyNodeOne: [paste error]"
-4. Check [FAQ.md](FAQ.md)
+4. Check [FAQ](../reference/FAQ.md)
 5. Open a GitHub Issue with the error message
 
 ---
@@ -343,9 +343,9 @@ You now know:
 ## Getting help
 
 **If you're stuck:**
-- Check [GLOSSARY.md](GLOSSARY.md) for technical terms
+- Check [GLOSSARY.md](../reference/GLOSSARY.md) for technical terms
 - Ask ChatGPT, Gemini, or Claude
-- Read [FAQ.md](FAQ.md)
+- Read [FAQ](../reference/FAQ.md)
 - Open a GitHub Issue (we're friendly!)
 
 **Remember:** Everyone was a beginner once. Take your time, read carefully, and don't be afraid to ask for help!

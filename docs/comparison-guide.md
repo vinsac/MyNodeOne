@@ -10,7 +10,7 @@
 
 This guide helps you decide if MyNodeOne is the right choice for your use case by comparing it with popular alternatives like OpenStack, Proxmox, Kubernetes, Docker Compose, and cloud providers.
 
-**TL;DR:** MyNodeOne is best for **small to medium teams** (1-50 nodes) who want **production-ready container infrastructure** with **minimal setup** and **maximum cost savings**.
+**TL;DR:** MyNodeOne is best for **small to medium teams** (1-50 nodes) who want **robust container infrastructure** with **minimal setup** and **maximum cost savings**.
 
 ---
 
@@ -155,8 +155,8 @@ This guide helps you decide if MyNodeOne is the right choice for your use case b
 
 #### When to Choose MyNodeOne ✅
 
-**Time to Production:**
-- **MyNodeOne:** 30 minutes to production-ready
+**Time to first deployment:**
+- **MyNodeOne:** 30 minutes to a working cluster
 - **Bare K8s:** Days/weeks to configure all components
 - **Winner:** MyNodeOne
 
@@ -391,7 +391,7 @@ This guide helps you decide if MyNodeOne is the right choice for your use case b
 - Cut infrastructure costs by 90% ($1,350/month savings)
 - Runway extended by ~15 months with savings
 - Team can manage it (no dedicated ops needed)
-- Production-ready in 30 minutes
+- Practical for production use after appropriate testing and hardening
 - Scale as you grow
 
 **Alternative:** AWS if you need multi-region globally from day 1
@@ -431,8 +431,8 @@ This guide helps you decide if MyNodeOne is the right choice for your use case b
 **Why:**
 - Repurpose existing hardware
 - Save $200/month ($2,400/year)
-- Learn production Kubernetes
-- Production-ready for your SaaS
+- Learn Kubernetes in a realistic environment
+- Suitable as a base for SaaS workloads after validation and monitoring are in place
 - Scale when product takes off
 
 **Alternative:** Docker Compose if you'll never need multiple machines
@@ -602,7 +602,7 @@ This guide helps you decide if MyNodeOne is the right choice for your use case b
 4. Have hardware available (or can get it)
 5. Comfortable with Linux command line
 6. 1-10 person team (can't afford dedicated ops)
-7. Want production-ready in 30 minutes
+7. Want a working cluster quickly and are willing to validate it for production
 8. Modern stack (K8s, GitOps, S3, monitoring)
 
 ### You Should Use Something Else If:

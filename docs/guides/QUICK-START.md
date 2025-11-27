@@ -203,28 +203,28 @@ sudo ./scripts/show-credentials.sh
 - Just give them the web address
 - They create their own accounts
 
-### 5. Regular Backups
+### 5. Regular backups
 - Longhorn (your storage system) has automatic snapshots
-- But still backup important data manually
-- See [docs/backup-guide.md](docs/backup-guide.md)
+- You should still back up important data manually
+- See [storage-guide.md](../storage-guide.md) and [operations.md](../operations.md) for storage and backup considerations
 
 ---
 
 ## 📚 Learn More
 
-**For Beginners:**
-- [BEGINNER-GUIDE.md](BEGINNER-GUIDE.md) - Comprehensive guide for non-technical users
+**For beginners:**
+- [BEGINNER-GUIDE.md](BEGINNER-GUIDE.md) - comprehensive guide for non-technical users
 
-**App Details:**
-- [APP-STORE.md](APP-STORE.md) - Complete app catalog and features
+**App details:**
+- [APP-STORE.md](APP-STORE.md) - complete app catalog and features
 
 **Troubleshooting:**
-- [FAQ.md](FAQ.md) - Common questions
-- [docs/troubleshooting.md](docs/troubleshooting.md) - Fix common issues
+- [FAQ](../reference/FAQ.md) - common questions
+- [troubleshooting.md](../troubleshooting.md) - fix common issues
 
 **Advanced:**
-- [INSTALLATION.md](INSTALLATION.md) - Installation details
-- [docs/architecture.md](docs/architecture.md) - How it works
+- [INSTALLATION.md](INSTALLATION.md) - installation details
+- [architecture.md](../architecture.md) - how it works
 
 ---
 

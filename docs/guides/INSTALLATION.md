@@ -47,7 +47,7 @@ Learn how to:
 - **Brain of your cluster** - Manages all other nodes
 - **First node you install** - Everything else connects to this
 - **Most important node** - Keep it reliable and secure
-- **Recommended hardware:** 8GB+ RAM, 4+ CPU cores (4GB works for learning)
+- **Recommended hardware:** 8GB+ RAM, 4+ CPU cores
 
 ---
 
@@ -55,10 +55,9 @@ Learn how to:
 
 ### Hardware:
 - One machine with **Ubuntu 24.04 LTS** (or 22.04/20.04)
-- At least **4GB RAM** (8GB+ recommended for production)
-- At least **20GB disk space**
+- At least **8GB RAM**
+- At least **50GB disk space**
 - Network connection (wired or WiFi)
-- Desktop or Server edition works
 
 ### Software to Install:
 
@@ -67,8 +66,8 @@ Learn how to:
 ```bash
 # Open terminal: Press Ctrl + Alt + T on Ubuntu Desktop
 
-# Update package list
-sudo apt update
+# Update package list and upgrade packages
+sudo apt update && sudo apt upgrade -y
 
 # Install git
 sudo apt install -y git

@@ -59,13 +59,15 @@ Learn how to:
 - At least **50GB disk space**
 - Network connection (wired or WiFi)
 
-### Software to Install:
+### Software to Install on Control Plane machine:
+
+All commands in this section must be run on the control plane machine:
+- If your control plane is a local PC, open a terminal (for example, Ctrl + Alt + T on Ubuntu Desktop).
+- If your control plane is a VPS or VDS, SSH into the server from your laptop or desktop and run the commands there.
 
 #### 1. Git (for downloading MyNodeOne)
 
 ```bash
-# Open terminal: Press Ctrl + Alt + T on Ubuntu Desktop
-
 # Update package list and upgrade packages
 sudo apt update && sudo apt upgrade -y
 
@@ -92,31 +94,27 @@ sudo systemctl status ssh
 # Expected: "active (running)"
 ```
 
+If the SSH service is not `active (running)` or you see errors, re-run the `sudo systemctl enable ssh`, `sudo systemctl start ssh`, and `sudo systemctl status ssh` commands and resolve any reported issues before continuing.
+
 #### 3. Passwordless Sudo (for automation)
 
-**Required for automated sync and cluster management.**
+**Required for automated sync and cluster management. Run these commands on the control plane machine to configure passwordless sudo for your user.**
 
 ```bash
-# Test if you already have passwordless sudo
-sudo -n echo "Passwordless sudo works!"
-
-# If it asks for password, you need to configure it:
-# The installation script will configure this automatically,
-# or you can set it up manually:
-
 # Create sudoers file (replace 'yourusername' with your actual username)
 echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/yourusername
 sudo chmod 0440 /etc/sudoers.d/yourusername
 
-# Verify it works
+# Verify it works (should not prompt for a password)
 sudo -n echo "Success!"
 ```
-
-**Note:** The control plane installation script will configure this automatically at the end. This is just for reference if you want to set it up beforehand.
 
 #### 4. Tailscale (secure VPN networking)
 
 ```bash
+# Install curl (if not already installed)
+sudo apt install -y curl
+
 # Install Tailscale
 curl -fsSL https://tailscale.com/install.sh | sh
 

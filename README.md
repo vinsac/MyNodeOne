@@ -26,46 +26,46 @@ For comprehensive legal terms, see [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENS
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 ### Quick Start
-- **👋 New User?** → [GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)
-- **🖥️ Never used terminal?** → [TERMINAL-BASICS.md](docs/TERMINAL-BASICS.md)
-- **❓ Don't understand terms?** → [GLOSSARY.md](docs/GLOSSARY.md)
-- **📖 Full Installation Guide** → [INSTALLATION.md](docs/guides/INSTALLATION.md)
+- **New user?** → [GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)
+- **Never used terminal?** → [TERMINAL-BASICS.md](docs/TERMINAL-BASICS.md)
+- **Don't understand terms?** → [GLOSSARY.md](docs/GLOSSARY.md)
+- **Full installation guide** → [INSTALLATION.md](docs/guides/INSTALLATION.md)
 
-### ⚠️ VPS Edge Node Installation (IMPORTANT)
-- **📋 Prerequisites Guide** → [INSTALLATION_PREREQUISITES.md](docs/INSTALLATION_PREREQUISITES.md) ⭐ **MUST READ**
+### VPS edge node installation (important)
+- **Prerequisites guide** → [INSTALLATION_PREREQUISITES.md](docs/INSTALLATION_PREREQUISITES.md) **(must read)**
   - Mandatory steps before VPS installation
   - Passwordless sudo configuration (CRITICAL)
   - SSH key setup requirements
   - Pre-flight checks and validation
   - **Read this BEFORE installing VPS nodes!**
 
-- **🔧 Production Ready** → [PRODUCTION_READY_SUMMARY.md](docs/PRODUCTION_READY_SUMMARY.md)
+- **Production readiness** → [PRODUCTION_READY_SUMMARY.md](docs/PRODUCTION_READY_SUMMARY.md)
   - Phase 1 & 2 reliability improvements
   - Installation success rate: 95% (up from 60%)
   - New validation scripts and tools
   - Troubleshooting quick reference
 
-### Operations & Management
-- **📖 Operations Guide** → [OPERATIONS-GUIDE.md](docs/OPERATIONS-GUIDE.md) - **Complete guide for daily operations**
+### Operations and management
+- **Operations guide** → [OPERATIONS-GUIDE.md](docs/OPERATIONS-GUIDE.md) - **Complete guide for daily operations**
   - Install apps, add domains, make apps public/private
   - Troubleshooting, monitoring, maintenance
   - All common operations in one place
   
-- **🌍 App Public Access** → [APP-PUBLIC-ACCESS.md](docs/APP-PUBLIC-ACCESS.md) - **How to make apps publicly accessible**
+- **App public access** → [APP-PUBLIC-ACCESS.md](docs/APP-PUBLIC-ACCESS.md) - **How to make apps publicly accessible**
   - Interactive flow during app installation
   - Making apps public or private after installation
   - Common scenarios and troubleshooting
   - **Read this before installing your first app!**
   
-- **🌐 Domain Management** → [DOMAIN-MANAGEMENT.md](docs/DOMAIN-MANAGEMENT.md)
+- **Domain management** → [DOMAIN-MANAGEMENT.md](docs/DOMAIN-MANAGEMENT.md)
   - Add new domains (when you buy more domains)
   - Configure service routing
   - Multi-domain strategies
 
-- **🏗️ Enterprise Setup** → [ENTERPRISE-SETUP.md](docs/ENTERPRISE-SETUP.md)
+- **Enterprise setup** → [ENTERPRISE-SETUP.md](docs/ENTERPRISE-SETUP.md)
   - Event-driven architecture
   - Multi-domain, multi-VPS setup
   - Production deployment

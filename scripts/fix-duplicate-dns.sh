@@ -59,7 +59,7 @@
 #     3. Manual restore: sudo cp /etc/hosts.backup.* /etc/hosts
 #
 # SEE ALSO:
-#   - docs/OPERATIONS-GUIDE.md - DNS troubleshooting section
+#   - docs/guides/OPERATIONS-GUIDE.md - DNS troubleshooting section
 #   - scripts/lib/service-registry.sh - Enterprise registry commands
 #   - scripts/sync-dns.sh - Regular DNS sync (after this fix)
 #

@@ -48,19 +48,19 @@ If you want to understand before installing, read the sections below.
 ### Brand new? Read in this order:
 1. **This file** - You're reading it! (understand what MyNodeOne is)
 2. **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** - If new to terminal (10 min)
-3. **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - Understand your options (15 min)
+3. **[setup-options-guide.md](../reference/setup-options-guide.md)** - Understand your options (15 min)
 4. **[INSTALLATION.md](INSTALLATION.md)** - Install step-by-step (30 min actual install)
 
 ### Ready to install now?
 → **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide with all commands
 
 ### Already installed?
-1. **[docs/operations.md](docs/operations.md)** - Daily management
-2. **[docs/architecture.md](docs/architecture.md)** - How it works
+1. **[operations.md](operations.md)** - Daily management
+2. **[architecture.md](../reference/architecture.md)** - How it works
 3. **[../reference/FAQ.md](../reference/FAQ.md)** - Common questions
 
 ### Something not working?
-1. **[docs/troubleshooting.md](docs/troubleshooting.md)** - Problem solving
+1. **[troubleshooting.md](troubleshooting.md)** - Problem solving
 2. **[../reference/FAQ.md](../reference/FAQ.md)** - 50+ questions answered
 
 ---
@@ -134,7 +134,7 @@ The installation script automatically:
 **You don't need to do anything.**
 
 ### Want alternatives?
-See [docs/networking.md](docs/networking.md) for Headscale, Netmaker, ZeroTier, WireGuard, etc.
+See [networking.md](../reference/networking.md) for Headscale, Netmaker, ZeroTier, WireGuard, etc.
 
 **Recommendation:** Stick with Tailscale (default).
 
@@ -237,17 +237,17 @@ GETTING-STARTED.md ← you are here
     ↓
 README.md (overview)
     ↓
-docs/setup-options-guide.md (understand choices)
+docs/reference/setup-options-guide.md (understand choices)
     ↓
 INSTALLATION.md (step-by-step)
     ↓
 sudo ./scripts/mynodeone (install!)
     ↓
-docs/operations.md (daily use)
+docs/guides/operations.md (daily use)
     ↓
-docs/architecture.md (deep dive)
+docs/reference/architecture.md (deep dive)
     ↓
-docs/scaling.md (grow your cloud)
+docs/guides/scaling.md (grow your cloud)
 ```
 
 ---
@@ -257,7 +257,7 @@ docs/scaling.md (grow your cloud)
 ### Right now (5 minutes)
 1. You're reading GETTING-STARTED.md
 2. Read [README.md](README.md) - get the big picture
-3. Read [docs/setup-options-guide.md](docs/setup-options-guide.md) - understand options
+3. Read [setup-options-guide.md](../reference/setup-options-guide.md) - understand options
 
 ### Before installing (15 minutes)
 1. Read [INSTALLATION.md](INSTALLATION.md) - see step-by-step
@@ -277,13 +277,13 @@ sudo ./scripts/mynodeone
 Have [INSTALLATION.md](INSTALLATION.md) open for reference!
 
 ### After installation (1 hour)
-1. Read [docs/operations.md](docs/operations.md) - learn daily management
+1. Read [operations.md](operations.md) - learn daily management
 2. Deploy an example app from `manifests/examples/`
 3. Explore Grafana dashboards
 4. Deploy the documentation website: `./website/deploy.sh`
 
 ### Growing your cloud
-1. Read [docs/scaling.md](docs/scaling.md) - add more nodes
+1. Read [scaling.md](scaling.md) - add more nodes
 2. Customize for your needs
 3. Star the repo if you like it
 
@@ -306,7 +306,7 @@ MyNodeOne installs to `/opt/mynodeone` and doesn't touch your documents, photos,
 **Important:** If you choose to format a disk for storage, that disk's data will be erased. The script will warn you and ask for confirmation first.
 
 ### What if I get stuck?
-1. Check [docs/troubleshooting.md](docs/troubleshooting.md)
+1. Check [troubleshooting.md](troubleshooting.md)
 2. Check [../reference/FAQ.md](../reference/FAQ.md) - 50+ questions answered
 3. Look up error messages in [GLOSSARY.md](GLOSSARY.md)
 4. Open an issue on GitHub
@@ -346,15 +346,15 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 ### Essential (read first)
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** ← You are here
 - **[README.md](README.md)** - Project overview
-- **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
+- **[setup-options-guide.md](../reference/setup-options-guide.md)** - What each option means
 - **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step guide
 
 ### Reference guides
-- **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works
-- **[docs/operations.md](docs/operations.md)** - Daily management
-- **[docs/troubleshooting.md](docs/troubleshooting.md)** - Fix problems
-- **[docs/scaling.md](docs/scaling.md)** - Add more nodes
-- **[docs/networking.md](docs/networking.md)** - Tailscale + alternatives
+- **[architecture.md](../reference/architecture.md)** - How MyNodeOne works
+- **[operations.md](operations.md)** - Daily management
+- **[troubleshooting.md](troubleshooting.md)** - Fix problems
+- **[scaling.md](scaling.md)** - Add more nodes
+- **[networking.md](../reference/networking.md)** - Tailscale + alternatives
 
 ### Help and community
 - **[../reference/FAQ.md](../reference/FAQ.md)** - 50+ questions answered
@@ -370,7 +370,7 @@ A: Check [GLOSSARY.md](GLOSSARY.md) - we explain everything in simple language!
 ## Ready to start?
 
 1. **Read** [README.md](README.md) (5 min)
-2. **Read** [docs/setup-options-guide.md](docs/setup-options-guide.md) (15 min)
+2. **Read** [setup-options-guide.md](../reference/setup-options-guide.md) (15 min)
 3. **Run** `sudo ./scripts/mynodeone`
 4. **Celebrate** your new private cloud.
 
@@ -400,5 +400,5 @@ That's it. Everything else is automatic.
 ---
 
 **Questions?** Check [FAQ.md](FAQ.md)  
-**Problems?** See [docs/troubleshooting.md](docs/troubleshooting.md)  
+**Problems?** See [troubleshooting.md](troubleshooting.md)  
 **Ready?** Run `sudo ./scripts/mynodeone`

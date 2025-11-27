@@ -337,7 +337,7 @@ OR
 - **Longhorn Documentation:** https://longhorn.io/docs
 - **MinIO Documentation:** https://min.io/docs
 - **RAID Tutorial:** Search "Linux RAID mdadm tutorial"
-- **MyNodeOne Operations:** See `docs/operations.md`
+- **MyNodeOne Operations:** See `docs/guides/operations.md`
 
 ---
 

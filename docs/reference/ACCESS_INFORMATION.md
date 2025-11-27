@@ -214,12 +214,12 @@ kubectl logs -f -n <namespace> <pod-name> --kubeconfig ~/.kube/config
 
 ## 📚 Documentation Links
 
-- **Installation Guide**: `/home/canada-pc-0001/MyNodeOne/INSTALLATION.md`
-- **Getting Started**: `/home/canada-pc-0001/MyNodeOne/GETTING-STARTED.md`
-- **Architecture**: `/home/canada-pc-0001/MyNodeOne/docs/architecture.md`
-- **Operations**: `/home/canada-pc-0001/MyNodeOne/docs/operations.md`
-- **FAQ**: `/home/canada-pc-0001/MyNodeOne/FAQ.md`
-- **Troubleshooting**: `/home/canada-pc-0001/MyNodeOne/docs/troubleshooting.md`
+- **Installation Guide**: `/root/INSTALLATION.md`
+- **Getting Started**: `/root/GETTING-STARTED.md`
+- **Architecture**: `/root/docs/reference/architecture.md`
+- **Operations**: `/root/docs/guides/operations.md`
+- **FAQ**: `/root/docs/reference/FAQ.md`
+- **Troubleshooting**: `/root/docs/guides/troubleshooting.md`
 
 ---
 

@@ -273,12 +273,12 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 ---
 
-## 📚 **Documentation Updates**
+## **Documentation Updates**
 
 ### **Created:**
-- ✅ `docs/RELIABILITY_IMPROVEMENTS.md` (this file)
-- ⏳ `docs/INSTALLATION_PREREQUISITES.md` (pending)
-- ⏳ `docs/TROUBLESHOOTING.md` (pending)
+- ✅ `docs/reference/RELIABILITY_IMPROVEMENTS.md` (this file)
+- ⏳ `docs/guides/INSTALLATION_PREREQUISITES.md` (pending)
+- ⏳ `docs/guides/troubleshooting.md` (pending)
 
 ### **Updated:**
 - ⏳ `README.md` - Add prerequisites section (pending)

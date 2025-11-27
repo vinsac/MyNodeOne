@@ -1337,8 +1337,8 @@ show_documentation_info() {
     echo
     echo "  • Installation Guide: $PROJECT_ROOT/INSTALLATION.md"
     echo "  • Getting Started: $PROJECT_ROOT/GETTING-STARTED.md"
-    echo "  • Architecture: $PROJECT_ROOT/docs/architecture.md"
-    echo "  • Operations: $PROJECT_ROOT/docs/operations.md"
+    echo "  • Architecture: $PROJECT_ROOT/docs/reference/architecture.md"
+    echo "  • Operations: $PROJECT_ROOT/docs/guides/operations.md"
     echo "  • FAQ: $PROJECT_ROOT/FAQ.md"
     echo
     echo "🌐 Web UI will be available after installation:"
@@ -1347,8 +1347,8 @@ show_documentation_info() {
     echo "  • MinIO (S3 Storage): http://<control-plane-ip>:9000"
     echo
     echo "📖 For detailed storage and setup options, see:"
-    echo "  • Storage Options: $PROJECT_ROOT/docs/storage-guide.md"
-    echo "  • Setup Options: $PROJECT_ROOT/docs/setup-options-guide.md"
+    echo "  • Storage Options: $PROJECT_ROOT/docs/reference/storage-guide.md"
+    echo "  • Setup Options: $PROJECT_ROOT/docs/reference/setup-options-guide.md"
     echo
 }
 

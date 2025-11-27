@@ -187,7 +187,7 @@ The core installation (Steps 1-3) gets your control plane running. **Step 4 (pas
    ✅ Your machine is now connected to Tailscale!
    - **First time?** Sign up for free at https://tailscale.com before running this
    - **No browser?** Copy the URL shown and open it on another device
-   - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
+   - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [../reference/networking.md](../reference/networking.md)
    - **Install on workers too:** When you add more machines, you'll install Tailscale on them as well (same commands).
 
 ---

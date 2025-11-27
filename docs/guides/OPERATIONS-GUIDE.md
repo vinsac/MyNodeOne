@@ -781,9 +781,9 @@ sudo systemctl status tailscale                            # VPN status
    - Nodes: `sudo ./scripts/lib/sync-controller.sh health`
 
 4. **Documentation:**
-   - Domain Management: `docs/DOMAIN-MANAGEMENT.md`
-   - Enterprise Setup: `docs/ENTERPRISE-SETUP.md`
-   - Operations Guide: `docs/OPERATIONS-GUIDE.md` (this file)
+   - Domain Management: `docs/guides/DOMAIN-MANAGEMENT.md`
+   - Enterprise Setup: `docs/reference/ENTERPRISE-SETUP.md`
+   - Operations Guide: `docs/guides/OPERATIONS-GUIDE.md` (this file)
 
 ---
 

@@ -394,5 +394,5 @@ A: No. Just the ones where you want extra storage. Control plane benefits most.
 
 For more help, see:
 - `INSTALLATION.md` - Step-by-step setup
-- `docs/networking.md` - Tailscale guide
+- `docs/reference/networking.md` - Tailscale guide
 - `docs/reference/FAQ.md` - Common questions

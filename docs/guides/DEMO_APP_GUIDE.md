@@ -241,7 +241,7 @@ If something doesn't work:
    ```
 
 4. **Read troubleshooting guide:**
-   - [docs/troubleshooting.md](docs/troubleshooting.md)
+   - [troubleshooting.md](troubleshooting.md)
 
 5. **Check if Tailscale is working:**
    ```bash

@@ -30,42 +30,42 @@ For comprehensive legal terms, see [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENS
 
 ### Quick Start
 - **New user?** → [GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)
-- **Never used terminal?** → [TERMINAL-BASICS.md](docs/TERMINAL-BASICS.md)
-- **Don't understand terms?** → [GLOSSARY.md](docs/GLOSSARY.md)
+- **Never used terminal?** → [TERMINAL-BASICS.md](docs/guides/TERMINAL-BASICS.md)
+- **Don't understand terms?** → [GLOSSARY.md](docs/reference/GLOSSARY.md)
 - **Full installation guide** → [INSTALLATION.md](docs/guides/INSTALLATION.md)
 
 ### VPS edge node installation (important)
-- **Prerequisites guide** → [INSTALLATION_PREREQUISITES.md](docs/INSTALLATION_PREREQUISITES.md) **(must read)**
+- **Prerequisites guide** → [INSTALLATION_PREREQUISITES.md](docs/guides/INSTALLATION_PREREQUISITES.md) **(must read)**
   - Mandatory steps before VPS installation
   - Passwordless sudo configuration (CRITICAL)
   - SSH key setup requirements
   - Pre-flight checks and validation
   - **Read this BEFORE installing VPS nodes!**
 
-- **Production readiness** → [PRODUCTION_READY_SUMMARY.md](docs/PRODUCTION_READY_SUMMARY.md)
+- **Production readiness** → [PRODUCTION_READY_SUMMARY.md](docs/reference/PRODUCTION_READY_SUMMARY.md)
   - Phase 1 & 2 reliability improvements
   - Installation success rate: 95% (up from 60%)
   - New validation scripts and tools
   - Troubleshooting quick reference
 
 ### Operations and management
-- **Operations guide** → [OPERATIONS-GUIDE.md](docs/OPERATIONS-GUIDE.md) - **Complete guide for daily operations**
+- **Operations guide** → [OPERATIONS-GUIDE.md](docs/guides/OPERATIONS-GUIDE.md) - **Complete guide for daily operations**
   - Install apps, add domains, make apps public/private
   - Troubleshooting, monitoring, maintenance
   - All common operations in one place
   
-- **App public access** → [APP-PUBLIC-ACCESS.md](docs/APP-PUBLIC-ACCESS.md) - **How to make apps publicly accessible**
+- **App public access** → [APP-PUBLIC-ACCESS.md](docs/guides/APP-PUBLIC-ACCESS.md) - **How to make apps publicly accessible**
   - Interactive flow during app installation
   - Making apps public or private after installation
   - Common scenarios and troubleshooting
   - **Read this before installing your first app!**
   
-- **Domain management** → [DOMAIN-MANAGEMENT.md](docs/DOMAIN-MANAGEMENT.md)
+- **Domain management** → [DOMAIN-MANAGEMENT.md](docs/guides/DOMAIN-MANAGEMENT.md)
   - Add new domains (when you buy more domains)
   - Configure service routing
   - Multi-domain strategies
 
-- **Enterprise setup** → [ENTERPRISE-SETUP.md](docs/ENTERPRISE-SETUP.md)
+- **Enterprise setup** → [ENTERPRISE-SETUP.md](docs/reference/ENTERPRISE-SETUP.md)
   - Event-driven architecture
   - Multi-domain, multi-VPS setup
   - Production deployment
@@ -117,7 +117,7 @@ sudo ./scripts/fix-duplicate-dns.sh                        # Fix duplicate DNS e
   - **When to use:** You see same app at multiple URLs (e.g., `demo.minicloud.local`, `demoapp.minicloud.local`)
   - **Safe to run:** Creates backup, only removes MyNodeOne entries
   - **Not needed for:** Fresh installations (Nov 2024+)
-  - **See:** [OPERATIONS-GUIDE.md - Duplicate DNS section](docs/OPERATIONS-GUIDE.md#issue-duplicate-dns-entries-same-app-multiple-urls)
+  - **See:** [OPERATIONS-GUIDE.md - Duplicate DNS section](docs/guides/OPERATIONS-GUIDE.md#issue-duplicate-dns-entries-same-app-multiple-urls)
 
 ---
 
@@ -208,7 +208,7 @@ ssh root@YOUR_VPS_IP 'grep email /etc/traefik/traefik.yml'
 
 ### 🔧 For Technical Users
 - **[INSTALLATION.md](docs/guides/INSTALLATION.md)** - Full installation documentation
-- **[docs/architecture.md](docs/architecture.md)** - System architecture details
+- **[docs/reference/architecture.md](docs/reference/architecture.md)** - System architecture details
 - **[FAQ.md](docs/reference/FAQ.md)** - Frequently asked questions
 
 ---
@@ -317,8 +317,8 @@ sudo ./scripts/enable-security-hardening.sh
 
 **Documentation:**
 - [SECURITY-AUDIT.md](SECURITY-AUDIT.md) - Complete security review
-- [docs/security-best-practices.md](docs/security-best-practices.md) - Production security guide  
-- [docs/password-management.md](docs/password-management.md) - Password management strategy
+- [docs/reference/security-best-practices.md](docs/reference/security-best-practices.md) - Production security guide  
+- [docs/reference/password-management.md](docs/reference/password-management.md) - Password management strategy
 
 ## Architecture
 
@@ -504,7 +504,7 @@ You can install anywhere (e.g., `~/Projects/mynodeone/code/MyNodeOne`), but:
   
   - **First time?** Sign up for free at https://tailscale.com before running this
   - **No browser?** Copy the URL shown and open it on another device
-  - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/networking.md](docs/networking.md)
+  - **Need help with Tailscale?** Ask ChatGPT, Gemini, or see [docs/reference/networking.md](docs/reference/networking.md)
 
 - **Root/sudo access**
 
@@ -842,7 +842,16 @@ kubectl apply -f my-app-ingress.yaml
 
 **Step 4:** Wait 1-2 minutes for SSL certificates to be issued automatically!
 
-**Need help?** Check [docs/operations.md](docs/operations.md) for detailed deployment guides or use the helper script above.
+**Access the app:**
+- URL will be shown after deployment (e.g., http://100.x.x.x)
+- Open in browser on any device connected to Tailscale
+
+**Remove when done:**
+```bash
+kubectl delete -f my-app-ingress.yaml
+```
+
+**See [docs/guides/operations.md](docs/guides/operations.md) for detailed deployment guides or use the helper script above.
 
 ## 📚 Documentation
 
@@ -873,14 +882,14 @@ kubectl apply -f my-app-ingress.yaml
 - **⚠️ IMPORTANT:** Credentials auto-deleted after you save them during installation
 
 ### User Guides
-- **[docs/comparison-guide.md](docs/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐
-- **[docs/setup-options-guide.md](docs/setup-options-guide.md)** - What each option means
-- **[docs/networking.md](docs/networking.md)** - Tailscale guide (default)
-- **[docs/operations.md](docs/operations.md)** - Daily management
-- **[docs/troubleshooting.md](docs/troubleshooting.md)** - Problem solving
+- **[docs/reference/comparison-guide.md](docs/reference/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐
+- **[docs/reference/setup-options-guide.md](docs/reference/setup-options-guide.md)** - What each option means
+- **[docs/reference/networking.md](docs/reference/networking.md)** - Tailscale guide (default)
+- **[docs/guides/operations.md](docs/guides/operations.md)** - Daily management
+- **[docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)** - Problem solving
 
 ### Technical Guides
-- **[docs/architecture.md](docs/architecture.md)** - How MyNodeOne works
+- **[docs/reference/architecture.md](docs/reference/architecture.md)** - How MyNodeOne works
 - **[docs/scaling.md](docs/scaling.md)** - Add more nodes
 
 ### Community

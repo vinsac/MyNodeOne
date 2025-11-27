@@ -1632,9 +1632,9 @@ print_summary() {
     
     echo "📚 MORE RESOURCES:"
     echo "   • Getting Started Guide: $PROJECT_ROOT/GETTING-STARTED.md"
-    echo "   • Operations Guide: $PROJECT_ROOT/docs/operations.md"
+    echo "   • Operations Guide: $PROJECT_ROOT/docs/guides/operations.md"
     echo "   • FAQ: $PROJECT_ROOT/FAQ.md"
-    echo "   • Troubleshooting: $PROJECT_ROOT/docs/troubleshooting.md"
+    echo "   • Troubleshooting: $PROJECT_ROOT/docs/guides/troubleshooting.md"
     echo
     echo "💡 HELPFUL COMMANDS:"
     echo "   kubectl get all -A              # See everything"

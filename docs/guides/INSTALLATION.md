@@ -15,11 +15,11 @@ This guide has **4 independent sections** - one for each node type:
 | **[3. Management Laptop](#section-3-management-laptop-setup)** | Admin workstation | Optional - Control cluster from laptop |
 | **[4. Worker Node](#section-4-worker-node-installation)** | Additional compute | Optional - Add more resources to cluster |
 
-**👉 Always start with Section 1 (Control Plane), then choose which other sections you need.**
+**Always start with Section 1 (Control Plane), then choose which other sections you need.**
 
 ---
 
-## 🌱 New to Terminal/Linux?
+## New to Terminal/Linux?
 
 **First time with command line?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
 
@@ -36,7 +36,7 @@ Learn how to:
 
 # SECTION 1: Control Plane Installation
 
-**🎯 START HERE - This is your first node!**
+**START HERE - This is your first node!**
 
 > **Cloud Deployment Note:** Planning to run your Control Plane on a cloud server (VPS/VDS) instead of a physical machine at home? Read the [**Cloud Control Plane Use Case**](../use-cases/cloud-control-plane.md) first for critical security setup instructions.
 
@@ -54,11 +54,11 @@ Learn how to:
 ## Prerequisites
 
 ### Hardware:
-- ✅ One machine with **Ubuntu 24.04 LTS** (or 22.04/20.04)
-- ✅ At least **4GB RAM** (8GB+ recommended for production)
-- ✅ At least **20GB disk space**
-- ✅ Network connection (wired or WiFi)
-- ✅ Desktop or Server edition works
+- One machine with **Ubuntu 24.04 LTS** (or 22.04/20.04)
+- At least **4GB RAM** (8GB+ recommended for production)
+- At least **20GB disk space**
+- Network connection (wired or WiFi)
+- Desktop or Server edition works
 
 ### Software to Install:
 
@@ -166,7 +166,7 @@ sudo ./scripts/mynodeone
 
 **Success looks like:**
 ```
-✅ Your MyNodeOne node has been set up successfully! 🎉
+Your MyNodeOne node has been set up successfully! 🎉
 
 Next steps:
   1. Review credentials in your home directory (`~/mynodeone-*-credentials.txt`)
@@ -209,14 +209,14 @@ tailscale ip -4
 
 ---
 
-## ✅ Control Plane Installation Complete!
+## Control Plane Installation Complete!
 
 **What you have now:**
-- ✅ Kubernetes cluster running
-- ✅ Passwordless sudo configured automatically
-- ✅ All services synced and accessible via `.local` domains
-- ✅ Ready to add other nodes (VPS, workers, management laptops)
-- ✅ Control plane Tailscale IP noted
+- Kubernetes cluster running
+- Passwordless sudo configured automatically
+- All services synced and accessible via `.local` domains
+- Ready to add other nodes (VPS, workers, management laptops)
+- Control plane Tailscale IP noted
 
 **Passwordless Sudo:**
 The installation automatically configures passwordless sudo for your user. This enables:
@@ -264,10 +264,10 @@ sudo ./scripts/setup-control-plane-sudo.sh
 ## 🔒 Security Architecture
 
 **Important:** VPS Edge Nodes are **ONLY** installed from the Control Plane for security reasons:
-- ✅ Control Plane manages VPS configuration remotely
-- ✅ VPS cannot access Control Plane (one-way trust)
-- ✅ SSH keys exchanged securely during orchestration
-- ✅ Prevents VPS from having Control Plane credentials
+- Control Plane manages VPS configuration remotely
+- VPS cannot access Control Plane (one-way trust)
+- SSH keys exchanged securely during orchestration
+- Prevents VPS from having Control Plane credentials
 
 ---
 
@@ -275,18 +275,18 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 ### On Your Control Plane:
 
-- ✅ **Section 1 Complete**: You must have a fully installed and running Control Plane.
-- ✅ **Kubectl Working**: Run `kubectl get nodes` to verify cluster is running.
-- ✅ **Tailscale Connected**: Run `tailscale status` to verify.
-- ✅ **Control Plane Tailscale IP**: Run `tailscale ip -4` and save this IP.
+- **Section 1 Complete**: You must have a fully installed and running Control Plane.
+- **Kubectl Working**: Run `kubectl get nodes` to verify cluster is running.
+- **Tailscale Connected**: Run `tailscale status` to verify.
+- **Control Plane Tailscale IP**: Run `tailscale ip -4` and save this IP.
 
 ### On Your VPS:
 
 1.  **Provision a Fresh VPS**
-    - ✅ Ubuntu 24.04 LTS (or 22.04/20.04)
-    - ✅ At least **1GB RAM, 1 CPU core** (2GB+ RAM recommended)
-    - ✅ A **public IPv4 address** is required
-    - ✅ SSH access working
+    - Ubuntu 24.04 LTS (or 22.04/20.04)
+    - At least **1GB RAM, 1 CPU core** (2GB+ RAM recommended)
+    - A **public IPv4 address** is required
+    - SSH access working
 
 2.  **Create a Sudo User**
     
@@ -405,16 +405,16 @@ Choose **3) VPS Edge Node** and answer the prompts for VPS details
 ### What Happens During Installation
 
 The installer will show a summary and then automatically:
-- ✅ Detect Control Plane cluster configuration
-- ✅ Exchange SSH keys with the VPS
-- ✅ Verify passwordless sudo on VPS
-- ✅ Generate VPS configuration file
-- ✅ Transfer MyNodeOne scripts to VPS
-- ✅ Execute installation remotely
-- ✅ Install Traefik reverse proxy with Docker
-- ✅ Configure firewall and monitoring
-- ✅ Register VPS in sync controller
-- ✅ Push initial service registry
+- Detect Control Plane cluster configuration
+- Exchange SSH keys with the VPS
+- Verify passwordless sudo on VPS
+- Generate VPS configuration file
+- Transfer MyNodeOne scripts to VPS
+- Execute installation remotely
+- Install Traefik reverse proxy with Docker
+- Configure firewall and monitoring
+- Register VPS in sync controller
+- Push initial service registry
 
 ### What Gets Installed on the VPS
 
@@ -427,14 +427,14 @@ The orchestration automatically installs:
 
 --- 
 
-## ✅ VPS Edge Node Installation Complete!
+## VPS Edge Node Installation Complete!
 
 **What you have now:**
-- ✅ Secure public entry point for your cluster
-- ✅ Traefik reverse proxy with automatic HTTPS
-- ✅ Firewall and monitoring configured
-- ✅ Secure Tailscale mesh network to Control Plane
-- ✅ Automated sync system for configuration updates
+- Secure public entry point for your cluster
+- Traefik reverse proxy with automatic HTTPS
+- Firewall and monitoring configured
+- Secure Tailscale mesh network to Control Plane
+- Automated sync system for configuration updates
 
 ---
 
@@ -682,23 +682,23 @@ cd MyNodeOne
 ```
 
 **What this script does automatically:**
-1. ✅ **Generates SSH keys** on control plane (if they don't exist)
+1. **Generates SSH keys** on control plane (if they don't exist)
    - Creates `/root/.ssh/mynodeone_id_ed25519` (for sync service)
    - Creates `~/.ssh/mynodeone_id_ed25519` (for manual operations)
-2. ✅ **Copies keys to laptop** using `ssh-copy-id` (handles retries, edge cases)
+2. **Copies keys to laptop** using `ssh-copy-id` (handles retries, edge cases)
    - Root's key → Required for automatic sync service
    - User's key → Allows manual SSH without sudo
-3. ✅ **Verifies SSH access** works from control plane to laptop
-4. ✅ **Handles edge cases:** missing keys, authentication failures, timeouts
+3. **Verifies SSH access** works from control plane to laptop
+4. **Handles edge cases:** missing keys, authentication failures, timeouts
 
 **You'll be prompted for:**
 - Control plane password (to SSH to control plane)
 - Laptop password (for ssh-copy-id to copy keys)
 
 **Security:**
-- ✅ SSH over encrypted Tailscale VPN only
-- ✅ Key-based authentication (no passwords after setup)
-- ✅ Both root and user keys for redundancy
+- SSH over encrypted Tailscale VPN only
+- Key-based authentication (no passwords after setup)
+- Both root and user keys for redundancy
 
 ---
 
@@ -719,16 +719,16 @@ sudo ./scripts/mynodeone
 
 **What the installation does automatically:**
 
-- ✅ **Configures passwordless sudo** (allows automatic `/etc/hosts` updates)
-- ✅ **Copies kubeconfig** from control plane (enables kubectl access)
-- ✅ **Updates /etc/hosts** with current .local domain names
-- ✅ **Registers laptop** in control plane sync registry
-- ✅ **Runs initial DNS sync**
+- **Configures passwordless sudo** (allows automatic `/etc/hosts` updates)
+- **Copies kubeconfig** from control plane (enables kubectl access)
+- **Updates /etc/hosts** with current .local domain names
+- **Registers laptop** in control plane sync registry
+- **Runs initial DNS sync**
 
 **Result:** 
-- ✅ kubectl works from laptop
-- ✅ Services accessible via .local domains
-- ✅ Auto-sync enabled (DNS updates pushed automatically when apps are installed)
+- kubectl works from laptop
+- Services accessible via .local domains
+- Auto-sync enabled (DNS updates pushed automatically when apps are installed)
 
 ---
 
@@ -788,13 +788,13 @@ curl http://photos.minicloud.local
 
 ---
 
-## ✅ Management Laptop Setup Complete!
+## Management Laptop Setup Complete!
 
 **What you can do now:**
-- ✅ Manage cluster from your laptop using kubectl
-- ✅ Access services via .local domain names automatically
-- ✅ Deploy apps without SSHing to control plane
-- ✅ View logs, restart pods, manage resources
+- Manage cluster from your laptop using kubectl
+- Access services via .local domain names automatically
+- Deploy apps without SSHing to control plane
+- View logs, restart pods, manage resources
 
 **Automatic DNS Sync:**
 When you install new apps on the control plane, DNS entries are **automatically synced** to your laptop! Just wait a few seconds and the new service will be accessible via its .local domain.
@@ -921,9 +921,9 @@ sudo ./scripts/sync-dns.sh
 
 ## Prerequisites
 
-- ✅ Control plane installed and running
-- ✅ Another machine with Ubuntu installed
-- ✅ Network connectivity to control plane
+- Control plane installed and running
+- Another machine with Ubuntu installed
+- Network connectivity to control plane
 
 ---
 
@@ -971,7 +971,7 @@ sudo kubectl get nodes
 
 ---
 
-## ✅ Worker Node Installation Complete!
+## Worker Node Installation Complete!
 
 Your cluster now has additional compute resources!
 

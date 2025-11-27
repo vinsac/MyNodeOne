@@ -164,7 +164,6 @@ sudo ./scripts/mynodeone
 
 ### For Everyone
 - **DOCUMENTATION-INDEX.md** - Find what you need
-- **CHANGELOG.md** - Version history
 - **CONTRIBUTING.md** - How to help
 
 ---

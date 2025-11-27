@@ -186,13 +186,15 @@ kubectl rollout restart deployment/open-webui -n llm-chat
 
 ---
 
-## �� Documentation
+## Documentation (example local paths)
 
-- **Getting Started:** /home/canada-pc-0001/MyNodeOne/GETTING-STARTED.md
-- **Post Installation Guide:** /home/canada-pc-0001/MyNodeOne/docs/guides/POST_INSTALLATION_GUIDE.md
-- **Operations Guide:** /home/canada-pc-0001/MyNodeOne/docs/operations.md
-- **Troubleshooting:** /home/canada-pc-0001/MyNodeOne/docs/troubleshooting.md
-- **FAQ:** /home/canada-pc-0001/MyNodeOne/FAQ.md
+The following paths are examples captured from this specific machine. On your system, the actual paths will reflect your own username and installation directory.
+
+- Getting Started: `/home/canada-pc-0001/MyNodeOne/GETTING-STARTED.md`
+- Post Installation Guide: `/home/canada-pc-0001/MyNodeOne/docs/guides/POST_INSTALLATION_GUIDE.md`
+- Operations Guide: `/home/canada-pc-0001/MyNodeOne/docs/operations.md`
+- Troubleshooting: `/home/canada-pc-0001/MyNodeOne/docs/troubleshooting.md`
+- FAQ: `/home/canada-pc-0001/MyNodeOne/docs/reference/FAQ.md`
 
 ---
 

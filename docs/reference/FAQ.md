@@ -46,11 +46,11 @@ Enables:
 - See: `COMPREHENSIVE_AUDIT_REPORT.md`, `../security-best-practices.md`
 
 **Suitable for:**
-- ✅ Production workloads
-- ✅ Business applications
-- ✅ Privacy-focused deployments
-- ✅ Internal company use
-- ✅ Compliance requirements (with proper configuration)
+- Workloads where you are comfortable operating and maintaining your own infrastructure
+- Business and internal applications after appropriate testing and hardening
+- Privacy-focused deployments where you prefer data to stay on hardware you control
+- Internal company use and non-critical services
+- Environments with clear backup, monitoring, and recovery plans
 
 ---
 
@@ -160,7 +160,7 @@ Enables:
 **Option 2: Budget ($300-500)**
 - 1x Used Dell Optiplex ($150-200, 16GB RAM)
 - 1-2x Mini PC ($100-150 each, 8GB RAM)
-- Total: Production-ready cluster for less than 2 months of AWS
+- Total: Cluster suitable as a foundation for serious workloads after testing and hardening
 
 **Option 3: New Hardware ($800-1000)**
 - 1x Intel NUC ($400, 32GB RAM)
@@ -220,12 +220,12 @@ Enables:
 ### MyNodeOne vs Bare Kubernetes
 
 **Use MyNodeOne when:**
-- ✅ You want **everything pre-configured** (storage, networking, monitoring)
-- ✅ You need **production-ready** out of the box
-- ✅ You want **one command** to set up everything
-- ✅ You don't want to **spend weeks** configuring
-- ✅ You need **opinionated best practices** built-in
-- ✅ You want **batteries included** (ArgoCD, Prometheus, Longhorn, MinIO)
+- You want **everything pre-configured** (storage, networking, monitoring)
+- You want a strong starting point that you can validate and harden for production
+- You want **one command** to set up everything
+- You don't want to **spend weeks** configuring
+- You prefer **opinionated best practices** built-in
+- You want **batteries included** (ArgoCD, Prometheus, Longhorn, MinIO)
 
 **Use Bare Kubernetes when:**
 - ❌ You need **complete customization** of every component
@@ -241,12 +241,12 @@ Enables:
 ### MyNodeOne vs Docker Compose
 
 **Use MyNodeOne when:**
-- ✅ You need **multiple servers** working together
-- ✅ You want **high availability** (apps survive node failures)
-- ✅ You need **automatic scaling** across machines
-- ✅ You want **production-grade** infrastructure
-- ✅ You need **distributed storage** (data replicated across nodes)
-- ✅ You're growing beyond **one machine**
+- You need **multiple servers** working together
+- You want **high availability** (apps survive node failures)
+- You need **automatic scaling** across machines
+- You want **a more robust infrastructure layer** than a single Docker host
+- You need **distributed storage** (data replicated across nodes)
+- You're growing beyond **one machine**
 
 **Use Docker Compose when:**
 - ❌ You have **one server** and will stay that way
@@ -359,7 +359,7 @@ Enables:
 
 ---
 
-## 💰 Cost Comparison Reality Check
+## Cost comparison
 
 ### Example: Small SaaS Startup
 
@@ -378,7 +378,7 @@ Enables:
 - Electricity: ~$20
 - **Total: $26/month = $312/year** (after hardware)
 
-**Savings: $7,188/year** 💰
+**Savings: $7,188/year**
 
 **Break-even: 2.4 months** (hardware pays for itself)
 
@@ -414,7 +414,7 @@ Want to save $30,000+/year?
 
 ### Is MyNodeOne production-ready?
 
-Yes! MyNodeOne uses battle-tested open-source tools:
+MyNodeOne is built on battle-tested open-source tools, but whether it is appropriate for your production use case depends on your requirements, risk tolerance, and validation. It uses:
 - K3s (used by Cisco, Siemens, and thousands of companies)
 - Longhorn (enterprise storage by SUSE/Rancher)
 - MinIO (trusted by NASA, Intel, and many Fortune 500s)

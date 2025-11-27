@@ -160,7 +160,9 @@ sudo ./scripts/mynodeone
 1. **Ready to start?** → `y`
 2. **Select node type (1-4):** → `1` (Control Plane)
 3. **Cluster name:** → Enter a name (e.g., `universe`, `homelab`, `mycloud`)
+   This is a human-friendly name for your MyNodeOne cluster; it is used in prompts, logs, and dashboards.
 4. **Domain name:** → Enter a domain (e.g., `minicloud.local`)
+   This is the base domain you will use to access your services locally (for example, `grafana.minicloud.local`).
 5. **Deploy demo app?** → `y` (recommended for testing)
 
 **Installation takes 45-60 minutes.**

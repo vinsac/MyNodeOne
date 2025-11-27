@@ -373,6 +373,6 @@ Go up One Level:      cd ..
 
 **Ready to start?** Go to → [INSTALLATION.md](INSTALLATION.md)
 
-**Need simpler explanations?** See → [GLOSSARY.md](GLOSSARY.md)
+**Need simpler explanations?** See → [GLOSSARY.md](../reference/GLOSSARY.md)
 
-**Questions?** Check → [FAQ.md](FAQ.md)
+**Questions?** Check → [FAQ](../reference/FAQ.md)

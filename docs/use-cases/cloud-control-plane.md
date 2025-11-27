@@ -10,16 +10,16 @@ When your Control Plane is on the public internet, you lose the inherent securit
 
 The core security principle evolves. Instead of hiding the Control Plane, you must **aggressively isolate it** using a combination of a software firewall and a private networking overlay like Tailscale.
 
-The goal is to create a secure, private network in the cloud that makes your Control Plane completely inaccessible from the public internet, except from your trusted Management Laptop.
+The goal is to create a secure, private network in the cloud that makes your Control Plane completely inaccessible from the public internet, except from your trusted management laptop or workstation.
 
 ## Architectural Pattern
 
 | Component | Physical Control Plane | Cloud Control Plane |
 | :--- | :--- | :--- |
-| **Secure Zone** | Your Home LAN | Your Management Laptop |
+| **Secure Zone** | Your Home LAN | Your management laptop or workstation |
 | **Secure Network** | Your Home LAN | Tailscale VPN |
-| **Access Method** | SSH directly on LAN | SSH from Laptop over Tailscale IP |
-| **Firewall Rule** | Allow SSH from LAN | **Allow SSH *only* from Laptop's Tailscale IP** |
+| **Access Method** | SSH directly on LAN | SSH from management laptop or workstation over Tailscale IP |
+| **Firewall Rule** | Allow SSH from LAN | **Allow SSH *only* from management laptop or workstation Tailscale IP** |
 | **Security Principle** | Hide the Control Plane | **Isolate** the Control Plane |
 
 ## Step-by-Step Security Workflow
@@ -29,18 +29,18 @@ Here is the mandatory workflow for setting up a secure Control Plane on a cloud 
 ### 1. Initial Setup
 
 - Provision your cloud server (Machine A) that will act as the Control Plane.
-- Provision a laptop/desktop (Machine C) that will be your Management Laptop.
-- Install Tailscale on **both** the Control Plane and the Management Laptop. Authenticate both to your Tailscale account.
+- Provision a laptop/desktop (Machine C) that will be your management laptop or workstation.
+- Install Tailscale on **both** the Control Plane and the management laptop or workstation. Authenticate both to your Tailscale account.
 
 ### 2. Harden the Control Plane Firewall
 
-This is the most critical step. You will configure the firewall on the Control Plane (`ufw` on Ubuntu) to deny all incoming SSH connections by default, and then add a single, specific exception for your Management Laptop's private Tailscale IP.
+This is the most critical step. You will configure the firewall on the Control Plane (`ufw` on Ubuntu) to deny all incoming SSH connections by default, and then add a single, specific exception for your management laptop or workstation's private Tailscale IP.
 
 **On your Cloud Control Plane (Machine A):**
 
 ```bash
-# First, find your Management Laptop's Tailscale IP.
-# Run this on your laptop (Machine C):
+# First, find your management laptop or workstation Tailscale IP.
+# Run this on your management laptop or workstation (Machine C):
 tailscale status
 # Note the 100.x.y.z IP of your laptop.
 
@@ -52,7 +52,7 @@ sudo ufw default deny incoming
 # 2. Allow all outgoing traffic
 sudo ufw default allow outgoing
 
-# 3. IMPORTANT: Allow SSH connections ONLY from your laptop's Tailscale IP
+# 3. IMPORTANT: Allow SSH connections ONLY from your management laptop or workstation Tailscale IP
 # Replace <LAPTOP_TAILSCALE_IP> with the IP you noted.
 sudo ufw allow from <LAPTOP_TAILSCALE_IP> to any port 22 proto tcp
 
@@ -63,13 +63,16 @@ sudo ufw allow 41641/udp
 sudo ufw enable
 ```
 
-**Result:** The Control Plane's public IP is now a brick wall to the internet. The only way to SSH into it is from your specific Management Laptop, through the secure Tailscale tunnel.
+**Result:** The Control Plane's public IP is now a brick wall to the internet. The only way to SSH into it is from your specific management laptop or workstation, through the secure Tailscale tunnel.
+
+**Note on SSH and other nodes:** MyNodeOne's sync system and VPS edge node orchestration use SSH connections *from* the Control Plane *to* other nodes (including VPS edge nodes and management laptops) over Tailscale. Those operations do not require SSH from those nodes back into the Control Plane. The UFW rule above only restricts incoming SSH; it does not affect outbound SSH from the Control Plane to VPS edge nodes or other nodes.
+If you explicitly need to SSH into the Control Plane from additional Tailscale nodes (for example, to run `check-prerequisites.sh vps` directly from a VPS), you can add extra `ufw allow from <NODE_TAILSCALE_IP> to any port 22 proto tcp` rules for those specific Tailscale IPs.
 
 ### 3. Proceed with MyNodeOne Installation
 
 From this point forward, the installation process follows the main guide, with one key difference: **you always use Tailscale IPs, never public IPs, to connect to your Control Plane.**
 
-1.  **On your Management Laptop (C)**, SSH into the Control Plane (A) using its **Tailscale IP**.
+1.  **On your management laptop or workstation (C)**, SSH into the Control Plane (A) using its **Tailscale IP**.
     ```bash
     ssh <your_user>@<CONTROL_PLANE_TAILSCALE_IP>
     ```

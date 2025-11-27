@@ -14,7 +14,9 @@ This guide teaches you:
 - What `sudo` means
 - What to expect when running commands
 
-**10 minutes reading = ready to install MyNodeOne!**
+**Note:** This guide assumes you already have a Linux distribution (such as Ubuntu) installed on your machine. If you are currently using Windows or another OS without Linux, you can look up guides on how to install Linux inside Windows using a virtual machine (VM) or how to set up Linux alongside Windows in a dual-boot configuration.
+
+**10 minutes reading = ready to install MyNodeOne (once Linux is installed).**
 
 ---
 
@@ -29,7 +31,7 @@ This guide teaches you:
 - What commands to run
 - What to expect at each step
 
-**Time:** 30 minutes from start to running cluster!
+**Time:** 60 minutes from start to running cluster (this can vary based on hardware and network speed).
 
 ---
 
@@ -41,7 +43,7 @@ If you want to understand before installing, read the sections below.
 
 ## What should you read?
 
-> **Lost?** Check the **[DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md)** for a complete map of all documentation.
+> **Lost?** Check the **[DOCUMENTATION-INDEX.md](../reference/DOCUMENTATION-INDEX.md)** for a complete map of all documentation.
 
 ### Brand new? Read in this order:
 1. **This file** - You're reading it! (understand what MyNodeOne is)

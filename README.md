@@ -11,9 +11,9 @@ For comprehensive legal terms, see [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENS
 
 ## The Vision
 
-**Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build an enterprise-grade private cloud using:
+**Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build a robust private cloud using:
 
-- **Your gaming PC** when you're not gaming (perfect control plane!)
+- **Your gaming PC** when you're not gaming (ideal control plane – the “brain” of your private cloud)
 - **Old laptops** gathering dust
 - **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
 - **Home servers** you already have

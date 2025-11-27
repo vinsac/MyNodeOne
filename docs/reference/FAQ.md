@@ -16,7 +16,7 @@ MyNodeOne is a private cloud platform that turns **consumer hardware** into a ro
 
 ### Is MyNodeOne secure?
 
-**Yes!** MyNodeOne includes enterprise-grade security:
+MyNodeOne includes several built-in security measures, but you are responsible for evaluating whether they are sufficient for your environment and compliance requirements.
 
 **Built-in security (automatic):**
 - Firewall (UFW) on all nodes
@@ -39,11 +39,11 @@ Enables:
 - Resource quotas
 - Security headers (HSTS, CSP)
 
-**Security Documentation:**
-- Complete security audit performed (all issues fixed)
-- Production security guide included
+**Security documentation:**
+- Comprehensive security audit performed (all identified issues addressed)
+- Production security guidance included
 - Password management strategy documented
-- See: `SECURITY-AUDIT.md`, `docs/security-best-practices.md`
+- See: `COMPREHENSIVE_AUDIT_REPORT.md`, `../security-best-practices.md`
 
 **Suitable for:**
 - ✅ Production workloads
@@ -147,7 +147,7 @@ Enables:
 - ✅ Longhorn automatically uses new disks
 - ✅ Zero downtime migration
 
-**See:** [docs/single-disk-setup.md](docs/single-disk-setup.md) for complete guide
+**See:** [single-disk-setup.md](../single-disk-setup.md) for complete guide
 
 ### How much does hardware cost?
 
@@ -651,11 +651,11 @@ Adds:
 - Resource quotas (prevents DoS)
 - Security headers (HSTS, CSP, XSS protection)
 
-**Security Documentation:**
+**Security documentation:**
 - Full security audit performed (0 vulnerabilities remaining)
-- Production security guide: `docs/security-best-practices.md`
-- Password management guide: `docs/password-management.md`
-- Audit report: `SECURITY-AUDIT.md`
+- Production security guide: `../security-best-practices.md`
+- Password management guide: `../password-management.md`
+- Audit report: `COMPREHENSIVE_AUDIT_REPORT.md`
 
 ### Should I expose my control plane node to the internet?
 

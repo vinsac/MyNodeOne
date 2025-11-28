@@ -169,6 +169,30 @@ Enables:
 
 **No monthly fees!** Unlike cloud, you pay once and own it forever.
 
+### Can I run multiple node types on one machine?
+
+No. Each physical machine should be configured as a single node type. Use separate machines for the control plane, worker nodes, VPS edge nodes, and your management workstation.
+
+### Can I change node type later?
+
+Not easily. The safest approach is to reinstall the node with the new role and migrate any important data or workloads.
+
+### Do I need a VPS?
+
+No. A VPS edge node is only required if you want your apps accessible from the public internet. For personal or internal use, accessing services over Tailscale is enough.
+
+### How many worker nodes do I need?
+
+You can start with zero worker nodes because the control plane can also run application workloads. Add worker nodes later when you need more CPU, memory, or redundancy.
+
+### What if I only have one VPS?
+
+That is fine for most setups. High availability with multiple VPS edge nodes is optional and typically only needed for more demanding production environments.
+
+### Can I add nodes later?
+
+Yes. One of the benefits of Kubernetes is that you can add or remove nodes over time. Start with a simple setup and grow the cluster as your needs increase.
+
 ---
 
 ## 🆚 MyNodeOne vs Alternatives

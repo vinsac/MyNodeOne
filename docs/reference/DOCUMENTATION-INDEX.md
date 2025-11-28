@@ -13,7 +13,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"Step-by-step guide"** → [INSTALLATION.md](../guides/INSTALLATION.md)
 
 ### Understand MyNodeOne
-- **"What are the options?"** → [setup-options-guide.md](setup-options-guide.md)
+- **"What are the options?"** → [INSTALLATION.md](../guides/INSTALLATION.md) - node types, VPS, worker nodes, and management workstation
 - **"How does it work?"** → [architecture.md](architecture.md)
 - **"What about networking?"** → [networking.md](networking.md)
 - **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
@@ -78,8 +78,8 @@ mynodeone/
 1. [TERMINAL-BASICS.md](../guides/TERMINAL-BASICS.md) - 10 min (if new to terminal) ⭐
 2. [GETTING-STARTED.md](../GETTING-STARTED.md) - 5 min
 3. [README.md](../README.md) - 5 min
-4. [setup-options-guide.md](setup-options-guide.md) - 15 min
-5. [INSTALLATION.md](../guides/INSTALLATION.md) - 20 min
+4. [INSTALLATION.md](../guides/INSTALLATION.md) - 20 min
+5. [FAQ.md](FAQ.md) - Common questions and scenarios
 6. Install: `sudo ./scripts/mynodeone`
 7. [POST_INSTALLATION_GUIDE.md](../guides/POST_INSTALLATION_GUIDE.md) - After install ⭐
 8. [operations.md](../guides/operations.md) - Daily operations
@@ -108,7 +108,7 @@ mynodeone/
 ### Installation & Setup
 - Main installer: `scripts/mynodeone`
 - Installation guide: [INSTALLATION.md](../guides/INSTALLATION.md)
-- Setup options: [setup-options-guide.md](setup-options-guide.md)
+- Setup options: [INSTALLATION.md](../guides/INSTALLATION.md) - node types and scenarios
 - Configuration wizard: `scripts/interactive-setup.sh`
 - **VPS Edge Node Setup:** [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) ⭐ NEW
 - VPS Installation: [docs/guides/VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md)
@@ -129,7 +129,7 @@ mynodeone/
 - Troubleshooting: [troubleshooting.md](../guides/troubleshooting.md)
 
 ### Storage
-- Disk setup: [setup-options-guide.md](setup-options-guide.md) - Section "Disk Setup Options"
+- Disk setup: [storage-guide.md](storage-guide.md)
 - Architecture: [architecture.md](architecture.md) - Section "Storage Layer"
 - Operations: [operations.md](../guides/operations.md) - Section "Storage Management"
 
@@ -164,7 +164,7 @@ mynodeone/
 → [networking.md](networking.md) - Default networking (automatic)
 
 **"What options do I have?"**  
-→ [setup-options-guide.md](setup-options-guide.md)
+→ [INSTALLATION.md](../guides/INSTALLATION.md) - node types and basic scenarios
 
 **"How do I add nodes?"**  
 → [scaling.md](../guides/scaling.md)
@@ -199,7 +199,7 @@ mynodeone/
 ### Explanations (understanding)
 - [README.md](../README.md) - what MyNodeOne is
 - [architecture.md](architecture.md) - how it works
-- [setup-options-guide.md](setup-options-guide.md) - options explained
+- [storage-guide.md](storage-guide.md) - storage options explained
 - [networking.md](networking.md) - networking explained
 
 ### Reference (lookup)

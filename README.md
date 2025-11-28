@@ -1,6 +1,19 @@
 # MyNodeOne - Your Private Cloud Infrastructure
 
-**Build your own private cloud using regular computers, old laptops, mini PCs, or servers you already own.**
+MyNodeOne turns everyday hardware into a powerful private cloud you own and control. Build a Kubernetes-based cluster using regular computers, old laptops, mini PCs, or servers you already have:
+
+- **Your gaming PC** when you're not gaming (ideal control plane – the “brain” of your private cloud)
+- **Old laptops** gathering dust
+- **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
+- **Home servers** you already have
+- **Used enterprise hardware** from eBay ($200-$500)
+- **Mix and match** - use whatever you have!
+
+**Popular Setup:** Gaming PC as control plane + old laptop as worker node = Powerful private cloud.
+
+**No expensive enterprise gear required. No monthly cloud bills. Just your hardware, your data, your control.**
+
+---
 
 ### Terminology
 
@@ -11,23 +24,6 @@
 **License:** MIT
 
 For comprehensive legal terms, see [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENSE`](LICENSE).
-
----
-
-## The Vision
-
-**Turn everyday hardware into powerful cloud infrastructure.** MyNodeOne lets you build a robust private cloud using:
-
-- **Your gaming PC** when you're not gaming (ideal control plane – the “brain” of your private cloud)
-- **Old laptops** gathering dust
-- **Mini PCs** (Intel NUC, Raspberry Pi 4/5, Beelink, etc.)
-- **Home servers** you already have
-- **Used enterprise hardware** from eBay ($200-$500)
-- **Mix and match** - use whatever you have!
-
-**Popular Setup:** Gaming PC as control plane + old laptop as worker node = Powerful private cloud!
-
-**No expensive enterprise gear required. No monthly cloud bills. Just your hardware, your data, your control.**
 
 ---
 
@@ -184,34 +180,34 @@ ssh root@YOUR_VPS_IP 'grep email /etc/traefik/traefik.yml'
 
 ---
 
-## 📚 Documentation Quick Links
+## Documentation quick links
 
-### 🌐 Deployment Options
-- **[HYBRID-SETUP-GUIDE.md](docs/guides/HYBRID-SETUP-GUIDE.md)** - Home + VPS (Recommended!) 🌟
+### Deployment options
+- **[HYBRID-SETUP-GUIDE.md](docs/guides/HYBRID-SETUP-GUIDE.md)** - Home + VPS (recommended)
 - **[VPS-INSTALLATION.md](docs/guides/VPS-INSTALLATION.md)** - Cloud-only deployment
 - **[DNS-SETUP-GUIDE.md](docs/guides/DNS-SETUP-GUIDE.md)** - Domain setup with screenshots
 - **[TAILSCALE-HEADLESS-SETUP.md](docs/guides/TAILSCALE-HEADLESS-SETUP.md)** - VPN for servers without UI
 
-### 🎯 Use Cases & Solutions
+### Use cases and solutions
 - **[USE-CASES.md](docs/use-cases/README.md)** - Overview of all use cases
 - **[Enterprise SaaS](docs/use-cases/enterprise-saas.md)** - Save $100K+/year on compliance infrastructure
 - **[Dev/Test/QA](docs/use-cases/devtest-qa.md)** - Unlimited development environments
 - **Personal Cloud** - Replace $500/year in subscriptions (see docs/guides/BEGINNER-GUIDE.md)
 - Coming soon: Small SaaS, API Products, Data Analytics, Internal Tools, Education
 
-### 🚀 For Everyone
+### For everyone
 - **[DEMO_APP_GUIDE.md](docs/guides/DEMO_APP_GUIDE.md)** - Install your first demo app in 10 minutes
 - **[ACCESS-CHEAT-SHEET.md](docs/reference/ACCESS-CHEAT-SHEET.md)** - All your app URLs (print this!)
 - **[APP-STORE.md](docs/reference/APP-STORE.md)** - Browse 10+ one-click apps (Jellyfin, Immich, etc.)
 
-### 👶 For Non-Technical Users
+### For non-technical users
 - **[BEGINNER-GUIDE.md](docs/guides/BEGINNER-GUIDE.md)** - Step-by-step guide, no experience needed
 - **[MOBILE-ACCESS-GUIDE.md](docs/guides/MOBILE-ACCESS-GUIDE.md)** - How to use apps on your phone
 - **[VPS-QUICK-START.md](docs/guides/VPS-QUICK-START.md)** - VPS setup in 5 minutes
 - Access dashboard: `http://mynodeone.local` (after installation)
 - Interactive app store: `sudo ./scripts/app-store.sh`
 
-### 🔧 For Technical Users
+### For technical users
 - **[INSTALLATION.md](docs/guides/INSTALLATION.md)** - Full installation documentation
 - **[docs/reference/architecture.md](docs/reference/architecture.md)** - System architecture details
 - **[FAQ.md](docs/reference/FAQ.md)** - Frequently asked questions
@@ -246,39 +242,6 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 ✅ **LLM Support** - Run language models on CPU  
 ✅ **Complete Networking Guide** - Tailscale + alternatives fully explained  
 
-## 🖥️ Real-World Hardware Examples
-
-**MyNodeOne works on everyday consumer hardware:**
-
-### Example Setup 1: $0 (Use what you have)
-- **Old laptop** (2015+, 8GB RAM) → Control plane
-- **Mini PC** (Intel NUC, 4GB RAM) → Worker node
-- **Raspberry Pi 5** (8GB) → Edge/worker node
-- **Total cost:** $0 (using existing hardware)
-
-### Example Setup 2: ~$400 Budget Build
-- **Used Dell Optiplex** ($150, 16GB RAM, 500GB SSD) → Control plane
-- **2x Mini PC** ($100 each, 8GB RAM) → Worker nodes
-- **$5/month VPS** (optional, for public access)
-- **Total:** ~$400 one-time + $5/month (optional)
-
-### Example Setup 3: Power User ($800-1000)
-- **Intel NUC** ($400, 32GB RAM, 1TB NVMe) → Control plane
-- **2x Beelink Mini PC** ($200 each, 16GB RAM) → Workers
-- **Total:** ~$800 (scales to 50+ services easily)
-
-### Example Setup 4: VPS-Only (No Home Hardware)
-- **2-3 VPS servers** ($15-20/month each)
-  - 1x Control plane (4GB+ RAM)
-  - 1-2x Worker nodes (2GB+ RAM)
-- **Total:** ~$30-60/month
-- **Perfect for:** No home hardware, 100% cloud-based, public internet access
-- **Providers:** Contabo, Hetzner, DigitalOcean, Linode, Vultr
-
-**Compatible with:**
-- x86_64: Intel/AMD processors (most common)
-- ARM64: Raspberry Pi 4/5, Apple Silicon (M1/M2)
-- Any Ubuntu 24.04 LTS compatible machine
 
 ## 🚀 Ready to Install?
 
@@ -890,7 +853,7 @@ kubectl delete -f my-app-ingress.yaml
 
 ### User Guides
 - **[docs/reference/comparison-guide.md](docs/reference/comparison-guide.md)** - MyNodeOne vs alternatives (OpenStack, Proxmox, etc.) ⭐
-- **[docs/reference/setup-options-guide.md](docs/reference/setup-options-guide.md)** - What each option means
+- **[docs/reference/storage-guide.md](docs/reference/storage-guide.md)** - Storage options and recommendations
 - **[docs/reference/networking.md](docs/reference/networking.md)** - Tailscale guide (default)
 - **[docs/guides/operations.md](docs/guides/operations.md)** - Daily management
 - **[docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)** - Problem solving

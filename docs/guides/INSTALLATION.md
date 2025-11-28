@@ -315,7 +315,7 @@ Run these commands in a terminal on your control plane machine:
     # FROM YOUR CONTROL PLANE (or another machine with SSH access):
     ssh root@<vps-ipv4>    # or ssh admin@<vps-ipv4>, depending on your provider
 
-    # ON YOUR NEW VPS (connect as root or admin):
+    # ON YOUR NEW VPS (connected as root or admin from the previous command):
 
     # 1. Create a new user (replace 'sammy' with your own username)
     adduser sammy
@@ -346,7 +346,7 @@ Run these commands in a terminal on your control plane machine:
     # FROM YOUR CONTROL PLANE (or another machine with SSH access):
     ssh sammy@<vps-ipv4>
 
-    # ON YOUR VPS (as your sudo user 'sammy'):
+    # ON YOUR NEW VPS (connected your sudo user 'sammy' from the previous command):
 
     # Install curl (if not already installed)
     sudo apt install -y curl
@@ -375,6 +375,8 @@ Run these commands in a terminal on your control plane machine:
 
 **All steps are performed FROM your Control Plane** - the VPS will be configured remotely.
 
+Open a fresh terminal window on your control plane machine before running the commands below.
+
 ### Choose Your Installation Method
 
 **Method 1: One-Click Installation (Recommended)** ⚡
@@ -391,7 +393,8 @@ sudo ./scripts/install-vps-edge-node.sh \
   --user "sammy" \
   --public-ip "45.8.133.192" \
   --domain "curiios.com" \
-  --email "vinaysachdeva27@gmail.com"
+  --email "admin@example.com" \
+  --location "NYC"
 ```
 
 **Replace with your actual values:**
@@ -401,6 +404,7 @@ sudo ./scripts/install-vps-edge-node.sh \
 - `--public-ip`: VPS public IP address
 - `--domain`: Your public domain name
 - `--email`: Your email for SSL certificates
+ - `--location`: Optional label for where this VPS is hosted (for example, `NYC`, `London`, or a provider region name). Used in internal registries and dashboards.
 
 **Method 2: Interactive Installation** 💬
 

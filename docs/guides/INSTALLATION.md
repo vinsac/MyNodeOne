@@ -307,15 +307,15 @@ Run these commands in a terminal on your control plane machine:
 
 2.  **Create a Sudo User**
     
-    From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `ssh root@<vps-ipv4>` or `ssh admin@<vps-ipv4>`). Once logged in, you will create your own sudo user.
+    From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `ssh root@YOUR_VPS_PUBLIC_IP` or `ssh admin@YOUR_VPS_PUBLIC_IP`). Once logged in, you will create your own sudo user.
 
-    In the examples below `sammy` is just an example username. Replace it with your own preferred username, and choose a username that is different from the one you use on your control plane.
+    In the examples below `sammy` is just an example username. Replace it with your own preferred username, and choose a username that is different from the one you use on your control plane. In these examples, `YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `203.0.113.10`), without any `<` or `>` characters.
 
     ⚠️ **Do not use root user** for security reasons.
 
     ```bash
     # FROM YOUR CONTROL PLANE (or another machine with SSH access):
-    ssh root@<vps-ipv4>    # or ssh admin@<vps-ipv4>, depending on your provider
+    ssh root@YOUR_VPS_PUBLIC_IP    # or ssh admin@YOUR_VPS_PUBLIC_IP, depending on your provider
 
     # ON YOUR NEW VPS (connected as root or admin from the previous command):
 
@@ -337,16 +337,16 @@ Run these commands in a terminal on your control plane machine:
     # 5. Log out and reconnect as the new user
     exit
     exit
-    # ssh sammy@<vps-ip>
+    # ssh sammy@YOUR_VPS_PUBLIC_IP
     ```
 
 3.  **Install Tailscale on the VPS**
     
-    From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@<vps-ipv4>`). Once you are logged in, run the following commands on the VPS:
+    From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@YOUR_VPS_PUBLIC_IP`). Once you are logged in, run the following commands on the VPS:
     
     ```bash
     # FROM YOUR CONTROL PLANE (or another machine with SSH access):
-    ssh sammy@<vps-ipv4>
+    ssh sammy@YOUR_VPS_PUBLIC_IP
 
     # ON YOUR NEW VPS (connected your sudo user 'sammy' from the previous command):
 
@@ -483,22 +483,24 @@ After installing your VPS, you can expose your applications to the internet.
 
 ### Step 1: Configure DNS
 
-Point your domain to your VPS public IP:
+Point your domain to your VPS public IP using your domain registrar's DNS management page (for example, Name.com, GoDaddy, or Cloudflare):
+
+`YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `45.8.133.192`), without any `<` or `>` characters.
 
 ```
 Type: A
 Name: @ (or your domain)
-Value: <your-vps-public-ip>
+Value: YOUR_VPS_PUBLIC_IP
 TTL: 300
 
 # For subdomains:
 Type: A
 Name: demo
-Value: <your-vps-public-ip>
+Value: YOUR_VPS_PUBLIC_IP
 
 Type: A  
 Name: chat
-Value: <your-vps-public-ip>
+Value: YOUR_VPS_PUBLIC_IP
 ```
 
 ### Step 2: Make Services Public
@@ -510,15 +512,30 @@ Use the `manage-app-visibility.sh` script to expose services:
 cd ~/MyNodeOne
 
 # Make demo app public
-sudo ./scripts/manage-app-visibility.sh public demo demo yourdomain.com <vps-tailscale-ip>
+sudo ./scripts/manage-app-visibility.sh public demo yourdomain.com YOUR_VPS_TAILSCALE_IP
 
-# Make LLM chat public
-sudo ./scripts/manage-app-visibility.sh public open-webui chat yourdomain.com <vps-tailscale-ip>
+# Make LLM chat public (Open WebUI)
+sudo ./scripts/manage-app-visibility.sh public open-webui yourdomain.com YOUR_VPS_TAILSCALE_IP
 
 # Example with actual values:
-sudo ./scripts/manage-app-visibility.sh public demo demo curiios.com 100.80.255.123
-sudo ./scripts/manage-app-visibility.sh public open-webui chat curiios.com 100.80.255.123
+sudo ./scripts/manage-app-visibility.sh public demo curiios.com 100.80.255.123
+sudo ./scripts/manage-app-visibility.sh public open-webui curiios.com 100.80.255.123
 ```
+
+In these commands:
+
+- `public` tells the script to make the service accessible from the internet (use `private` to make it local-only again).
+- `demo` or `open-webui` is the internal service name in the MyNodeOne service registry. For example, `open-webui` uses the `chat` subdomain, so it becomes `https://chat.yourdomain.com`.
+- `yourdomain.com` is the domain you registered and pointed at your VPS in Step 1. You can pass multiple domains as a comma-separated list (for example, `curiios.com,example.com`).
+- `YOUR_VPS_TAILSCALE_IP` is the Tailscale IPv4 address of your VPS edge node (from `tailscale ip -4`). If you have multiple VPS edge nodes, you can pass a comma-separated list of Tailscale IPs.
+
+You can also run the script with no arguments to use the interactive wizard:
+
+```bash
+sudo ./scripts/manage-app-visibility.sh
+```
+
+The wizard lets you choose the app, domains, and VPS nodes from menus instead of passing them on the command line.
 
 **What happens automatically:**
 1. Service is marked as `public: true` in the registry
@@ -551,104 +568,24 @@ The sync system automatically propagates configuration changes:
 3. VPS fetches updated registry and regenerates Traefik routes
 4. Traefik automatically reloads with new configuration
 
-**Next Steps:**
-
-### 1. Point Your DNS
-
-In your domain registrar (Namecheap, Cloudflare, etc.), create an **A record** pointing to your VPS public IP:
-
-```
-Type: A
-Name: @ (or subdomain like 'app')
-Value: <VPS_PUBLIC_IP>
-TTL: Automatic or 300 seconds
-```
-
-**Example:**
-```
-A    @       →  45.8.133.192
-A    www     →  45.8.133.192
-A    app     →  45.8.133.192
-```
-
-### 2. Configure Traefik Routes
-
-SSH into your VPS and edit the Traefik routes file:
-
-```bash
-# SSH into VPS
-ssh sammy@<vps-tailscale-ip>
-
-# Edit routes configuration
-sudo nano /etc/traefik/dynamic/mynodeone-routes.yml
-```
-
-Add your application routes (example):
-```yaml
-http:
-  routers:
-    my-app:
-      rule: "Host(`app.example.com`)"
-      service: my-app-service
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-
-  services:
-    my-app-service:
-      loadBalancer:
-        servers:
-          - url: "http://<CONTROL_PLANE_TAILSCALE_IP>:<APP_PORT>"
-```
-
-Restart Traefik:
-```bash
-cd /etc/traefik
-docker compose restart
-```
-
-### 3. Deploy Apps to Your Cluster
-
-Deploy applications on your Control Plane - they'll be accessible through the VPS:
-
-```bash
-# ON YOUR CONTROL PLANE:
-cd ~/MyNodeOne/scripts/apps
-
-# Example: Deploy Nextcloud
-sudo ./install-nextcloud.sh
-```
-
-### 4. Verify SSL Certificates
-
-Check that Let's Encrypt certificates are being obtained:
-
-```bash
-# ON YOUR VPS:
-docker logs traefik -f
-
-# Look for messages like:
-# "Domains ["app.example.com"] need ACME certificates generation"
-```
-
-Visit your domain - you should see a valid SSL certificate!
-
----
 ---
 
-# SECTION 3: Management Laptop Setup
+# SECTION 3: Management Laptop/Workstation Setup (Optional)
 
-**Control your cluster from your laptop/desktop using kubectl.**
+**Optional:** Set up a laptop or desktop so you can control your cluster/private cloud using `kubectl` from anywhere (for example, your gaming PC stays at home but you manage the cluster from college or a coffee shop), without sitting in front of the control plane machine.
 
 ---
 
 ## What is a Management Laptop?
 
-- **Remote admin workstation** - Your laptop or desktop
-- **Runs kubectl commands** - Deploy apps, check status, manage cluster
+- **Remote admin workstation** - Your laptop or desktop that you can use from anywhere (for example, your gaming PC is at home but you control the cluster from campus or a coffee shop)
+- **Runs kubectl commands** - Deploy apps, check status, and manage your private cloud from a terminal
 - **Does NOT run workloads** - Only for administration
-- **Optional but convenient** - You can also SSH to control plane
+- **Optional but convenient** - Useful if you do not want to sit in front of your control plane PC and prefer to manage things while you are mobile (you can always just SSH directly to the control plane instead)
+
+In simple terms, `kubectl` is the command-line tool for talking to your Kubernetes cluster. You type commands like `kubectl get pods` and it asks the cluster what's running or tells it what to do (for example, deploy an app, scale it up or down, or show logs).
+
+In this section, "management laptop" and "management workstation" are used interchangeably — both refer to the same remote admin machine (your laptop or desktop) that you use to manage the cluster.
 
 ---
 
@@ -674,8 +611,6 @@ sudo kubectl version --client
 Run these commands on your management laptop or workstation:
 
 ```bash
-# Download from: https://tailscale.com/download
-# Or, on Ubuntu, install via script:
 sudo apt install -y curl
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
@@ -690,9 +625,9 @@ tailscale ip -4
 
 ---
 
-### Step 2: Setup SSH Access (Control Plane → Laptop)
+### Step 2: Setup SSH Access (Control Plane → Management Laptop)
 
-**⚠️ IMPORTANT:** This step must be done **before** installing the management workstation.
+**⚠️ IMPORTANT:** This step must be done **before** adding the management workstation to the cluster
 
 **Why this is needed:**
 - Control plane's sync service needs to SSH to your laptop to push DNS updates
@@ -702,20 +637,21 @@ tailscale ip -4
 **Run the automated setup script (ON YOUR LAPTOP):**
 
 ```bash
-# On laptop, clone MyNodeOne first:
+# On management laptop, clone MyNodeOne first:
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
 # Run SSH setup script (it will SSH to control plane and set up keys):
 ./scripts/setup-management-laptop-ssh.sh \
-    <control-plane-user> <control-plane-ip> \
-    <laptop-user> <laptop-ip>
+    <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
+    <laptop-user> LAPTOP_TAILSCALE_IP
 
 # Example:
 ./scripts/setup-management-laptop-ssh.sh \
     vinaysachdeva 100.101.4.2 \
     vinay 100.101.4.3
 
+# Here, CONTROL_PLANE_TAILSCALE_IP and LAPTOP_TAILSCALE_IP are the **Tailscale IPv4 addresses** of your control plane and laptop, taken from running `tailscale ip -4` on each machine. These are **not** public IP addresses.
 # The script will:
 # 1. SSH to control plane
 # 2. Generate mynodeone SSH keys on control plane (if missing)
@@ -779,7 +715,7 @@ sudo ./scripts/mynodeone
 **Verify Security Configuration:**
 
 ```bash
-# On laptop:
+# On management laptop:
 
 # 1. Test passwordless sudo
 sudo -n echo "Passwordless sudo works!"
@@ -792,21 +728,24 @@ cat ~/.ssh/authorized_keys | grep mynodeone
 # On control plane:
 
 # 3. Test SSH as root (what sync service uses - critical!)
-sudo ssh username@laptop-tailscale-ip "echo 'Root SSH works!'"
+sudo ssh username@LAPTOP_TAILSCALE_IP "echo 'Root SSH works!'"
 # Should print "Root SSH works!" without password prompt
 
 # 4. Test SSH as your user (for manual operations)
-ssh username@laptop-tailscale-ip "echo 'User SSH works!'"
+ssh username@LAPTOP_TAILSCALE_IP "echo 'User SSH works!'"
 # Should print "User SSH works!" without password prompt
 
 # 5. Test the actual sync command (as root)
-sudo ssh username@laptop-tailscale-ip "cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
+sudo ssh username@LAPTOP_TAILSCALE_IP "cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
 # Should complete without errors
 ```
+
+In these examples, replace `username` with your Linux username on the laptop and `LAPTOP_TAILSCALE_IP` with the laptop's **Tailscale IPv4 address** from `tailscale ip -4`.
 
 **Verify Cluster Access:**
 
 ```bash
+# On management laptop:
 # Should work without sudo:
 kubectl get nodes
 # Shows your cluster nodes
@@ -818,6 +757,7 @@ kubectl get pods -A
 **Verify DNS Configuration:**
 
 ```bash
+# On management laptop:
 # Check /etc/hosts has MyNodeOne entries
 grep "MyNodeOne Services" /etc/hosts
 # Should show comment line
@@ -841,23 +781,23 @@ curl http://photos.minicloud.local
 **Automatic DNS Sync:**
 When you install new apps on the control plane, DNS entries are **automatically synced** to your laptop! Just wait a few seconds and the new service will be accessible via its .local domain.
 
-**Example workflow:**
+**Example workflow (from your management laptop):**
 ```bash
-# 1. Install app on control plane (via SSH or from laptop)
+# 1. Install app using kubectl on your management laptop (kubeconfig already configured)
 kubectl apply -f my-app.yaml
 
-# 2. Wait for app to get LoadBalancer IP
+# 2. Wait for app to get LoadBalancer IP (still from your management laptop)
 kubectl get svc -n my-app
 
 # 3. DNS automatically syncs (no action needed!)
 # Wait ~10 seconds for auto-sync
 
-# 4. Access via .local domain
+# 4. Access via .local domain from your management laptop
 curl http://my-app.minicloud.local
 ```
 
-**Manual sync (if needed):**
-If you need to force an immediate sync:
+**Manual sync (if needed, on your management laptop):**
+If you need to force an immediate sync from your management laptop:
 ```bash
 cd ~/MyNodeOne
 sudo ./scripts/sync-dns.sh
@@ -890,10 +830,10 @@ sudo -n echo "Works"
 # On laptop:
 cd ~/MyNodeOne
 ./scripts/setup-management-laptop-ssh.sh \
-    <control-plane-user> <control-plane-ip> \
-    <laptop-user> <laptop-ip>
+    <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
+    <laptop-user> LAPTOP_TAILSCALE_IP
 
-# This will:
+# This will (using Tailscale IPv4 addresses for both control plane and laptop):
 # - Generate missing SSH keys on control plane
 # - Copy both root's and user's keys to laptop
 # - Verify SSH access works
@@ -926,13 +866,15 @@ sudo ./scripts/sync-dns.sh
 # On control plane:
 sudo ./scripts/lib/sync-controller.sh register \
     management_laptops \
-    <laptop-tailscale-ip> \
+    LAPTOP_TAILSCALE_IP \
     <laptop-hostname> \
     <username>
 
 # Enable sync service if not running:
 sudo ./scripts/enable-sync-controller-service.sh
 ```
+
+In this example, `LAPTOP_TAILSCALE_IP` is the laptop's **Tailscale IPv4 address** from `tailscale ip -4` (not a public IP address).
 
 ### Issue: Laptop was offline, now DNS is stale
 
@@ -947,7 +889,7 @@ sudo ./scripts/sync-dns.sh
 ---
 ---
 
-# SECTION 4: Worker Node Installation
+# SECTION 4: Worker Node Installation (Optional)
 
 **Add more compute resources to your cluster.**
 
@@ -957,24 +899,32 @@ sudo ./scripts/sync-dns.sh
 
 - **Additional compute node** - Runs workloads alongside control plane
 - **Joins existing cluster** - Managed by control plane
-- **Optional** - Only add if you need more resources
+- **Optional** - Only add if you need more resources; for example, you can join a friend's gaming PC to your cluster to borrow extra compute, or repurpose your old gaming PC as a worker node.
 
 ---
 
 ## Prerequisites
 
 - Control plane installed and running
-- Another machine with Ubuntu installed
+- Another machine (PC or server) with **Ubuntu 24.04 LTS** (or 22.04/20.04) installed
 - Network connectivity to control plane
 
 ---
 
 ## Installation Steps
 
-### Step 1: Prepare Worker Machine
+### Step 1: Get Join Token from Control Plane
 
 ```bash
-# Install prerequisites (same as control plane):
+# ON CONTROL PLANE:
+cat ~/mynodeone-join-token.txt
+# Copy this token and keep it handy
+```
+
+### Step 2: Prepare Worker Machine
+
+```bash
+# ON WORKER MACHINE: install prerequisites (same as control plane)
 sudo apt update
 sudo apt install -y git openssh-server
 
@@ -984,18 +934,10 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-### Step 2: Get Join Token from Control Plane
-
-```bash
-# On control plane:
-cat ~/mynodeone-join-token.txt
-# Copy this token
-```
-
 ### Step 3: Install Worker Node
 
 ```bash
-# On worker machine:
+# ON WORKER MACHINE:
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
@@ -1004,10 +946,10 @@ sudo ./scripts/mynodeone
 # Paste join token when prompted
 ```
 
-### Step 4: Verify
+### Step 4: Verify from Control Plane
 
 ```bash
-# On control plane:
+# ON CONTROL PLANE:
 sudo kubectl get nodes
 # Should show worker node as "Ready"
 ```
@@ -1017,16 +959,6 @@ sudo kubectl get nodes
 ## Worker Node Installation Complete!
 
 Your cluster now has additional compute resources!
-
----
----
-
-# Need Help?
-
-- **📖 Complete prerequisite guide:** [INSTALLATION_PREREQUISITES.md](../INSTALLATION_PREREQUISITES.md)
-- **🔧 Production ready summary:** [PRODUCTION_READY_SUMMARY.md](../PRODUCTION_READY_SUMMARY.md)
-- **❓ Troubleshooting:** Check pre-flight scripts and logs
-- **🐛 Found a bug?** Create an issue on GitHub
 
 ---
 

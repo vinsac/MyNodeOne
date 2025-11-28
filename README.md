@@ -222,6 +222,8 @@ ssh root@YOUR_VPS_IP 'grep email /etc/traefik/traefik.yml'
 
 MyNodeOne is a production-ready, scalable private cloud infrastructure that lets you run containerized applications across multiple machines with enterprise-grade features:
 
+Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your machines. Kubernetes is software that runs containerized applications, keeps them healthy, and can spread them across multiple machines. Because this cluster runs on hardware and networks you control (your own machines, connected over Tailscale and optional VPS edge nodes), you get cloud-like capabilities as your own private cloud instead of renting them from a public cloud provider.
+
 ✅ **Auto-scaling** across multiple nodes  
 ✅ **S3-compatible object storage** (MinIO)  
 ✅ **Distributed block storage** with replication (Longhorn)  

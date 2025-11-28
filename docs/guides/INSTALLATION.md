@@ -223,6 +223,10 @@ tailscale ip -4
 - Ready to add other nodes (VPS, workers, management laptops)
 - Control plane Tailscale IP noted
 
+**What this means:** Under the hood, MyNodeOne has installed a Kubernetes cluster on your control plane machine. Kubernetes is software that runs and manages containerized applications across one or more machines. Because it runs entirely on hardware you control and is only reachable over your private Tailscale network, it behaves like your own private cloud instead of relying on a public cloud provider.
+
+**Check in your browser on the control plane PC:** Open a web browser on the control plane machine and visit a few `.local` URLs from your credentials file (for example, `http://mynodeone.local` or `http://grafana.minicloud.local`). If these pages load, your core control plane services are accessible from that machine.
+
 **Passwordless Sudo:**
 The installation automatically configures passwordless sudo for your user. This enables:
 - Running `kubectl` commands without password prompts

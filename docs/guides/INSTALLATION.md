@@ -305,7 +305,7 @@ Run these commands in a terminal on your control plane machine:
 
 2.  **Create a Sudo User**
     
-    From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `root@<vps-ipv4>` or `admin@<vps-ipv4>`). Once logged in, you will create your own sudo user.
+    From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `ssh root@<vps-ipv4>` or `ssh admin@<vps-ipv4>`). Once logged in, you will create your own sudo user.
 
     In the examples below `sammy` is just an example username. Replace it with your own preferred username.
 

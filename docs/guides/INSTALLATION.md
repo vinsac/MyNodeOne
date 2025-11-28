@@ -284,6 +284,8 @@ A VPS (Virtual Private Server) is a virtual machine you rent from a hosting prov
 
 ## Prerequisites
 
+Before you set up a VPS edge node, it is strongly recommended to purchase a domain name. This domain is how your services will be exposed on the internet (for example, `app.yourdomain.com`) and is required for automatic HTTPS certificates. You can buy a domain from any registrar such as Name.com, GoDaddy, or similar providers.
+
 ### On Your Control Plane:
 
 Run these commands in a terminal on your control plane machine:

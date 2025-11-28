@@ -127,5 +127,4 @@ print_header "Access Documentation"
 
 echo "For complete access information, see:"
 echo "  • ACCESS_INFORMATION.md"
-echo "  • QUICK_START.md"
 echo

@@ -30,7 +30,6 @@
 
 ```
 docs/guides/
-├── QUICK-START.md             # 10-minute quickstart guide
 ├── BEGINNER-GUIDE.md          # Complete beginner tutorial (50+ pages)
 ├── GETTING-STARTED.md         # Guided introduction for new users
 ├── INSTALLATION.md            # Full installation documentation
@@ -39,7 +38,7 @@ docs/guides/
 ```
 
 **Who uses these:**
-- New users → Start with GETTING-STARTED.md or QUICK-START.md
+- New users → Start with GETTING-STARTED.md
 - Non-technical → BEGINNER-GUIDE.md
 - Mobile users → MOBILE-ACCESS-GUIDE.md
 - Technical users → INSTALLATION.md
@@ -193,7 +192,7 @@ website/
 ### I want to...
 
 **Get started quickly:**
-→ `docs/guides/QUICK-START.md` (10 minutes)
+→ `docs/guides/DEMO_APP_GUIDE.md` (10 minutes)
 
 **Learn from scratch:**
 → `docs/guides/BEGINNER-GUIDE.md` (complete tutorial)
@@ -230,7 +229,7 @@ website/
 
 1. `README.md` → Overview and quick links
 2. `docs/guides/GETTING-STARTED.md` → Introduction
-3. `docs/guides/QUICK-START.md` → Get hands-on
+3. `docs/guides/DEMO_APP_GUIDE.md` → Get hands-on
 4. `docs/guides/BEGINNER-GUIDE.md` → Deep dive
 
 ### Returning Users

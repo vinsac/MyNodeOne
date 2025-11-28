@@ -345,7 +345,7 @@ Print and stick on your wall!
 ## 📚 Related Documentation
 
 - **[BEGINNER-GUIDE.md](BEGINNER-GUIDE.md)** - Complete beginner's guide
-- **[QUICK-START.md](QUICK-START.md)** - Get started in 10 minutes
+- **[DEMO_APP_GUIDE.md](../guides/DEMO_APP_GUIDE.md)** - First app walkthrough
 - **[ACCESS-CHEAT-SHEET.md](ACCESS-CHEAT-SHEET.md)** - All URLs in one place
 - **[APP-STORE.md](APP-STORE.md)** - Available applications
 

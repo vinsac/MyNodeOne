@@ -200,7 +200,7 @@ ssh root@YOUR_VPS_IP 'grep email /etc/traefik/traefik.yml'
 - Coming soon: Small SaaS, API Products, Data Analytics, Internal Tools, Education
 
 ### 🚀 For Everyone
-- **[QUICK-START.md](docs/guides/QUICK-START.md)** - Install your first app in 10 minutes
+- **[DEMO_APP_GUIDE.md](docs/guides/DEMO_APP_GUIDE.md)** - Install your first demo app in 10 minutes
 - **[ACCESS-CHEAT-SHEET.md](docs/reference/ACCESS-CHEAT-SHEET.md)** - All your app URLs (print this!)
 - **[APP-STORE.md](docs/reference/APP-STORE.md)** - Browse 10+ one-click apps (Jellyfin, Immich, etc.)
 
@@ -866,7 +866,7 @@ kubectl delete -f my-app-ingress.yaml
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** - Entry point for new users ⭐
 - **[INSTALLATION.md](INSTALLATION.md)** - Step-by-step installation guide
 - **[POST_INSTALLATION_GUIDE.md](docs/guides/POST_INSTALLATION_GUIDE.md)** - What to do after installation ⭐ **READ THIS FIRST!**
-- **[QUICK_START.md](docs/guides/QUICK_START.md)** - 5-minute quick reference
+- **[DEMO_APP_GUIDE.md](docs/guides/DEMO_APP_GUIDE.md)** - 10-minute first app walkthrough
 - **[FAQ.md](FAQ.md)** - 50+ questions answered
 
 ### For Non-Technical Users 👋

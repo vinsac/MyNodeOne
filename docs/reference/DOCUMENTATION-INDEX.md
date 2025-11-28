@@ -55,7 +55,6 @@ mynodeone/
 │   ├── guides/                   ← Step-by-step guides
 │   │   ├── POST_INSTALLATION_GUIDE.md       ← what to do after install
 │   │   ├── TERMINAL-BASICS.md               ← terminal for beginners
-│   │   ├── QUICK_START.md                   ← 5-minute reference
 │   │   ├── APP_DEPLOYMENT_GUIDE.md          ← deploy applications
 │   │   ├── DEMO_APP_GUIDE.md                ← first app walkthrough
 │   │   └── SECURITY_CREDENTIALS_GUIDE.md    ← security credentials

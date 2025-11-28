@@ -458,7 +458,7 @@ Data used: <1MB
 ## 📚 Related Guides
 
 - **[BEGINNER-GUIDE.md](BEGINNER-GUIDE.md)** - Complete beginner's tutorial
-- **[QUICK-START.md](QUICK-START.md)** - 10-minute quick start
+- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - 10-minute first app walkthrough
 - **[ACCESS-CHEAT-SHEET.md](ACCESS-CHEAT-SHEET.md)** - All URLs and commands
 - **[APP-STORE.md](APP-STORE.md)** - Available applications
 

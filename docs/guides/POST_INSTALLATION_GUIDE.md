@@ -794,7 +794,7 @@ kubectl get pv,pvc -A
 ## 💬 Getting Help
 
 ### Documentation
-- **Quick Start:** [QUICK_START.md](QUICK_START.md)
+- **Quick Start:** [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)
 - **Deployment Guide:** [APP_DEPLOYMENT_GUIDE.md](APP_DEPLOYMENT_GUIDE.md)
 - **Demo App:** [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)
 - **Security:** [SECURITY_CREDENTIALS_GUIDE.md](SECURITY_CREDENTIALS_GUIDE.md)

@@ -261,9 +261,9 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 ---
 
-## What is a VPS Edge Node?
+## What is a VPS Edge Node (Edge Node)?
 
-A VPS (Virtual Private Server) is a virtual machine you rent from a hosting provider. In MyNodeOne, this VPS acts as an edge node that safely exposes selected services from your private cloud to the internet so you can reach them from other machines. For non-technical users, you can think of it as a secure gateway that forwards traffic from the internet to your private cloud.
+A VPS (Virtual Private Server) is a virtual machine you rent from a hosting provider. In MyNodeOne, this VPS acts as an edge node that safely exposes selected services from your private cloud to the internet so you can reach them from other machines. For non-technical users, you can think of it as a secure gateway that forwards traffic from the internet to your private cloud. In the rest of this guide, we may refer to this VPS simply as the edge node.
 
 - **Public Gateway**: A cloud server that acts as a secure entry point to your cluster.
 - **Reverse Proxy**: Routes public internet traffic to your control plane through Tailscale's secure mesh network.
@@ -307,11 +307,14 @@ Run these commands in a terminal on your control plane machine:
     
     From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `ssh root@<vps-ipv4>` or `ssh admin@<vps-ipv4>`). Once logged in, you will create your own sudo user.
 
-    In the examples below `sammy` is just an example username. Replace it with your own preferred username.
+    In the examples below `sammy` is just an example username. Replace it with your own preferred username, and choose a username that is different from the one you use on your control plane.
 
     ⚠️ **Do not use root user** for security reasons.
 
     ```bash
+    # FROM YOUR CONTROL PLANE (or another machine with SSH access):
+    ssh root@<vps-ipv4>    # or ssh admin@<vps-ipv4>, depending on your provider
+
     # ON YOUR NEW VPS (connect as root or admin):
 
     # 1. Create a new user (replace 'sammy' with your own username)
@@ -340,6 +343,9 @@ Run these commands in a terminal on your control plane machine:
     From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@<vps-ipv4>`). Once you are logged in, run the following commands on the VPS:
     
     ```bash
+    # FROM YOUR CONTROL PLANE (or another machine with SSH access):
+    ssh sammy@<vps-ipv4>
+
     # ON YOUR VPS (as your sudo user 'sammy'):
 
     # Install curl (if not already installed)

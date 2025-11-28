@@ -225,7 +225,7 @@ tailscale ip -4
 
 **What this means:** Under the hood, MyNodeOne has installed a Kubernetes cluster on your control plane machine. Kubernetes is software that runs and manages containerized applications across one or more machines. Because it runs entirely on hardware you control and is only reachable over your private Tailscale network, it behaves like your own private cloud instead of relying on a public cloud provider.
 
-**Check in your browser on the control plane PC:** Open a web browser on the control plane machine and visit a few `.local` URLs from your credentials file, using the domain name you selected during installation (for example, if you chose `minicloud.local` as your domain, you might see URLs like `http://mynodeone.local` or `http://grafana.minicloud.local`). If these pages load, your core control plane services are accessible from that machine.
+**Check in your browser on the control plane PC:** Open a web browser on the control plane machine and visit a few `.local` URLs from your credentials file, using the domain name you selected during installation (for example, if you chose `minicloud.local` as your domain, you might see URLs like `http://minicloud.local` or `http://grafana.minicloud.local`). If these pages load, your core control plane services are accessible from that machine.
 
 **Passwordless Sudo:**
 The installation automatically configures passwordless sudo for your user. This enables:
@@ -263,10 +263,12 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 ## What is a VPS Edge Node?
 
+A VPS (Virtual Private Server) is a virtual machine you rent from a hosting provider. In MyNodeOne, this VPS acts as an edge node that safely exposes selected services from your private cloud to the internet so you can reach them from other machines. For non-technical users, you can think of it as a secure gateway that forwards traffic from the internet to your private cloud.
+
 - **Public Gateway**: A cloud server that acts as a secure entry point to your cluster.
 - **Reverse Proxy**: Routes public internet traffic to your control plane through Tailscale's secure mesh network.
 - **Auto-HTTPS**: Automatically obtains and renews SSL/TLS certificates from Let's Encrypt.
-- **Providers**: Works with any cloud provider (Contabo, Hetzner, DigitalOcean, Linode, Vultr, etc.).
+- **Providers**: Works with any cloud provider (Contabo, Hetzner, DigitalOcean, Linode, Vultr) or a small VM from hyperscalers like AWS, Google Cloud, or Azure.
 
 ---
 
@@ -284,6 +286,8 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 ### On Your Control Plane:
 
+Run these commands in a terminal on your control plane machine:
+
 - **Section 1 Complete**: You must have a fully installed and running Control Plane.
 - **Kubectl Working**: Run `kubectl get nodes` to verify cluster is running.
 - **Tailscale Connected**: Run `tailscale status` to verify.
@@ -293,18 +297,24 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 1.  **Provision a Fresh VPS**
     - Ubuntu 24.04 LTS (or 22.04/20.04)
-    - At least **1GB RAM, 1 CPU core** (2GB+ RAM recommended)
-    - A **public IPv4 address** is required
+    - At least **8GB RAM required**
+    - A **public IPv4 address** assigned by your VPS provider (IPv6-only setups are not supported yet)
     - SSH access working
+
+    For example, providers like Contabo offer suitable VPS plans with a public IPv4 address starting around USD $7 per month.
 
 2.  **Create a Sudo User**
     
+    From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `root@<vps-ipv4>` or `admin@<vps-ipv4>`). Once logged in, you will create your own sudo user.
+
+    In the examples below `sammy` is just an example username. Replace it with your own preferred username.
+
     ⚠️ **Do not use root user** for security reasons.
 
     ```bash
-    # ON YOUR NEW VPS (connect as root):
+    # ON YOUR NEW VPS (connect as root or admin):
 
-    # 1. Create a new user (e.g., 'sammy')
+    # 1. Create a new user (replace 'sammy' with your own username)
     adduser sammy
 
     # 2. Add user to sudo group
@@ -327,7 +337,7 @@ sudo ./scripts/setup-control-plane-sudo.sh
 
 3.  **Install Tailscale on the VPS**
     
-    Run these commands on your VPS as your sudo user (for example, `sammy`):
+    From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@<vps-ipv4>`). Once you are logged in, run the following commands on the VPS:
     
     ```bash
     # ON YOUR VPS (as your sudo user 'sammy'):
@@ -348,6 +358,9 @@ sudo ./scripts/setup-control-plane-sudo.sh
     # Get and save your VPS Tailscale IP
     tailscale ip -4
     # Example: 100.101.237.15 (you'll need this!)
+
+    # When finished, exit to return to your control plane terminal
+    exit
     ```
 
 --- 

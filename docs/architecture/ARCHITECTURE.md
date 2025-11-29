@@ -295,11 +295,13 @@ With more RAM, you can run heavier workloads like databases, media servers, or L
 
 ## Comparison with Cloud Providers
 
+Example: Home machine with 64GB RAM and 18TB storage, plus a $10/month VPS for public access.
+
 | Feature | MyNodeOne | AWS | GCP | Azure |
 |---------|----------|-----|-----|-------|
-| **Cost (monthly)** | ~$30 (VPS only) | $500+ | $500+ | $500+ |
-| **Compute** | 256GB RAM, 32 cores | Extra charges | Extra charges | Extra charges |
-| **Storage** | 36TB included | $1000+/mo | $1000+/mo | $1000+/mo |
+| **Cost (monthly)** | ~$10 (VPS only) | $500+ | $500+ | $500+ |
+| **Compute** | 64GB RAM, 8+ cores | Extra charges | Extra charges | Extra charges |
+| **Storage** | 18TB included | $1000+/mo | $1000+/mo | $1000+/mo |
 | **Egress** | Unlimited (home ISP) | $0.09/GB | $0.12/GB | $0.08/GB |
 | **Control** | Full | Limited | Limited | Limited |
 | **Privacy** | 100% | Shared infra | Shared infra | Shared infra |

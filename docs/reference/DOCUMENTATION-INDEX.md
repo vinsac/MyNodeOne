@@ -19,7 +19,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
 
 ### Daily usage
-- **"How do I manage it?"** → [operations.md](../guides/operations.md)
+- **"How do I manage it?"** → [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 - **"Deploy an app"** → Check `manifests/examples/`
 - **"Check cluster health"** → Run `./scripts/cluster-status.sh`
 - **"Add more nodes"** → [scaling.md](../guides/scaling.md)
@@ -49,10 +49,11 @@ mynodeone/
 │   ├── installation/                 ← Installation guides
 │   │   ├── INSTALLATION.md           ← Main installation guide
 │   │   └── POST_INSTALLATION_GUIDE.md← After installation
+│   ├── operations/                   ← Cluster management
+│   │   └── CLUSTER-MANAGEMENT.md     ← Day-to-day operations
 │   ├── guides/                       ← How-to guides
 │   │   ├── GETTING-STARTED.md        ← Entry point for new users
-│   │   ├── TERMINAL-BASICS.md        ← Terminal for beginners
-│   │   └── operations.md             ← Daily management
+│   │   └── TERMINAL-BASICS.md        ← Terminal for beginners
 │   ├── reference/                    ← Reference documentation
 │   │   ├── APP-STORE.md              ← Available apps
 │   │   ├── FAQ.md                    ← Common questions
@@ -75,14 +76,14 @@ mynodeone/
 5. [FAQ.md](FAQ.md) - Common questions and scenarios
 6. Install: `sudo ./scripts/mynodeone`
 7. [POST_INSTALLATION_GUIDE.md](../installation/POST_INSTALLATION_GUIDE.md) - After install
-8. [operations.md](../guides/operations.md) - Daily operations
+8. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Daily operations
 
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](../../README.md) - 5 min
 2. [INSTALLATION.md](../installation/INSTALLATION.md) - 10 min
 3. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - 15 min
 4. Install: `sudo ./scripts/mynodeone`
-5. [operations.md](../guides/operations.md) - Reference
+5. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Reference
 6. [scaling.md](../guides/scaling.md) - When ready to grow
 
 ### Advanced (Kubernetes experience)
@@ -184,7 +185,7 @@ mynodeone/
 - [INSTALLATION.md](../installation/INSTALLATION.md) - installation walkthrough
 - [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - VPS edge node and domain setup
 - [VPS-INSTALLATION.md](../installation/VPS-INSTALLATION.md) - VPS control plane setup
-- [operations.md](../guides/operations.md) - daily management
+- [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - daily management
 - [scaling.md](../guides/scaling.md) - growth strategies
 - [troubleshooting.md](../guides/troubleshooting.md) - problem solving
 
@@ -218,7 +219,7 @@ Based on where you are:
 → Run `sudo ./scripts/mynodeone`
 
 ### Already Installed
-→ Check [operations.md](../guides/operations.md)
+→ Check [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 
 ### Having Issues
 → See [troubleshooting.md](../guides/troubleshooting.md)

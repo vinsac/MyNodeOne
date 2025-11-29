@@ -964,3 +964,5 @@ Your cluster now has additional compute resources!
 
 **Installation complete! Welcome to MyNodeOne!**
 
+**Next:** See [POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md) for immediate next steps.
+

@@ -85,6 +85,7 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 | [Operations Guide](docs/guides/OPERATIONS-GUIDE.md) | Daily management and troubleshooting |
 | [App Store](docs/reference/APP-STORE.md) | Available one-click apps |
 | [FAQ](docs/reference/FAQ.md) | Frequently asked questions |
+| [Architecture](docs/architecture/ARCHITECTURE.md) | Technical design and components |
 | [Documentation Index](docs/reference/DOCUMENTATION-INDEX.md) | Complete documentation map |
 
 **Terminology:**

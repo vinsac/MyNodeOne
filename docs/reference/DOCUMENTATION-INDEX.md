@@ -14,7 +14,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 
 ### Understand MyNodeOne
 - **"What are the options?"** → [INSTALLATION.md](../guides/INSTALLATION.md) - node types, VPS, worker nodes, and management workstation
-- **"How does it work?"** → [architecture.md](architecture.md)
+- **"How does it work?"** → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 - **"What about networking?"** → [networking.md](networking.md)
 - **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
 
@@ -88,13 +88,13 @@ mynodeone/
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](../README.md) - 5 min
 2. [INSTALLATION.md](../guides/INSTALLATION.md) - 10 min
-3. [architecture.md](architecture.md) - 15 min
+3. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - 15 min
 4. Install: `sudo ./scripts/mynodeone`
 5. [operations.md](../guides/operations.md) - Reference
 6. [scaling.md](../guides/scaling.md) - When ready to grow
 
 ### Advanced (Kubernetes experience)
-1. [architecture.md](architecture.md) - Technical design
+1. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Technical design
 2. [REPO-STRUCTURE.md](REPO-STRUCTURE.md) - Repository layout
 3. Install: `sudo ./scripts/mynodeone`
 4. Explore: `manifests/` and `scripts/`
@@ -130,7 +130,7 @@ mynodeone/
 
 ### Storage
 - Disk setup: [storage-guide.md](storage-guide.md)
-- Architecture: [architecture.md](architecture.md) - Section "Storage Layer"
+- Architecture: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Section "Storage Layer"
 - Operations: [operations.md](../guides/operations.md) - Section "Storage Management"
 
 ### Applications
@@ -148,7 +148,7 @@ mynodeone/
 - Add workers: [scaling.md](../guides/scaling.md)
 - Add VPS: [INSTALLATION.md](INSTALLATION.md) - Section "Step 4"
 - **Add VPS Edge Node:** [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) ⭐
-- High availability: [architecture.md](architecture.md)
+- High availability: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 ---
 
@@ -173,7 +173,7 @@ mynodeone/
 → [troubleshooting.md](../guides/troubleshooting.md)
 
 **"How does this work?"**  
-→ [architecture.md](architecture.md)
+→ [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 **"I have a question..."**  
 → [FAQ.md](FAQ.md)
@@ -198,7 +198,7 @@ mynodeone/
 
 ### Explanations (understanding)
 - [README.md](../README.md) - what MyNodeOne is
-- [architecture.md](architecture.md) - how it works
+- [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - how it works
 - [storage-guide.md](storage-guide.md) - storage options explained
 - [networking.md](networking.md) - networking explained
 
@@ -232,7 +232,7 @@ Based on where you are:
 → See [troubleshooting.md](../guides/troubleshooting.md)
 
 ### Want to Learn More
-→ Read [architecture.md](architecture.md)
+→ Read [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 ### Ready to Grow
 → Follow [scaling.md](../guides/scaling.md)

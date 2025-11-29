@@ -228,13 +228,13 @@ Replicated Volume (2x18TB HDDs)
 
 ## Scaling Scenarios
 
-### Scenario 1: Single Node (Current)
+### Scenario 1: Single Node
 - Your first node: Control plane + worker
 - Storage: Local only, no replication
 - HA: None (downtime if node fails)
 - Suitable for: Development, testing, low-traffic apps
 
-### Scenario 2: Three Nodes (Future)
+### Scenario 2: Three Nodes
 - Node 1: Control plane + worker
 - Node 2: Worker
 - Node 3: Worker
@@ -242,7 +242,7 @@ Replicated Volume (2x18TB HDDs)
 - HA: Apps survive 1 node failure
 - Suitable for: Production apps, higher traffic
 
-### Scenario 3: Multiple Regions (Future)
+### Scenario 3: Multiple Regions
 - Home cluster (node-001, node-002)
 - Office cluster (node-003, node-004)
 - Cross-region replication
@@ -250,11 +250,19 @@ Replicated Volume (2x18TB HDDs)
 
 ## Security Architecture
 
+### Direction of Trust
+
+A fundamental security principle in MyNodeOne is the **unidirectional flow of trust and connectivity**. The cluster's internal network, especially the Control Plane, is considered a secure, trusted zone. All external nodes, such as a public-facing VPS Edge Node, are considered untrusted.
+
+- **Connections originate from the inside**: All administrative connections (installation, configuration, synchronization) originate from the Control Plane and connect outwards to edge nodes.
+- **No inbound public access to Control Plane**: The Control Plane's SSH port is never exposed to the public internet. It is only accessible via your local LAN or Tailscale.
+- **Minimal attack surface**: If a public-facing VPS is compromised, an attacker has no network path or credentials to access the Control Plane.
+
 ### Network Security
 - **Tailscale**: WireGuard-based encryption
 - **VPS Firewall**: Only 80, 443, 22 open
 - **Internal services**: Only accessible via Tailscale
-- **No public exposure**: Toronto nodes not directly internet-accessible
+- **No public exposure**: Home/office nodes not directly internet-accessible
 
 ### Access Control
 - **Kubernetes RBAC**: Role-based access control
@@ -352,11 +360,10 @@ Replicated Volume (2x18TB HDDs)
 ## Limitations & Trade-offs
 
 ### Single Point of Failure (Current)
-- If your only node dies, everything is down
-- Mitigation: Add worker nodes for redundancy
+- If your control plane node dies, everything is down
 
 ### Home ISP Dependencies
-- Upload speed limits (500 Mbps is good though)
+- Upload speed limits
 - Potential IP blocks (rare)
 - Mitigation: VPS edge nodes handle this
 
@@ -364,40 +371,7 @@ Replicated Volume (2x18TB HDDs)
 - All data in one location
 - Mitigation: Future feature, can add more regions
 
-### Manual VPS Configuration
-- Need to configure routes manually
-- Mitigation: Can be automated in future versions
 
-## Future Enhancements
+## Limitations & Future Improvements
 
-### Planned Features
-1. **Database Operators**: One-click PostgreSQL, MySQL, Redis
-2. **GPU Support**: For running local LLMs
-3. **Backup/Restore**: Automated backups to cloud storage
-4. **Multi-region**: Toronto + Montreal clusters
-5. **Service Mesh**: Istio/Linkerd for advanced networking
-6. **CI/CD**: Tekton pipelines for complex workflows
-7. **Monitoring Alerts**: PagerDuty/Slack integration
-8. **Cost Dashboard**: Track per-app resource usage
-
-### Community Wishlist
-- One-click apps marketplace
-- Terraform modules
-- Helm charts repository
-- Mobile app for monitoring
-- Desktop GUI for management
-
-## Contributing
-
-The architecture is designed to be modular. Want to add a feature? Submit a PR!
-
-Areas for contribution:
-- Operators for databases
-- Monitoring dashboards
-- Example applications
-- Documentation improvements
-- Bug fixes and optimizations
-
----
-
-**Questions?** Open an issue on GitHub!
+The architecture is designed to be modular and will continue to evolve. Current limitations include single control plane (no HA yet) and single-region deployments. Multi-region support is planned for future releases.

@@ -61,8 +61,11 @@ mynodeone/
 │   │   └── MOBILE-ACCESS-GUIDE.md    ← Phone/tablet access
 │   ├── reference/                    ← Reference documentation
 │   │   ├── APP-STORE.md              ← Available apps
-│   │   ├── FAQ.md                    ← Common questions
-│   │   └── SECURITY.md               ← Security and credentials
+│   │   └── FAQ.md                    ← Common questions
+│   ├── security/                     ← Security documentation
+│   │   ├── SECURITY.md               ← Security overview
+│   │   ├── PASSWORD-MANAGEMENT.md    ← Credential storage
+│   │   └── BEST-PRACTICES.md         ← Production hardening
 │   ├── architecture/                 ← System architecture
 │   │   ├── ARCHITECTURE.md           ← Overall design
 │   │   ├── DNS.md                    ← DNS configuration

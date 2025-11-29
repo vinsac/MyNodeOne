@@ -22,30 +22,30 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 
 Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your machines. Kubernetes is software that runs containerized applications, keeps them healthy, and can spread them across multiple machines. Because this cluster runs on hardware and networks you control (your own machines, connected over Tailscale and optional VPS edge nodes), you get cloud-like capabilities as your own private cloud instead of renting them from a public cloud provider.
 
-✅ **Auto-scaling** across multiple nodes  
-✅ **S3-compatible object storage** (MinIO)  
-✅ **Distributed block storage** with replication (Longhorn)  
-✅ **Automatic SSL certificates** (Let's Encrypt)  
-✅ **GitOps deployments** - just push to git! (ArgoCD)  
-✅ **Comprehensive monitoring** (Prometheus + Grafana + Loki)  
-✅ **Secure networking** (Tailscale mesh - **default** + VPS edge nodes)  
-✅ **100% free and open source**
+**Auto-scaling** across multiple nodes  
+**S3-compatible object storage** (MinIO)  
+**Distributed block storage** with replication (Longhorn)  
+**Automatic SSL certificates** (Let's Encrypt)  
+**GitOps deployments** - just push to git! (ArgoCD)  
+**Comprehensive monitoring** (Prometheus + Grafana + Loki)  
+**Secure networking** (Tailscale mesh - **default** + VPS edge nodes)  
+**100% free and open source**
 
 > **Networking:** MyNodeOne uses **Tailscale by default** for secure mesh networking. Minimum configuration required!
 
-## ✨ Core Features
+## Core Features
 
-✅ **One Command Setup** - `sudo ./scripts/mynodeone` does everything  
-✅ **Local Dashboard** - Access at `http://mynodeone.local` after installation  
-✅ **One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Vaultwarden, etc.)  
-✅ **System Cleanup** - Automatic removal of bloat and unused packages  
-✅ **Disk Auto-Detection** - Finds and configures external drives automatically  
-✅ **Fully Generic** - Works with ANY hardware, names, IPs  
-✅ **LLM Support** - Run language models on CPU  
-✅ **Complete Networking Guide** - Tailscale + alternatives fully explained  
+**One Command Setup** - `sudo ./scripts/mynodeone` does everything  
+**Local Dashboard** - Access at `http://mynodeone.local` after installation  
+**One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Vaultwarden, etc.)  
+**System Cleanup** - Automatic removal of bloat and unused packages  
+**Disk Auto-Detection** - Finds and configures external drives automatically  
+**Fully Generic** - Works with ANY hardware, names, IPs  
+**LLM Support** - Run language models on CPU  
+**Complete Networking Guide** - Tailscale + alternatives fully explained  
 
 
-## 🚀 Ready to Install?
+## Ready to Install?
 
 
 - **New user?** → [GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)
@@ -307,7 +307,130 @@ sudo ./scripts/uninstall-mynodeone.sh --help
 **What can be preserved:**
 - Configuration files (for easy reinstall)
 - Application data (keeps your photos, etc.)
-- Formatted disks (always kept)
+- Formatted disks (always kept)## 🎯 Choosing Your Control Plane Machine
+
+If you have **multiple machines**, choose your control plane wisely:
+
+**Recommended characteristics:**
+- ✅ **Most RAM/CPU** - Control plane runs cluster management + your workloads
+- ✅ **Most reliable** - Should stay running 24/7
+- ✅ **Best network** - Central location with good connectivity
+- ✅ **Most storage** - Will host monitoring data, logs, and system databases
+
+**Examples:**
+- **Home setup:** Your most powerful desktop/server (not a laptop that moves around)
+- **Multiple servers:** The one with 32GB+ RAM vs others with 8-16GB
+- **Mixed hardware:** Intel NUC with 32GB RAM > Raspberry Pi with 8GB RAM
+
+**Single machine?** No problem - it will be both control plane and worker!
+
+---
+
+### 1. Bootstrap Control Plane (First Node)
+
+**Example:** If your first node is named `node-001` or `server-alpha`
+
+```bash
+# Clone this repo (HTTPS or SSH):
+git clone https://github.com/vinsac/MyNodeOne.git
+# OR: git clone git@github.com:vinsac/MyNodeOne.git
+
+cd MyNodeOne
+
+# Run bootstrap script
+sudo ./scripts/bootstrap-control-plane.sh
+```
+
+This will:
+- Install K3s as control plane
+- Set up Tailscale networking
+- Install Cert-Manager for SSL
+- Deploy Traefik ingress controller
+- Install Longhorn for storage
+- Deploy MinIO for object storage
+- Install monitoring stack (Prometheus, Grafana, Loki)
+- Deploy ArgoCD for GitOps
+- **Deploy local dashboard** at http://mynodeone.local
+- Configure Tailscale subnet routes automatically
+
+**⚠️ IMPORTANT:** After installation completes, **approve the Tailscale subnet route** (30 seconds):
+1. Go to https://login.tailscale.com/admin/machines
+2. Find your control plane machine → Edit route settings
+3. Enable the subnet route (shown in installation output)
+4. Click Save
+
+This enables `.local` domain access from your laptop (e.g., `http://grafana.mynodeone.local`).
+
+### 2. Add Worker Nodes (Additional Nodes)
+
+**Example:** Additional nodes like `node-002`, `node-003`, etc.
+
+On each new machine:
+
+```bash
+# Run on the NEW worker node
+sudo ./scripts/add-worker-node.sh
+```
+
+The script will automatically:
+- Detect Tailscale network
+- Join the K3s cluster
+- Configure storage
+- Register with monitoring
+
+### 3. Configure VPS Edge Nodes
+
+On each VPS (Contabo, DigitalOcean, Hetzner, Linode, Vultr, etc.):
+
+```bash
+# Run on VPS
+sudo ./scripts/setup-edge-node.sh
+```
+
+This sets up:
+- Traefik as reverse proxy
+- SSL certificate management
+- Routing to your nodes via Tailscale
+
+### 4. Deploy Your First App (Demo)
+
+**Option A: During Installation** - When prompted, say 'yes' to deploy demo app
+
+**Option B: After Installation** - Run this command on your control plane:
+
+```bash
+# Deploy demo application to verify cluster works
+sudo ./scripts/deploy-demo-app.sh deploy
+```
+
+This deploys a secure web app that shows:
+- ✅ Cluster is operational
+- ✅ LoadBalancer working (gets Tailscale IP)
+- ✅ Security features active
+- ✅ Storage and networking functional
+
+**Access the demo:**
+- URL will be shown after deployment (e.g., http://100.x.x.x)
+- Open in browser on any device connected to Tailscale
+
+**Remove when done:**
+```bash
+sudo ./scripts/deploy-demo-app.sh remove
+```
+
+**See [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md) for detailed instructions**
+
+## 🎯 One-Click App Installation
+
+MyNodeOne includes an **App Store** with ready-to-deploy applications:
+
+### Quick Access
+```bash
+# Interactive app store menu
+sudo ./scripts/app-store.sh
+
+# Or visit the dashboard
+# Open http://mynodeone.local in your browser
 - Tailscale (optional)
 
 ## Storage

@@ -51,7 +51,8 @@ mynodeone/
 │   │   ├── POST_INSTALLATION_GUIDE.md← After installation
 │   │   └── UNINSTALL.md              ← Removing MyNodeOne
 │   ├── operations/                   ← Cluster management
-│   │   └── CLUSTER-MANAGEMENT.md     ← Day-to-day operations
+│   │   ├── CLUSTER-MANAGEMENT.md     ← Day-to-day operations
+│   │   └── DOMAIN-AND-PUBLIC-ACCESS.md ← Domains and public apps
 │   ├── guides/                       ← How-to guides
 │   │   ├── GETTING-STARTED.md        ← Entry point for new users
 │   │   └── TERMINAL-BASICS.md        ← Terminal for beginners
@@ -104,8 +105,7 @@ mynodeone/
 - Installation guide: [INSTALLATION.md](../installation/INSTALLATION.md)
 - Setup options: [INSTALLATION.md](../installation/INSTALLATION.md) - node types and scenarios
 - Configuration wizard: `scripts/interactive-setup.sh`
-- VPS Edge Node Setup: [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
-- VPS Installation: [VPS-INSTALLATION.md](../installation/VPS-INSTALLATION.md)
+- VPS Edge Node Setup: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 
 ### Comparisons & Alternatives
 - **MyNodeOne vs Alternatives:** [comparison-guide.md](comparison-guide.md)
@@ -141,7 +141,7 @@ mynodeone/
 ### Scaling
 - Add workers: [scaling.md](../guides/scaling.md)
 - Add VPS: [INSTALLATION.md](../installation/INSTALLATION.md) - Section 2
-- Add VPS Edge Node: [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
+- Add VPS Edge Node: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 - High availability: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 ---
@@ -173,10 +173,10 @@ mynodeone/
 → [FAQ.md](FAQ.md)
 
 **"How do I add a domain to my VPS?"**  
-→ [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
+→ [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md)
 
 **"How do I expose apps publicly?"**  
-→ [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
+→ [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md)
 
 ---
 
@@ -184,8 +184,7 @@ mynodeone/
 
 ### Guides (how-to)
 - [INSTALLATION.md](../installation/INSTALLATION.md) - installation walkthrough
-- [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - VPS edge node and domain setup
-- [VPS-INSTALLATION.md](../installation/VPS-INSTALLATION.md) - VPS control plane setup
+- [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md) - domains and public apps
 - [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - daily management
 - [scaling.md](../guides/scaling.md) - growth strategies
 - [troubleshooting.md](../guides/troubleshooting.md) - problem solving

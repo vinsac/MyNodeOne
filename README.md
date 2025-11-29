@@ -22,46 +22,42 @@ MyNodeOne is a production-ready, scalable private cloud infrastructure that lets
 
 Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your machines. Kubernetes is software that runs containerized applications, keeps them healthy, and can spread them across multiple machines. Because this cluster runs on hardware and networks you control (your own machines, connected over Tailscale and optional VPS edge nodes), you get cloud-like capabilities as your own private cloud instead of renting them from a public cloud provider.
 
-**Auto-scaling** across multiple nodes  
-**S3-compatible object storage** (MinIO)  
-**Distributed block storage** with replication (Longhorn)  
-**Automatic SSL certificates** (Let's Encrypt)  
-**GitOps deployments** - just push to git! (ArgoCD)  
-**Comprehensive monitoring** (Prometheus + Grafana + Loki)  
-**Secure networking** (Tailscale mesh - **default** + VPS edge nodes)  
-**100% free and open source**
+- **Auto-scaling** across multiple nodes  
+- **S3-compatible object storage** (MinIO)  
+- **Distributed block storage** with replication (Longhorn)  
+- **Automatic SSL certificates** (Let's Encrypt)  
+- **GitOps deployments** - just push to git! (ArgoCD)  
+- **Comprehensive monitoring** (Prometheus + Grafana + Loki)  
+- **Secure networking** (Tailscale mesh - **default** + VPS edge nodes)  
+- **100% free and open source**
 
 > **Networking:** MyNodeOne uses **Tailscale by default** for secure mesh networking. Minimum configuration required!
 
 ## Core Features
 
-**One Command Setup** - `sudo ./scripts/mynodeone` does everything  
-**Local Dashboard** - Access at `http://mynodeone.local` after installation  
-**One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Vaultwarden, etc.)  
-**System Cleanup** - Automatic removal of bloat and unused packages  
-**Disk Auto-Detection** - Finds and configures external drives automatically  
-**Fully Generic** - Works with ANY hardware, names, IPs  
-**LLM Support** - Run language models on CPU  
-**Complete Networking Guide** - Tailscale + alternatives fully explained  
+- **One Command Setup** - `sudo ./scripts/mynodeone` does everything  
+- **Local Dashboard** - Access at `http://mynodeone.local` after installation  
+- **One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Vaultwarden, etc.)  
+- **System Cleanup** - Automatic removal of bloat and unused packages  
+- **Disk Auto-Detection** - Finds and configures external drives automatically  
+- **Fully Generic** - Works with ANY hardware, names, IPs  
+- **LLM Support** - Run language models on CPU  
+- **Complete Networking Guide** - Tailscale + alternatives fully explained  
 
 
 ## Ready to Install?
-
 
 - **New user?** → [GETTING-STARTED.md](docs/guides/GETTING-STARTED.md)
 - **Never used terminal?** → [TERMINAL-BASICS.md](docs/guides/TERMINAL-BASICS.md)
 - **Don't understand terms?** → [GLOSSARY.md](docs/reference/GLOSSARY.md)
 - **Full installation guide** → [INSTALLATION.md](docs/guides/INSTALLATION.md)
 
----
-
-### Terminology
+## Terminology
 
 - **Node**: A single machine (PC, laptop, mini PC, or server) that participates in your MyNodeOne cluster.
 - **MyNodeOne**: This project and tooling for setting up and managing your own private cloud. The name reflects the first machine you configure ("my node one"), but MyNodeOne supports clusters made up of multiple machines.
 
-
-
+---
 
 ## Architecture
 
@@ -207,7 +203,7 @@ sudo ./scripts/fix-duplicate-dns.sh                        # Fix duplicate DNS e
 
 
 ```
-## Apps in the cluster
+# Apps in the cluster
 
 ### Available Apps (10+ and growing!)
 
@@ -307,22 +303,7 @@ sudo ./scripts/uninstall-mynodeone.sh --help
 **What can be preserved:**
 - Configuration files (for easy reinstall)
 - Application data (keeps your photos, etc.)
-- Formatted disks (always kept)## 🎯 Choosing Your Control Plane Machine
-
-If you have **multiple machines**, choose your control plane wisely:
-
-**Recommended characteristics:**
-- ✅ **Most RAM/CPU** - Control plane runs cluster management + your workloads
-- ✅ **Most reliable** - Should stay running 24/7
-- ✅ **Best network** - Central location with good connectivity
-- ✅ **Most storage** - Will host monitoring data, logs, and system databases
-
-**Examples:**
-- **Home setup:** Your most powerful desktop/server (not a laptop that moves around)
-- **Multiple servers:** The one with 32GB+ RAM vs others with 8-16GB
-- **Mixed hardware:** Intel NUC with 32GB RAM > Raspberry Pi with 8GB RAM
-
-**Single machine?** No problem - it will be both control plane and worker!
+- Formatted disks (always kept)
 
 ---
 

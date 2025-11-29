@@ -2,7 +2,7 @@
 
 This directory contains one-click installation scripts for popular self-hosted applications. Each script deploys a fully configured application to your MyNodeOne cluster.
 
-## 📦 Available Applications
+## Available Applications
 
 ### Media & Entertainment
 - **Plex** - Premium media server (Netflix-like experience)
@@ -24,7 +24,7 @@ This directory contains one-click installation scripts for popular self-hosted a
 - **Uptime Kuma** - Service monitoring and status page
 - **Homepage** - Application dashboard and homepage
 
-## 🚀 Usage
+## Usage
 
 Each script can be run independently:
 
@@ -41,7 +41,7 @@ sudo ./scripts/apps/install-immich.sh
 sudo ./scripts/apps/install-nextcloud.sh
 ```
 
-## ✅ What Each Script Does
+## What Each Script Does
 
 1. **Creates namespace** - Isolated environment for the app
 2. **Deploys database** (if needed) - PostgreSQL, MySQL, or Redis
@@ -50,7 +50,7 @@ sudo ./scripts/apps/install-nextcloud.sh
 5. **Generates credentials** - Secure random passwords
 6. **Displays access info** - URL and login details
 
-## 🔒 Security Features
+## Security Features
 
 - ✅ Strong random passwords (32 characters)
 - ✅ Isolated namespaces
@@ -58,7 +58,7 @@ sudo ./scripts/apps/install-nextcloud.sh
 - ✅ Persistent storage with replication
 - ✅ Encrypted network traffic via Tailscale
 
-## 📊 Resource Requirements
+## Resource Requirements
 
 Each app includes sensible defaults but can be customized:
 
@@ -75,7 +75,7 @@ Each app includes sensible defaults but can be customized:
 | Uptime Kuma | 512MB | 0.5 core | 2GB |
 | Homepage | 256MB | 0.2 core | 500MB |
 
-## 🎯 Recommended Setup Order
+## Recommended Setup Order
 
 **For Personal/Family Use:**
 1. **Vaultwarden** - Secure your passwords first
@@ -97,7 +97,7 @@ Each app includes sensible defaults but can be customized:
 3. **Homepage** - Organize access to media
 4. **Nextcloud** - Share files with family
 
-## 🆘 Uninstalling Apps
+## Uninstalling Apps
 
 Each script has a corresponding uninstall script:
 
@@ -111,7 +111,7 @@ Or manually remove:
 kubectl delete namespace <app-name>
 ```
 
-## 💡 Tips
+## Tips
 
 1. **Storage Location**: Apps store data in Longhorn volumes (replicated across nodes)
 2. **Accessing Apps**: Use the Tailscale IP shown after installation
@@ -119,7 +119,7 @@ kubectl delete namespace <app-name>
 4. **Backups**: Enable Longhorn snapshots for automatic backups
 5. **Updates**: Run the install script again to update to latest version
 
-## 🔧 Customization
+## Customization
 
 Each script can be customized by editing these variables:
 - Storage size
@@ -127,7 +127,7 @@ Each script can be customized by editing these variables:
 - Replica count
 - Ingress configuration
 
-## 📚 Documentation
+## Documentation
 
 For detailed information about each application, see:
 - [Plex Documentation](https://support.plex.tv/)
@@ -136,7 +136,7 @@ For detailed information about each application, see:
 - [Nextcloud Documentation](https://docs.nextcloud.com/)
 - And more in each app's official docs
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 **App won't start:**
 ```bash
@@ -159,7 +159,7 @@ kubectl get pv
 **Need more help:**
 See [docs/guides/troubleshooting.md](../../docs/guides/troubleshooting.md)
 
-## 🤝 Contributing
+## Contributing
 
 Want to add a new app? Follow this structure:
 1. Create `install-<appname>.sh`

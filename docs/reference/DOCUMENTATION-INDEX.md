@@ -1,19 +1,19 @@
-# 🗺️ MyNodeOne Documentation Index
+# MyNodeOne Documentation Index
 
 Quick reference for finding what you need in the MyNodeOne repository.
 
 ---
 
-## 🎯 "I want to..."
+## "I want to..."
 
 ### Get Started
-- **"I'm brand new"** → [GETTING-STARTED.md](../GETTING-STARTED.md)
-- **"Quick overview"** → [README.md](../README.md)
+- **"I'm brand new"** → [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
+- **"Quick overview"** → [README.md](../../README.md)
 - **"Install now"** → Run `sudo ./scripts/mynodeone`
-- **"Step-by-step guide"** → [INSTALLATION.md](../guides/INSTALLATION.md)
+- **"Step-by-step guide"** → [INSTALLATION.md](../installation/INSTALLATION.md)
 
 ### Understand MyNodeOne
-- **"What are the options?"** → [INSTALLATION.md](../guides/INSTALLATION.md) - node types, VPS, worker nodes, and management workstation
+- **"What are the options?"** → [INSTALLATION.md](../installation/INSTALLATION.md) - node types, VPS, worker nodes, and management workstation
 - **"How does it work?"** → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 - **"What about networking?"** → [networking.md](networking.md)
 - **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
@@ -27,7 +27,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Troubleshooting
 - **"Something broke"** → [troubleshooting.md](../guides/troubleshooting.md)
 - **"Common questions"** → [FAQ](FAQ.md)
-- **"Network issues"** → [networking.md](../networking.md)
+- **"Network issues"** → [networking.md](networking.md)
 
 ### Advanced
 - **"Complete technical docs"** → [FINAL-SUMMARY.md](FINAL-SUMMARY.md)
@@ -36,58 +36,50 @@ Quick reference for finding what you need in the MyNodeOne repository.
 
 ---
 
-## 📁 File Organization
+## File Organization
 
 ```
 mynodeone/
-│
-├── 🚀 GETTING-STARTED.md              ← Entry point for new users
-├── 📖 README.md                       ← Project overview
-├── ⚡ INSTALLATION.md                  ← Step-by-step installation
-├── 🗺️ DOCUMENTATION-INDEX.md         ← This file
-├── ❓ FAQ.md                          ← 50+ questions
-├── 🤝 CONTRIBUTING.md                 ← How to contribute
-│
-├── scripts/                      ← Automation
-│   └── 🎯 mynodeone               ← Main installer
-│
+├── README.md                         ← Project overview
+├── CONTRIBUTING.md                   ← How to contribute
+├── scripts/                          ← Automation
+│   ├── mynodeone                     ← Main installer
+│   └── apps/                         ← App installation scripts
 ├── docs/
-│   ├── guides/                   ← Step-by-step guides
-│   │   ├── POST_INSTALLATION_GUIDE.md       ← what to do after install
-│   │   ├── TERMINAL-BASICS.md               ← terminal for beginners
-│   │   ├── APP_DEPLOYMENT_GUIDE.md          ← deploy applications
-│   │   ├── DEMO_APP_GUIDE.md                ← first app walkthrough
-│   │   └── SECURITY_CREDENTIALS_GUIDE.md    ← security credentials
-│   ├── reference/                ← reference documentation and indexes
-│   │   ├── GLOSSARY.md                  ← term definitions
-│   │   ├── ACCESS_INFORMATION.md        ← service URLs
-│   │   └── DOCUMENTATION-INDEX.md       ← navigation and links
-│   └── use-cases/                ← common deployment scenarios
-│
-├── manifests/examples/           ← Ready apps
-├── website/                      ← Docs website
-├── config/                       ← Templates
-└── dev-docs/                     ← Developer docs (optional)
+│   ├── installation/                 ← Installation guides
+│   │   ├── INSTALLATION.md           ← Main installation guide
+│   │   └── POST_INSTALLATION_GUIDE.md← After installation
+│   ├── guides/                       ← How-to guides
+│   │   ├── GETTING-STARTED.md        ← Entry point for new users
+│   │   ├── TERMINAL-BASICS.md        ← Terminal for beginners
+│   │   └── operations.md             ← Daily management
+│   ├── reference/                    ← Reference documentation
+│   │   ├── APP-STORE.md              ← Available apps
+│   │   ├── FAQ.md                    ← Common questions
+│   │   └── GLOSSARY.md               ← Term definitions
+│   ├── architecture/                 ← System architecture
+│   └── use-cases/                    ← Deployment scenarios
+├── manifests/                        ← Kubernetes manifests
+└── website/                          ← Dashboard
 ```
 
 ---
 
-## 🎓 Reading Order by Experience Level
+## Reading Order by Experience Level
 
 ### Complete Beginner (Never used Kubernetes)
-1. [TERMINAL-BASICS.md](../guides/TERMINAL-BASICS.md) - 10 min (if new to terminal) ⭐
-2. [GETTING-STARTED.md](../GETTING-STARTED.md) - 5 min
-3. [README.md](../README.md) - 5 min
-4. [INSTALLATION.md](../guides/INSTALLATION.md) - 20 min
+1. [TERMINAL-BASICS.md](../guides/TERMINAL-BASICS.md) - 10 min (if new to terminal)
+2. [GETTING-STARTED.md](../guides/GETTING-STARTED.md) - 5 min
+3. [README.md](../../README.md) - 5 min
+4. [INSTALLATION.md](../installation/INSTALLATION.md) - 20 min
 5. [FAQ.md](FAQ.md) - Common questions and scenarios
 6. Install: `sudo ./scripts/mynodeone`
-7. [POST_INSTALLATION_GUIDE.md](../guides/POST_INSTALLATION_GUIDE.md) - After install ⭐
+7. [POST_INSTALLATION_GUIDE.md](../installation/POST_INSTALLATION_GUIDE.md) - After install
 8. [operations.md](../guides/operations.md) - Daily operations
-9. [FAQ.md](FAQ.md) - When questions arise
 
 ### Intermediate (Some Linux/Docker experience)
-1. [README.md](../README.md) - 5 min
-2. [INSTALLATION.md](../guides/INSTALLATION.md) - 10 min
+1. [README.md](../../README.md) - 5 min
+2. [INSTALLATION.md](../installation/INSTALLATION.md) - 10 min
 3. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - 15 min
 4. Install: `sudo ./scripts/mynodeone`
 5. [operations.md](../guides/operations.md) - Reference
@@ -103,18 +95,18 @@ mynodeone/
 
 ---
 
-## 🔍 Find Specific Topics
+## Find Specific Topics
 
 ### Installation & Setup
 - Main installer: `scripts/mynodeone`
-- Installation guide: [INSTALLATION.md](../guides/INSTALLATION.md)
-- Setup options: [INSTALLATION.md](../guides/INSTALLATION.md) - node types and scenarios
+- Installation guide: [INSTALLATION.md](../installation/INSTALLATION.md)
+- Setup options: [INSTALLATION.md](../installation/INSTALLATION.md) - node types and scenarios
 - Configuration wizard: `scripts/interactive-setup.sh`
-- **VPS Edge Node Setup:** [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) ⭐ NEW
-- VPS Installation: [docs/guides/VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md)
+- VPS Edge Node Setup: [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
+- VPS Installation: [VPS-INSTALLATION.md](../installation/VPS-INSTALLATION.md)
 
 ### Comparisons & Alternatives
-- **MyNodeOne vs Alternatives:** [docs/reference/comparison-guide.md](comparsion-guide.md) ⭐
+- **MyNodeOne vs Alternatives:** [comparison-guide.md](comparison-guide.md)
 - MyNodeOne vs OpenStack
 - MyNodeOne vs Proxmox
 - MyNodeOne vs Bare Kubernetes
@@ -146,16 +138,16 @@ mynodeone/
 
 ### Scaling
 - Add workers: [scaling.md](../guides/scaling.md)
-- Add VPS: [INSTALLATION.md](INSTALLATION.md) - Section "Step 4"
-- **Add VPS Edge Node:** [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) ⭐
+- Add VPS: [INSTALLATION.md](../installation/INSTALLATION.md) - Section 2
+- Add VPS Edge Node: [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
 - High availability: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 ---
 
-## 💡 Quick Answers
+## Quick Answers
 
 **"Where do I start?"**  
-→ [GETTING-STARTED.md](GETTING-STARTED.md)
+→ [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
 
 **"How do I install?"**  
 → `sudo ./scripts/mynodeone`
@@ -164,7 +156,7 @@ mynodeone/
 → [networking.md](networking.md) - Default networking (automatic)
 
 **"What options do I have?"**  
-→ [INSTALLATION.md](../guides/INSTALLATION.md) - node types and basic scenarios
+→ [INSTALLATION.md](../installation/INSTALLATION.md) - node types and basic scenarios
 
 **"How do I add nodes?"**  
 → [scaling.md](../guides/scaling.md)
@@ -179,25 +171,25 @@ mynodeone/
 → [FAQ.md](FAQ.md)
 
 **"How do I add a domain to my VPS?"**  
-→ [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - Section "Adding Domain Later"
+→ [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
 
 **"How do I expose apps publicly?"**  
-→ [docs/guides/VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
+→ [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md)
 
 ---
 
-## 📚 Documentation by Type
+## Documentation by Type
 
 ### Guides (how-to)
-- [INSTALLATION.md](../guides/INSTALLATION.md) - installation walkthrough
+- [INSTALLATION.md](../installation/INSTALLATION.md) - installation walkthrough
 - [VPS-EDGE-NODE-GUIDE.md](../guides/VPS-EDGE-NODE-GUIDE.md) - VPS edge node and domain setup
-- [VPS-INSTALLATION.md](../guides/VPS-INSTALLATION.md) - VPS control plane setup
+- [VPS-INSTALLATION.md](../installation/VPS-INSTALLATION.md) - VPS control plane setup
 - [operations.md](../guides/operations.md) - daily management
 - [scaling.md](../guides/scaling.md) - growth strategies
 - [troubleshooting.md](../guides/troubleshooting.md) - problem solving
 
 ### Explanations (understanding)
-- [README.md](../README.md) - what MyNodeOne is
+- [README.md](../../README.md) - what MyNodeOne is
 - [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - how it works
 - [storage-guide.md](storage-guide.md) - storage options explained
 - [networking.md](networking.md) - networking explained
@@ -209,18 +201,18 @@ mynodeone/
 - `scripts/` - all automation
 
 ### Tutorials (Learning)
-- [GETTING-STARTED.md](GETTING-STARTED.md) - Guided introduction
-- [INSTALLATION.md](INSTALLATION.md) - Step-by-step
+- [GETTING-STARTED.md](../guides/GETTING-STARTED.md) - Guided introduction
+- [INSTALLATION.md](../installation/INSTALLATION.md) - Step-by-step
 - `manifests/examples/` - Example deployments
 
 ---
 
-## 🎯 Your Next Action
+## Your Next Action
 
 Based on where you are:
 
 ### Just Discovered MyNodeOne
-→ Read [GETTING-STARTED.md](GETTING-STARTED.md)
+→ Read [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
 
 ### Ready to Install
 → Run `sudo ./scripts/mynodeone`
@@ -239,4 +231,4 @@ Based on where you are:
 
 ---
 
-**Still lost?** Start at [GETTING-STARTED.md](GETTING-STARTED.md) - it guides you through everything!
+**Still lost?** Start at [GETTING-STARTED.md](../guides/GETTING-STARTED.md) - it guides you through everything!

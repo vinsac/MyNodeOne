@@ -1,22 +1,22 @@
 # What To Do After Installation
 
-**Congratulations!** 🎉 Your MyNodeOne cluster is installed. This guide shows you exactly what to do next.
+Your MyNodeOne cluster is installed. This guide shows you what to do next.
 
 ---
 
-## 📍 Where Are You Now?
+## Where Are You Now?
 
 You just ran the installation on your **control plane machine**. This machine is now the "brain" of your cluster.
 
 **Your control plane machine:**
-- ✅ Has Kubernetes running
-- ✅ Has all services installed (Grafana, ArgoCD, MinIO, Longhorn)
-- ✅ Is connected to Tailscale VPN
-- ✅ Can be accessed from any device on your Tailscale network
+- Has Kubernetes running
+- Has all services installed (Grafana, ArgoCD, MinIO, Longhorn)
+- Is connected to Tailscale VPN
+- Can be accessed from any device on your Tailscale network
 
 ---
 
-## 🎯 Quick Reference: What Can You Do?
+## Quick Reference: What Can You Do?
 
 | What You Want | Where To Do It | How |
 |--------------|----------------|-----|
@@ -29,7 +29,7 @@ You just ran the installation on your **control plane machine**. This machine is
 
 ---
 
-## 🖥️ Accessing Your Cluster
+## Accessing Your Cluster
 
 ### Option 1: From Control Plane (Direct)
 
@@ -169,7 +169,7 @@ kubectl get nodes
 
 ---
 
-## 📊 Monitoring Your Cluster
+## Monitoring Your Cluster
 
 ### Access Grafana (Metrics & Dashboards)
 
@@ -232,7 +232,7 @@ kubectl logs -n <namespace> -l app=my-app
 
 ---
 
-## 💾 Managing Storage
+## Managing Storage
 
 ### Access Longhorn UI
 
@@ -292,7 +292,7 @@ mc cp myfile.txt myminio/my-bucket/
 
 ---
 
-## 🚀 Deploying Applications
+## Deploying Applications
 
 ### Method 1: Deploy Demo App (Easiest - Start Here!)
 
@@ -445,7 +445,7 @@ kubectl delete namespace llm-chat
 
 ---
 
-## 🎮 Using AI-Assisted Development (Cursor, Windsurf, etc.)
+## Using AI-Assisted Development
 
 **Perfect for:** Non-technical users, developers who want to move fast
 
@@ -480,7 +480,7 @@ AI: [Shows you the commands]
 
 ---
 
-## 🌐 Accessing Services From Anywhere
+## Accessing Services From Anywhere
 
 ### Current Setup: Tailscale VPN + Subnet Routes
 
@@ -564,7 +564,7 @@ sudo nano /etc/hosts
 
 ---
 
-## 🔧 Common Tasks
+## Common Tasks
 
 ### Add More Machines (Workers)
 
@@ -644,7 +644,7 @@ mc mirror myminio/my-bucket /backups/my-bucket
 
 ---
 
-## 📚 Learning Resources
+## Learning Resources
 
 ### Understanding Tools
 
@@ -676,7 +676,7 @@ mc mirror myminio/my-bucket /backups/my-bucket
 
 ---
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Pods Not Starting
 
@@ -763,7 +763,7 @@ kubectl get pv,pvc -A
 
 ---
 
-## 🎯 Next Steps Roadmap
+## Next Steps Roadmap
 
 ### Week 1: Learn the Basics
 - [ ] Deploy demo app
@@ -791,7 +791,7 @@ kubectl get pv,pvc -A
 
 ---
 
-## 💬 Getting Help
+## Getting Help
 
 ### Documentation
 - **Quick Start:** [DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)
@@ -812,7 +812,7 @@ kubectl get pv,pvc -A
 
 ---
 
-## 📋 Checklist: What You Should Do Now
+## Checklist: What You Should Do Now
 
 **Immediate (Today):**
 - [ ] Run `sudo ./scripts/show-credentials.sh` and save credentials to password manager
@@ -835,7 +835,7 @@ kubectl get pv,pvc -A
 
 ---
 
-## 🎉 You're Ready!
+## You're Ready!
 
 Your private cloud is running! You have:
 

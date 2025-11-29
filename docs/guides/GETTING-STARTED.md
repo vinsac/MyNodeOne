@@ -18,7 +18,7 @@ This guide teaches you:
 
 ## Ready to install?
 
-→ Go to **[INSTALLATION.md](INSTALLATION.md)** for step-by-step installation instructions!
+→ Go to **[INSTALLATION.md](../installation/INSTALLATION.md)** for step-by-step installation instructions!
 
 **Time:** 60 minutes from start to running cluster (this can vary based on hardware and network speed).
 
@@ -27,7 +27,7 @@ This guide teaches you:
 ## How to use these docs
 
 - If you are completely new to the terminal, start with [TERMINAL-BASICS.md](TERMINAL-BASICS.md).
-- When you are ready to install, follow [INSTALLATION.md](INSTALLATION.md) for the full step-by-step guide.
+- When you are ready to install, follow [INSTALLATION.md](../installation/INSTALLATION.md) for the full step-by-step guide.
 - After installation, use [operations.md](operations.md) and [../reference/FAQ.md](../reference/FAQ.md) to run and troubleshoot your cluster.
 - For a complete documentation map, see [../reference/DOCUMENTATION-INDEX.md](../reference/DOCUMENTATION-INDEX.md).
 

@@ -4,7 +4,7 @@
 
 ---
 
-## 📖 How to Use This Guide
+## How to Use This Guide
 
 This guide has **4 independent sections** - one for each node type:
 
@@ -169,7 +169,7 @@ sudo ./scripts/mynodeone
 
 **Success looks like:**
 ```
-Your MyNodeOne node has been set up successfully! 🎉
+Your MyNodeOne node has been set up successfully!
 
 Next steps:
   1. Review credentials in your home directory (`~/mynodeone-*-credentials.txt`)
@@ -272,7 +272,7 @@ A VPS (Virtual Private Server) is a virtual machine you rent from a hosting prov
 
 ---
 
-## 🔒 Security Architecture
+## Security Architecture
 
 **Important:** VPS Edge Nodes are **ONLY** installed from the Control Plane for security reasons:
 - Control Plane manages VPS configuration remotely
@@ -381,7 +381,7 @@ Open a fresh terminal window on your control plane machine before running the co
 
 ### Choose Your Installation Method
 
-**Method 1: One-Click Installation (Recommended)** ⚡
+**Method 1: One-Click Installation (Recommended)**
 
 Fast, non-interactive installation with all parameters in one command:
 
@@ -408,7 +408,7 @@ sudo ./scripts/install-vps-edge-node.sh \
 - `--email`: Your email for SSL certificates
  - `--location`: Optional label for where this VPS is hosted (for example, `NYC`, `London`, or a provider region name). Used in internal registries and dashboards.
 
-**Method 2: Interactive Installation** 💬
+**Method 2: Interactive Installation**
 
 Step-by-step with prompts:
 
@@ -589,7 +589,7 @@ In this section, "management laptop" and "management workstation" are used inter
 
 ---
 
-## ⚠️ Prerequisites
+## Prerequisites
 
 > **REQUIREMENT:** Control plane must be installed and passwordless sudo configured!
 
@@ -805,7 +805,7 @@ sudo ./scripts/sync-dns.sh
 
 ---
 
-## 🔧 Troubleshooting Management Laptop
+## Troubleshooting Management Laptop
 
 ### Issue: "sudo: a terminal is required to read the password"
 
@@ -962,5 +962,5 @@ Your cluster now has additional compute resources!
 
 ---
 
-**Installation complete! Welcome to MyNodeOne! 🎉**
+**Installation complete! Welcome to MyNodeOne!**
 

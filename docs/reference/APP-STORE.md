@@ -1,10 +1,10 @@
 # MyNodeOne App Store
 
-## 🎯 Overview
+## Overview
 
 MyNodeOne now includes a built-in **App Store** with one-click installations for popular self-hosted applications. Non-technical users can easily deploy powerful applications to their personal cloud without writing any code.
 
-## 📖 Installation Guide
+## Installation Guide
 
 **NEW!** For comprehensive installation instructions, error handling, and troubleshooting:
 
@@ -20,7 +20,7 @@ Covers:
 
 ---
 
-## 🌐 How Do You Access Apps?
+## How Do You Access Apps?
 
 **Great News!** Every app gets an **easy-to-remember address** automatically:
 
@@ -32,7 +32,7 @@ nextcloud.mynodeone.local   ← Your Dropbox replacement
 ...and so on!
 ```
 
-### 🏠 On Your Laptop/Desktop (Local Network)
+### On Your Laptop/Desktop (Local Network)
 
 **Works immediately after DNS setup!** Just type the address in your browser.
 
@@ -46,7 +46,7 @@ http://jellyfin.mynodeone.local
 - ✅ Your desktop computer
 - ✅ Any computer that ran `setup-client-dns.sh`
 
-### 📱 On Mobile Devices (Requires Tailscale)
+### On Mobile Devices (Requires Tailscale)
 
 **IMPORTANT: Mobile phones and tablets need Tailscale installed**
 
@@ -72,7 +72,7 @@ http://jellyfin.mynodeone.local
 - ✅ No port forwarding or router setup needed
 - ✅ Free for personal use!
 
-### 🌐 Public Access (Advanced)
+### Public Access (Advanced)
 
 Want to share Jellyfin with family not on your network?
 
@@ -80,9 +80,9 @@ Want to share Jellyfin with family not on your network?
 - Requires VPS edge node (~$5/month)
 - See EDGE_NODE_GUIDE.md for setup
 
-## 📦 Available Applications
+## Available Applications
 
-### 🤖 AI & Assistant
+### AI & Assistant
 - **LLM Chat (Open WebUI + Ollama)** ✅ - Private AI chat with local LLMs (ChatGPT alternative)
   - 100% private - no data leaves your cluster
   - Download models: phi3, llama3.2, mistral, and more
@@ -112,7 +112,7 @@ Want to share Jellyfin with family not on your network?
 
 **Legend:** ✅ Ready to use | 🚧 Coming soon
 
-## 🚀 How to Install Apps
+## How to Install Apps
 
 ### Method 1: Interactive App Store (Easiest)
 
@@ -161,7 +161,7 @@ sudo ./scripts/apps/install-homepage.sh
 4. Copy the installation command
 5. Run it on your control plane
 
-## 💡 What Happens During Installation?
+## What Happens During Installation?
 
 Each script automatically:
 1. ✅ Creates isolated namespace
@@ -171,7 +171,7 @@ Each script automatically:
 5. ✅ Generates secure random passwords
 6. ✅ Displays access URL and credentials
 
-## 📊 Resource Requirements
+## Resource Requirements
 
 | Application | RAM | CPU | Storage | Notes |
 |------------|-----|-----|---------|-------|
@@ -181,7 +181,7 @@ Each script automatically:
 | Minecraft | 2-4GB | 2 cores | 5GB | Adjustable memory |
 | Homepage | 256MB | 0.2 core | 500MB | Just for dashboard |
 
-## 🎯 Recommended Installation Order
+## Recommended Installation Order
 
 ### For Personal/Family Use:
 1. **Vaultwarden** - Secure passwords first
@@ -203,7 +203,7 @@ Each script automatically:
 3. **Homepage** - Organize all media services
 4. **Nextcloud** - Share files with family
 
-## 🔍 Managing Installed Apps
+## Managing Installed Apps
 
 ### View Installed Apps
 ```bash
@@ -232,7 +232,7 @@ kubectl rollout restart deployment/<app-name> -n <app-name>
 kubectl delete namespace <app-name>
 ```
 
-## 🔐 Security Features
+## Security Features
 
 All installed apps include:
 - ✅ **Strong passwords** - Auto-generated 32-character passwords
@@ -241,7 +241,7 @@ All installed apps include:
 - ✅ **Persistent storage** - Data replicated via Longhorn
 - ✅ **Encrypted network** - All traffic via Tailscale VPN
 
-## 📱 Mobile App Support
+## Mobile App Support
 
 Many apps have excellent mobile clients:
 
@@ -254,7 +254,7 @@ Many apps have excellent mobile clients:
 | Mattermost | ✅ | ✅ | ✅ |
 | Minecraft | ✅ | ✅ | - |
 
-### 📱 How to Set Up Mobile Apps
+### How to Set Up Mobile Apps
 
 **⚠️ IMPORTANT: Install Tailscale on your phone FIRST!**
 
@@ -285,7 +285,7 @@ All mobile apps require Tailscale to access your MyNodeOne services.
 
 **Note:** Keep Tailscale running in background for seamless access.
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### App won't start
 ```bash
@@ -322,7 +322,7 @@ kubectl top pods -n <app-name>
 kubectl edit deployment <app-name> -n <app-name>
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Want to add a new app to the store?
 
@@ -352,7 +352,7 @@ Want to add a new app to the store?
 - ✅ Must display access info clearly
 - ✅ Should have reasonable resource defaults
 
-## 📚 More information
+## More Information
 
 - **Full installation scripts**: `scripts/apps/`
 - **App-specific docs**: see each app's official documentation
@@ -360,7 +360,7 @@ Want to add a new app to the store?
 - **Storage management**: [storage-guide.md](../storage-guide.md)
 - **Scaling guide**: [scaling.md](../scaling.md)
 
-## 💬 Need help?
+## Need Help?
 
 - Open an issue on GitHub
 - Check the FAQ: [FAQ](FAQ.md)
@@ -368,4 +368,4 @@ Want to add a new app to the store?
 
 ---
 
-**Built with ❤️ to make self-hosting accessible to everyone**
+**Built to make self-hosting accessible to everyone**

@@ -4,7 +4,7 @@
 
 ---
 
-## 📖 Basic Terms
+## Basic Terms
 
 ### Cloud
 **Simple:** Computers that run your applications, accessible from anywhere via the internet.
@@ -68,7 +68,7 @@
 
 ---
 
-## 🌐 Networking Terms
+## Networking Terms
 
 ### Tailscale
 **Simple:** Software that securely connects your computers together, even if they're in different locations.
@@ -90,7 +90,7 @@
 ---
 
 ### SSL Certificate
-**Simple:** Makes your website show the padlock 🔒 (secure connection).
+**Simple:** Makes your website show the padlock (secure connection).
 
 **Example:** Like putting mail in a locked mailbox instead of leaving it on your doorstep.
 
@@ -107,7 +107,7 @@
 
 ---
 
-## 💾 Storage Terms
+## Storage Terms
 
 ### Storage
 **Simple:** Where your data and files are saved.
@@ -159,7 +159,7 @@
 
 ---
 
-## 🚀 Application Terms
+## Application Terms
 
 ### Container
 **Simple:** A packaged application with everything it needs to run.
@@ -200,7 +200,7 @@
 
 ---
 
-## 📊 Monitoring Terms
+## Monitoring Terms
 
 ### Monitoring
 **Simple:** Watching what's happening in your system in real-time.
@@ -239,7 +239,7 @@
 
 ---
 
-## 🔄 GitOps Terms
+## GitOps Terms
 
 ### GitOps
 **Simple:** Your applications automatically update when you push changes to GitHub.
@@ -271,7 +271,7 @@
 
 ---
 
-## ⚙️ System Terms
+## System Terms
 
 ### Ubuntu
 **Simple:** The version of Linux that MyNodeOne uses.
@@ -309,7 +309,7 @@
 
 ---
 
-## 🔐 Security Terms
+## Security Terms
 
 ### SSH
 **Simple:** Secure way to access one computer from another.
@@ -334,7 +334,7 @@
 
 ---
 
-## 💰 Cost Terms
+## Cost Terms
 
 ### Egress Fees
 **Simple:** Charges for data leaving a cloud provider.
@@ -361,7 +361,7 @@
 
 ---
 
-## 🎯 Quick Reference
+## Quick Reference
 
 ### When You See...
 
@@ -384,12 +384,12 @@
 **This is normal!** You don't need to understand everything to use MyNodeOne.
 
 **Think of it like driving a car:**
-- ❌ You don't need to know how the engine works
-- ✅ You just need to know gas, brake, steering
+- You don't need to know how the engine works
+- You just need to know gas, brake, steering
 
 **With MyNodeOne:**
-- ❌ You don't need to know how Kubernetes works
-- ✅ You just need to run `sudo ./scripts/mynodeone` and answer questions
+- You don't need to know how Kubernetes works
+- You just need to run `sudo ./scripts/mynodeone` and answer questions
 
 ---
 
@@ -402,4 +402,4 @@
 
 ---
 
-**Remember:** Everyone was a beginner once. Take it step by step! 🚀
+**Remember:** Everyone was a beginner once. Take it step by step.

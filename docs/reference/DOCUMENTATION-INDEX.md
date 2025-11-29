@@ -48,7 +48,8 @@ mynodeone/
 ├── docs/
 │   ├── installation/                 ← Installation guides
 │   │   ├── INSTALLATION.md           ← Main installation guide
-│   │   └── POST_INSTALLATION_GUIDE.md← After installation
+│   │   ├── POST_INSTALLATION_GUIDE.md← After installation
+│   │   └── UNINSTALL.md              ← Removing MyNodeOne
 │   ├── operations/                   ← Cluster management
 │   │   └── CLUSTER-MANAGEMENT.md     ← Day-to-day operations
 │   ├── guides/                       ← How-to guides

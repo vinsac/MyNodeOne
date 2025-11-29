@@ -22,10 +22,10 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"How do I manage it?"** → [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 - **"Deploy an app"** → Check `manifests/examples/`
 - **"Check cluster health"** → Run `./scripts/cluster-status.sh`
-- **"Add more nodes"** → [scaling.md](../guides/scaling.md)
+- **"Add more nodes"** → [scaling.md](../operations/scaling.md)
 
 ### Troubleshooting
-- **"Something broke"** → [troubleshooting.md](../guides/troubleshooting.md)
+- **"Something broke"** → [troubleshooting.md](../operations/troubleshooting.md)
 - **"Common questions"** → [FAQ](FAQ.md)
 - **"Network issues"** → [networking.md](networking.md)
 
@@ -52,14 +52,17 @@ mynodeone/
 │   │   └── UNINSTALL.md              ← Removing MyNodeOne
 │   ├── operations/                   ← Cluster management
 │   │   ├── CLUSTER-MANAGEMENT.md     ← Day-to-day operations
-│   │   └── DOMAIN-AND-PUBLIC-ACCESS.md ← Domains and public apps
-│   ├── guides/                       ← How-to guides
+│   │   ├── DOMAIN-AND-PUBLIC-ACCESS.md ← Domains and public apps
+│   │   ├── scaling.md                ← Adding nodes
+│   │   └── troubleshooting.md        ← Problem solving
+│   ├── guides/                       ← User guides
 │   │   ├── GETTING-STARTED.md        ← Entry point for new users
-│   │   └── TERMINAL-BASICS.md        ← Terminal for beginners
+│   │   ├── TERMINAL-BASICS.md        ← Terminal for beginners
+│   │   └── MOBILE-ACCESS-GUIDE.md    ← Phone/tablet access
 │   ├── reference/                    ← Reference documentation
 │   │   ├── APP-STORE.md              ← Available apps
 │   │   ├── FAQ.md                    ← Common questions
-│   │   └── GLOSSARY.md               ← Term definitions
+│   │   └── SECURITY.md               ← Security and credentials
 │   ├── architecture/                 ← System architecture
 │   └── use-cases/                    ← Deployment scenarios
 ├── manifests/                        ← Kubernetes manifests
@@ -86,7 +89,7 @@ mynodeone/
 3. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - 15 min
 4. Install: `sudo ./scripts/mynodeone`
 5. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Reference
-6. [scaling.md](../guides/scaling.md) - When ready to grow
+6. [scaling.md](../operations/scaling.md) - When ready to grow
 
 ### Advanced (Kubernetes experience)
 1. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Technical design
@@ -120,26 +123,26 @@ mynodeone/
 ### Networking
 - Default (Tailscale): [networking.md](networking.md)
 - All options: [networking.md](networking.md) - Section "Alternative Solutions"
-- Troubleshooting: [troubleshooting.md](../guides/troubleshooting.md)
+- Troubleshooting: [troubleshooting.md](../operations/troubleshooting.md)
 
 ### Storage
 - Disk setup: [storage-guide.md](storage-guide.md)
 - Architecture: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Section "Storage Layer"
-- Operations: [operations.md](../guides/operations.md) - Section "Storage Management"
+- Operations: [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 
 ### Applications
 - Example apps: `manifests/examples/`
 - Create new app: `scripts/create-app.sh`
-- Deploy guide: [operations.md](../guides/operations.md)
+- Deploy guide: [APP-STORE.md](APP-STORE.md)
 - LLM support: `manifests/examples/llm-cpu-inference.yaml`
 
 ### Monitoring
 - Setup: Automatic during installation
-- Usage: [operations.md](../guides/operations.md) - Section "Monitoring"
-- Troubleshooting: [troubleshooting.md](../guides/troubleshooting.md)
+- Usage: [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
+- Troubleshooting: [troubleshooting.md](../operations/troubleshooting.md)
 
 ### Scaling
-- Add workers: [scaling.md](../guides/scaling.md)
+- Add workers: [scaling.md](../operations/scaling.md)
 - Add VPS: [INSTALLATION.md](../installation/INSTALLATION.md) - Section 2
 - Add VPS Edge Node: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 - High availability: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
@@ -161,10 +164,10 @@ mynodeone/
 → [INSTALLATION.md](../installation/INSTALLATION.md) - node types and basic scenarios
 
 **"How do I add nodes?"**  
-→ [scaling.md](../guides/scaling.md)
+→ [scaling.md](../operations/scaling.md)
 
 **"Something's broken!"**  
-→ [troubleshooting.md](../guides/troubleshooting.md)
+→ [troubleshooting.md](../operations/troubleshooting.md)
 
 **"How does this work?"**  
 → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
@@ -186,8 +189,8 @@ mynodeone/
 - [INSTALLATION.md](../installation/INSTALLATION.md) - installation walkthrough
 - [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md) - domains and public apps
 - [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - daily management
-- [scaling.md](../guides/scaling.md) - growth strategies
-- [troubleshooting.md](../guides/troubleshooting.md) - problem solving
+- [scaling.md](../operations/scaling.md) - growth strategies
+- [troubleshooting.md](../operations/troubleshooting.md) - problem solving
 
 ### Explanations (understanding)
 - [README.md](../../README.md) - what MyNodeOne is
@@ -222,13 +225,13 @@ Based on where you are:
 → Check [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 
 ### Having Issues
-→ See [troubleshooting.md](../guides/troubleshooting.md)
+→ See [troubleshooting.md](../operations/troubleshooting.md)
 
 ### Want to Learn More
 → Read [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 ### Ready to Grow
-→ Follow [scaling.md](../guides/scaling.md)
+→ Follow [scaling.md](../operations/scaling.md)
 
 ---
 

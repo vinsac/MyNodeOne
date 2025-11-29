@@ -171,8 +171,48 @@ kubectl logs -n <namespace> -l app=my-app
 
 ---
 
+## Reboot Behavior
+
+### Auto-Start Services
+
+After reboot, these services start automatically:
+
+| Service | Auto-Start | Notes |
+|---------|-----------|-------|
+| K3s | Yes | Kubernetes cluster |
+| Tailscale | Yes | VPN networking |
+| MetalLB | Yes | LoadBalancer (runs in K3s) |
+| Longhorn | Yes | Storage (runs in K3s) |
+
+### External USB Drives
+
+If using external USB drives for storage, run this fix once to ensure proper boot order:
+
+```bash
+sudo ./scripts/fix-usb-disk-boot.sh
+```
+
+This ensures K3s waits for USB drives to be detected and mounted before starting.
+
+### After Reboot Verification
+
+```bash
+# Check K3s is running
+sudo systemctl status k3s
+
+# Check disks are mounted
+df -h | grep longhorn
+
+# Check cluster is healthy
+kubectl get nodes
+kubectl get pods -A
+```
+
+---
+
 ## Getting Help
 
 - **FAQ:** [FAQ.md](../reference/FAQ.md)
-- **Troubleshooting Guide:** [troubleshooting.md](../guides/troubleshooting.md)
+- **Troubleshooting:** [troubleshooting.md](troubleshooting.md)
+- **Scaling:** [scaling.md](scaling.md)
 - **GitHub Issues:** https://github.com/vinsac/MyNodeOne/issues

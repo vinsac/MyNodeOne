@@ -602,7 +602,6 @@ mynodeone/
 
 ## 📜 Project Information
 
-**Version:** 1.0.0  
 **Author:** Vinay Sachdeva  
 **License:** MIT ; For comprehensive legal terms, see [`DISCLAIMER.md`](DISCLAIMER.md) and [`LICENSE`](LICENSE).
 **Repository:** https://github.com/vinsac/MyNodeOne  

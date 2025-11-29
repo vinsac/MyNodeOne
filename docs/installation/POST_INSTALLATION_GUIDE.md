@@ -15,7 +15,7 @@ During installation, the installer displayed your service URLs and credentials. 
 | **Longhorn** | `http://longhorn.<your-domain>.local` | Storage management |
 | **MinIO** | `http://minio.<your-domain>.local` | S3-compatible storage |
 
-**Credentials** were displayed during installation. If you need them again:
+**Credentials** were displayed during installation. If you need them again, run on **control plane**:
 ```bash
 sudo ./scripts/show-credentials.sh
 ```
@@ -38,6 +38,7 @@ After this, any device on your Tailscale network can access your services.
 
 ## Verify Your Cluster
 
+Run on **control plane** or **management laptop** (after setup):
 ```bash
 # Check nodes are ready
 kubectl get nodes
@@ -53,8 +54,7 @@ kubectl get svc -A
 
 ## Deploy Your First App
 
-Test your cluster by deploying the demo app:
-
+Run on **control plane**:
 ```bash
 sudo ./scripts/deploy-demo-app.sh deploy
 ```
@@ -68,8 +68,7 @@ sudo ./scripts/deploy-demo-app.sh remove
 
 ## Install Apps from the App Store
 
-Browse and install self-hosted apps:
-
+Run on **control plane**:
 ```bash
 sudo ./scripts/app-store.sh
 ```

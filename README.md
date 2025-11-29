@@ -41,18 +41,6 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 - **Fully Generic** - Works with any hardware, names, IPs
 - **LLM Support** - Run language models on CPU
 
-## Quick Start
-
-```bash
-git clone https://github.com/vinsac/MyNodeOne.git
-cd MyNodeOne
-sudo ./scripts/mynodeone
-```
-
-**New to Linux/terminal?** Start with [TERMINAL-BASICS.md](docs/guides/TERMINAL-BASICS.md)
-
-**Full installation guide:** [INSTALLATION.md](docs/guides/INSTALLATION.md)
-
 ## Architecture
 
 ```

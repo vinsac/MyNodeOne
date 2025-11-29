@@ -277,30 +277,21 @@ A fundamental security principle in MyNodeOne is the **unidirectional flow of tr
 
 ## Resource Allocation
 
-### Example Control Plane (16-32GB RAM, 4-8 cores)
+### Example Control Plane (16GB RAM, 4 cores)
 
-**Control Plane** (~4GB RAM)
-- K3s server
-- etcd
-- CoreDNS
-- Metrics server
+**System Overhead** (~6GB RAM)
+- K3s server, etcd, CoreDNS, Metrics server (~2GB)
+- Longhorn manager (~1GB)
+- Monitoring stack (Prometheus, Grafana, Loki) (~2GB)
+- ArgoCD (~1GB)
 
-**Storage** (~20GB RAM)
-- Longhorn manager
-- MinIO
-
-**Monitoring** (~8GB RAM)
-- Prometheus
-- Grafana
-- Loki
-
-**GitOps** (~2GB RAM)
-- ArgoCD
-
-**Available for Apps** (~222GB RAM)
+**Available for Apps** (~10GB RAM)
 - Your applications run here
-- Can run 50-100+ microservices
-- Or several large apps (LLMs, databases)
+- Suitable for several lightweight apps or a few medium apps
+
+### Larger Setup (32GB+ RAM)
+
+With more RAM, you can run heavier workloads like databases, media servers, or LLMs. Add worker nodes to scale horizontally.
 
 ## Comparison with Cloud Providers
 

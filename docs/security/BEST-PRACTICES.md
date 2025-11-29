@@ -4,6 +4,23 @@ Production security hardening guide for MyNodeOne deployments.
 
 ---
 
+## What's Already Enabled
+
+MyNodeOne includes these security features by default (no action required):
+
+| Feature | Details |
+|---------|---------|
+| Secrets Encryption | AES-256 encryption at rest |
+| Audit Logging | All API requests logged to `/var/log/k3s-audit.log` |
+| Pod Security Standards | Baseline enforcement, restricted audit/warn |
+| Firewall (UFW) | Default deny, allow SSH and Tailscale only |
+| Fail2ban | SSH brute-force protection |
+| Network Isolation | Services only accessible via Tailscale |
+
+This guide covers additional hardening beyond the defaults.
+
+---
+
 ## Quick Checklist
 
 ### After Installation
@@ -147,34 +164,7 @@ subjects:
 
 ## Secrets Management
 
-### Encrypt Secrets at Rest
-
-Create encryption config:
-
-```yaml
-# /etc/rancher/k3s/encryption.yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-      - secrets
-    providers:
-      - aescbc:
-          keys:
-            - name: key1
-              secret: <BASE64_ENCODED_32_BYTE_KEY>
-      - identity: {}
-```
-
-Generate key:
-```bash
-head -c 32 /dev/urandom | base64
-```
-
-Add to K3s config and restart:
-```bash
-sudo systemctl restart k3s
-```
+Secrets encryption at rest is enabled by default. For additional secrets management:
 
 ### External Secrets Operator
 

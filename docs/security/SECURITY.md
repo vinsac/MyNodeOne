@@ -4,18 +4,19 @@ This guide explains how MyNodeOne handles security and what actions you should t
 
 ---
 
-## Security Layers
+## Built-in Security (Enabled by Default)
 
-MyNodeOne implements multiple security layers by default:
+MyNodeOne enables production-grade security during installation. These features are configured automatically in `bootstrap-control-plane.sh`:
 
-| Layer | Protection | Status |
-|-------|------------|--------|
+| Feature | Implementation | Status |
+|---------|----------------|--------|
+| Secrets Encryption at Rest | AES-256 encryption via `/etc/rancher/k3s/encryption-config.yaml` | Enabled |
+| Kubernetes Audit Logging | Logs to `/var/log/k3s-audit.log` with 30-day retention | Enabled |
+| Pod Security Standards | Baseline enforcement, restricted audit/warn | Enabled |
+| Firewall (UFW) | Default deny incoming, allow SSH and Tailscale only | Enabled |
+| Fail2ban | SSH brute-force protection | Enabled |
 | Network Isolation | All services accessible only via Tailscale VPN | Enabled |
-| Kubernetes RBAC | Role-based access control | Enabled |
-| Pod Security Standards | Containers run as non-root, no privilege escalation | Enabled |
-| Firewall (UFW) | Only SSH and Tailscale traffic allowed | Enabled |
-| Audit Logging | API requests logged to `/var/log/k3s-audit.log` | Enabled |
-| File Permissions | Credential files have 600 permissions (root only) | Enabled |
+| Kubeconfig Permissions | Written with mode 0600 (owner read/write only) | Enabled |
 
 ---
 
@@ -96,21 +97,14 @@ sudo systemctl restart sshd
 
 ---
 
-## Secrets Encryption at Rest
+## Security Configuration Details
 
-Kubernetes stores secrets in etcd. By default, these are base64 encoded (not encrypted). MyNodeOne can enable encryption at rest.
+### Secrets Encryption at Rest
 
-### Enable Encryption
-
-```bash
-# Generate encryption key
-head -c 32 /dev/urandom | base64
-
-# Create encryption config
-sudo nano /etc/rancher/k3s/encryption-config.yaml
-```
+MyNodeOne automatically encrypts all Kubernetes secrets using AES-256. This is configured during installation:
 
 ```yaml
+# /etc/rancher/k3s/encryption-config.yaml (auto-generated)
 apiVersion: apiserver.config.k8s.io/v1
 kind: EncryptionConfiguration
 resources:
@@ -120,16 +114,96 @@ resources:
       - aescbc:
           keys:
             - name: key1
-              secret: <BASE64_KEY_FROM_ABOVE>
-      - identity: {}
+              secret: <AUTO_GENERATED_KEY>
+      - identity: {}  # Fallback for reading old unencrypted data
 ```
 
-```bash
-# Add to K3s config
-sudo nano /etc/rancher/k3s/config.yaml
-# Add: kube-apiserver-arg: "encryption-provider-config=/etc/rancher/k3s/encryption-config.yaml"
+The encryption key is generated during installation using `head -c 32 /dev/urandom | base64`.
 
-sudo systemctl restart k3s
+### Audit Logging
+
+All Kubernetes API requests are logged with the following policy:
+
+- **Admin actions**: Full request/response logging
+- **Secret access**: Metadata logging
+- **Pod operations**: Request-level logging for create/update/delete
+- **Everything else**: Metadata logging
+
+Logs are stored at `/var/log/k3s-audit.log` with:
+- 30-day retention
+- 10 backup files
+- 100MB max file size
+
+### Pod Security Standards
+
+MyNodeOne enforces baseline Pod Security Standards:
+
+```yaml
+# /etc/rancher/k3s/pod-security-config.yaml
+defaults:
+  enforce: "baseline"        # Block non-compliant pods
+  audit: "restricted"        # Log restricted violations
+  warn: "restricted"         # Warn on restricted violations
+exemptions:
+  namespaces: [kube-system, longhorn-system, metallb-system, cert-manager]
+```
+
+### Firewall Configuration
+
+UFW is configured on all nodes:
+
+**Control Plane and Worker Nodes:**
+```
+Default: deny incoming, allow outgoing
+Allow: SSH (22/tcp)
+Allow: All traffic on tailscale0 interface
+```
+
+**VPS Edge Nodes:**
+```
+Default: deny incoming, allow outgoing
+Allow: SSH (22/tcp)
+Allow: HTTP (80/tcp)
+Allow: HTTPS (443/tcp)
+Allow: All traffic on tailscale0 interface
+```
+
+---
+
+## Optional Security Enhancements
+
+During installation, you are prompted to deploy additional security features. These can also be added later:
+
+```bash
+sudo ./scripts/enable-security-hardening.sh
+```
+
+This adds:
+- **Network Policies**: Default deny with explicit allow rules
+- **Resource Quotas**: Prevent resource exhaustion attacks
+- **Traefik Security Headers**: HSTS, CSP, XSS protection
+
+These are recommended for production but optional for home/testing environments.
+
+---
+
+## Verifying Security Configuration
+
+```bash
+# Check firewall status
+sudo ufw status verbose
+
+# Check audit logs exist
+ls -la /var/log/k3s-audit.log
+
+# Check encryption config exists
+sudo ls -la /etc/rancher/k3s/encryption-config.yaml
+
+# Check pod security config
+sudo cat /etc/rancher/k3s/pod-security-config.yaml
+
+# Check fail2ban status
+sudo systemctl status fail2ban
 ```
 
 ---

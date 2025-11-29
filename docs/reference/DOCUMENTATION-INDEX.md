@@ -65,6 +65,7 @@ mynodeone/
 │   │   └── SECURITY.md               ← Security and credentials
 │   ├── architecture/                 ← System architecture
 │   │   ├── ARCHITECTURE.md           ← Overall design
+│   │   ├── DNS.md                    ← DNS configuration
 │   │   ├── NETWORKING.md             ← Tailscale and networking
 │   │   └── SYNC-CONTROLLER.md        ← Node synchronization
 │   └── use-cases/                    ← Deployment scenarios

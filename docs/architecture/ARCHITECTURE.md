@@ -343,6 +343,44 @@ Example: Home machine with 64GB RAM and 18TB storage, plus a $10/month VPS for p
 - Better observability
 - Modern architecture
 
+### Why All Apps Use Port 80?
+
+MyNodeOne standardizes all web applications on port 80 externally, regardless of what port the application uses internally.
+
+**The Problem:**
+- Different apps run on different ports (Immich: 3001, Jellyfin: 8096, Homepage: 3000)
+- Users must remember which app uses which port
+- URLs like `http://immich.local:3001` are confusing for non-technical users
+- Mobile app configuration becomes error-prone
+
+**The Solution:**
+```yaml
+# Kubernetes Service configuration
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80          # External: standard HTTP port
+    targetPort: 3001  # Internal: app's native port
+```
+
+**Result:**
+| App | Internal Port | User Access |
+|-----|---------------|-------------|
+| Immich | 3001 | `http://immich.mynodeone.local` |
+| Jellyfin | 8096 | `http://jellyfin.mynodeone.local` |
+| Grafana | 3000 | `http://grafana.mynodeone.local` |
+
+**Benefits:**
+- Simple, consistent URLs for all apps
+- No port numbers to remember
+- Works like any website
+- Easy mobile app configuration
+- Professional appearance
+
+**Security Note:** This does not reduce security. All services remain accessible only via Tailscale VPN. The port number (80 vs 3001) has no security impact—what matters is network isolation (Tailscale) and authentication (each app's login).
+
+**Exception:** Game servers (e.g., Minecraft on port 25565) that require specific ports for protocol compatibility
+
 ### Why ArgoCD instead of Flux?
 - Better UI
 - Easier for beginners

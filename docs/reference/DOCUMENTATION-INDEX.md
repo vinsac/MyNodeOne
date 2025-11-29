@@ -15,7 +15,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Understand MyNodeOne
 - **"What are the options?"** → [INSTALLATION.md](../installation/INSTALLATION.md) - node types, VPS, worker nodes, and management workstation
 - **"How does it work?"** → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
-- **"What about networking?"** → [networking.md](networking.md)
+- **"What about networking?"** → [NETWORKING.md](../architecture/NETWORKING.md)
 - **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
 
 ### Daily usage
@@ -27,7 +27,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Troubleshooting
 - **"Something broke"** → [troubleshooting.md](../operations/troubleshooting.md)
 - **"Common questions"** → [FAQ](FAQ.md)
-- **"Network issues"** → [networking.md](networking.md)
+- **"Network issues"** → [NETWORKING.md](../architecture/NETWORKING.md)
 
 ### Advanced
 - **"Complete technical docs"** → [FINAL-SUMMARY.md](FINAL-SUMMARY.md)
@@ -64,6 +64,9 @@ mynodeone/
 │   │   ├── FAQ.md                    ← Common questions
 │   │   └── SECURITY.md               ← Security and credentials
 │   ├── architecture/                 ← System architecture
+│   │   ├── ARCHITECTURE.md           ← Overall design
+│   │   ├── NETWORKING.md             ← Tailscale and networking
+│   │   └── SYNC-CONTROLLER.md        ← Node synchronization
 │   └── use-cases/                    ← Deployment scenarios
 ├── manifests/                        ← Kubernetes manifests
 └── website/                          ← Dashboard
@@ -121,8 +124,8 @@ mynodeone/
 - Decision tree and use cases
 
 ### Networking
-- Default (Tailscale): [networking.md](networking.md)
-- All options: [networking.md](networking.md) - Section "Alternative Solutions"
+- Default (Tailscale): [NETWORKING.md](../architecture/NETWORKING.md)
+- All options: [NETWORKING.md](../architecture/NETWORKING.md) - Section "Alternative Solutions"
 - Troubleshooting: [troubleshooting.md](../operations/troubleshooting.md)
 
 ### Storage
@@ -158,7 +161,7 @@ mynodeone/
 → `sudo ./scripts/mynodeone`
 
 **"What's Tailscale?"**  
-→ [networking.md](networking.md) - Default networking (automatic)
+→ [NETWORKING.md](../architecture/NETWORKING.md) - Default networking
 
 **"What options do I have?"**  
 → [INSTALLATION.md](../installation/INSTALLATION.md) - node types and basic scenarios
@@ -196,7 +199,7 @@ mynodeone/
 - [README.md](../../README.md) - what MyNodeOne is
 - [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - how it works
 - [storage-guide.md](storage-guide.md) - storage options explained
-- [networking.md](networking.md) - networking explained
+- [NETWORKING.md](../architecture/NETWORKING.md) - networking explained
 
 ### Reference (lookup)
 - [FAQ](FAQ.md) - Q&A format

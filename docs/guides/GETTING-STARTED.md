@@ -41,6 +41,6 @@ For details, alternatives, and background, see [../reference/networking.md](../r
 
 - Check [troubleshooting.md](troubleshooting.md).
 - Check [../reference/FAQ.md](../reference/FAQ.md).
-- Look up unfamiliar terms in [GLOSSARY.md](GLOSSARY.md).
+- Look up unfamiliar terms in [GLOSSARY.md](../reference/GLOSSARY.md).
 - If you still need help, open an issue on GitHub.
 

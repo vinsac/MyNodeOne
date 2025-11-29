@@ -75,7 +75,7 @@
 
 **Example:** Like a private phone line between your computers - only you can use it.
 
-**Cost:** Free for up to 20 devices.
+**Cost:** Free for up to 100 devices.
 
 ---
 
@@ -339,7 +339,7 @@
 ### Egress Fees
 **Simple:** Charges for data leaving a cloud provider.
 
-**Example:** Like paying for outgoing mail - AWS charges $0.09 per GB leaving their servers.
+**Example:** Like paying for outgoing mail - AWS charges $0.09 per GB leaving their servers (check actuals for current rates of different providers).
 
 **MyNodeOne:** $0 egress fees!
 
@@ -379,7 +379,7 @@
 
 ---
 
-## 📞 Still Confused?
+## Not Feeling Confident?
 
 **This is normal!** You don't need to understand everything to use MyNodeOne.
 
@@ -393,12 +393,12 @@
 
 ---
 
-## 🔍 Need more help?
+## Need more help?
 
 - **Quick questions:** Check [FAQ](FAQ.md)
 - **Getting started:** Read [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
 - **Detailed guide:** See [INSTALLATION.md](../guides/INSTALLATION.md)
-- **Problems:** Check [troubleshooting.md](../troubleshooting.md)
+- **Problems:** Check [troubleshooting.md](../guides/troubleshooting.md)
 
 ---
 

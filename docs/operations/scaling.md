@@ -639,4 +639,4 @@ spec:
 
 ---
 
-**Ready to scale?** Your MyNodeOne cluster grows with you! 🚀
+**Ready to scale?** Your MyNodeOne cluster grows with you!

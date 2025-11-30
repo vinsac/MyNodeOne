@@ -4,25 +4,11 @@
 
 MyNodeOne now includes a built-in **App Store** with one-click installations for popular self-hosted applications. Non-technical users can easily deploy powerful applications to their personal cloud without writing any code.
 
-## Installation Guide
-
-**NEW!** For comprehensive installation instructions, error handling, and troubleshooting:
-
-👉 **[Complete App Installation Guide](../guides/APP-INSTALLATION-GUIDE.md)**
-
-Covers:
-- ✅ Prerequisites and validation
-- ✅ Step-by-step installation
-- ✅ All edge cases and solutions
-- ✅ Error handling
-- ✅ Post-installation verification
-- ✅ Troubleshooting commands
-
 ---
 
 ## How Do You Access Apps?
 
-**Great News!** Every app gets an **easy-to-remember address** automatically:
+Every app gets an easy-to-remember address automatically:
 
 ```
 jellyfin.mynodeone.local    ← Your Netflix-like media server
@@ -42,9 +28,9 @@ http://jellyfin.mynodeone.local
 ```
 
 **Works on:**
-- ✅ Your laptop (with DNS configured)
-- ✅ Your desktop computer
-- ✅ Any computer that ran `setup-client-dns.sh`
+- Your laptop (with DNS configured)
+- Your desktop computer
+- Any computer that ran `setup-client-dns.sh`
 
 ### On Mobile Devices (Requires Tailscale)
 
@@ -66,11 +52,11 @@ http://jellyfin.mynodeone.local
    - `http://jellyfin.mynodeone.local` - it just works!
 
 **What you get:**
-- ✅ Access apps from anywhere (home, coffee shop, vacation)
-- ✅ Encrypted connection (like a personal VPN)
-- ✅ Same easy URLs work everywhere
-- ✅ No port forwarding or router setup needed
-- ✅ Free for personal use!
+- Access apps from anywhere (home, coffee shop, vacation)
+- Encrypted connection (like a personal VPN)
+- Same easy URLs work everywhere
+- No port forwarding or router setup needed
+- Free for personal use!
 
 ### Public Access (Advanced)
 
@@ -83,7 +69,7 @@ Want to share Jellyfin with family not on your network?
 ## Available Applications
 
 ### AI & Assistant
-- **LLM Chat (Open WebUI + Ollama)** ✅ - Private AI chat with local LLMs (ChatGPT alternative)
+- **LLM Chat (Open WebUI + Ollama)** - Private AI chat with local LLMs (ChatGPT alternative)
   - 100% private - no data leaves your cluster
   - Download models: phi3, llama3.2, mistral, and more
   - Document upload & analysis
@@ -91,26 +77,26 @@ Want to share Jellyfin with family not on your network?
   - High-performance optimized
 
 ### Media & Entertainment
-- **Jellyfin** ✅ - Open source media server (Netflix alternative)
-- **Plex** 🚧 - Premium media server with apps for every device
-- **Audiobookshelf** 🚧 - Audiobook and podcast server
-- **Minecraft Server** ✅ - Host your own game server
+- **Jellyfin** - Open source media server (Netflix alternative)
+- **Plex** - Premium media server with apps for every device
+- **Audiobookshelf** - Audiobook and podcast server
+- **Minecraft Server** - Host your own game server
 
 ### Photos & Files
-- **Immich** ✅ - Self-hosted Google Photos alternative with AI features
-- **Nextcloud** ✅ - Complete cloud storage and collaboration platform
-- **Paperless-ngx** 🚧 - Document management with OCR
+- **Immich** - Self-hosted Google Photos alternative with AI features
+- **Nextcloud** - Complete cloud storage and collaboration platform
+- **Paperless-ngx** - Document management with OCR
 
 ### Communication & Productivity
-- **Mattermost** 🚧 - Team chat (Slack alternative)
-- **Gitea** 🚧 - Self-hosted Git service (GitHub alternative)
+- **Mattermost** - Team chat (Slack alternative)
+- **Gitea** - Self-hosted Git service (GitHub alternative)
 
 ### Security & Monitoring
-- **Vaultwarden** ✅ - Password manager (Bitwarden server)
-- **Uptime Kuma** 🚧 - Service monitoring and status pages
-- **Homepage** ✅ - Beautiful dashboard for all your services
+- **Vaultwarden** - Password manager (Bitwarden server)
+- **Uptime Kuma** - Service monitoring and status pages
+- **Homepage** - Beautiful dashboard for all your services
 
-**Legend:** ✅ Ready to use | 🚧 Coming soon
+**Legend:** Ready to use | Coming soon
 
 ## How to Install Apps
 
@@ -164,12 +150,12 @@ sudo ./scripts/apps/install-homepage.sh
 ## What Happens During Installation?
 
 Each script automatically:
-1. ✅ Creates isolated namespace
-2. ✅ Deploys required database (PostgreSQL/MySQL/Redis if needed)
-3. ✅ Configures persistent storage via Longhorn
-4. ✅ Assigns LoadBalancer IP via MetalLB
-5. ✅ Generates secure random passwords
-6. ✅ Displays access URL and credentials
+1. Creates isolated namespace
+2. Deploys required database (PostgreSQL/MySQL/Redis if needed)
+3. Configures persistent storage via Longhorn
+4. Assigns LoadBalancer IP via MetalLB
+5. Generates secure random passwords
+6. Displays access URL and credentials
 
 ## Resource Requirements
 
@@ -235,11 +221,11 @@ kubectl delete namespace <app-name>
 ## Security Features
 
 All installed apps include:
-- ✅ **Strong passwords** - Auto-generated 32-character passwords
-- ✅ **Network isolation** - Each app in separate namespace
-- ✅ **Resource limits** - CPU/memory limits prevent resource exhaustion
-- ✅ **Persistent storage** - Data replicated via Longhorn
-- ✅ **Encrypted network** - All traffic via Tailscale VPN
+- **Strong passwords** - Auto-generated 32-character passwords
+- **Network isolation** - Each app in separate namespace
+- **Resource limits** - CPU/memory limits prevent resource exhaustion
+- **Persistent storage** - Data replicated via Longhorn
+- **Encrypted network** - All traffic via Tailscale VPN
 
 ## Mobile App Support
 
@@ -247,16 +233,16 @@ Many apps have excellent mobile clients:
 
 | Application | iOS | Android | Web |
 |------------|-----|---------|-----|
-| Immich | ✅ | ✅ | ✅ |
-| Vaultwarden (Bitwarden) | ✅ | ✅ | ✅ |
-| Jellyfin | ✅ | ✅ | ✅ |
-| Nextcloud | ✅ | ✅ | ✅ |
-| Mattermost | ✅ | ✅ | ✅ |
-| Minecraft | ✅ | ✅ | - |
+| Immich | | | |
+| Vaultwarden (Bitwarden) | | | |
+| Jellyfin | | | |
+| Nextcloud | | | |
+| Mattermost | | | |
+| Minecraft | | | - |
 
 ### How to Set Up Mobile Apps
 
-**⚠️ IMPORTANT: Install Tailscale on your phone FIRST!**
+**IMPORTANT: Install Tailscale on your phone FIRST!**
 
 All mobile apps require Tailscale to access your MyNodeOne services.
 
@@ -345,27 +331,22 @@ Want to add a new app to the store?
 7. **Submit Pull Request**
 
 ### App Requirements:
-- ✅ Must work with K3s
-- ✅ Must use Longhorn for storage
-- ✅ Must request LoadBalancer service
-- ✅ Must generate secure random passwords
-- ✅ Must display access info clearly
-- ✅ Should have reasonable resource defaults
+- Must work with K3s
+- Must use Longhorn for storage
+- Must request LoadBalancer service
+- Must generate secure random passwords
+- Must display access info clearly
+- Should have reasonable resource defaults
 
 ## More Information
 
 - **Full installation scripts**: `scripts/apps/`
-- **App-specific docs**: see each app's official documentation
-- **Troubleshooting guide**: [troubleshooting.md](../troubleshooting.md)
-- **Storage management**: [storage-guide.md](../storage-guide.md)
-- **Scaling guide**: [scaling.md](../scaling.md)
+- **App-specific docs**: See each app's official documentation
+- **Troubleshooting guide**: [troubleshooting.md](../operations/troubleshooting.md)
+- **Scaling guide**: [scaling.md](../operations/scaling.md)
 
 ## Need Help?
 
 - Open an issue on GitHub
-- Check the FAQ: [FAQ](FAQ.md)
-- Read troubleshooting guide: [troubleshooting.md](../troubleshooting.md)
-
----
-
-**Built to make self-hosting accessible to everyone**
+- Check the FAQ: [FAQ](../reference/FAQ.md)
+- Read troubleshooting guide: [troubleshooting.md](../operations/troubleshooting.md)

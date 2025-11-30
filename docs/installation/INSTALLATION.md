@@ -309,7 +309,7 @@ Run these commands in a terminal on your control plane machine:
 
     In the examples below `sammy` is just an example username. Replace it with your own preferred username, and choose a username that is different from the one you use on your control plane. In these examples, `YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `203.0.113.10`), without any `<` or `>` characters.
 
-    ⚠️ **Do not use root user** for security reasons.
+    **Do not use root user** for security reasons.
 
     ```bash
     # FROM YOUR CONTROL PLANE (or another machine with SSH access):
@@ -625,7 +625,7 @@ tailscale ip -4
 
 ### Step 2: Setup SSH Access (Control Plane → Management Laptop)
 
-**⚠️ IMPORTANT:** This step must be done **before** adding the management workstation to the cluster
+**IMPORTANT:** This step must be done **before** adding the management workstation to the cluster
 
 **Why this is needed:**
 - Control plane's sync service needs to SSH to your laptop to push DNS updates

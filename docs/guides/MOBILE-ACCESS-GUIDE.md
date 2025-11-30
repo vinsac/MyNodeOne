@@ -3,7 +3,7 @@
 
 ---
 
-## 🎯 Quick Answer
+## Quick Answer
 
 **To use MyNodeOne apps on your phone, you MUST install Tailscale.**
 
@@ -15,7 +15,7 @@
 
 ---
 
-## 📱 Step-by-Step Setup
+## Step-by-Step Setup
 
 ### Step 1: Install Tailscale App (2 minutes)
 
@@ -43,7 +43,7 @@
    - iOS: Tap "Allow" on VPN permission dialog
    - Android: Tap "OK" on VPN connection request
 
-**✅ Done!** Your phone is now connected to your private cloud.
+**Done!** Your phone is now connected to your private cloud.
 
 ### Step 3: Test Access (1 minute)
 
@@ -90,7 +90,7 @@ Now that Tailscale is set up, you can install and use mobile apps for your servi
    - Enable "Background Upload"
    - Choose which albums to backup
 
-**🎉 Done!** Photos now backup automatically to YOUR cloud, not Google!
+**Done!** Photos now backup automatically to YOUR cloud, not Google!
 
 ---
 
@@ -122,7 +122,7 @@ Now that Tailscale is set up, you can install and use mobile apps for your servi
    - Download for offline viewing
    - Cast to TV
 
-**🎉 Done!** Your personal Netflix, accessible anywhere!
+**Done!** Your personal Netflix, accessible anywhere!
 
 ---
 
@@ -140,7 +140,7 @@ Now that Tailscale is set up, you can install and use mobile apps for your servi
    - Android: Play Store → "Bitwarden"
 
 2. **Open Bitwarden App**
-   - Before logging in, tap Settings ⚙️ (top left)
+   - Before logging in, tap Settings (top left)
 
 3. **Configure Self-Hosted**
    - Tap "Self-hosted"
@@ -155,23 +155,23 @@ Now that Tailscale is set up, you can install and use mobile apps for your servi
    - iOS: Settings → Passwords → AutoFill Passwords → Bitwarden
    - Android: Settings → AutoFill → Bitwarden
 
-**🎉 Done!** Your passwords sync across all devices, privately!
+**Done!** Your passwords sync across all devices, privately!
 
 ---
 
-## 🌍 How Tailscale Works
+## How Tailscale Works
 
 ### The Simple Explanation
 
 **Without Tailscale:**
 ```
-Your Phone → ❌ Can't reach MyNodeOne
+Your Phone → Can't reach MyNodeOne
 (Different networks, private IPs, no access)
 ```
 
 **With Tailscale:**
 ```
-Your Phone → ✅ Secure encrypted tunnel → MyNodeOne
+Your Phone → Secure encrypted tunnel → MyNodeOne
 (Same virtual network, works from anywhere)
 ```
 
@@ -186,11 +186,11 @@ Your Phone → ✅ Secure encrypted tunnel → MyNodeOne
    - Even on public WiFi, your data is safe
 
 3. **Works Everywhere**
-   - Home WiFi ✅
-   - Mobile data (4G/5G) ✅
-   - Coffee shop WiFi ✅
-   - Hotel WiFi ✅
-   - Airport WiFi ✅
+   - Home WiFi 
+   - Mobile data (4G/5G) 
+   - Coffee shop WiFi 
+   - Hotel WiFi 
+   - Airport WiFi 
 
 4. **No Port Forwarding**
    - Your router stays secure
@@ -199,17 +199,17 @@ Your Phone → ✅ Secure encrypted tunnel → MyNodeOne
 
 ---
 
-## 🔒 Security & Privacy
+## Security & Privacy
 
 ### Is Tailscale Safe?
 
 **Yes!** Here's why:
 
-- ✅ **Open Source:** Code is public, independently audited
-- ✅ **End-to-End Encrypted:** Tailscale can't see your data
-- ✅ **No Data Collection:** Your traffic doesn't go through Tailscale servers
-- ✅ **Industry Standard:** Uses WireGuard (state-of-the-art VPN)
-- ✅ **Zero Trust:** Each device must be explicitly authorized
+- **Open Source:** Code is public, independently audited
+- **End-to-End Encrypted:** Tailscale can't see your data
+- **No Data Collection:** Your traffic doesn't go through Tailscale servers
+- **Industry Standard:** Uses WireGuard (state-of-the-art VPN)
+- **Zero Trust:** Each device must be explicitly authorized
 
 ### What Does Tailscale See?
 
@@ -237,7 +237,7 @@ Your Phone → ✅ Secure encrypted tunnel → MyNodeOne
 
 ---
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Problem: "Can't connect to http://mynodeone.local"
 
@@ -308,9 +308,9 @@ If not: Open Tailscale app and connect
 **Check #2: Correct server URL**
 ```
 Common mistakes:
-❌ https://immich.mynodeone.local (wrong - no https)
-❌ http://immich.mynodeone.com (wrong - .com not .local)
-✅ http://immich.mynodeone.local (correct!)
+https://immich.mynodeone.local (wrong - no https)
+http://immich.mynodeone.com (wrong - .com not .local)
+http://immich.mynodeone.local (correct!)
 
 Double-check the exact URL from installation output
 ```
@@ -352,7 +352,7 @@ Prevents Android from killing Tailscale
 
 ---
 
-## 💡 Pro Tips
+## Pro Tips
 
 ### 1. Keep Tailscale Running
 ```
@@ -396,7 +396,7 @@ Modern phones handle VPNs efficiently
 
 ---
 
-## 📊 Data Usage
+## Data Usage
 
 **Good News: Minimal!**
 
@@ -429,42 +429,40 @@ Data used: <1MB
 
 ---
 
-## 🎉 Success! What Now?
+## Success! What Now?
 
 ### You Can Now:
 
-✅ **Access dashboard from anywhere**
+**Access dashboard from anywhere**
 - `http://mynodeone.local`
 
-✅ **Use mobile apps**
+**Use mobile apps**
 - Immich: Photo backup
 - Jellyfin: Stream media
 - Bitwarden: Password manager
 - Nextcloud: File sync
 - Mattermost: Team chat
 
-✅ **Share with family**
+**Share with family**
 - Create accounts for them
 - They install Tailscale
 - Everyone has private cloud access!
 
-✅ **Work remotely**
+**Work remotely**
 - Access from office/school
 - Encrypted and secure
 - No corporate restrictions
 
 ---
 
-## 📚 Related Guides
+## Related Guides
 
 - **[BEGINNER-GUIDE.md](BEGINNER-GUIDE.md)** - Complete beginner's tutorial
-- **[DEMO_APP_GUIDE.md](DEMO_APP_GUIDE.md)** - 10-minute first app walkthrough
-- **[ACCESS-CHEAT-SHEET.md](ACCESS-CHEAT-SHEET.md)** - All URLs and commands
-- **[APP-STORE.md](APP-STORE.md)** - Available applications
+- **[APP-STORE.md](../apps/APP-STORE.md)** - Available applications
 
 ---
 
-## ❓ Common Questions
+## Common Questions
 
 **Q: Do I need Tailscale on every device?**  
 A: Yes, every mobile device and laptop needs it. Your MyNodeOne control plane already has it.
@@ -487,6 +485,3 @@ A: Yes! They install Tailscale and you grant access via admin console.
 **Q: What if I forget to turn on Tailscale?**  
 A: Apps won't connect. Just open Tailscale and tap "Connect". Takes 2 seconds.
 
----
-
-**Enjoy your private cloud from anywhere in the world! 🌍✨**

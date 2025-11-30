@@ -54,7 +54,7 @@ Enables:
 
 ---
 
-## 🖥️ Hardware Questions
+## Hardware Questions
 
 ### What hardware do I need?
 
@@ -65,11 +65,11 @@ Enables:
 - Internet connection
 
 **Examples that work:**
-- 💻 Old laptop (2015+)
-- 🖥️ Intel NUC or similar mini PC
-- 🏠 Home server
-- 🍓 Raspberry Pi 4/5 (4GB+ RAM)
-- 💼 Used Dell/HP/Lenovo from eBay ($150-300)
+- Old laptop (2015+)
+- Intel NUC or similar mini PC
+- Home server
+- Raspberry Pi 4/5 (4GB+ RAM)
+- Used Dell/HP/Lenovo from eBay ($150-300)
 
 **For production (recommended):**
 - 1 control plane: 8-16GB RAM, 100GB+ disk
@@ -103,8 +103,8 @@ Enables:
 ### Do I need enterprise server hardware?
 
 **No!** Consumer hardware works perfectly:
-- ❌ Don't need: Enterprise servers, RAID cards, SAN storage
-- ✅ Do need: Regular computers with Ubuntu 24.04
+- Don't need: Enterprise servers, RAID cards, SAN storage
+- Do need: Regular computers with Ubuntu 24.04
 - **Why?** Kubernetes handles redundancy and distribution in software
 
 ### What if I only have one computer?
@@ -125,16 +125,16 @@ Enables:
 - No additional storage disks available
 
 **What MyNodeOne does automatically:**
-- ✅ Detects single-disk configuration
-- ✅ Automatically configures storage on OS disk at `/var/lib/longhorn`
-- ✅ Installation continues seamlessly
-- ✅ No manual configuration needed
+- Detects single-disk configuration
+- Automatically configures storage on OS disk at `/var/lib/longhorn`
+- Installation continues seamlessly
+- No manual configuration needed
 
 **Performance:**
-- ✅ Works great for home labs, development, and learning
-- ✅ Handles personal websites, databases, and most applications
-- ✅ Especially good with SSDs (fast enough for most uses)
-- ⚠️ Shared I/O with OS (not ideal for high-traffic production)
+- Works great for home labs, development, and learning
+- Handles personal websites, databases, and most applications
+- Especially good with SSDs (fast enough for most uses)
+- Shared I/O with OS (not ideal for high-traffic production)
 
 **Capacity:**
 - Uses free space on your OS disk
@@ -142,10 +142,10 @@ Enables:
 - Monitor with: `df -h /var/lib/longhorn`
 
 **Can I add disks later?**
-- ✅ Yes! Plug in additional disks anytime
-- ✅ Run: `sudo ./scripts/add-storage-disk.sh`
-- ✅ Longhorn automatically uses new disks
-- ✅ Zero downtime migration
+- Yes! Plug in additional disks anytime
+- Run: `sudo ./scripts/add-storage-disk.sh`
+- Longhorn automatically uses new disks
+- Zero downtime migration
 
 **See:** [single-disk-setup.md](../single-disk-setup.md) for complete guide
 
@@ -200,20 +200,20 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 ### MyNodeOne vs OpenStack
 
 **Use MyNodeOne when:**
-- ✅ You want **simple, fast setup** (30 minutes vs days/weeks)
-- ✅ You have **small to medium scale** (1-50 nodes)
-- ✅ You want **container-first** infrastructure (Kubernetes native)
-- ✅ You need to **get started quickly** without dedicated ops team
-- ✅ You want **modern cloud-native** tools (K8s, GitOps, S3)
-- ✅ **One person** can manage it (no specialized team needed)
+- You want **simple, fast setup** (30 minutes vs days/weeks)
+- You have **small to medium scale** (1-50 nodes)
+- You want **container-first** infrastructure (Kubernetes native)
+- You need to **get started quickly** without dedicated ops team
+- You want **modern cloud-native** tools (K8s, GitOps, S3)
+- **One person** can manage it (no specialized team needed)
 
 **Use OpenStack when:**
-- ❌ You have **100+ servers** (enterprise scale)
-- ❌ You need **traditional VMs** (not containers)
-- ❌ You have a **dedicated ops team** (5+ people)
-- ❌ Setup time doesn't matter (weeks/months is acceptable)
-- ❌ You need **multi-tenancy** with strict isolation
-- ❌ You're replacing a **VMware infrastructure**
+- You have **100+ servers** (enterprise scale)
+- You need **traditional VMs** (not containers)
+- You have a **dedicated ops team** (5+ people)
+- Setup time doesn't matter (weeks/months is acceptable)
+- You need **multi-tenancy** with strict isolation
+- You're replacing a **VMware infrastructure**
 
 **Bottom line:** MyNodeOne is **easier, faster, and cheaper** for most use cases. OpenStack is better for massive enterprise VM deployments.
 
@@ -222,20 +222,20 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 ### MyNodeOne vs Proxmox
 
 **Use MyNodeOne when:**
-- ✅ You want **cloud-native** apps (containers, microservices)
-- ✅ You need **automatic scaling** and orchestration
-- ✅ You want **GitOps** deployment (push to GitHub, auto-deploy)
-- ✅ You need **S3-compatible storage** (MinIO)
-- ✅ You want **Kubernetes** for modern app deployment
-- ✅ Target: **Developers and applications**
+- You want **cloud-native** apps (containers, microservices)
+- You need **automatic scaling** and orchestration
+- You want **GitOps** deployment (push to GitHub, auto-deploy)
+- You need **S3-compatible storage** (MinIO)
+- You want **Kubernetes** for modern app deployment
+- Target: **Developers and applications**
 
 **Use Proxmox when:**
-- ❌ You need **traditional VMs** (Windows servers, legacy apps)
-- ❌ You want a **web GUI** for manual VM management
-- ❌ You're running **mixed workloads** (VMs + containers)
-- ❌ You need **backup/snapshot** features built-in
-- ❌ You prefer **manual management** over automation
-- ❌ Target: **Infrastructure and VMs**
+- You need **traditional VMs** (Windows servers, legacy apps)
+- You want a **web GUI** for manual VM management
+- You're running **mixed workloads** (VMs + containers)
+- You need **backup/snapshot** features built-in
+- You prefer **manual management** over automation
+- Target: **Infrastructure and VMs**
 
 **Bottom line:** MyNodeOne is for **modern cloud apps**, Proxmox is for **traditional VMs and mixed environments**.
 
@@ -252,11 +252,11 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 - You want **batteries included** (ArgoCD, Prometheus, Longhorn, MinIO)
 
 **Use Bare Kubernetes when:**
-- ❌ You need **complete customization** of every component
-- ❌ You have **specific requirements** that don't fit MyNodeOne's stack
-- ❌ You want to **learn every detail** of Kubernetes
-- ❌ You have **time to configure** everything manually
-- ❌ You're a **Kubernetes expert** already
+- You need **complete customization** of every component
+- You have **specific requirements** that don't fit MyNodeOne's stack
+- You want to **learn every detail** of Kubernetes
+- You have **time to configure** everything manually
+- You're a **Kubernetes expert** already
 
 **Bottom line:** MyNodeOne is **Kubernetes with everything configured**. Bare K8s is for experts who want full control.
 
@@ -273,11 +273,11 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 - You're growing beyond **one machine**
 
 **Use Docker Compose when:**
-- ❌ You have **one server** and will stay that way
-- ❌ You're **prototyping** or in early development
-- ❌ Downtime is **acceptable**
-- ❌ You don't need **scaling**
-- ❌ You want the **simplest** possible setup
+- You have **one server** and will stay that way
+- You're **prototyping** or in early development
+- Downtime is **acceptable**
+- You don't need **scaling**
+- You want the **simplest** possible setup
 
 **Bottom line:** Start with Docker Compose, graduate to MyNodeOne when you need multiple machines and production features.
 
@@ -286,20 +286,20 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 ### MyNodeOne vs Managed Kubernetes (EKS/GKE/AKS)
 
 **Use MyNodeOne when:**
-- ✅ You want to **save 90%+ on costs**
-- ✅ You have **hardware available** (old servers, desktops)
-- ✅ You can **manage your own infrastructure**
-- ✅ Data **privacy** is important
-- ✅ You want **no egress fees** ($0.09/GB on AWS adds up!)
-- ✅ You're comfortable with **command line** and **Linux**
+- You want to **save 90%+ on costs**
+- You have **hardware available** (old servers, desktops)
+- You can **manage your own infrastructure**
+- Data **privacy** is important
+- You want **no egress fees** ($0.09/GB on AWS adds up!)
+- You're comfortable with **command line** and **Linux**
 
 **Use Managed K8s when:**
-- ❌ You need **global availability** (multi-region worldwide)
-- ❌ You want **zero maintenance** burden
-- ❌ You need **instant scaling** to 1000+ nodes
-- ❌ Budget is **not a concern**
-- ❌ You want **someone else** to handle everything
-- ❌ You need **99.99%+ SLA** with financial guarantees
+- You need **global availability** (multi-region worldwide)
+- You want **zero maintenance** burden
+- You need **instant scaling** to 1000+ nodes
+- Budget is **not a concern**
+- You want **someone else** to handle everything
+- You need **99.99%+ SLA** with financial guarantees
 
 **Bottom line:** MyNodeOne for **cost-conscious** teams with hardware. Managed K8s for **hands-off, global scale**.
 
@@ -308,26 +308,26 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 ### MyNodeOne vs Cloud VMs + Manual Setup
 
 **Use MyNodeOne when:**
-- ✅ You want **automation** instead of manual work
-- ✅ You need **repeatable** infrastructure (one command setup)
-- ✅ You want **best practices** built-in
-- ✅ You don't want to **research and configure** everything
-- ✅ You value your **time** (30 min vs weeks)
-- ✅ You want **documentation included**
+- You want **automation** instead of manual work
+- You need **repeatable** infrastructure (one command setup)
+- You want **best practices** built-in
+- You don't want to **research and configure** everything
+- You value your **time** (30 min vs weeks)
+- You want **documentation included**
 
 **Use Manual Setup when:**
-- ❌ You want to **learn every detail** (educational purposes)
-- ❌ You have **very specific** requirements
-- ❌ You enjoy **tinkering** with configurations
-- ❌ Time is **not a constraint**
+- You want to **learn every detail** (educational purposes)
+- You have **very specific** requirements
+- You enjoy **tinkering** with configurations
+- Time is **not a constraint**
 
 **Bottom line:** MyNodeOne **saves time** with automation and best practices. Manual setup is for learning or unique requirements.
 
 ---
 
-## 🎯 When Should You Use MyNodeOne?
+## When Should You Use MyNodeOne?
 
-### ✅ Perfect For:
+### Perfect For:
 
 **Startups & Small Teams**
 - Need production infrastructure on a budget
@@ -359,7 +359,7 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 - Want to modernize without cloud migration
 - Need to maximize existing hardware investment
 
-### ❌ Not Ideal For:
+### Not Ideal For:
 
 **Enterprise at Scale**
 - 100+ servers with dedicated ops team
@@ -431,7 +431,7 @@ Want to save $30,000+/year?
 ├─ No → Use AWS/GCP (unlimited budget)
 └─ Yes ↓
 
-🎉 Use MyNodeOne! 🎉
+Use MyNodeOne! 
 ```
 
 ---
@@ -547,23 +547,23 @@ Both are needed and complement each other.
 
 **Why containers instead of VMs?**
 - ⚡ **Faster:** Start in seconds (vs minutes for VMs)
-- 💾 **Lighter:** 10-100MB (vs GBs for VMs)  
-- 🔄 **Modern:** Better for cloud-native apps, CI/CD, microservices
-- 📦 **Portable:** Works everywhere (dev, test, prod)
+- **Lighter:** 10-100MB (vs GBs for VMs)  
+- **Modern:** Better for cloud-native apps, CI/CD, microservices
+- **Portable:** Works everywhere (dev, test, prod)
 
 **"But I need VMs for dev services!"**
 
 Most dev services work BETTER as containers:
-- ✅ **Databases:** PostgreSQL, MySQL, MongoDB, Redis → All have official Docker images
-- ✅ **Dev Tools:** GitLab, Jenkins, VS Code Server → Run as containers
-- ✅ **Message Queues:** RabbitMQ, Kafka → Official images available
-- ✅ **Testing:** Selenium, test databases → Faster as containers
+- **Databases:** PostgreSQL, MySQL, MongoDB, Redis → All have official Docker images
+- **Dev Tools:** GitLab, Jenkins, VS Code Server → Run as containers
+- **Message Queues:** RabbitMQ, Kafka → Official images available
+- **Testing:** Selenium, test databases → Faster as containers
 
 **When you ACTUALLY need VMs:**
-- ❌ Windows applications (use Proxmox instead)
-- ❌ Legacy apps that can't containerize (use Proxmox)
-- ❌ Testing different OS kernels (use Proxmox)
-- ⚠️ **Advanced:** You can add KubeVirt to run VMs on Kubernetes (not included by default)
+- Windows applications (use Proxmox instead)
+- Legacy apps that can't containerize (use Proxmox)
+- Testing different OS kernels (use Proxmox)
+- **Advanced:** You can add KubeVirt to run VMs on Kubernetes (not included by default)
 
 **Bottom line:** If you primarily need VMs, use Proxmox. If you're running modern apps/services, MyNodeOne's containers are faster and better!
 

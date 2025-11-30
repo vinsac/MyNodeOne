@@ -133,14 +133,14 @@ mynodeone/
 - Troubleshooting: [troubleshooting.md](../operations/troubleshooting.md)
 
 ### Storage
-- Disk setup: [storage-guide.md](storage-guide.md)
 - Architecture: [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Section "Storage Layer"
 - Operations: [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
+- FAQ: [FAQ.md](reference/FAQ.md) - Storage questions
 
 ### Applications
 - Example apps: `manifests/examples/`
 - Create new app: `scripts/create-app.sh`
-- Deploy guide: [APP-STORE.md](APP-STORE.md)
+- Deploy guide: [APP-STORE.md](apps/APP-STORE.md)
 - LLM support: `manifests/examples/llm-cpu-inference.yaml`
 
 ### Monitoring
@@ -202,11 +202,10 @@ mynodeone/
 ### Explanations (understanding)
 - [README.md](../../README.md) - what MyNodeOne is
 - [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - how it works
-- [storage-guide.md](storage-guide.md) - storage options explained
 - [NETWORKING.md](../architecture/NETWORKING.md) - networking explained
 
 ### Reference (lookup)
-- [FAQ](FAQ.md) - Q&A format
+- [FAQ](reference/FAQ.md) - Q&A format
 - [FINAL-SUMMARY.md](FINAL-SUMMARY.md) - technical specs
 - [ANSWERS-TO-QUESTIONS.md](ANSWERS-TO-QUESTIONS.md) - design decisions
 - `scripts/` - all automation

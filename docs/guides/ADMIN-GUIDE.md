@@ -98,11 +98,11 @@ sudo ./scripts/setup-admin-dashboard.sh
 ```
 
 The script will:
-- ✅ Install Kubernetes Dashboard
-- ✅ Create admin account
-- ✅ Generate access token
-- ✅ Configure external access
-- ✅ Update local DNS
+- Install Kubernetes Dashboard
+- Create admin account
+- Generate access token
+- Configure external access
+- Update local DNS
 
 ### Access
 
@@ -117,14 +117,14 @@ The script will:
 ### Features
 
 **What You Can Do:**
-- 📊 View all applications and their status
-- 💾 Check resource usage (CPU, RAM, storage)
-- 📋 View logs from any application
-- 🔄 Restart applications
-- 📈 Scale applications up/down
+- View all applications and their status
+- Check resource usage (CPU, RAM, storage)
+- View logs from any application
+- Restart applications
+- Scale applications up/down
 - 🏥 Monitor cluster health
-- 📦 View persistent storage
-- 🔐 Manage secrets and configs
+- View persistent storage
+- Manage secrets and configs
 
 ### Retrieve Token Later
 
@@ -467,42 +467,42 @@ cat ~/.mynodeone/dashboard-token.txt
 ### Regular Maintenance
 
 **Daily:**
-- ✅ Check application status
-- ✅ Review logs for errors
+- Check application status
+- Review logs for errors
 
 **Weekly:**
-- ✅ Check resource usage
-- ✅ Review storage capacity
-- ✅ Verify backups (if configured)
+- Check resource usage
+- Review storage capacity
+- Verify backups (if configured)
 
 **Monthly:**
-- ✅ Update applications
-- ✅ Clean up unused resources
-- ✅ Review security
+- Update applications
+- Clean up unused resources
+- Review security
 
 ### Storage Management
 
 **Recommendations:**
-- ✅ Monitor storage usage weekly
-- ✅ Set up automatic monitoring (cron job)
-- ✅ Keep 20% free space as buffer
-- ✅ Clean up unused models/data
+- Monitor storage usage weekly
+- Set up automatic monitoring (cron job)
+- Keep 20% free space as buffer
+- Clean up unused models/data
 
 ### Security
 
 **Best practices:**
-- ✅ Keep dashboard token secure
-- ✅ Don't share admin credentials
-- ✅ Use HTTPS for public access
-- ✅ Regular security updates
+- Keep dashboard token secure
+- Don't share admin credentials
+- Use HTTPS for public access
+- Regular security updates
 
 ### Backups
 
 **What to backup:**
-- ✅ Application data (PVCs)
-- ✅ Configuration files
-- ✅ Dashboard tokens
-- ✅ DNS settings
+- Application data (PVCs)
+- Configuration files
+- Dashboard tokens
+- DNS settings
 
 ---
 
@@ -558,7 +558,7 @@ sudo ./scripts/admin.sh
 
 - **This guide**: Complete admin reference
 - **App-specific READMEs**: `scripts/apps/README-<APP>.md`
-- **Installation guide**: `docs/guides/APP-INSTALLATION-GUIDE.md`
+- **App Store**: [APP-STORE.md](../apps/APP-STORE.md)
 
 ### Support
 
@@ -588,5 +588,3 @@ sudo ./scripts/admin.sh
    ```bash
    sudo ./scripts/app-store.sh
    ```
-
-Enjoy your self-managed cloud! 🚀

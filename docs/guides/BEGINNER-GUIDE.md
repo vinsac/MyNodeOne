@@ -5,17 +5,17 @@
 
 ---
 
-## 🎯 What is MyNodeOne?
+## What is MyNodeOne?
 
 Think of MyNodeOne as **your personal app store** - like the App Store on iPhone or Google Play on Android - except:
-- ✅ All apps run on **YOUR hardware** (not someone else's server)
-- ✅ **One-time setup** (no monthly subscriptions)
-- ✅ **Complete privacy** (your data never leaves your home)
-- ✅ **Professional apps** (same quality as Netflix, Spotify, etc.)
+- All apps run on **YOUR hardware** (not someone else's server)
+- **One-time setup** (no monthly subscriptions)
+- **Complete privacy** (your data never leaves your home)
+- **Professional apps** (same quality as Netflix, Spotify, etc.)
 
 ---
 
-## 📱 What Can You Actually Do With It?
+## What Can You Actually Do With It?
 
 ### Replace These Services:
 
@@ -31,11 +31,11 @@ Think of MyNodeOne as **your personal app store** - like the App Store on iPhone
 
 **Your Cost:** Old laptop/mini PC you already own + $5/month electricity = **$60/year**
 
-**Net Savings: $612/year** 💰
+**Net Savings: $612/year**
 
 ---
 
-## 🚀 How Does Installation Work?
+## How Does Installation Work?
 
 ### The Super Simple Version:
 
@@ -59,9 +59,9 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-## 📦 Apps You Can Install (Explained Simply)
+## Apps You Can Install (Explained Simply)
 
-### 🎬 Media & Entertainment
+### Media & Entertainment
 
 #### **Jellyfin** - Your Personal Netflix
 **What it does:** Stream your movies and TV shows to any device
@@ -103,7 +103,7 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-### 📸 Photos & Files
+### Photos & Files
 
 #### **Immich** - Your Personal Google Photos
 **What it does:** Automatically backup all photos from your phone
@@ -150,7 +150,7 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-### 🔐 Security & Privacy
+### Security & Privacy
 
 #### **Vaultwarden** - Your Personal Password Manager
 **What it does:** Securely store all your passwords
@@ -177,7 +177,7 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-### 💬 Communication
+### Communication
 
 #### **Mattermost** - Your Personal Slack
 **What it does:** Team chat with channels, direct messages, file sharing
@@ -200,7 +200,7 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-### 🏠 Dashboard & Organization
+### Dashboard & Organization
 
 #### **Homepage** - Beautiful Dashboard
 **What it does:** One page to access all your apps
@@ -222,9 +222,9 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-## 🌐 How Do You Access Apps?
+## How Do You Access Apps?
 
-### 🎉 Every App Gets Its Own Easy Address!
+### Every App Gets Its Own Easy Address!
 
 **The Magic:** When you install an app, it automatically gets a simple web address:
 
@@ -252,13 +252,13 @@ After running the DNS setup script, access from any browser:
 4. Jellyfin loads instantly!
 
 **Works on:**
-- ✅ Your laptop (with DNS setup complete)
-- ✅ Your desktop computer
-- ✅ Any device that ran `setup-client-dns.sh`
+- Your laptop (with DNS setup complete)
+- Your desktop computer
+- Any device that ran `setup-client-dns.sh`
 
 ### Option 2: From Your Phone/Tablet (Install Tailscale - 5 Minutes!)
 
-**📱 IMPORTANT: Mobile devices need Tailscale to access your apps**
+**IMPORTANT: Mobile devices need Tailscale to access your apps**
 
 **Why?** Apps run on a private Tailscale network for security. Your phone needs to join this network.
 
@@ -284,12 +284,12 @@ After running the DNS setup script, access from any browser:
 - Works from anywhere (home, coffee shop, vacation)
 
 **Bonus:** Once Tailscale is installed, you can access your apps from ANYWHERE:
-- ✅ At home on WiFi
-- ✅ On mobile data
-- ✅ At coffee shop
-- ✅ On vacation
-- ✅ At work
-- ✅ Literally anywhere with internet!
+- At home on WiFi
+- On mobile data
+- At coffee shop
+- On vacation
+- At work
+- Literally anywhere with internet!
 
 ### Option 3: Public Access (Advanced, Not Recommended for Beginners)
 For services you want to share with people NOT on your Tailscale:
@@ -300,12 +300,12 @@ For services you want to share with people NOT on your Tailscale:
 
 ---
 
-## 🎓 Step-by-Step: Your First App (Jellyfin)
+## Step-by-Step: Your First App (Jellyfin)
 
 ### What You'll Need:
-- ✅ MyNodeOne already installed (completed bootstrap-control-plane.sh)
-- ✅ Laptop connected to same network
-- ✅ Some movie files (MP4, MKV, etc.)
+- MyNodeOne already installed (completed bootstrap-control-plane.sh)
+- Laptop connected to same network
+- Some movie files (MP4, MKV, etc.)
 
 ### Steps:
 
@@ -377,7 +377,7 @@ Jellyfin automatically scans and adds them!
 2. Open Tailscale → Login (same account as MyNodeOne)
 3. Tap "Connect"
 
-**✅ Done!** Your phone can now access your MyNodeOne apps.
+**Done!** Your phone can now access your MyNodeOne apps.
 
 #### 6. Install Mobile Apps
 **On iPhone:**
@@ -390,7 +390,7 @@ Jellyfin automatically scans and adds them!
 - Play Store → Search "Jellyfin" → Install  
 - Same steps as iPhone
 
-**📱 Tip:** Keep Tailscale running in the background for best experience.
+**Tip:** Keep Tailscale running in the background for best experience.
 
 #### 7. Watch on TV
 **Smart TV/Roku/Fire TV:**
@@ -398,24 +398,24 @@ Jellyfin automatically scans and adds them!
 - Enter server address
 - Login and enjoy!
 
-**🎉 Done! You now have your personal Netflix!**
+**Done! You now have your personal Netflix!**
 
 ---
 
-## 📱 Mobile Apps for Your Self-Hosted Services
+## Mobile Apps for Your Self-Hosted Services
 
 | Service | iOS App | Android App | How Good? |
 |---------|---------|-------------|-----------|
-| Immich | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Excellent | Better than Google Photos! |
-| Jellyfin | ⭐⭐⭐⭐ Great | ⭐⭐⭐⭐ Great | Smooth streaming |
-| Vaultwarden | ⭐⭐⭐⭐⭐ Perfect | ⭐⭐⭐⭐⭐ Perfect | Use official Bitwarden app |
-| Nextcloud | ⭐⭐⭐⭐ Great | ⭐⭐⭐⭐ Great | Auto file upload |
-| Mattermost | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Excellent | Like native Slack |
-| Minecraft | ⭐⭐⭐⭐⭐ Perfect | ⭐⭐⭐⭐⭐ Perfect | Official Minecraft app |
+| Immich |  Excellent |  Excellent | Better than Google Photos! |
+| Jellyfin |  Great |  Great | Smooth streaming |
+| Vaultwarden |  Perfect |  Perfect | Use official Bitwarden app |
+| Nextcloud |  Great |  Great | Auto file upload |
+| Mattermost |  Excellent |  Excellent | Like native Slack |
+| Minecraft |  Perfect |  Perfect | Official Minecraft app |
 
 ---
 
-## ❓ Common Questions
+## Common Questions
 
 ### "Is this legal?"
 **Yes!** You're running software on your own hardware. It's like running Microsoft Word on your laptop - completely legal. The apps are open source and free to use.
@@ -465,7 +465,7 @@ Compare to:
 
 ---
 
-## 🆘 Troubleshooting for Beginners
+## Troubleshooting for Beginners
 
 ### Problem: "Can't access http://jellyfin.mynodeone.local"
 
@@ -523,7 +523,7 @@ Might need to:
 
 ---
 
-## 🎯 Next Steps
+## Next Steps
 
 ### Week 1: Get Comfortable
 - [ ] Install Jellyfin and watch a movie
@@ -547,7 +547,7 @@ Might need to:
 
 ---
 
-## 💡 Real-World Examples
+## Real-World Examples
 
 ### Example 1: Family Media Server
 **Sarah's Setup:**
@@ -573,7 +573,7 @@ Might need to:
 
 ---
 
-## 📚 Resources
+## Resources
 
 ### Video Guides (Coming Soon)
 - [ ] MyNodeOne Installation
@@ -593,18 +593,11 @@ Might need to:
 
 ---
 
-## 🎉 You've Got This!
-
-Remember: **Every expert was once a beginner.**
+## Getting Started
 
 - You don't need to understand Kubernetes
 - You don't need to know Docker
 - You don't need to write code
 - You just need to copy, paste, and press Enter
 
-**Welcome to the world of self-hosting! 🚀**
-
----
-
-*Last Updated: October 2024*
-*Questions? Open an issue on GitHub!*
+For questions, open an issue on GitHub.

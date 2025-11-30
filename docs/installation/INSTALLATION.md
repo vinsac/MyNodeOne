@@ -38,7 +38,7 @@ Learn how to:
 
 **START HERE - This is your first node!**
 
-> **Cloud Deployment Note:** Planning to run your Control Plane on a cloud server (VPS/VDS) instead of a physical machine at home? Read the [**Cloud Control Plane Use Case**](../use-cases/cloud-control-plane.md) first for critical security setup instructions.
+> **Cloud Deployment Note:** If running your Control Plane on a VPS/VDS, the installation script automatically configures firewall rules (UFW) to restrict access to SSH and Tailscale traffic only. See [SECURITY.md](../security/SECURITY.md) for details.
 
 ---
 

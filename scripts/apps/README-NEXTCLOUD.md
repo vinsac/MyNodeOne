@@ -4,7 +4,7 @@ Complete cloud storage and collaboration platform - self-hosted alternative to G
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
@@ -59,7 +59,7 @@ Nextcloud is a comprehensive cloud storage and collaboration platform that gives
 - 🔒 **End-to-End Encryption** - Encrypt sensitive files
 - 👥 **User Management** - Multiple users, groups, permissions
 - 📊 **Activity Monitoring** - Track file changes
-- 🔄 **Version Control** - Restore previous file versions
+-  **Version Control** - Restore previous file versions
 - 🗂️ **External Storage** - Connect S3, SMB, FTP, WebDAV
 - 🔐 **Two-Factor Authentication** - TOTP, U2F security keys
 - 📱 **Automatic Photo Upload** - From mobile devices
@@ -67,7 +67,7 @@ Nextcloud is a comprehensive cloud storage and collaboration platform that gives
 
 ---
 
-## 🚀 One-Click Installation
+##  One-Click Installation
 
 ### **Prerequisites:**
 - Kubernetes cluster running (K3s)
@@ -125,7 +125,7 @@ The installation script automatically:
    Username: admin
    Password: JD9BFkNweK2QnqQA
 
-⚠️  IMPORTANT: Save your admin password!
+  IMPORTANT: Save your admin password!
    You can also retrieve it later with:
    kubectl get secret nextcloud-admin -n nextcloud -o jsonpath='{.data.admin-password}' | base64 -d
 ```
@@ -163,10 +163,10 @@ http://nextcloud.mynodeone.local
 ```
 
 **Features:**
-- ✅ No SSL required (local network)
-- ✅ Fast direct access to cluster
-- ✅ No external dependencies
-- ✅ Works immediately after installation
+- No SSL required (local network)
+- Fast direct access to cluster
+- No external dependencies
+- Works immediately after installation
 
 **DNS:** Automatically configured in `/etc/hosts`
 
@@ -177,10 +177,10 @@ https://nextcloud.yourdomain.com
 ```
 
 **Features:**
-- ✅ Automatic SSL via Let's Encrypt
-- ✅ Secure HTTPS encryption
-- ✅ Access from anywhere
-- ✅ Required for mobile apps (outside network)
+- Automatic SSL via Let's Encrypt
+- Secure HTTPS encryption
+- Access from anywhere
+- Required for mobile apps (outside network)
 
 **Requirements:**
 1. VPS edge node configured
@@ -201,7 +201,7 @@ When you configure public access, you may see **"TRAEFIK DEFAULT CERT"** for the
 |------|------------------|--------------|
 | 0-30s | VPS route created, Traefik sees new domain | Default cert |
 | 30-90s | Let's Encrypt HTTP-01 challenge in progress | Default cert |
-| 90-180s | Certificate issued and installed | Valid cert ✅ |
+| 90-180s | Certificate issued and installed | Valid cert |
 
 ### **Why the Delay?**
 
@@ -212,13 +212,13 @@ When you configure public access, you may see **"TRAEFIK DEFAULT CERT"** for the
 
 ### **What To Do:**
 
-✅ **DO:**
+**DO:**
 - Install Nextcloud normally
 - Configure DNS A record
 - **Wait 2-3 minutes** before checking certificate
 - Refresh browser after waiting
 
-❌ **DON'T:**
+ **DON'T:**
 - Check certificate immediately (< 1 minute)
 - Panic if you see default cert initially
 - Try to "fix" anything before 3 minutes
@@ -290,11 +290,11 @@ Password: [from installation output]
 Go to: **Settings** → **Apps** → **Browse**
 
 **Recommended:**
-- ✅ **Calendar** - Sync calendar with devices
-- ✅ **Contacts** - Sync contacts with devices
-- ✅ **Photos** - Beautiful photo gallery
-- ✅ **Files External Storage** - Connect external storage
-- ✅ **Activity** - Track file changes
+- **Calendar** - Sync calendar with devices
+- **Contacts** - Sync contacts with devices
+- **Photos** - Beautiful photo gallery
+- **Files External Storage** - Connect external storage
+- **Activity** - Track file changes
 
 **Optional:**
 - 📝 **Collabora Online** - Office documents (requires separate server)
@@ -386,7 +386,7 @@ https://nextcloud.com/install/#install-clients
 5. Files sync automatically
 
 **Features:**
-- 🔄 Two-way sync
+-  Two-way sync
 - 🌐 Selective sync (choose folders)
 - 📂 Virtual files (on-demand download)
 - 🔒 End-to-end encryption
@@ -395,7 +395,7 @@ https://nextcloud.com/install/#install-clients
 
 ---
 
-## 🔧 Recommended Apps
+##  Recommended Apps
 
 ### **Productivity:**
 
@@ -584,7 +584,7 @@ kubectl exec -n nextcloud deployment/nextcloud -- \
 
 ---
 
-## 🔧 Management
+##  Management
 
 ### **View Logs:**
 ```bash
@@ -719,20 +719,14 @@ kubectl delete service --all -n nextcloud
 
 ---
 
-## 🎉 Summary
+##  Summary
 
 Nextcloud provides:
-- ✅ Complete cloud storage solution
-- ✅ Calendar and contact sync
-- ✅ Photo backup and organization
-- ✅ Document editing capabilities
-- ✅ Video calls and chat
-- ✅ Email client
-- ✅ Full control over your data
-- ✅ Privacy and security
-
-**Your data, your rules!** 🚀
-
----
-
-**Last Updated:** November 1, 2025
+- Complete cloud storage solution
+- Calendar and contact sync
+- Photo backup and organization
+- Document editing capabilities
+- Video calls and chat
+- Email client
+- Full control over your data
+- Privacy and security

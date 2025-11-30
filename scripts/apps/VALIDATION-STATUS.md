@@ -4,7 +4,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ---
 
-## ✅ Validation Library
+## Validation Library
 
 **Location:** `scripts/apps/lib/validation.sh`
 
@@ -18,17 +18,17 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ## 📊 Validation Coverage Status
 
-### ✅ **COMPLETE VALIDATION** (12/12 scripts - 100%!)
+### **COMPLETE VALIDATION** (12/12 scripts - 100%!)
 
 #### **Fully Implemented Scripts (5)**
 | Script | Validation Type | Checks |
 |--------|----------------|---------|
-| `install-immich.sh` | Inline | kubectl ✅ cluster ✅ storage ✅ subdomain ✅ |
-| `install-jellyfin.sh` | Inline | kubectl ✅ cluster ✅ storage ✅ subdomain ✅ |
-| `install-vaultwarden.sh` | Shared Library | kubectl ✅ cluster ✅ storage ✅ namespace ✅ |
-| `install-nextcloud.sh` | Shared Library | kubectl ✅ cluster ✅ storage ✅ namespace ✅ |
-| `install-minecraft.sh` | Shared Library | kubectl ✅ cluster ✅ storage ✅ namespace ✅ |
-| `install-homepage.sh` | Shared Library | kubectl ✅ cluster ✅ storage ✅ namespace ✅ |
+| `install-immich.sh` | Inline | kubectl cluster storage subdomain |
+| `install-jellyfin.sh` | Inline | kubectl cluster storage subdomain |
+| `install-vaultwarden.sh` | Shared Library | kubectl cluster storage namespace |
+| `install-nextcloud.sh` | Shared Library | kubectl cluster storage namespace |
+| `install-minecraft.sh` | Shared Library | kubectl cluster storage namespace |
+| `install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
 
 #### **Placeholder Scripts with Validation Ready (6)**
 | Script | Validation Type | Status |
@@ -42,7 +42,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ---
 
-## 🔧 How to Add Validation to Remaining Scripts
+##  How to Add Validation to Remaining Scripts
 
 ### **Pattern to Apply:**
 
@@ -113,7 +113,7 @@ Continue anyway? [y/N]:
 
 ---
 
-## 💡 Migration Plan for Immich & Jellyfin
+##  Migration Plan for Immich & Jellyfin
 
 **Current:** These scripts have validation inline (duplicated code)
 
@@ -132,16 +132,14 @@ Continue anyway? [y/N]:
 ## 📈 Progress Tracking
 
 - **Total Scripts:** 12
-- **With Validation:** 12 (100%) ✅
+- **With Validation:** 12 (100%) 
 - **Fully Implemented:** 6 (50%)
 - **Placeholder (Ready):** 6 (50%)
 
-**Goal:** 100% coverage with standardized validation ✅ **ACHIEVED!**
+**Goal:** 100% coverage with standardized validation **ACHIEVED!**
 
 ---
 
-## 🔄 Update This Document
+## Update This Document
 
 When adding validation to a script, move it from "Needs Validation" to "Complete Validation" section.
-
-**Last Updated:** Nov 1, 2025

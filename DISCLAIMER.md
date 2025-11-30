@@ -273,8 +273,6 @@ The Authors reserve the right to modify this Disclaimer at any time. Continued u
 For questions about this Disclaimer (but not for legal advice or support):
 - Repository: https://github.com/vinsac/MyNodeOne
 
-**Last Updated:** November 2, 2025
-
 ---
 
-**DISCLAIMER: This document is provided for informational purposes. While it includes standard open source disclaimers, you should consult with a qualified attorney for specific legal advice regarding your use of this Software.**
+This document is provided for informational purposes. Consult with a qualified attorney for specific legal advice regarding your use of this Software.

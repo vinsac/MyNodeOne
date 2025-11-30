@@ -381,8 +381,3 @@ See `docs/security-best-practices.md` for full compliance guidance.
 - Password management: `/docs/password-management.md`
 - Network policies guide: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Resource quotas guide: https://kubernetes.io/docs/concepts/policy/resource-quotas/
-
----
-
-**Version:** 1.0.0  
-**Last Updated:** October 25, 2025

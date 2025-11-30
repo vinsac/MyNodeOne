@@ -38,8 +38,6 @@ Learn how to:
 
 **START HERE - This is your first node!**
 
-> **Cloud Deployment Note:** If running your Control Plane on a VPS/VDS, the installation script automatically configures firewall rules (UFW) to restrict access to SSH and Tailscale traffic only. See [SECURITY.md](../security/SECURITY.md) for details.
-
 ---
 
 ## What is a Control Plane?

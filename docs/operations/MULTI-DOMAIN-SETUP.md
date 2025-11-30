@@ -66,7 +66,7 @@ sudo ./scripts/lib/multi-domain-registry.sh register-vps \
 ### 4. Enable Sync Controller Service
 
 ```bash
-sudo cp ~/MyNodeOne/systemd/mynodeone-sync-controller.service /etc/systemd/system/
+sudo cp ~/MyNodeOne/scripts/lib/mynodeone-sync-controller.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now mynodeone-sync-controller
 sudo systemctl status mynodeone-sync-controller

@@ -58,7 +58,7 @@ log_info "Repository root: $REPO_ROOT"
 echo ""
 
 # Check if service file exists
-SERVICE_FILE="$REPO_ROOT/systemd/mynodeone-sync-controller.service"
+SERVICE_FILE="$REPO_ROOT/scripts/lib/mynodeone-sync-controller.service"
 if [[ ! -f "$SERVICE_FILE" ]]; then
     log_error "Service file not found: $SERVICE_FILE"
     exit 1

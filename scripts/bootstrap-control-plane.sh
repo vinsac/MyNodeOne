@@ -1272,7 +1272,7 @@ initialize_service_registries() {
         
         # Update the service file with correct paths
         sed "s|MYNODEONE_INSTALL_PATH|$PROJECT_ROOT|g" \
-            "$PROJECT_ROOT/systemd/mynodeone-sync-controller.service" | \
+            "$PROJECT_ROOT/scripts/lib/mynodeone-sync-controller.service" | \
             sudo tee /etc/systemd/system/mynodeone-sync-controller.service > /dev/null
         
         sudo systemctl daemon-reload

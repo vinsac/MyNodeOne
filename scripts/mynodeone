@@ -1560,8 +1560,8 @@ main() {
                     echo
                     echo "To install a VPS Edge Node:"
                     echo "  1. SSH into your Control Plane"
-                    echo "  2. Run: sudo ./scripts/add-vps-edge-node.sh"
-                    echo "  3. Provide VPS details when prompted"
+                    echo "  2. Run: sudo ./scripts/install-vps-edge-node.sh --help"
+                    echo "  3. Provide required arguments (name, IP, user, domain)"
                     echo
                     exit 1
                 fi

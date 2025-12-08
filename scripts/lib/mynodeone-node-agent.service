@@ -1,0 +1,31 @@
+[Unit]
+Description=MyNodeOne Node Agent
+Documentation=https://github.com/vinsac/MyNodeOne
+After=network.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/mynodeone-node-agent run
+Restart=always
+RestartSec=30
+
+# Environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-/etc/mynodeone/agent.env
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mynodeone-node-agent
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

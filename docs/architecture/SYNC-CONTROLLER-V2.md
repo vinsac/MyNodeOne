@@ -276,16 +276,18 @@ done
 ## File Structure
 
 ```
+cmd/
+└── config-api/
+    └── main.go                   # Go-based Config API Server
+
 scripts/
 ├── lib/
-│   ├── config-api-server.sh      # API server (or Go binary)
-│   └── node-agent.sh             # Node agent
+│   ├── node-agent.sh             # Node agent (bash)
+│   ├── mynodeone-config-api.service   # API server systemd unit
+│   └── mynodeone-node-agent.service   # Node agent systemd unit
 ├── install-config-api.sh         # Install API server on control plane
-└── install-node-agent.sh         # Install agent on any node
-
-systemd/
-├── mynodeone-config-api.service  # API server systemd unit
-└── mynodeone-agent.service       # Node agent systemd unit
+├── install-node-agent.sh         # Install agent on any node
+└── nodes-status.sh               # CLI to view node status
 ```
 
 ---
@@ -331,13 +333,20 @@ HEARTBEAT_INTERVAL=60
 
 ```bash
 # Check node status from control plane
-mynodeone nodes status
+./scripts/nodes-status.sh
 
 # Output:
-# NAME           TYPE    IP              STATUS   LAST SEEN        CONFIG
-# vinay-laptop   laptop  100.86.112.112  online   30 seconds ago   v42
-# contabo-vps    vps     100.68.225.92   offline  15 minutes ago   v41
-# worker-01      worker  100.90.1.5      online   45 seconds ago   v42
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   MyNodeOne Cluster Nodes
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#    NAME                 TYPE     IP                 STATUS     LAST SEEN    CONFIG
+#    ----                 ----     --                 ------     ---------    ------
+# ●  vinay-laptop         laptop   100.86.112.112     online     30s ago      v42
+# ●  contabo-vps          vps      100.68.225.92      offline    15m ago      v41
+# ●  worker-01            worker   100.90.1.5         online     45s ago      v42
+#
+# Total: 3 nodes  ● Online: 2  ● Stale: 0  ● Offline: 1
 ```
 
 ### Dashboard Integration
@@ -373,21 +382,42 @@ Add node status to `http://mynodeone.local` dashboard:
 
 ---
 
-## Open Questions
+## Implementation Status
 
-1. **Go vs Bash for API server?** Go is more robust, Bash is easier to modify
-2. **TLS certificates?** Self-signed or Let's Encrypt via Tailscale?
-3. **Config storage?** Continue using ConfigMaps or move to files?
-4. **Backward compatibility?** Keep SSH sync as fallback?
+**Implemented:**
+- Config API Server (Go) - `cmd/config-api/main.go`
+- Node Agent (Bash) - `scripts/lib/node-agent.sh`
+- Systemd services for both components
+- Installation scripts
+- Node status CLI tool
+
+**Decisions Made:**
+- **Go for API server** - Better for scalability and future HA support
+- **Tailscale IP + API Token** - Defense in depth authentication
+- **ConfigMaps for storage** - Kubernetes-native, already in use
+- **SSH kept for other uses** - VPS setup, troubleshooting, kubectl
 
 ---
 
-## Next Steps
+## Installation
 
-1. Review this design document
-2. Decide on implementation language (Go vs Bash)
-3. Implement Config API Server
-4. Implement Node Agent
-5. Test with one VPS node
-6. Roll out to all nodes
-7. Remove old SSH-based sync
+### On Control Plane
+
+```bash
+sudo ./scripts/install-config-api.sh
+```
+
+### On Other Nodes (Laptops, VPS, Workers)
+
+```bash
+sudo ./scripts/install-node-agent.sh \
+    --control-plane-ip 100.x.x.x \
+    --node-type laptop \
+    --api-token <token-from-control-plane>
+```
+
+### Check Status
+
+```bash
+./scripts/nodes-status.sh
+```

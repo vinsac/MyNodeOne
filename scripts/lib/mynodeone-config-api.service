@@ -1,0 +1,38 @@
+[Unit]
+Description=MyNodeOne Config API Server
+Documentation=https://github.com/vinsac/MyNodeOne
+After=network.target k3s.service
+Wants=k3s.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/mynodeone-config-api \
+    --port=8443 \
+    --bind=0.0.0.0 \
+    --token-file=/etc/mynodeone/api-token \
+    --require-tailscale=true
+Restart=always
+RestartSec=10
+
+# Environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mynodeone-config-api
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/etc/mynodeone
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

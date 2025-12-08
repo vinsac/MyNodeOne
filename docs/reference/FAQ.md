@@ -436,14 +436,16 @@ Use MyNodeOne!
 
 ---
 
-### Is MyNodeOne production-ready?
+### Who is MyNodeOne for?
 
-MyNodeOne is built on battle-tested open-source tools, but whether it is appropriate for your production use case depends on your requirements, risk tolerance, and validation. It uses:
-- K3s (used by Cisco, Siemens, and thousands of companies)
-- Longhorn (enterprise storage by SUSE/Rancher)
-- MinIO (trusted by NASA, Intel, and many Fortune 500s)
-- Traefik (powers millions of sites)
-- Prometheus/Grafana (industry standard monitoring)
+MyNodeOne is designed for **home enthusiasts** and **dev teams** who want to learn Kubernetes, self-host applications, or build a personal cloud. It uses well-maintained open-source tools:
+- K3s (lightweight Kubernetes by Rancher/SUSE)
+- Longhorn (distributed storage by Rancher/SUSE)
+- MinIO (S3-compatible object storage)
+- Traefik (reverse proxy and load balancer)
+- Prometheus/Grafana (monitoring and dashboards)
+
+**Note:** MyNodeOne runs on a single control plane by default. For high-availability requirements, consider managed Kubernetes services or multi-master setups.
 
 ### Can I use MyNodeOne for commercial projects?
 

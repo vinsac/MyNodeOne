@@ -182,7 +182,7 @@ Your Phone → Secure encrypted tunnel → MyNodeOne
    - Each device gets a special IP (100.x.x.x)
 
 2. **Encrypts All Traffic**
-   - Uses WireGuard (military-grade encryption)
+   - Uses WireGuard (modern, audited encryption protocol)
    - Even on public WiFi, your data is safe
 
 3. **Works Everywhere**

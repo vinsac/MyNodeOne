@@ -6,7 +6,7 @@ This guide explains how MyNodeOne handles security and what actions you should t
 
 ## Built-in Security (Enabled by Default)
 
-MyNodeOne enables production-grade security during installation. These features are configured automatically in `bootstrap-control-plane.sh`:
+MyNodeOne enables security best practices during installation. These features are configured automatically in `bootstrap-control-plane.sh`:
 
 | Feature | Implementation | Status |
 |---------|----------------|--------|

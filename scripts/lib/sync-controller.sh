@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# Sync Controller - Enterprise-Grade Event-Driven Push System
+# Sync Controller - Event-Driven Configuration Push System
 # 
 # Watches ConfigMap changes and pushes updates to all registered nodes
 # Replaces polling with instant push notifications
@@ -518,7 +518,7 @@ health_check() {
     echo ""
 }
 
-# Combined watch + reconcile mode (recommended for production)
+# Combined watch + reconcile mode (recommended)
 daemon_mode() {
     local reconcile_hours="${1:-1}"
     
@@ -563,7 +563,7 @@ case "${1:-}" in
         ;;
     *)
         cat << 'EOF'
-Sync Controller - Enterprise Event-Driven Push System
+Sync Controller - Event-Driven Push System
 
 Usage:
   sync-controller.sh <command> [options]
@@ -583,7 +583,7 @@ Commands:
 
   daemon [hours]                Combined watch + reconcile (RECOMMENDED)
                                 Immediate sync on changes + hourly retry
-                                Best for production with offline laptops
+                                Best for setups with offline laptops
 
   health                        Check health status of all nodes
 
@@ -595,7 +595,7 @@ Examples:
   # One-time push to all nodes
   sync-controller.sh push
 
-  # Production mode (watch + reconcile every 1 hour)
+  # Recommended mode (watch + reconcile every 1 hour)
   sync-controller.sh daemon 1
 
   # Watch only (immediate sync, no retry)
@@ -607,7 +607,7 @@ Examples:
   # Check node health
   sync-controller.sh health
 
-Production Setup (Recommended):
+Recommended Setup:
   1. Register all nodes
   2. Run as systemd service:
      sudo systemctl start mynodeone-sync-controller

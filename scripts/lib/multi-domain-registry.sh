@@ -3,7 +3,7 @@
 ###############################################################################
 # Multi-Domain, Multi-VPS Registry
 # 
-# Enterprise-grade routing with:
+# Multi-domain routing with:
 # - Multiple public domains
 # - Multiple VPS edge nodes
 # - Load balancing and failover

@@ -17,7 +17,7 @@ MyNodeOne turns everyday hardware into a powerful private cloud you own and cont
 
 ## What is MyNodeOne?
 
-MyNodeOne is a production-ready, scalable private cloud infrastructure that lets you run containerized applications across multiple machines with enterprise-grade features.
+MyNodeOne is a private cloud platform for home enthusiasts and dev teams. It lets you run containerized applications across multiple machines using open-source tools you can learn and customize.
 
 Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your machines. Kubernetes keeps your containerized applications healthy and can spread them across multiple machines. Because this cluster runs on hardware and networks you control, you get cloud-like capabilities as your own private cloud instead of renting them from a public cloud provider.
 

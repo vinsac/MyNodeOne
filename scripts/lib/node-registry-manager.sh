@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# Node Registry Manager - Enterprise-Grade Central Registry
+# Node Registry Manager - Central Node Registry
 #
 # Features:
 # - ConfigMap as single source of truth

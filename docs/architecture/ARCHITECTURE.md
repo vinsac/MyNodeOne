@@ -10,7 +10,7 @@ MyNodeOne is a distributed cloud infrastructure built on top of Kubernetes (K3s)
 2. **Horizontal Scalability**: Add machines as you grow
 3. **Hybrid Edge-Compute**: VPS handles public traffic, home servers provide compute
 4. **GitOps Native**: Infrastructure and apps as code
-5. **Production Ready**: Battle-tested open source components
+5. **Open Source Stack**: Uses well-maintained open source components (K3s, Longhorn, MinIO)
 
 ## Architecture Layers
 
@@ -313,7 +313,7 @@ Example: Home machine with 64GB RAM and 18TB storage, plus a $10/month VPS for p
 - 50% less memory usage
 - Easier installation
 - Same API as K8s
-- Production-ready (used by companies like Cisco)
+- Widely adopted (used by Rancher, SUSE, and many companies)
 
 ### Why Tailscale instead of VPN?
 - Zero configuration

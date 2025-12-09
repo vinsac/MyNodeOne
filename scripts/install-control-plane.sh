@@ -85,8 +85,9 @@ echo "User:           $ACTUAL_USER"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 
-# Create config directory
+# Create config directory with correct ownership
 mkdir -p "$ACTUAL_HOME/.mynodeone"
+chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.mynodeone"
 
 # Create configuration file
 CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"

@@ -133,9 +133,37 @@ kubectl apply -f manifests/gpu/nvidia-device-plugin.yaml
 
 ## Installation
 
-### Automated Setup (Recommended)
+### Recommended: Install Driver Before MyNodeOne
 
-MyNodeOne includes a GPU setup script that handles everything:
+For the smoothest experience, install the NVIDIA driver **before** running the MyNodeOne installer:
+
+```bash
+# 1. Check if you have an NVIDIA GPU
+lspci | grep -i nvidia
+
+# 2. Install NVIDIA driver (Ubuntu 22.04/24.04)
+sudo apt update
+sudo apt install -y nvidia-driver-550
+
+# 3. Reboot (required for driver to load)
+sudo reboot
+
+# 4. Verify driver is working
+nvidia-smi
+# Should show your GPU model and driver version
+
+# 5. Now run MyNodeOne installer
+sudo ./scripts/install-control-plane.sh
+```
+
+The MyNodeOne installer will automatically:
+- Detect your working GPU driver
+- Install the NVIDIA Container Toolkit
+- Deploy the NVIDIA Device Plugin to Kubernetes
+
+### GPU Setup Script (Standalone)
+
+You can also use the GPU setup script directly:
 
 ```bash
 # Interactive mode - asks if you want GPU support
@@ -144,7 +172,7 @@ sudo ./scripts/lib/gpu-setup.sh
 # Auto mode - installs if GPU detected
 sudo ./scripts/lib/gpu-setup.sh --auto
 
-# Check status only
+# Check GPU status only
 sudo ./scripts/lib/gpu-setup.sh --check
 ```
 

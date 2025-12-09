@@ -262,7 +262,7 @@ done
 - SSH sync controller checks if Node Agent is active before pushing
 - If node has recent heartbeat → skip SSH push (Node Agent handles it)
 - If node has no heartbeat → fall back to SSH push
-- **Use case:** Nodes where Node Agent failed to install or is temporarily down
+- **Use case:** Node is active but Node Agent is not working (crashed, failed install, service stopped)
 
 ### How Fallback Works
 

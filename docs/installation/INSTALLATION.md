@@ -130,6 +130,40 @@ tailscale ip -4
 # Note this IP - you'll need it for VPS/management workstation setup!
 ```
 
+#### 5. NVIDIA GPU Support (optional)
+
+**Skip this section if you don't have an NVIDIA GPU.**
+
+If your control plane has an NVIDIA GPU (e.g., RTX 3090, RTX 4090, A100) and you want to run AI/ML workloads like LLM inference (vLLM, Ollama), install the GPU driver **before** running the MyNodeOne installer.
+
+```bash
+# Check if you have an NVIDIA GPU
+lspci | grep -i nvidia
+# If no output, skip this section
+
+# Install NVIDIA driver (Ubuntu 22.04/24.04)
+sudo apt update
+sudo apt install -y nvidia-driver-550
+
+# REBOOT REQUIRED after driver installation
+sudo reboot
+```
+
+After reboot, verify the driver is working:
+
+```bash
+# Verify driver installation
+nvidia-smi
+# Should show your GPU model and driver version
+```
+
+**Note:** The MyNodeOne installer will automatically:
+- Detect your GPU and install the NVIDIA Container Toolkit
+- Deploy the NVIDIA Device Plugin to Kubernetes
+- Make GPUs available to pods as `nvidia.com/gpu` resources
+
+For more details, see [GPU-SUPPORT.md](../architecture/GPU-SUPPORT.md).
+
 ---
 
 ## Installation Steps
@@ -906,6 +940,32 @@ sudo systemctl restart mynodeone-node-agent
 - Control plane installed and running
 - Another machine (PC or server) with **Ubuntu 24.04 LTS** (or 22.04/20.04) installed
 - Network connectivity to control plane
+
+### NVIDIA GPU Support (optional)
+
+**Skip this if your worker node doesn't have an NVIDIA GPU.**
+
+If your worker node has an NVIDIA GPU and you want it available for AI/ML workloads:
+
+```bash
+# Check if you have an NVIDIA GPU
+lspci | grep -i nvidia
+# If no output, skip this section
+
+# Install NVIDIA driver
+sudo apt update
+sudo apt install -y nvidia-driver-550
+
+# REBOOT REQUIRED
+sudo reboot
+
+# After reboot, verify
+nvidia-smi
+```
+
+The MyNodeOne installer will automatically configure the container toolkit. GPUs from all nodes are available to the Kubernetes scheduler - pods requesting `nvidia.com/gpu` can be scheduled on any GPU node.
+
+For more details, see [GPU-SUPPORT.md](../architecture/GPU-SUPPORT.md).
 
 ---
 

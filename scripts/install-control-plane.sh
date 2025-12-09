@@ -135,35 +135,6 @@ chown "$ACTUAL_USER:$ACTUAL_USER" "$CONFIG_FILE"
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# State file for resume after reboot
-STATE_FILE="$ACTUAL_HOME/.mynodeone/install-state"
-
-# Check if resuming after GPU driver reboot
-if [ -f "$STATE_FILE" ] && grep -q "GPU_DRIVER_INSTALLED=true" "$STATE_FILE" 2>/dev/null; then
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Resuming installation after GPU driver reboot..."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    # Verify driver is working
-    if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
-        echo "✓ NVIDIA driver is working"
-        nvidia-smi --query-gpu=name,driver_version --format=csv,noheader | head -1
-        
-        # Install container toolkit (skipped before reboot)
-        if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
-            echo ""
-            echo "Installing NVIDIA Container Toolkit..."
-            bash "$SCRIPT_DIR/lib/gpu-setup.sh" --auto --no-plugin
-        fi
-    else
-        echo "⚠ NVIDIA driver not working after reboot"
-        echo "  You may need to troubleshoot the driver installation"
-    fi
-    
-    # Clear state file
-    rm -f "$STATE_FILE"
-fi
-
 # GPU Setup (before K3s installation)
 if lspci | grep -i nvidia &> /dev/null; then
     if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
@@ -175,22 +146,16 @@ if lspci | grep -i nvidia &> /dev/null; then
             GPU_EXIT_CODE=$?
             
             if [ $GPU_EXIT_CODE -eq 2 ]; then
-                # Save state for resume after reboot
-                mkdir -p "$ACTUAL_HOME/.mynodeone"
-                echo "GPU_DRIVER_INSTALLED=true" > "$STATE_FILE"
-                echo "INSTALL_DATE=$(date -Iseconds)" >> "$STATE_FILE"
-                chown "$ACTUAL_USER:$ACTUAL_USER" "$STATE_FILE"
-                
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "  REBOOT REQUIRED"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "  NVIDIA driver was installed. Please reboot and run this script again."
+                echo "  NVIDIA driver was installed. Please reboot and run this script again:"
                 echo ""
-                echo "  After reboot, run:"
-                echo "    sudo $0"
+                echo "    sudo reboot"
                 echo ""
-                echo "  The installation will automatically resume from where it left off."
+                echo "  After reboot:"
+                echo "    sudo ./scripts/install-control-plane.sh"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 exit 0
             fi

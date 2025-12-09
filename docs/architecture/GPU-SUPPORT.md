@@ -83,6 +83,54 @@ These come **pre-packaged in container images** - do NOT install on host:
 
 ---
 
+## Offline / Air-Gapped Clusters
+
+GPU support works fully offline after initial setup:
+
+### What Requires Internet (One-Time)
+
+| Component | When | Can Pre-Download? |
+|-----------|------|-------------------|
+| NVIDIA Driver | Installation | Yes (download .deb/.rpm) |
+| Container Toolkit | Installation | Yes (download packages) |
+| Device Plugin Image | First pod start | Yes (pre-pull image) |
+| ML Container Images | First pod start | Yes (pre-pull images) |
+
+### What Works Offline
+
+| Component | Offline? | Notes |
+|-----------|----------|-------|
+| NVIDIA Driver | ✓ Yes | Runs locally, no network needed |
+| Container Toolkit | ✓ Yes | Local runtime configuration |
+| Device Plugin | ✓ Yes | Runs locally, reports GPUs to scheduler |
+| GPU Scheduling | ✓ Yes | Kubernetes scheduler is local |
+| Running GPU Pods | ✓ Yes | Once images are pulled |
+
+### Pre-Pulling Images for Offline Use
+
+```bash
+# On a machine with internet, pull and save images
+docker pull nvcr.io/nvidia/k8s-device-plugin:v0.14.5
+docker pull vllm/vllm-openai:latest
+docker save nvcr.io/nvidia/k8s-device-plugin:v0.14.5 > device-plugin.tar
+docker save vllm/vllm-openai:latest > vllm.tar
+
+# Transfer to offline cluster, then load
+sudo ctr -n k8s.io images import device-plugin.tar
+sudo ctr -n k8s.io images import vllm.tar
+```
+
+### Local Device Plugin Manifest
+
+MyNodeOne includes a local copy of the device plugin manifest:
+
+```bash
+# Works without internet
+kubectl apply -f manifests/gpu/nvidia-device-plugin.yaml
+```
+
+---
+
 ## Installation
 
 ### Automated Setup (Recommended)
@@ -288,6 +336,69 @@ spec:
 
 ---
 
+## How GPU Scheduling Works
+
+### GPU Resources in Kubernetes
+
+The NVIDIA Device Plugin runs as a DaemonSet on every GPU node. It:
+
+1. **Detects GPUs** on each node using the NVIDIA driver
+2. **Reports capacity** to Kubernetes (e.g., `nvidia.com/gpu: 1`)
+3. **Allocates GPUs** to pods that request them
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Kubernetes Cluster                               │
+│                                                                          │
+│  ┌─────────────────────┐    ┌─────────────────────┐                     │
+│  │   Control Plane     │    │   Worker Node       │                     │
+│  │   (RTX 3090)        │    │   (RTX 3090)        │                     │
+│  │                     │    │                     │                     │
+│  │   nvidia.com/gpu: 1 │    │   nvidia.com/gpu: 1 │                     │
+│  │   ▲                 │    │   ▲                 │                     │
+│  │   │ Device Plugin   │    │   │ Device Plugin   │                     │
+│  └───┼─────────────────┘    └───┼─────────────────┘                     │
+│      │                          │                                        │
+│      └──────────┬───────────────┘                                        │
+│                 │                                                        │
+│                 ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │              Kubernetes Scheduler                                │    │
+│  │                                                                  │    │
+│  │  Pod requests nvidia.com/gpu: 1                                 │    │
+│  │  → Scheduler finds node with available GPU                      │    │
+│  │  → Schedules pod on that node                                   │    │
+│  │  → Device Plugin assigns specific GPU to container              │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Points
+
+- **Each node reports its own GPUs** - GPUs are NOT shared across nodes
+- **Scheduler picks the node** - When you request a GPU, Kubernetes finds a node with one available
+- **No internet required** - The Device Plugin runs locally and doesn't need network access
+- **GPUs are exclusive** - A GPU assigned to one pod cannot be used by another
+
+### Viewing Available GPUs
+
+```bash
+# See GPU capacity on all nodes
+kubectl describe nodes | grep -A5 "Allocatable" | grep gpu
+
+# Or more detailed:
+kubectl get nodes -o custom-columns="NODE:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
+```
+
+Example output with 2 GPU nodes:
+```
+NODE              GPU
+control-plane     1
+gpu-worker        1
+```
+
+---
+
 ## Multi-GPU Configurations
 
 ### Single Node with Multiple GPUs
@@ -313,16 +424,67 @@ args:
 
 ### Multiple Nodes with GPUs
 
-For GPU nodes in different machines, use node selectors:
+When you have GPUs on different machines (e.g., control plane + worker):
+
+```
+┌─────────────────────┐    ┌─────────────────────┐
+│   Control Plane     │    │   Worker Node       │
+│   RTX 3090 (24GB)   │    │   RTX 3090 (24GB)   │
+│                     │    │                     │
+│   Pod: vllm-1       │    │   Pod: vllm-2       │
+│   (Mistral-7B)      │    │   (Llama-13B)       │
+└─────────────────────┘    └─────────────────────┘
+```
+
+**Kubernetes automatically distributes GPU workloads:**
+
+```yaml
+# This deployment will spread across GPU nodes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+spec:
+  replicas: 2  # One pod per GPU node
+  template:
+    spec:
+      containers:
+      - name: vllm
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+```
+
+**To target a specific node:**
 
 ```yaml
 spec:
   nodeSelector:
-    nvidia.com/gpu.present: "true"  # Schedule on any GPU node
-  # Or target specific node:
-  # nodeSelector:
-  #   kubernetes.io/hostname: gpu-worker-1
+    kubernetes.io/hostname: gpu-worker  # Run on specific node
 ```
+
+**To run on any GPU node:**
+
+```yaml
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: Exists
+```
+
+### Cross-Node GPU Limitations
+
+**Important:** You cannot combine GPUs from different nodes for a single model. Each pod runs on ONE node and can only use GPUs from that node.
+
+| Scenario | Possible? | Solution |
+|----------|-----------|----------|
+| Run 2 separate models on 2 GPU nodes | ✓ Yes | Deploy 2 pods, each requests 1 GPU |
+| Run 1 model across 2 GPUs on same node | ✓ Yes | Request 2 GPUs, use tensor parallelism |
+| Run 1 model across 2 GPUs on different nodes | ✗ No | Use a smaller/quantized model, or add more GPUs to one node |
 
 ---
 

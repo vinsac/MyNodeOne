@@ -135,25 +135,67 @@ chown "$ACTUAL_USER:$ACTUAL_USER" "$CONFIG_FILE"
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# State file for resume after reboot
+STATE_FILE="$ACTUAL_HOME/.mynodeone/install-state"
+
+# Check if resuming after GPU driver reboot
+if [ -f "$STATE_FILE" ] && grep -q "GPU_DRIVER_INSTALLED=true" "$STATE_FILE" 2>/dev/null; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Resuming installation after GPU driver reboot..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Verify driver is working
+    if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+        echo "✓ NVIDIA driver is working"
+        nvidia-smi --query-gpu=name,driver_version --format=csv,noheader | head -1
+        
+        # Install container toolkit (skipped before reboot)
+        if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
+            echo ""
+            echo "Installing NVIDIA Container Toolkit..."
+            bash "$SCRIPT_DIR/lib/gpu-setup.sh" --auto --no-plugin
+        fi
+    else
+        echo "⚠ NVIDIA driver not working after reboot"
+        echo "  You may need to troubleshoot the driver installation"
+    fi
+    
+    # Clear state file
+    rm -f "$STATE_FILE"
+fi
+
 # GPU Setup (before K3s installation)
 if lspci | grep -i nvidia &> /dev/null; then
     if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
-        echo ""
-        # Interactive GPU setup - will prompt user
-        bash "$SCRIPT_DIR/lib/gpu-setup.sh" --no-plugin
-        GPU_EXIT_CODE=$?
-        
-        if [ $GPU_EXIT_CODE -eq 2 ]; then
+        # Skip if driver already installed and working
+        if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi &>/dev/null; then
             echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  REBOOT REQUIRED"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  NVIDIA driver was installed. Please reboot and run this script again."
-            echo ""
-            echo "  After reboot, run:"
-            echo "    sudo $0"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            exit 0
+            # Interactive GPU setup - will prompt user
+            bash "$SCRIPT_DIR/lib/gpu-setup.sh" --no-plugin
+            GPU_EXIT_CODE=$?
+            
+            if [ $GPU_EXIT_CODE -eq 2 ]; then
+                # Save state for resume after reboot
+                mkdir -p "$ACTUAL_HOME/.mynodeone"
+                echo "GPU_DRIVER_INSTALLED=true" > "$STATE_FILE"
+                echo "INSTALL_DATE=$(date -Iseconds)" >> "$STATE_FILE"
+                chown "$ACTUAL_USER:$ACTUAL_USER" "$STATE_FILE"
+                
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "  REBOOT REQUIRED"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "  NVIDIA driver was installed. Please reboot and run this script again."
+                echo ""
+                echo "  After reboot, run:"
+                echo "    sudo $0"
+                echo ""
+                echo "  The installation will automatically resume from where it left off."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                exit 0
+            fi
+        else
+            echo "✓ NVIDIA driver already installed and working"
         fi
     fi
 fi
@@ -170,11 +212,26 @@ if lspci | grep -i nvidia &> /dev/null; then
     if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
         echo ""
         echo "Deploying NVIDIA Device Plugin to Kubernetes..."
-        if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
-            # Just deploy the device plugin now that K3s is running
-            kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml 2>/dev/null || true
-            echo "NVIDIA Device Plugin deployed. GPU resources available as 'nvidia.com/gpu'"
+        
+        # Try local manifest first (works offline), then remote
+        LOCAL_MANIFEST="$SCRIPT_DIR/../manifests/gpu/nvidia-device-plugin.yaml"
+        REMOTE_MANIFEST="https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml"
+        
+        if [ -f "$LOCAL_MANIFEST" ]; then
+            kubectl apply -f "$LOCAL_MANIFEST" 2>/dev/null || true
+            echo "✓ NVIDIA Device Plugin deployed (from local manifest)"
+        elif curl -s --connect-timeout 5 "$REMOTE_MANIFEST" &>/dev/null; then
+            kubectl apply -f "$REMOTE_MANIFEST" 2>/dev/null || true
+            echo "✓ NVIDIA Device Plugin deployed (from remote)"
+        else
+            echo "⚠ Could not deploy NVIDIA Device Plugin (no network)"
+            echo "  Deploy manually later with:"
+            echo "  kubectl apply -f manifests/gpu/nvidia-device-plugin.yaml"
         fi
+        
+        echo ""
+        echo "GPU resources will be available as 'nvidia.com/gpu' in pod specs"
+        echo "Each GPU node exposes its GPUs independently to the cluster scheduler"
     fi
 fi
 

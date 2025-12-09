@@ -69,6 +69,7 @@ mynodeone/
 │   ├── architecture/                 ← System architecture
 │   │   ├── ARCHITECTURE.md           ← Overall design
 │   │   ├── DNS.md                    ← DNS configuration
+│   │   ├── GPU-SUPPORT.md            ← NVIDIA GPU setup for AI/ML workloads
 │   │   ├── NETWORKING.md             ← Tailscale and networking
 │   │   ├── REVERSE-PROXY.md          ← Traefik routing (multi-domain, SSL)
 │   │   ├── SYNC-CONTROLLER-V2.md     ← Node sync (HTTP pull + heartbeat) - PRIMARY

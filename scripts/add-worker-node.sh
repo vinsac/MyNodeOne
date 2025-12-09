@@ -45,6 +45,9 @@ source "$CONFIG_FILE"
 # K3s version
 K3S_VERSION="v1.28.5+k3s1"
 
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Helper functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -256,6 +259,48 @@ install_node_agent() {
     fi
 }
 
+setup_gpu() {
+    # Check for NVIDIA GPU
+    if ! lspci 2>/dev/null | grep -qi nvidia; then
+        return 0
+    fi
+    
+    log_info "NVIDIA GPU detected on this worker node"
+    
+    if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  NVIDIA GPU Detected"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        lspci | grep -i nvidia | head -3
+        echo ""
+        
+        # Interactive GPU setup (no device plugin - that's on control plane)
+        bash "$SCRIPT_DIR/lib/gpu-setup.sh" --no-plugin
+        GPU_EXIT_CODE=$?
+        
+        if [ $GPU_EXIT_CODE -eq 2 ]; then
+            echo ""
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            log_warn "  REBOOT REQUIRED"
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            log_warn "  NVIDIA driver was installed. Please reboot and run this script again."
+            log_warn ""
+            log_warn "  After reboot, run:"
+            log_warn "    sudo $0"
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            exit 0
+        fi
+        
+        # Update summary to show GPU
+        HAS_GPU="true"
+    else
+        log_warn "GPU setup script not found"
+        log_info "You can install GPU support manually later:"
+        log_info "  sudo ./scripts/lib/gpu-setup.sh"
+    fi
+}
+
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MyNodeOne Worker Node Addition"
@@ -264,6 +309,10 @@ main() {
     
     check_requirements
     verify_control_plane
+    
+    # GPU setup early (may require reboot before continuing)
+    setup_gpu
+    
     get_join_token
     install_dependencies
     configure_firewall

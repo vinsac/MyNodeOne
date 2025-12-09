@@ -119,21 +119,62 @@ HAS_GPU="false"
 DISK_OPTION="1"
 EOF
 
-# Check for GPU
+# Check for GPU and offer to install drivers
 if lspci | grep -i nvidia &> /dev/null; then
     echo "HAS_GPU=\"true\"" >> "$CONFIG_FILE"
-    echo "GPU detected and enabled."
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  NVIDIA GPU Detected"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    lspci | grep -i nvidia | head -3
+    echo ""
 fi
 
 chown "$ACTUAL_USER:$ACTUAL_USER" "$CONFIG_FILE"
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# GPU Setup (before K3s installation)
+if lspci | grep -i nvidia &> /dev/null; then
+    if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
+        echo ""
+        # Interactive GPU setup - will prompt user
+        bash "$SCRIPT_DIR/lib/gpu-setup.sh" --no-plugin
+        GPU_EXIT_CODE=$?
+        
+        if [ $GPU_EXIT_CODE -eq 2 ]; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  REBOOT REQUIRED"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  NVIDIA driver was installed. Please reboot and run this script again."
+            echo ""
+            echo "  After reboot, run:"
+            echo "    sudo $0"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            exit 0
+        fi
+    fi
+fi
 
 # Run main installer in UNATTENDED mode
 echo "Starting installation..."
 export UNATTENDED=1
 
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # Run the main script
 bash "$SCRIPT_DIR/mynodeone"
+
+# Post-install: Deploy NVIDIA Device Plugin if GPU is present
+if lspci | grep -i nvidia &> /dev/null; then
+    if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+        echo ""
+        echo "Deploying NVIDIA Device Plugin to Kubernetes..."
+        if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
+            # Just deploy the device plugin now that K3s is running
+            kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml 2>/dev/null || true
+            echo "NVIDIA Device Plugin deployed. GPU resources available as 'nvidia.com/gpu'"
+        fi
+    fi
+fi
 

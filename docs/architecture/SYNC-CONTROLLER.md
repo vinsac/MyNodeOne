@@ -1,6 +1,10 @@
-# Sync Controller Architecture
+# Sync Controller Architecture (SSH-Based Fallback)
 
-The Sync Controller maintains configuration consistency across all nodes in a MyNodeOne cluster using a unidirectional push model where the control plane initiates all synchronization operations.
+> **Note:** This document describes the SSH-based sync controller which now serves as a **fallback mechanism**. The primary sync mechanism is the HTTP-based [Sync Controller V2](SYNC-CONTROLLER-V2.md) with Node Agent and heartbeat system.
+>
+> **When is SSH fallback used?** Only when a node is active but its Node Agent is not working (crashed, failed to install, or service stopped).
+
+The SSH-based Sync Controller maintains configuration consistency across all nodes in a MyNodeOne cluster using a unidirectional push model where the control plane initiates all synchronization operations.
 
 ---
 

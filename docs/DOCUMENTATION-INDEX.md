@@ -70,7 +70,8 @@ mynodeone/
 │   │   ├── ARCHITECTURE.md           ← Overall design
 │   │   ├── DNS.md                    ← DNS configuration
 │   │   ├── NETWORKING.md             ← Tailscale and networking
-│   │   └── SYNC-CONTROLLER.md        ← Node synchronization
+│   │   ├── SYNC-CONTROLLER-V2.md     ← Node sync (HTTP pull + heartbeat) - PRIMARY
+│   │   └── SYNC-CONTROLLER.md        ← Node sync (SSH push) - FALLBACK
 │   └── use-cases/                    ← Deployment scenarios
 ├── manifests/                        ← Kubernetes manifests
 └── website/                          ← Dashboard

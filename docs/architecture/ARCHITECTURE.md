@@ -254,7 +254,8 @@ Replicated Volume (2x18TB HDDs)
 
 A fundamental security principle in MyNodeOne is the **unidirectional flow of trust and connectivity**. The cluster's internal network, especially the Control Plane, is considered a secure, trusted zone. All external nodes, such as a public-facing VPS Edge Node, are considered untrusted.
 
-- **Connections originate from the inside**: All administrative connections (installation, configuration, synchronization) originate from the Control Plane and connect outwards to edge nodes.
+- **Nodes pull config from Control Plane**: Each node runs a Node Agent that polls the control plane for configuration updates and sends heartbeats. This is firewall-friendly and requires no SSH keys between nodes.
+- **SSH fallback for edge cases**: If a Node Agent is not working, the control plane can push config via SSH as a fallback.
 - **No inbound public access to Control Plane**: The Control Plane's SSH port is never exposed to the public internet. It is only accessible via your local LAN or Tailscale.
 - **Minimal attack surface**: If a public-facing VPS is compromised, an attacker has no network path or credentials to access the Control Plane.
 

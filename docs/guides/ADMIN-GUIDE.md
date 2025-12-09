@@ -311,58 +311,44 @@ kubectl set image deployment/<app-name> \
 
 This section covers how to add or remove nodes from your MyNodeOne cluster.
 
+### Checking Node Status
+
+MyNodeOne uses a heartbeat system to track which nodes are online. Each node runs a Node Agent that reports its status to the control plane.
+
+```bash
+# View all nodes and their status
+./scripts/nodes-status.sh
+```
+
+Output shows:
+- **Node name and type** (laptop, worker, vps)
+- **Status**: online (heartbeat < 2 min), stale (2-10 min), offline (> 10 min)
+- **Last heartbeat time**
+- **Config version** currently applied
+
 ### Adding a New Node
 
-To add a new node (such as a VPS, Worker, or another Management Laptop), follow the relevant sections in the [**Installation Guide**](./INSTALLATION.md). The setup scripts will handle the registration automatically.
+To add a new node (such as a VPS, Worker, or another Management Laptop), follow the relevant sections in the [**Installation Guide**](./INSTALLATION.md). The setup scripts will:
+1. Install the Node Agent automatically
+2. Configure it to connect to your control plane
+3. Start sending heartbeats immediately
+
+The node will appear in `./scripts/nodes-status.sh` within 60 seconds.
 
 ### Permanently Removing a Node
 
-If you permanently decommission a node (e.g., you delete your VPS instance), you must **manually remove it** from the cluster registry. This is a deliberate safety measure to prevent accidental removal due to a temporary network outage.
+If you permanently decommission a node (e.g., you delete your VPS instance), remove it from both Kubernetes and the sync controller registry:
 
-The `sync-controller` will not remove an unreachable node automatically. It will simply log an error and continue trying to sync with it until you remove it from the registry.
+```bash
+# Step 1: Remove from Kubernetes (if it's a K3s node)
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+kubectl delete node <node-name>
 
-**To permanently remove a node:**
+# Step 2: Remove from sync controller registry
+./scripts/nodes-status.sh remove <node-name>
+```
 
-1.  **SSH into your Control Plane.** All cluster management commands must be run from there.
-
-2.  **Edit the cluster registry ConfigMap:**
-
-    ```bash
-    sudo kubectl edit configmap sync-controller-registry -n kube-system
-    ```
-
-3.  **Remove the node's JSON entry.** This command opens a text editor. Find the correct node array (`vps_nodes`, `worker_nodes`, or `management_laptops`) and delete the entire JSON object `{...}` for the node you want to remove.
-
-    For example, to remove `my-old-vps-to-remove`, you would delete the highlighted lines:
-
-    ```json
-    "vps_nodes": [
-      {
-        "ip": "100.XX.XX.XX",
-        "name": "my-vps-1",
-        "ssh_user": "sammy"
-      },
-      {
-        "ip": "100.YY.YY.YY",
-        "name": "my-old-vps-to-remove",
-        "ssh_user": "sammy"
-      }
-    ]
-    ```
-
-    After deletion, the section should look like this:
-
-    ```json
-    "vps_nodes": [
-      {
-        "ip": "100.XX.XX.XX",
-        "name": "my-vps-1",
-        "ssh_user": "sammy"
-      }
-    ]
-    ```
-
-4.  **Save and close the editor.** Kubernetes will automatically apply the change. The `sync-controller` will read the updated list on its next cycle and will stop trying to contact the removed node.
+**Note:** Nodes are never automatically removed. This is a safety measure to prevent accidental removal due to temporary network outages. An offline node will stay in the registry (showing as "offline") until you explicitly remove it.
 
 ---
 

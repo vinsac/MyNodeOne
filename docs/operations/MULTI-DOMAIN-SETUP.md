@@ -63,28 +63,16 @@ sudo ./scripts/lib/multi-domain-registry.sh register-vps \
     100.70.123.45 167.99.1.1 us digitalocean
 ```
 
-### 4. Enable Sync Controller Service
+### 4. Verify Node Sync Status
+
+Nodes automatically register via the Node Agent heartbeat system. Check status:
 
 ```bash
-sudo cp ~/MyNodeOne/scripts/lib/mynodeone-sync-controller.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now mynodeone-sync-controller
-sudo systemctl status mynodeone-sync-controller
+# View all nodes and their sync status
+./scripts/nodes-status.sh
 ```
 
-### 5. Register Nodes for Auto-Push
-
-**Management Laptops:**
-```bash
-sudo ./scripts/lib/sync-controller.sh register management_laptops \
-    100.86.112.112 vinay-laptop vinaysachdeva
-```
-
-**VPS Nodes:**
-```bash
-sudo ./scripts/lib/sync-controller.sh register vps_nodes \
-    100.68.225.92 contabo-vps root
-```
+> **Note:** The Node Agent (HTTP-based sync) is the primary mechanism. Each node pulls config from the control plane and sends heartbeats. SSH-based sync is only used as a fallback if the Node Agent is not working on a node.
 
 ---
 

@@ -651,6 +651,53 @@ Zero manual work!
 
 Yes, but not recommended. Let's Encrypt is free and automatic. If you need custom certs, configure Traefik manually.
 
+## Node Synchronization Questions
+
+### How do nodes stay in sync with the cluster?
+
+MyNodeOne uses a **two-tier sync system**:
+
+**Primary: HTTP-Based Sync (Node Agent)**
+- Every node runs a Node Agent that polls the control plane for config updates
+- Sends heartbeats every 30-60 seconds so you can see which nodes are online
+- Automatically applies DNS entries (laptops/workers) or Traefik routes (VPS)
+- No SSH keys required between nodes
+
+**Fallback: SSH-Based Sync**
+- If Node Agent is not working on a node, the control plane pushes config via SSH
+- Only used when a node is active but its Node Agent has crashed or failed to install
+
+### How do I check which nodes are online?
+
+```bash
+# On control plane
+./scripts/nodes-status.sh
+```
+
+This shows all nodes with their status (online/stale/offline), last heartbeat time, and config version.
+
+### How do I remove a node from the cluster?
+
+```bash
+# Remove from Kubernetes
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+kubectl delete node <node-name>
+
+# Remove from sync controller registry
+./scripts/nodes-status.sh remove <node-name>
+```
+
+### What happens if a node goes offline?
+
+- **Node Agent stops sending heartbeats** → Status changes to "stale" (2-10 min) then "offline" (10+ min)
+- **When node comes back online** → Node Agent automatically fetches latest config and applies it
+- **No manual intervention needed** → Self-healing by design
+
+### Where can I learn more about the sync architecture?
+
+- [Sync Controller V2 (HTTP-based)](../architecture/SYNC-CONTROLLER-V2.md) - Primary mechanism
+- [Sync Controller (SSH-based)](../architecture/SYNC-CONTROLLER.md) - Fallback mechanism
+
 ## Security Questions
 
 ### What security features does MyNodeOne have?

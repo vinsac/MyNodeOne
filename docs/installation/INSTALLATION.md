@@ -554,17 +554,24 @@ curl -I https://chat.yourdomain.com
 
 ### Automated Sync System
 
-The sync system automatically propagates configuration changes:
+The sync system automatically propagates configuration changes to all nodes:
 
 - **When you deploy/remove apps**: Service registry is updated
 - **When you make services public**: Configuration is pushed to VPS
-- **Manual sync**: `sudo ./scripts/lib/sync-controller.sh push`
+- **Check node status**: `./scripts/nodes-status.sh`
 
 **How it works:**
 1. Control plane maintains service registry in Kubernetes ConfigMap
-2. When changes occur, sync-controller SSHes to registered VPS nodes
-3. VPS fetches updated registry and regenerates Traefik routes
-4. Traefik automatically reloads with new configuration
+2. Each node runs a **Node Agent** that polls the control plane for config updates
+3. Node Agent sends **heartbeats** so you can see which nodes are online
+4. VPS nodes regenerate Traefik routes; laptops/workers update DNS entries
+5. If Node Agent is not working, SSH-based sync is used as fallback
+
+**Node status:**
+```bash
+# View all nodes and their sync status
+./scripts/nodes-status.sh
+```
 
 ---
 
@@ -843,45 +850,38 @@ cd ~/MyNodeOne
 
 **Diagnosis:**
 ```bash
-# 1. Check if laptop is registered
+# 1. Check if laptop is registered and online
 # On control plane:
-sudo ./scripts/lib/sync-controller.sh health
-# Should show your laptop in "Management Laptops" section
+./scripts/nodes-status.sh
+# Should show your laptop with status "online"
 
-# 2. Check if sync-controller service is running
-# On control plane:
-sudo systemctl status mynodeone-sync-controller
-
-# 3. Test manual sync
+# 2. Check if Node Agent service is running
 # On laptop:
-cd ~/MyNodeOne
-sudo ./scripts/sync-dns.sh
+sudo systemctl status mynodeone-node-agent
+
+# 3. Check Node Agent logs
+# On laptop:
+sudo journalctl -u mynodeone-node-agent -n 50
 ```
 
 **Fix:**
 ```bash
-# If not registered, register manually:
-# On control plane:
-sudo ./scripts/lib/sync-controller.sh register \
-    management_laptops \
-    LAPTOP_TAILSCALE_IP \
-    <laptop-hostname> \
-    <username>
+# If Node Agent is not running, restart it:
+sudo systemctl restart mynodeone-node-agent
 
-# Enable sync service if not running:
-sudo ./scripts/enable-sync-controller-service.sh
+# If Node Agent is not installed, reinstall:
+cd ~/MyNodeOne
+sudo ./scripts/lib/install-config-sync.sh node-agent laptop
 ```
-
-In this example, `LAPTOP_TAILSCALE_IP` is the laptop's **Tailscale IPv4 address** from `tailscale ip -4` (not a public IP address).
 
 ### Issue: Laptop was offline, now DNS is stale
 
-**Solution:** Sync happens automatically within 1 hour (periodic reconciliation)
+**Solution:** Node Agent automatically syncs when laptop comes back online (within 60 seconds)
 
 **Or force immediate sync:**
 ```bash
-cd ~/MyNodeOne
-sudo ./scripts/sync-dns.sh
+# Restart Node Agent to force immediate sync
+sudo systemctl restart mynodeone-node-agent
 ```
 
 ---

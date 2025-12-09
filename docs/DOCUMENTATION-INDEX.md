@@ -70,6 +70,7 @@ mynodeone/
 │   │   ├── ARCHITECTURE.md           ← Overall design
 │   │   ├── DNS.md                    ← DNS configuration
 │   │   ├── NETWORKING.md             ← Tailscale and networking
+│   │   ├── REVERSE-PROXY.md          ← Traefik routing (multi-domain, SSL)
 │   │   ├── SYNC-CONTROLLER-V2.md     ← Node sync (HTTP pull + heartbeat) - PRIMARY
 │   │   └── SYNC-CONTROLLER.md        ← Node sync (SSH push) - FALLBACK
 │   └── use-cases/                    ← Deployment scenarios

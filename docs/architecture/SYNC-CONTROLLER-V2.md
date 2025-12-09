@@ -250,26 +250,53 @@ done
 
 ---
 
-## Migration Plan
+## Architecture: Primary + Fallback
 
-### Phase 1: Add Config API Server (Parallel)
-- Deploy API server on control plane
-- Keep existing SSH-based sync running
-- Test API endpoints manually
+### Primary: HTTP-Based Sync (Node Agent)
+- Node Agent installed on all nodes during setup
+- Pulls config from Config API Server every 30-60 seconds
+- Sends heartbeat to report status
+- **Advantages:** Firewall-friendly, no SSH keys needed, real-time node visibility
 
-### Phase 2: Deploy Node Agent to VPS
-- VPS nodes are most critical (public traffic)
-- Test pull-based config + heartbeat
-- Verify Traefik routes update correctly
+### Fallback: SSH-Based Sync (Legacy)
+- SSH sync controller checks if Node Agent is active before pushing
+- If node has recent heartbeat → skip SSH push (Node Agent handles it)
+- If node has no heartbeat → fall back to SSH push
+- **Use case:** Nodes where Node Agent failed to install or is temporarily down
 
-### Phase 3: Deploy Node Agent to Laptops/Workers
-- Lower risk (internal DNS only)
-- Test heartbeat visibility
+### How Fallback Works
 
-### Phase 4: Remove SSH-Based Sync
-- Disable old sync controller
-- Remove SSH key requirements
-- Update documentation
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Control Plane                            │
+│                                                             │
+│  ┌─────────────────┐       ┌─────────────────────────────┐ │
+│  │ Config API      │       │ SSH Sync Controller         │ │
+│  │ Server          │       │ (Fallback)                  │ │
+│  │                 │       │                             │ │
+│  │ - Serves config │       │ 1. Check: Is node online    │ │
+│  │ - Tracks nodes  │◄──────│    in Config API?           │ │
+│  │ - Heartbeats    │       │ 2. If YES → skip SSH push   │ │
+│  └────────▲────────┘       │ 3. If NO → push via SSH     │ │
+│           │                └─────────────────────────────┘ │
+└───────────┼─────────────────────────────────────────────────┘
+            │
+    ┌───────┴───────┐
+    │ HTTP Pull     │
+    │ (Primary)     │
+    ▼               ▼
+┌────────┐     ┌────────┐
+│ Node   │     │ Node   │
+│ Agent  │     │ Agent  │
+│ (VPS)  │     │(Laptop)│
+└────────┘     └────────┘
+```
+
+### Installation
+
+All node types install both mechanisms during setup:
+- **Control Plane:** Config API Server + SSH Sync Controller
+- **VPS/Worker/Laptop:** Node Agent (SSH access preserved as fallback)
 
 ---
 

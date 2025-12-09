@@ -6,7 +6,8 @@
 # Display the status of all nodes in the cluster using the Config API.
 #
 # Usage:
-#   ./scripts/nodes-status.sh
+#   ./scripts/nodes-status.sh              # List all nodes
+#   ./scripts/nodes-status.sh remove <name> # Remove a node from registry
 ###############################################################################
 
 set -euo pipefail
@@ -149,4 +150,41 @@ main() {
     echo ""
 }
 
-main "$@"
+# Remove a node from the registry
+remove_node() {
+    local node_name="$1"
+    
+    if [[ -z "$node_name" ]]; then
+        echo -e "${RED}Error: Node name required${NC}"
+        echo "Usage: $0 remove <node-name>"
+        exit 1
+    fi
+    
+    echo -e "${BLUE}Removing node: $node_name${NC}"
+    
+    local url="http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/nodes/${node_name}"
+    local response
+    
+    if [[ -n "$API_TOKEN" ]]; then
+        response=$(curl -s -X DELETE -H "X-API-Token: $API_TOKEN" "$url" 2>/dev/null)
+    else
+        response=$(curl -s -X DELETE "$url" 2>/dev/null)
+    fi
+    
+    if echo "$response" | jq -e '.status == "removed"' &>/dev/null; then
+        echo -e "${GREEN}Node '$node_name' removed successfully${NC}"
+    else
+        echo -e "${RED}Failed to remove node: $response${NC}"
+        exit 1
+    fi
+}
+
+# Parse command
+case "${1:-}" in
+    remove)
+        remove_node "${2:-}"
+        ;;
+    *)
+        main "$@"
+        ;;
+esac

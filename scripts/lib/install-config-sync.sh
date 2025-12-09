@@ -335,6 +335,18 @@ configure_node_agent() {
         poll_interval=30  # VPS nodes poll more frequently
     fi
     
+    # For VPS nodes, detect Traefik config directory
+    local traefik_config_dir=""
+    if [ "$node_type" = "vps" ]; then
+        # Check common locations
+        local vps_user="${SUDO_USER:-root}"
+        if [ -d "/home/$vps_user/traefik/config" ]; then
+            traefik_config_dir="/home/$vps_user/traefik/config"
+        elif [ -d "/root/traefik/config" ]; then
+            traefik_config_dir="/root/traefik/config"
+        fi
+    fi
+    
     # Create config file
     cat > /etc/mynodeone/agent.env <<EOF
 # MyNodeOne Node Agent Configuration
@@ -355,6 +367,13 @@ HEARTBEAT_INTERVAL=60
 # API authentication
 API_TOKEN=$api_token
 EOF
+
+    # Add VPS-specific config
+    if [ -n "$traefik_config_dir" ]; then
+        echo "" >> /etc/mynodeone/agent.env
+        echo "# VPS-specific config" >> /etc/mynodeone/agent.env
+        echo "TRAEFIK_CONFIG_DIR=$traefik_config_dir" >> /etc/mynodeone/agent.env
+    fi
     
     chmod 600 /etc/mynodeone/agent.env
     

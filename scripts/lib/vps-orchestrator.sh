@@ -236,6 +236,10 @@ PUBLIC_DOMAIN="$vps_domain"
 SKIP_INTERACTIVE="true"
 UNATTENDED="1"
 VPS_ORCHESTRATED="true"
+
+# Config API Token (for Node Agent pull-based sync)
+# Read from control plane if available
+API_TOKEN="$(cat /etc/mynodeone/api-token 2>/dev/null || echo '')"
 EOF
     
     # Set proper ownership

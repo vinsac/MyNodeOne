@@ -215,7 +215,23 @@ apply_vps_config() {
     fi
     
     # Generate Traefik dynamic config
-    local traefik_config_dir="${TRAEFIK_CONFIG_DIR:-$HOME/traefik/config}"
+    # Try multiple locations for Traefik config
+    local traefik_config_dir="${TRAEFIK_CONFIG_DIR:-}"
+    
+    if [[ -z "$traefik_config_dir" ]]; then
+        # Check common locations
+        if [[ -d "/home/${SUDO_USER:-}/traefik/config" ]]; then
+            traefik_config_dir="/home/${SUDO_USER:-}/traefik/config"
+        elif [[ -d "$HOME/traefik/config" ]]; then
+            traefik_config_dir="$HOME/traefik/config"
+        elif [[ -d "/root/traefik/config" ]]; then
+            traefik_config_dir="/root/traefik/config"
+        else
+            # Default to /etc/traefik/config (standard location)
+            traefik_config_dir="/etc/traefik/config"
+        fi
+    fi
+    
     local routes_file="$traefik_config_dir/mynodeone-routes.yml"
     
     mkdir -p "$traefik_config_dir"

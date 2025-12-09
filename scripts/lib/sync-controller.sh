@@ -85,8 +85,21 @@ push_sync_to_node() {
     local retry_delay=5
     local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
     
+    # Check if node is using V2 sync (Node Agent)
+    # If Node Agent is active, skip SSH push to avoid conflicts
+    if [[ "${SKIP_V2_CHECK:-}" != "true" ]]; then
+        # Query Config API to check if this node has recent heartbeat
+        local api_port="${API_PORT:-8443}"
+        local control_plane_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
+        
+        if curl -s --connect-timeout 2 "http://${control_plane_ip}:${api_port}/api/v1/nodes" 2>/dev/null | \
+            jq -e ".nodes[]? | select(.ip == \"$node_ip\" and .status == \"online\")" &>/dev/null; then
+            log_info "Node $node_ip is using V2 sync (Node Agent active) - skipping SSH push"
+            return 0
+        fi
+    fi
     
-    log_info "Pushing sync to $node_ip..."
+    log_info "Pushing sync to $node_ip (V1 SSH mode)..."
     
     # Determine sync script based on node type
     local sync_script=""

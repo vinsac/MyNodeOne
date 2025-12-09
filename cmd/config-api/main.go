@@ -90,18 +90,25 @@ type NodesResponse struct {
 
 // Server holds the API server state
 type Server struct {
-	config    Config
-	nodes     map[string]*Node
-	nodesMu   sync.RWMutex
-	configVer string
+	config       Config
+	nodes        map[string]*Node
+	nodesMu      sync.RWMutex
+	configVer    string
+	nodesFile    string
 }
 
+const defaultNodesFile = "/etc/mynodeone/nodes-registry.json"
+
 func NewServer(cfg Config) *Server {
-	return &Server{
+	s := &Server{
 		config:    cfg,
 		nodes:     make(map[string]*Node),
 		configVer: fmt.Sprintf("v%d", time.Now().Unix()),
+		nodesFile: defaultNodesFile,
 	}
+	// Load persisted nodes
+	s.loadNodes()
+	return s
 }
 
 // Middleware: Verify Tailscale IP and API token
@@ -199,6 +206,7 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	// Update node registry
 	s.nodesMu.Lock()
+	isNewNode := s.nodes[req.NodeName] == nil
 	s.nodes[req.NodeName] = &Node{
 		Name:          req.NodeName,
 		Type:          req.NodeType,
@@ -210,14 +218,50 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	s.nodesMu.Unlock()
 
-	log.Printf("Heartbeat: node=%s type=%s ip=%s config=%s",
-		req.NodeName, req.NodeType, req.NodeIP, req.ConfigVersion)
+	// Persist immediately for new nodes
+	if isNewNode {
+		s.saveNodes()
+		log.Printf("New node registered: %s (%s) at %s", req.NodeName, req.NodeType, req.NodeIP)
+	} else {
+		log.Printf("Heartbeat: node=%s type=%s ip=%s config=%s",
+			req.NodeName, req.NodeType, req.NodeIP, req.ConfigVersion)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "ok",
 		"server_time": time.Now().UTC(),
 	})
+}
+
+// DELETE /api/v1/nodes/{name} - Remove a node from registry
+func (s *Server) handleNodeDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract node name from path
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/nodes/")
+	nodeName := strings.TrimSuffix(path, "/")
+
+	if nodeName == "" {
+		http.Error(w, "Node name required", http.StatusBadRequest)
+		return
+	}
+
+	s.nodesMu.Lock()
+	if _, exists := s.nodes[nodeName]; exists {
+		delete(s.nodes, nodeName)
+		s.nodesMu.Unlock()
+		s.saveNodes() // Persist change
+		log.Printf("Node removed: %s", nodeName)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "removed", "node": nodeName})
+	} else {
+		s.nodesMu.Unlock()
+		http.Error(w, "Node not found", http.StatusNotFound)
+	}
 }
 
 // GET /api/v1/nodes
@@ -378,6 +422,60 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 	return routes, nil
 }
 
+// loadNodes loads the node registry from disk
+func (s *Server) loadNodes() {
+	data, err := os.ReadFile(s.nodesFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("Warning: Failed to load nodes registry: %v", err)
+		}
+		return
+	}
+
+	var nodes map[string]*Node
+	if err := json.Unmarshal(data, &nodes); err != nil {
+		log.Printf("Warning: Failed to parse nodes registry: %v", err)
+		return
+	}
+
+	s.nodesMu.Lock()
+	s.nodes = nodes
+	s.nodesMu.Unlock()
+	log.Printf("Loaded %d nodes from registry", len(nodes))
+}
+
+// saveNodes persists the node registry to disk
+func (s *Server) saveNodes() {
+	s.nodesMu.RLock()
+	data, err := json.MarshalIndent(s.nodes, "", "  ")
+	s.nodesMu.RUnlock()
+
+	if err != nil {
+		log.Printf("Warning: Failed to marshal nodes registry: %v", err)
+		return
+	}
+
+	if err := os.WriteFile(s.nodesFile, data, 0600); err != nil {
+		log.Printf("Warning: Failed to save nodes registry: %v", err)
+	}
+}
+
+// periodicSaveNodes saves nodes periodically
+func (s *Server) periodicSaveNodes(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.saveNodes() // Final save on shutdown
+			return
+		case <-ticker.C:
+			s.saveNodes()
+		}
+	}
+}
+
 // updateConfigVersion updates the config version when ConfigMaps change
 func (s *Server) watchConfigChanges(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
@@ -443,6 +541,7 @@ func main() {
 	mux.HandleFunc("/api/v1/config/", server.authMiddleware(server.handleConfig))
 	mux.HandleFunc("/api/v1/heartbeat", server.authMiddleware(server.handleHeartbeat))
 	mux.HandleFunc("/api/v1/nodes", server.authMiddleware(server.handleNodes))
+	mux.HandleFunc("/api/v1/nodes/", server.authMiddleware(server.handleNodeDelete))
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.BindIP, cfg.Port)
@@ -453,9 +552,10 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	// Start config watcher
+	// Start config watcher and periodic node save
 	ctx, cancel := context.WithCancel(context.Background())
 	go server.watchConfigChanges(ctx)
+	go server.periodicSaveNodes(ctx)
 
 	// Handle shutdown
 	sigChan := make(chan os.Signal, 1)

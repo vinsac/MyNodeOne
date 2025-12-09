@@ -544,8 +544,30 @@ main() {
     fi
     echo
     
+    # Install Node Agent for pull-based config sync
+    print_header "Step 9: Installing Node Agent"
+    
+    log_info "Installing Node Agent for pull-based config sync..."
+    
+    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+        # Get API token from config if available
+        API_TOKEN="${API_TOKEN:-}"
+        
+        if sudo bash "$SCRIPT_DIR/lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "$(hostname)"; then
+            log_success "Node Agent installed"
+            log_info "Laptop will now pull config updates from control plane"
+        else
+            log_warn "Node Agent installation had issues"
+            log_warn "You can install manually later:"
+            log_warn "  sudo ./scripts/lib/install-config-sync.sh laptop ${CONTROL_PLANE_IP:-<control-plane-ip>} <api-token>"
+        fi
+    else
+        log_warn "Node Agent installer not found, skipping"
+    fi
+    echo
+    
     # Run validation tests
-    print_header "Step 9: Validating Installation"
+    print_header "Step 10: Validating Installation"
     
     log_info "Running installation validation tests..."
     echo
@@ -553,7 +575,7 @@ main() {
     if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
         if bash "$SCRIPT_DIR/lib/validate-installation.sh" management-laptop; then
             echo
-            log_success "✅ All validation tests passed!"
+            log_success "All validation tests passed!"
             
             # Save validation status
             echo "LAST_VALIDATION=$(date -Iseconds)" >> "$CONFIG_FILE"

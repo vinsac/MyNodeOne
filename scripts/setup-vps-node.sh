@@ -364,20 +364,44 @@ echo ""
 log_success "VPS setup complete (registration handled by control plane)"
 echo
 
+# Step 10: Install Node Agent for pull-based config sync
+log_info "Step 10: Installing Node Agent..."
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+    # Get API token from config if available
+    API_TOKEN="${API_TOKEN:-}"
+    
+    if bash "$SCRIPT_DIR/lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "${NODE_NAME:-$(hostname)}"; then
+        log_success "Node Agent installed"
+        log_info "VPS will now pull config updates from control plane"
+    else
+        log_warn "Node Agent installation had issues"
+        log_warn "You can install manually later:"
+        log_warn "  sudo ./scripts/lib/install-config-sync.sh vps ${CONTROL_PLANE_IP:-<control-plane-ip>} <api-token>"
+    fi
+else
+    log_warn "Node Agent installer not found, skipping"
+fi
+echo
+
 # Final summary
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log_success "VPS Edge Node setup complete! 🎉"
+log_success "VPS Edge Node setup complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 echo "✓ Docker installed and running"
 echo "✓ Traefik configured and running"
 echo "✓ Firewall configured"
 echo "✓ SSL certificates will be issued automatically"
+echo "✓ Node Agent installed (pull-based config sync)"
 echo
 echo "Next steps:"
 echo "  1. Verify Traefik: docker ps | grep traefik"
 echo "  2. Check logs: docker logs traefik"
 echo "  3. Point DNS to this VPS: ${VPS_PUBLIC_IP:-your-vps-ip}"
+echo "  4. Check node status: sudo mynodeone-node-agent status"
 echo
 if [ -n "${VPS_DOMAIN:-}" ]; then
     echo "Traefik dashboard: https://traefik.${VPS_DOMAIN}"

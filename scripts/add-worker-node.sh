@@ -208,7 +208,7 @@ EOF
 }
 
 print_summary() {
-    log_success "Worker node successfully added to MyNodeOne! 🎉"
+    log_success "Worker node successfully added to MyNodeOne!"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Worker Node Summary"
@@ -219,16 +219,41 @@ print_summary() {
     echo "  IP: $TAILSCALE_IP"
     echo "  Control Plane: $CONTROL_PLANE_IP"
     echo
+    echo "Installed Components:"
+    echo "  ✓ K3s agent (joined cluster)"
+    echo "  ✓ Node Agent (pull-based config sync)"
+    echo
     echo "Next Steps:"
     echo "  1. On the control plane node, apply node labels:"
     echo "     See: $ACTUAL_HOME/mynodeone-node-labels.txt on this machine"
     echo
     echo "  2. Verify node status on control plane:"
     echo "     kubectl get nodes"
+    echo "     ./scripts/nodes-status.sh"
     echo
     echo "  3. This node will now receive workloads automatically!"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+install_node_agent() {
+    log_info "Installing Node Agent for pull-based config sync..."
+    
+    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+        # Get API token from config if available
+        API_TOKEN="${API_TOKEN:-}"
+        
+        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME"; then
+            log_success "Node Agent installed"
+            log_info "Worker will now pull config updates from control plane"
+        else
+            log_warn "Node Agent installation had issues"
+            log_warn "You can install manually later:"
+            log_warn "  sudo ./scripts/lib/install-config-sync.sh worker $CONTROL_PLANE_IP <api-token>"
+        fi
+    else
+        log_warn "Node Agent installer not found, skipping"
+    fi
 }
 
 main() {
@@ -244,19 +269,20 @@ main() {
     configure_firewall
     join_cluster
     label_node
+    install_node_agent
     
     # Run validation tests
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔍 Validating Worker Node Installation"
+    echo "  Validating Worker Node Installation"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
     if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
         if bash "$SCRIPT_DIR/lib/validate-installation.sh" worker-node; then
-            log_success "✅ Worker node validation passed!"
+            log_success "Worker node validation passed!"
         else
-            log_warn "⚠️  Some validation tests failed (see above)"
+            log_warn "Some validation tests failed (see above)"
         fi
     else
         log_warn "Validation script not found, skipping tests"

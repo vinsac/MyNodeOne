@@ -1327,11 +1327,36 @@ initialize_service_registries() {
         log_info "You can register manually later: sudo ./scripts/lib/node-registry-manager.sh register ..."
     fi
     
+    # Install Config API Server (V2 sync system)
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Installing Config API Server (Pull-Based Sync)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" control-plane; then
+            log_success "Config API Server installed"
+            
+            # Display API token for use on other nodes
+            if [ -f /etc/mynodeone/api-token ]; then
+                log_info "API Token (for node agents): $(cat /etc/mynodeone/api-token)"
+                log_info "Save this token - needed when adding VPS/worker nodes"
+            fi
+        else
+            log_warn "Config API Server installation had issues"
+            log_warn "You can install manually later: sudo ./scripts/lib/install-config-sync.sh control-plane"
+        fi
+    else
+        log_warn "Config sync installer not found, skipping"
+    fi
+    
     echo
     log_success "Registry system ready!"
     log_info "  • Service registry: Tracks all cluster services"
     log_info "  • Multi-domain registry: Supports multiple domains and VPS"
-    log_info "  • Sync controller: Auto-pushes config changes to all nodes"
+    log_info "  • Sync controller (V1): SSH-based push to nodes"
+    log_info "  • Config API (V2): HTTP-based pull with heartbeat"
     log_info "  • Control plane: Receives automatic DNS updates"
     echo
 }

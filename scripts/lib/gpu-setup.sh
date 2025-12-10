@@ -143,20 +143,30 @@ install_driver_ubuntu() {
     # Update package list
     apt-get update -qq
     
-    # Install prerequisites
-    apt-get install -y -qq software-properties-common
+    # Install ubuntu-drivers tool
+    apt-get install -y -qq ubuntu-drivers-common
     
-    # Add graphics drivers PPA for latest drivers
-    if ! grep -q "graphics-drivers" /etc/apt/sources.list.d/* 2>/dev/null; then
-        add-apt-repository -y ppa:graphics-drivers/ppa
-        apt-get update -qq
+    # Show recommended driver
+    log_info "Detecting recommended driver for your GPU..."
+    ubuntu-drivers devices 2>/dev/null | grep -i nvidia || true
+    
+    # Auto-install the recommended driver
+    log_info "Installing recommended NVIDIA driver (ubuntu-drivers autoinstall)..."
+    if ubuntu-drivers autoinstall; then
+        REBOOT_REQUIRED=true
+        log_success "NVIDIA driver installed (recommended version)"
+    else
+        # Fallback to manual install if autoinstall fails
+        log_warn "ubuntu-drivers autoinstall failed, trying manual install..."
+        apt-get install -y -qq software-properties-common
+        if ! grep -q "graphics-drivers" /etc/apt/sources.list.d/* 2>/dev/null; then
+            add-apt-repository -y ppa:graphics-drivers/ppa
+            apt-get update -qq
+        fi
+        apt-get install -y nvidia-driver-${NVIDIA_DRIVER_VERSION}
+        REBOOT_REQUIRED=true
+        log_success "NVIDIA driver installed (version ${NVIDIA_DRIVER_VERSION})"
     fi
-    
-    # Install driver
-    apt-get install -y nvidia-driver-${NVIDIA_DRIVER_VERSION}
-    
-    REBOOT_REQUIRED=true
-    log_success "NVIDIA driver installed"
 }
 
 # Install driver on RHEL/Fedora

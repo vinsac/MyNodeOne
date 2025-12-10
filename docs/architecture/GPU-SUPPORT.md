@@ -141,18 +141,23 @@ For the smoothest experience, install the NVIDIA driver **before** running the M
 # 1. Check if you have an NVIDIA GPU
 lspci | grep -i nvidia
 
-# 2. Install NVIDIA driver (Ubuntu 22.04/24.04)
+# 2. Install ubuntu-drivers tool and see recommended driver
 sudo apt update
-sudo apt install -y nvidia-driver-550
+sudo apt install -y ubuntu-drivers-common
+ubuntu-drivers devices
+# Shows recommended driver for your GPU (e.g., nvidia-driver-570-open for RTX 3090)
 
-# 3. Reboot (required for driver to load)
+# 3. Auto-install the recommended driver
+sudo ubuntu-drivers autoinstall
+
+# 4. Reboot (required for driver to load)
 sudo reboot
 
-# 4. Verify driver is working
+# 5. Verify driver is working
 nvidia-smi
 # Should show your GPU model and driver version
 
-# 5. Now run MyNodeOne installer
+# 6. Now run MyNodeOne installer
 sudo ./scripts/install-control-plane.sh
 ```
 
@@ -181,9 +186,10 @@ sudo ./scripts/lib/gpu-setup.sh --check
 #### Step 1: Install NVIDIA Driver
 
 ```bash
-# Ubuntu 22.04/24.04
+# Ubuntu 22.04/24.04 - Auto-install recommended driver
 sudo apt update
-sudo apt install -y nvidia-driver-550
+sudo apt install -y ubuntu-drivers-common
+sudo ubuntu-drivers autoinstall
 
 # Reboot required
 sudo reboot

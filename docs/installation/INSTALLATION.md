@@ -141,9 +141,10 @@ If your control plane has an NVIDIA GPU (e.g., RTX 3090, RTX 4090, A100) and you
 lspci | grep -i nvidia
 # If no output, skip this section
 
-# Install NVIDIA driver (Ubuntu 22.04/24.04)
+# Install ubuntu-drivers tool and auto-install recommended driver
 sudo apt update
-sudo apt install -y nvidia-driver-550
+sudo apt install -y ubuntu-drivers-common
+sudo ubuntu-drivers autoinstall
 
 # REBOOT REQUIRED after driver installation
 sudo reboot
@@ -952,9 +953,10 @@ If your worker node has an NVIDIA GPU and you want it available for AI/ML worklo
 lspci | grep -i nvidia
 # If no output, skip this section
 
-# Install NVIDIA driver
+# Install ubuntu-drivers tool and auto-install recommended driver
 sudo apt update
-sudo apt install -y nvidia-driver-550
+sudo apt install -y ubuntu-drivers-common
+sudo ubuntu-drivers autoinstall
 
 # REBOOT REQUIRED
 sudo reboot

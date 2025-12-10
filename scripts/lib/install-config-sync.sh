@@ -270,6 +270,14 @@ install_config_api_server() {
     # Validate
     validate_config_api || true
     
+    # Verify API token file exists
+    if [ -f /etc/mynodeone/api-token ]; then
+        log_success "API token file exists at /etc/mynodeone/api-token"
+    else
+        log_warn "API token file not found - Node Agents won't be able to authenticate"
+        log_warn "Generate manually: openssl rand -hex 32 | sudo tee /etc/mynodeone/api-token"
+    fi
+    
     log_success "Config API Server installation complete"
     return 0
 }
@@ -486,8 +494,19 @@ install_node_agent() {
         log_warn "Node Agent may need manual start"
     }
     
-    # Validate
+    # Validate connection to control plane
     validate_node_agent "$control_plane_ip" || true
+    
+    # Verify API token was configured
+    if [ -f /etc/mynodeone/node-agent.conf ]; then
+        if grep -q "API_TOKEN=" /etc/mynodeone/node-agent.conf && \
+           [ -n "$(grep "API_TOKEN=" /etc/mynodeone/node-agent.conf | cut -d= -f2)" ]; then
+            log_success "API token configured in Node Agent"
+        else
+            log_warn "API token not configured - get token from control plane:"
+            log_warn "  cat /etc/mynodeone/api-token"
+        fi
+    fi
     
     log_success "Node Agent installation complete"
     return 0

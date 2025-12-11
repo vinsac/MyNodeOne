@@ -240,18 +240,18 @@ EOF
 
     echo "🤖 Deploying Ollama (LLM Backend)..."
     
-    # Build resource limits based on GPU availability
+    # Build resource limits and env vars based on GPU availability
     if [ "$GPU_AVAILABLE" = true ]; then
-        echo "   → Configuring with GPU acceleration"
+        echo "   → Configuring with GPU + RAM sharing"
         OLLAMA_RESOURCES="
         resources:
           requests:
-            memory: \"8Gi\"
-            cpu: \"2000m\"
+            memory: \"16Gi\"
+            cpu: \"4000m\"
             nvidia.com/gpu: \"1\"
           limits:
-            memory: \"32Gi\"
-            cpu: \"8000m\"
+            memory: \"128Gi\"
+            cpu: \"16000m\"
             nvidia.com/gpu: \"1\""
         # GPU pods need privileged access for NVIDIA runtime
         OLLAMA_SECURITY_CONTEXT="
@@ -261,8 +261,15 @@ EOF
             drop:
             - ALL
           readOnlyRootFilesystem: false"
+        # GPU + RAM sharing environment variables
+        OLLAMA_GPU_ENV="
+        - name: OLLAMA_FLASH_ATTENTION
+          value: \"1\"
+        - name: CUDA_VISIBLE_DEVICES
+          value: \"0\""
     else
         echo "   → Configuring for CPU-only mode"
+        OLLAMA_GPU_ENV=""
         OLLAMA_RESOURCES="
         resources:
           requests:
@@ -324,6 +331,7 @@ ${OLLAMA_SECURITY_CONTEXT}
           value: "4"
         - name: OLLAMA_MAX_LOADED_MODELS
           value: "2"
+${OLLAMA_GPU_ENV}
       volumes:
       - name: data
         persistentVolumeClaim:

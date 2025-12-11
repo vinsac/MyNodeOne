@@ -755,18 +755,18 @@ CONTAINERD_EOF
     log_info "[6/6] Restarting K3s to apply GPU configuration..."
     systemctl restart k3s
     
-    # Wait for K3s to be ready with progress indicator
-    echo -n "  Waiting for K3s"
-    sleep 5
+    # Wait for K3s to be ready with progress indicator (up to 3 minutes)
+    echo -n "  Waiting for K3s to restart"
+    sleep 10  # Give K3s time to start shutting down and restarting
     local WAIT_COUNT=0
     local K3S_READY=false
-    while [ $WAIT_COUNT -lt 30 ]; do
+    while [ $WAIT_COUNT -lt 36 ]; do  # 36 × 5s = 180s = 3 minutes
         if kubectl get nodes &>/dev/null; then
             K3S_READY=true
             break
         fi
         echo -n "."
-        sleep 3
+        sleep 5
         WAIT_COUNT=$((WAIT_COUNT + 1))
     done
     echo ""
@@ -775,8 +775,12 @@ CONTAINERD_EOF
     if [ "$K3S_READY" = true ]; then
         log_success "K3s restarted with GPU support"
     else
-        log_error "K3s failed to restart properly"
-        echo "    Check with: sudo systemctl status k3s"
+        log_warn "K3s is still starting up..."
+        echo "    This is normal - K3s may take a few minutes after restart."
+        echo "    The installation will continue. Check status with:"
+        echo "      sudo systemctl status k3s"
+        echo "      sudo kubectl get nodes"
+        # Don't fail - K3s might still be starting, continue with installation
     fi
     
     echo ""

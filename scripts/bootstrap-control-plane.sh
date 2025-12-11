@@ -609,6 +609,254 @@ EOF
     fi
 }
 
+# GPU Setup for Kubernetes (after K3s is installed)
+# Following UX principle: Check → Install → Verify → Fallback → Check again
+setup_gpu_support() {
+    # Only run if NVIDIA GPU is detected
+    if ! lspci | grep -i nvidia &> /dev/null; then
+        return 0
+    fi
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Configuring GPU Support for Kubernetes"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Step 1: CHECK - Verify NVIDIA driver is working
+    log_info "[1/6] Checking NVIDIA driver..."
+    if ! command -v nvidia-smi &>/dev/null; then
+        log_error "nvidia-smi not found"
+        echo ""
+        echo "  ERROR: NVIDIA driver is not installed."
+        echo "  Please follow the pre-installation steps in docs/installation.md:"
+        echo ""
+        echo "    sudo apt update"
+        echo "    sudo apt install -y ubuntu-drivers-common"
+        echo "    sudo ubuntu-drivers autoinstall"
+        echo "    sudo reboot"
+        echo ""
+        return 1
+    fi
+    
+    if ! nvidia-smi &>/dev/null; then
+        log_error "nvidia-smi failed to run"
+        echo ""
+        echo "  ERROR: NVIDIA driver is installed but not working."
+        echo "  This usually means you need to reboot after driver installation."
+        echo ""
+        echo "    sudo reboot"
+        echo ""
+        return 1
+    fi
+    
+    # Driver is working - show GPU info
+    local GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+    local GPU_MEMORY=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)
+    log_success "NVIDIA driver working"
+    echo "    GPU: $GPU_NAME ($GPU_MEMORY)"
+    
+    # Step 2: CHECK & INSTALL - NVIDIA Container Toolkit
+    log_info "[2/6] Checking NVIDIA Container Toolkit..."
+    if ! command -v nvidia-ctk &>/dev/null; then
+        echo "  → Installing NVIDIA Container Toolkit..."
+        
+        # Add NVIDIA repo and install
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+            gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg 2>/dev/null
+        
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+            tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
+        
+        apt-get update -qq
+        apt-get install -y nvidia-container-toolkit
+        
+        # VERIFY installation
+        if command -v nvidia-ctk &>/dev/null; then
+            log_success "NVIDIA Container Toolkit installed"
+        else
+            log_error "Failed to install NVIDIA Container Toolkit"
+            echo "    GPU support may not work. Continuing anyway..."
+        fi
+    else
+        local CTK_VERSION=$(nvidia-ctk --version 2>/dev/null | head -1 | awk '{print $NF}')
+        log_success "NVIDIA Container Toolkit installed (v$CTK_VERSION)"
+    fi
+    
+    # Step 3: CHECK - nvidia-container-runtime
+    log_info "[3/6] Checking nvidia-container-runtime..."
+    if ! command -v nvidia-container-runtime &>/dev/null; then
+        echo "  → Installing nvidia-container-runtime..."
+        apt-get install -y nvidia-container-runtime 2>/dev/null || true
+        
+        if command -v nvidia-container-runtime &>/dev/null; then
+            log_success "nvidia-container-runtime installed"
+        else
+            log_error "Could not install nvidia-container-runtime"
+            echo "    GPU support may not work. Continuing anyway..."
+        fi
+    else
+        log_success "nvidia-container-runtime available"
+    fi
+    
+    # Step 4: CREATE - runc symlink (K3s bundles runc in non-standard location)
+    log_info "[4/6] Setting up runc symlink..."
+    if [ -f /usr/bin/runc ]; then
+        log_success "runc already available at /usr/bin/runc"
+    else
+        local K3S_RUNC="/var/lib/rancher/k3s/data/current/bin/runc"
+        if [ ! -f "$K3S_RUNC" ]; then
+            # Fallback: search for it
+            K3S_RUNC=$(find /var/lib/rancher/k3s/data -name "runc" -type f 2>/dev/null | head -1)
+        fi
+        
+        if [ -n "$K3S_RUNC" ] && [ -f "$K3S_RUNC" ]; then
+            ln -sf "$K3S_RUNC" /usr/bin/runc
+            # VERIFY
+            if [ -f /usr/bin/runc ]; then
+                log_success "Created runc symlink → $K3S_RUNC"
+            else
+                log_error "Failed to create runc symlink"
+            fi
+        else
+            log_error "Could not find K3s runc binary"
+        fi
+    fi
+    
+    # Step 5: CREATE - K3s containerd config template for GPU
+    log_info "[5/6] Configuring K3s containerd for NVIDIA runtime..."
+    local K3S_CONTAINERD_DIR="/var/lib/rancher/k3s/agent/etc/containerd"
+    local K3S_CONTAINERD_TMPL="$K3S_CONTAINERD_DIR/config.toml.tmpl"
+    
+    mkdir -p "$K3S_CONTAINERD_DIR"
+    
+    # Always recreate to ensure correct config (idempotent)
+    cat > "$K3S_CONTAINERD_TMPL" <<'CONTAINERD_EOF'
+# K3s containerd config with NVIDIA GPU support
+# CRITICAL: {{ template "base" . }} preserves default K3s config (CNI, etc.)
+{{ template "base" . }}
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia"]
+  privileged_without_host_devices = false
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia".options]
+  BinaryName = "/usr/bin/nvidia-container-runtime"
+CONTAINERD_EOF
+    
+    # VERIFY
+    if [ -f "$K3S_CONTAINERD_TMPL" ] && grep -q "nvidia-container-runtime" "$K3S_CONTAINERD_TMPL"; then
+        log_success "Created K3s containerd GPU config"
+    else
+        log_error "Failed to create containerd config"
+    fi
+    
+    # Step 6: RESTART K3s to apply config
+    log_info "[6/6] Restarting K3s to apply GPU configuration..."
+    systemctl restart k3s
+    
+    # Wait for K3s to be ready with progress indicator
+    echo -n "  Waiting for K3s"
+    sleep 5
+    local WAIT_COUNT=0
+    local K3S_READY=false
+    while [ $WAIT_COUNT -lt 30 ]; do
+        if kubectl get nodes &>/dev/null; then
+            K3S_READY=true
+            break
+        fi
+        echo -n "."
+        sleep 3
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+    done
+    echo ""
+    
+    # VERIFY K3s restart
+    if [ "$K3S_READY" = true ]; then
+        log_success "K3s restarted with GPU support"
+    else
+        log_error "K3s failed to restart properly"
+        echo "    Check with: sudo systemctl status k3s"
+    fi
+    
+    echo ""
+    log_success "GPU configuration complete!"
+    echo "    Device plugin will be deployed after other components."
+    echo ""
+}
+
+# Deploy NVIDIA Device Plugin (called after cluster is ready)
+deploy_nvidia_device_plugin() {
+    # Only run if NVIDIA GPU is detected and driver is working
+    if ! lspci | grep -i nvidia &> /dev/null; then
+        return 0
+    fi
+    
+    if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi &>/dev/null; then
+        return 0
+    fi
+    
+    log_info "Deploying NVIDIA Device Plugin..."
+    
+    local REMOTE_MANIFEST="https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml"
+    local LOCAL_MANIFEST="$SCRIPT_DIR/../manifests/gpu/nvidia-device-plugin.yaml"
+    
+    local PLUGIN_DEPLOYED=false
+    if [ -f "$LOCAL_MANIFEST" ]; then
+        if kubectl apply -f "$LOCAL_MANIFEST" 2>/dev/null; then
+            log_success "NVIDIA Device Plugin deployed (local manifest)"
+            PLUGIN_DEPLOYED=true
+        fi
+    fi
+    
+    if [ "$PLUGIN_DEPLOYED" = false ]; then
+        if kubectl apply -f "$REMOTE_MANIFEST" 2>/dev/null; then
+            log_success "NVIDIA Device Plugin deployed (remote manifest)"
+            PLUGIN_DEPLOYED=true
+        else
+            log_error "Failed to deploy NVIDIA Device Plugin"
+            echo "    Try manually: kubectl apply -f $REMOTE_MANIFEST"
+            return 1
+        fi
+    fi
+    
+    # Wait for device plugin to be ready and verify GPU
+    log_info "Waiting for GPU to be detected by Kubernetes..."
+    echo -n "  Waiting for device plugin"
+    
+    local GPU_VISIBLE=false
+    for i in $(seq 1 12); do
+        sleep 5
+        echo -n "."
+        local GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "")
+        if [ -n "$GPU_COUNT" ] && [ "$GPU_COUNT" != "0" ]; then
+            GPU_VISIBLE=true
+            break
+        fi
+    done
+    echo ""
+    
+    if [ "$GPU_VISIBLE" = true ]; then
+        log_success "GPU detected: $GPU_COUNT GPU(s) available in Kubernetes"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ✓ GPU Setup Complete"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "Your GPU is ready! Use 'nvidia.com/gpu' in pod resource requests."
+        echo "Example:"
+        echo "  resources:"
+        echo "    limits:"
+        echo "      nvidia.com/gpu: 1"
+        echo ""
+    else
+        log_warn "GPU not yet visible to Kubernetes"
+        echo "    Device plugin may still be starting. Check with:"
+        echo "      kubectl get pods -n kube-system | grep nvidia"
+        echo "      kubectl describe node | grep nvidia"
+    fi
+}
+
 install_helm() {
     # Helm installation with multiple failsafe methods
     # 1. Snap (if available)
@@ -1607,6 +1855,16 @@ print_summary() {
     echo "  ✓ Prometheus + Grafana + Loki (Monitoring)"
     echo "  ✓ ArgoCD (GitOps)"
     echo "  ✓ Tailscale Subnet Routes (Network Access)"
+    
+    # Show GPU status if NVIDIA GPU is present
+    if lspci | grep -i nvidia &> /dev/null && command -v nvidia-smi &>/dev/null; then
+        local GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "")
+        if [ -n "$GPU_COUNT" ] && [ "$GPU_COUNT" != "0" ]; then
+            echo "  ✓ NVIDIA GPU Support ($GPU_COUNT GPU(s) available)"
+        else
+            echo "  ⚠ NVIDIA GPU Support (device plugin starting...)"
+        fi
+    fi
     echo
     
     # Display credentials prominently
@@ -2114,6 +2372,7 @@ main() {
     configure_firewall
     optimize_system_for_containers
     install_k3s
+    setup_gpu_support  # Configure GPU after K3s is installed (if NVIDIA GPU present)
     install_helm
     install_cert_manager
     install_metallb
@@ -2127,6 +2386,7 @@ main() {
     create_cluster_info
     create_cluster_token
     initialize_service_registries
+    deploy_nvidia_device_plugin  # Deploy GPU device plugin after cluster is ready
     
     echo
     print_summary

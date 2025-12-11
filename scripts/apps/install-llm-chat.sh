@@ -243,6 +243,8 @@ EOF
     # Build resource limits and env vars based on GPU availability
     if [ "$GPU_AVAILABLE" = true ]; then
         echo "   → Configuring with GPU + RAM sharing"
+        # CRITICAL: runtimeClassName: nvidia required for GPU access in container
+        OLLAMA_RUNTIME_CLASS="runtimeClassName: nvidia"
         OLLAMA_RESOURCES="
         resources:
           requests:
@@ -269,6 +271,7 @@ EOF
           value: \"0\""
     else
         echo "   → Configuring for CPU-only mode"
+        OLLAMA_RUNTIME_CLASS=""  # No special runtime for CPU-only
         OLLAMA_GPU_ENV=""
         OLLAMA_RESOURCES="
         resources:
@@ -305,6 +308,7 @@ spec:
         app: ollama
     spec:
       priorityClassName: system-cluster-critical
+      ${OLLAMA_RUNTIME_CLASS}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

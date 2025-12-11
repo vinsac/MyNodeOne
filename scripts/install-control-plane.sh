@@ -139,8 +139,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # GPU Setup (before K3s installation)
 if lspci | grep -i nvidia &> /dev/null; then
     if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
-        # Skip if driver already installed and working
-        if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi &>/dev/null; then
+        # Check if driver is installed
+        if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+            echo "✓ NVIDIA driver already installed and working"
+            
+            # But still need to check if Container Toolkit is installed
+            if ! command -v nvidia-ctk &>/dev/null; then
+                echo "  → Installing NVIDIA Container Toolkit..."
+                bash "$SCRIPT_DIR/lib/gpu-setup.sh" --toolkit-only
+            else
+                echo "✓ NVIDIA Container Toolkit already installed"
+            fi
+        else
             echo ""
             # Interactive GPU setup - will prompt user
             bash "$SCRIPT_DIR/lib/gpu-setup.sh" --no-plugin
@@ -160,8 +170,6 @@ if lspci | grep -i nvidia &> /dev/null; then
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 exit 0
             fi
-        else
-            echo "✓ NVIDIA driver already installed and working"
         fi
     fi
 fi

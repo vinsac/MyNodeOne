@@ -506,6 +506,7 @@ usage() {
     echo "  --skip          Skip GPU setup entirely"
     echo "  --check         Check GPU status only (no installation)"
     echo "  --driver-only   Install driver only (no container toolkit)"
+    echo "  --toolkit-only  Install container toolkit only (driver already installed)"
     echo "  --no-plugin     Skip Kubernetes device plugin deployment"
     echo "  --help          Show this help message"
     echo ""
@@ -536,6 +537,10 @@ main() {
                 ;;
             --driver-only)
                 mode="driver-only"
+                shift
+                ;;
+            --toolkit-only)
+                mode="toolkit-only"
                 shift
                 ;;
             --no-plugin)
@@ -575,6 +580,15 @@ main() {
             ;;
         driver-only)
             install_nvidia_driver
+            ;;
+        toolkit-only)
+            log_info "Installing NVIDIA Container Toolkit (driver already present)..."
+            install_container_toolkit
+            if [[ "$deploy_plugin" == "true" ]]; then
+                deploy_device_plugin
+            fi
+            log_success "Container Toolkit setup complete!"
+            show_gpu_status
             ;;
     esac
 }

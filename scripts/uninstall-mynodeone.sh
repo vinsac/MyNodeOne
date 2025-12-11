@@ -371,6 +371,12 @@ if [ "$REMOVE_K8S" = true ]; then
         rm -rf /var/lib/rancher
         log_success "Removed /var/lib/rancher/"
     fi
+    
+    # Remove GPU-related symlinks and configs created for K3s
+    if [ -L /usr/bin/runc ] && [ "$(readlink /usr/bin/runc)" = "/var/lib/rancher/k3s/data/current/bin/runc" ]; then
+        rm -f /usr/bin/runc
+        log_success "Removed runc symlink (K3s GPU support)"
+    fi
 else
     log_info "[5/12] Keeping Kubernetes cluster (skipped)"
 fi

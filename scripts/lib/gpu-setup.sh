@@ -281,25 +281,25 @@ configure_containerd() {
         fi
         
         # K3s uses a config template approach
-        # Create the containerd config template directory
+        # The template MUST include {{ template "base" . }} to extend the default config
+        # Without this, it replaces the entire config and breaks CNI networking
         mkdir -p /var/lib/rancher/k3s/agent/etc/containerd
         
-        # Create config.toml.tmpl for K3s containerd with nvidia runtime
+        # Create config.toml.tmpl that EXTENDS the default K3s containerd config
         cat > /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl <<'EOF'
+# This template extends the default K3s containerd config
+# The "base" template includes all default K3s settings (CNI, etc.)
+{{ template "base" . }}
+
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia"]
   privileged_without_host_devices = false
-  runtime_engine = ""
-  runtime_root = ""
   runtime_type = "io.containerd.runc.v2"
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia".options]
   BinaryName = "/usr/bin/nvidia-container-runtime"
-
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  default_runtime_name = "nvidia"
 EOF
         
-        log_success "K3s containerd config created"
+        log_success "K3s containerd config template created (extends base config)"
         
         # Restart K3s to pick up the new config
         if systemctl is-active --quiet k3s; then

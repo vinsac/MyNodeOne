@@ -723,32 +723,24 @@ setup_gpu_support() {
         fi
     fi
     
-    # Step 5: CREATE - K3s containerd config template for GPU
-    log_info "[5/6] Configuring K3s containerd for NVIDIA runtime..."
-    local K3S_CONTAINERD_DIR="/var/lib/rancher/k3s/agent/etc/containerd"
-    local K3S_CONTAINERD_TMPL="$K3S_CONTAINERD_DIR/config.toml.tmpl"
+    # Step 5: K3s auto-detects nvidia-container-runtime
+    # K3s v1.28+ automatically detects /usr/bin/nvidia-container-runtime and adds it
+    # We just need to verify it's detected - no manual config needed!
+    log_info "[5/6] Verifying K3s NVIDIA runtime detection..."
     
-    mkdir -p "$K3S_CONTAINERD_DIR"
-    
-    # Always recreate to ensure correct config (idempotent)
-    cat > "$K3S_CONTAINERD_TMPL" <<'CONTAINERD_EOF'
-# K3s containerd config with NVIDIA GPU support
-# CRITICAL: {{ template "base" . }} preserves default K3s config (CNI, etc.)
-{{ template "base" . }}
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia"]
-  privileged_without_host_devices = false
-  runtime_type = "io.containerd.runc.v2"
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia".options]
-  BinaryName = "/usr/bin/nvidia-container-runtime"
-CONTAINERD_EOF
-    
-    # VERIFY
-    if [ -f "$K3S_CONTAINERD_TMPL" ] && grep -q "nvidia-container-runtime" "$K3S_CONTAINERD_TMPL"; then
-        log_success "Created K3s containerd GPU config"
+    # K3s will auto-detect nvidia runtime on next restart if nvidia-container-runtime exists
+    if [ -f /usr/bin/nvidia-container-runtime ]; then
+        log_success "nvidia-container-runtime found - K3s will auto-configure GPU support"
     else
-        log_error "Failed to create containerd config"
+        log_error "nvidia-container-runtime not found at /usr/bin/nvidia-container-runtime"
+        echo "    GPU support may not work. Check nvidia-container-toolkit installation."
+    fi
+    
+    # Remove any old/broken config template that might cause issues
+    local K3S_CONTAINERD_TMPL="/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+    if [ -f "$K3S_CONTAINERD_TMPL" ]; then
+        log_info "Removing old containerd config template..."
+        rm -f "$K3S_CONTAINERD_TMPL"
     fi
     
     # Step 6: RESTART K3s to apply config

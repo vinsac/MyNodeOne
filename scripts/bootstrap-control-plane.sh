@@ -792,10 +792,28 @@ deploy_nvidia_device_plugin() {
         return 0
     fi
     
-    log_info "Deploying NVIDIA Device Plugin..."
+    log_info "Deploying NVIDIA RuntimeClass and Device Plugin..."
     
-    local REMOTE_MANIFEST="https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml"
+    # First, create the nvidia RuntimeClass (required for device plugin to access GPU)
+    local RUNTIME_CLASS_MANIFEST="$SCRIPT_DIR/../manifests/gpu/nvidia-runtime-class.yaml"
+    if [ -f "$RUNTIME_CLASS_MANIFEST" ]; then
+        kubectl apply -f "$RUNTIME_CLASS_MANIFEST" 2>/dev/null
+        log_success "NVIDIA RuntimeClass created"
+    else
+        # Create inline if manifest missing
+        cat <<EOF | kubectl apply -f -
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia
+handler: nvidia
+EOF
+        log_success "NVIDIA RuntimeClass created (inline)"
+    fi
+    
+    # Now deploy the device plugin
     local LOCAL_MANIFEST="$SCRIPT_DIR/../manifests/gpu/nvidia-device-plugin.yaml"
+    local REMOTE_MANIFEST="https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml"
     
     local PLUGIN_DEPLOYED=false
     if [ -f "$LOCAL_MANIFEST" ]; then
@@ -806,6 +824,8 @@ deploy_nvidia_device_plugin() {
     fi
     
     if [ "$PLUGIN_DEPLOYED" = false ]; then
+        # Remote manifest doesn't have runtimeClassName, so we need to patch it
+        log_warn "Using remote manifest (may need manual runtimeClassName patch)"
         if kubectl apply -f "$REMOTE_MANIFEST" 2>/dev/null; then
             log_success "NVIDIA Device Plugin deployed (remote manifest)"
             PLUGIN_DEPLOYED=true

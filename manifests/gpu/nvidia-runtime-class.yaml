@@ -1,0 +1,12 @@
+# NVIDIA RuntimeClass for Kubernetes
+# This tells Kubernetes how to run pods with GPU access
+#
+# Pods that need GPU access should specify:
+#   spec:
+#     runtimeClassName: nvidia
+
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia
+handler: nvidia

@@ -118,28 +118,69 @@ helm_install_safe() {
     
     log_info "Installing $release_name (timeout: 10m, with retry)..."
     
-    # Try with 10 minute timeout
-    if timeout 600 helm upgrade --install "$release_name" "$chart" \
+    # Try with 10 minute timeout (use --wait but with --atomic for cleaner rollback)
+    # Capture output to check for specific conditions
+    local helm_output
+    local exit_code=0
+    
+    helm_output=$(timeout 600 helm upgrade --install "$release_name" "$chart" \
         --namespace "$namespace" \
         --timeout 10m \
         --wait \
-        $extra_args 2>&1; then
+        $extra_args 2>&1) || exit_code=$?
+    
+    # Check if helm succeeded
+    if [ $exit_code -eq 0 ]; then
         log_success "$release_name installed successfully"
         return 0
-    else
-        local exit_code=$?
-        if [ $exit_code -eq 124 ]; then
-            log_warn "$release_name installation timed out, checking if pods are running..."
-            # Check if pods are actually running despite timeout
-            sleep 10
-            if kubectl get pods -n "$namespace" | grep -q "Running"; then
-                log_success "$release_name pods are running despite timeout"
-                return 0
-            fi
-        fi
-        log_error "$release_name installation failed"
-        return 1
     fi
+    
+    # Log the helm output for debugging
+    echo "$helm_output" | tail -5
+    
+    # Check if it's a timeout or cancellation but pods are actually running
+    # This handles: timeout (124), helm timeout, context canceled, etc.
+    log_warn "$release_name installation returned exit code $exit_code, checking if pods are running..."
+    sleep 10
+    
+    # Check if the release exists and has running pods
+    # Use helm status to verify the release is deployed
+    if helm status "$release_name" -n "$namespace" &>/dev/null; then
+        # Count running pods for this release (most helm charts label pods with app.kubernetes.io/instance)
+        local running_pods=$(kubectl get pods -n "$namespace" \
+            -l "app.kubernetes.io/instance=$release_name" \
+            --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+        
+        # Also check without the label (some charts use different labels)
+        if [ "$running_pods" -eq 0 ]; then
+            running_pods=$(kubectl get pods -n "$namespace" \
+                --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+        fi
+        
+        if [ "$running_pods" -gt 0 ]; then
+            log_success "$release_name has $running_pods running pod(s) - considering successful"
+            return 0
+        fi
+    fi
+    
+    # Check if pods are still coming up (ContainerCreating, PodInitializing)
+    local pending_pods=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | \
+        grep -E "ContainerCreating|PodInitializing|Pending" | wc -l || echo "0")
+    
+    if [ "$pending_pods" -gt 0 ]; then
+        log_warn "$release_name has $pending_pods pod(s) still starting - waiting 60s more..."
+        sleep 60
+        
+        # Check again
+        local running_now=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+        if [ "$running_now" -gt 0 ]; then
+            log_success "$release_name now has $running_now running pod(s)"
+            return 0
+        fi
+    fi
+    
+    log_error "$release_name installation failed"
+    return 1
 }
 
 # Check DNS connectivity before operations

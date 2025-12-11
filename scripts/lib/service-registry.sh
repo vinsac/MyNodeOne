@@ -348,7 +348,7 @@ case "${1:-}" in
         sync_registry
         ;;
     export-dns)
-        export_dns "${2:-mycloud.local}"
+        export_dns "${2:-}"
         ;;
     export-traefik)
         export_traefik_routes "$2" "$3"

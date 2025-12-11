@@ -100,11 +100,17 @@ echo "  2. Rebuild using enterprise registry"
 echo "  3. Result: Single consistent entry (demo.minicloud.local)"
 echo ""
 
-# Load cluster domain
-CLUSTER_DOMAIN="mycloud"
-if [ -f "$HOME/.mynodeone/config.env" ]; then
-    source "$HOME/.mynodeone/config.env"
+# Load cluster domain - handle sudo correctly
+ACTUAL_HOME="${HOME}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 fi
+
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-}"
+if [ -z "$CLUSTER_DOMAIN" ] && [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+    source "$ACTUAL_HOME/.mynodeone/config.env"
+fi
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
 
 log_info "Checking current DNS entries..."
 echo ""

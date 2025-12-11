@@ -258,19 +258,61 @@ install_toolkit_rhel() {
 configure_containerd() {
     log_info "Configuring containerd for GPU support..."
     
-    # Use nvidia-ctk to configure containerd
-    nvidia-ctk runtime configure --runtime=containerd
-    
-    # Restart containerd
-    if systemctl is-active --quiet containerd; then
-        systemctl restart containerd
-        log_success "containerd restarted with GPU support"
-    elif systemctl is-active --quiet k3s; then
-        # K3s manages its own containerd
-        systemctl restart k3s
-        log_success "K3s restarted with GPU support"
+    # Check if K3s is installed (uses its own bundled containerd)
+    if [ -d "/var/lib/rancher/k3s" ] || systemctl is-active --quiet k3s; then
+        log_info "K3s detected - configuring K3s containerd for GPU..."
+        
+        # K3s uses a config template approach
+        # Create the containerd config template directory
+        mkdir -p /var/lib/rancher/k3s/agent/etc/containerd
+        
+        # Create config.toml.tmpl for K3s containerd with nvidia runtime
+        cat > /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl <<'EOF'
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia"]
+  privileged_without_host_devices = false
+  runtime_engine = ""
+  runtime_root = ""
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia".options]
+  BinaryName = "/usr/bin/nvidia-container-runtime"
+
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  default_runtime_name = "nvidia"
+EOF
+        
+        log_success "K3s containerd config created"
+        
+        # Restart K3s to pick up the new config
+        if systemctl is-active --quiet k3s; then
+            log_info "Restarting K3s to apply GPU configuration..."
+            systemctl restart k3s
+            
+            # Wait for K3s to be ready
+            sleep 10
+            local attempts=0
+            while [ $attempts -lt 30 ]; do
+                if kubectl get nodes &>/dev/null; then
+                    log_success "K3s restarted with GPU support"
+                    return 0
+                fi
+                sleep 2
+                attempts=$((attempts + 1))
+            done
+            log_warn "K3s taking longer to restart - check with: kubectl get nodes"
+        fi
     else
-        log_warn "containerd not running - will be configured on next start"
+        # Standard containerd (not K3s)
+        log_info "Configuring standard containerd for GPU..."
+        nvidia-ctk runtime configure --runtime=containerd
+        
+        # Restart containerd
+        if systemctl is-active --quiet containerd; then
+            systemctl restart containerd
+            log_success "containerd restarted with GPU support"
+        else
+            log_warn "containerd not running - will be configured on next start"
+        fi
     fi
 }
 

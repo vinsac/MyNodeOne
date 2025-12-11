@@ -157,14 +157,15 @@ helm_install_safe() {
         
         # Check if pods are already running (early success detection)
         if [ $elapsed -ge 30 ]; then  # Give helm 30s to start creating resources
-            local running_pods=$(kubectl get pods -n "$namespace" \
+            local running_pods
+            running_pods=$(kubectl get pods -n "$namespace" \
                 -l "app.kubernetes.io/instance=$release_name" \
-                --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+                --no-headers 2>/dev/null | grep -c "Running" 2>/dev/null) || running_pods=0
             
             # Also check without label for charts that use different labeling
             if [ "$running_pods" -eq 0 ]; then
                 running_pods=$(kubectl get pods -n "$namespace" \
-                    --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+                    --no-headers 2>/dev/null | grep -c "Running" 2>/dev/null) || running_pods=0
             fi
             
             # For complex charts like prometheus-stack, wait for more pods
@@ -184,8 +185,9 @@ helm_install_safe() {
             fi
             
             # Show progress
-            local pending=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | \
-                grep -cE "ContainerCreating|PodInitializing|Pending|Init:" || echo "0")
+            local pending
+            pending=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | \
+                grep -cE "ContainerCreating|PodInitializing|Pending|Init:" 2>/dev/null) || pending=0
             if [ "$running_pods" -gt 0 ] || [ "$pending" -gt 0 ]; then
                 echo -ne "\r  → $running_pods running, $pending pending (${elapsed}s)...    "
             fi

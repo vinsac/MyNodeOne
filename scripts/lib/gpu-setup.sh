@@ -262,6 +262,24 @@ configure_containerd() {
     if [ -d "/var/lib/rancher/k3s" ] || systemctl is-active --quiet k3s; then
         log_info "K3s detected - configuring K3s containerd for GPU..."
         
+        # K3s bundles its own runc, but nvidia-container-runtime can't find it
+        # Create symlink so nvidia runtime can use K3s's runc
+        if [ ! -f /usr/bin/runc ] && [ -f /var/lib/rancher/k3s/data/current/bin/runc ]; then
+            log_info "Creating runc symlink for nvidia-container-runtime..."
+            ln -sf /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
+            log_success "runc symlink created"
+        elif [ ! -f /usr/bin/runc ]; then
+            # Try to find runc in K3s data directory
+            local k3s_runc=$(find /var/lib/rancher/k3s/data -name "runc" -type f 2>/dev/null | head -1)
+            if [ -n "$k3s_runc" ]; then
+                log_info "Creating runc symlink from $k3s_runc..."
+                ln -sf "$k3s_runc" /usr/bin/runc
+                log_success "runc symlink created"
+            else
+                log_warn "Could not find runc - nvidia runtime may not work"
+            fi
+        fi
+        
         # K3s uses a config template approach
         # Create the containerd config template directory
         mkdir -p /var/lib/rancher/k3s/agent/etc/containerd

@@ -34,6 +34,16 @@ log_error() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAX_RETRIES=3
 
+# Load cluster config
+ACTUAL_HOME="${HOME}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+fi
+if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+    source "$ACTUAL_HOME/.mynodeone/config.env"
+fi
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
+
 # Retry function with exponential backoff
 retry_command() {
     local max_attempts="$1"
@@ -578,7 +588,7 @@ main() {
                 echo "  ✅ Service is Now Private!"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo ""
-                echo "  • http://${subdomain}.mycloud.local (local access only)"
+                echo "  • http://${subdomain}.${CLUSTER_DOMAIN}.local (local access only)"
                 echo ""
             else
                 log_error "Failed to make service private"

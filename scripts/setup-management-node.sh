@@ -250,7 +250,8 @@ echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
 echo ""
 
 # Show current services
-SERVICE_COUNT=$(grep "mycloud.local" /etc/hosts 2>/dev/null | wc -l)
+LOCAL_DOMAIN="${CLUSTER_DOMAIN:-mycloud}.local"
+SERVICE_COUNT=$(grep "$LOCAL_DOMAIN" /etc/hosts 2>/dev/null | wc -l)
 if [ -z "$SERVICE_COUNT" ]; then
     SERVICE_COUNT=0
 fi
@@ -259,7 +260,7 @@ echo ""
 
 if [ "$SERVICE_COUNT" -gt 0 ]; then
     echo "Available services:"
-    grep "mycloud.local" /etc/hosts | awk '{print "  • http://" $2}' | sort
+    grep "$LOCAL_DOMAIN" /etc/hosts | awk '{print "  • http://" $2}' | sort
     echo ""
 fi
 

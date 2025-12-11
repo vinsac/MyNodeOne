@@ -216,11 +216,19 @@ EOF
         log_info "Registering demo app in service registry..."
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         
-        # Load cluster domain
-        CLUSTER_DOMAIN="mycloud"
-        if [ -f "$HOME/.mynodeone/config.env" ]; then
-            source "$HOME/.mynodeone/config.env"
+        # Load cluster domain - handle sudo correctly
+        ACTUAL_HOME="${HOME}"
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
         fi
+        
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-}"
+        if [ -z "$CLUSTER_DOMAIN" ] && [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+            source "$ACTUAL_HOME/.mynodeone/config.env"
+        fi
+        
+        # Fallback if still not set
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
         
         # Register in new enterprise registry
         if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then

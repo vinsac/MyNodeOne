@@ -252,7 +252,20 @@ sync_registry() {
 
 # Export registry to DNS format for /etc/hosts
 export_dns() {
-    local domain="${1:-mycloud.local}"
+    # Try to get domain from config if not provided
+    local domain="${1:-}"
+    if [ -z "$domain" ]; then
+        local actual_home="${HOME}"
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            actual_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        fi
+        if [ -f "$actual_home/.mynodeone/config.env" ]; then
+            source "$actual_home/.mynodeone/config.env"
+            domain="${CLUSTER_DOMAIN:-mycloud}.local"
+        else
+            domain="mycloud.local"
+        fi
+    fi
     
     local services=$(get_all_services)
     
@@ -360,8 +373,9 @@ Commands:
 Examples:
   service-registry.sh sync
   service-registry.sh register immich photos immich immich-server 80 true
-  service-registry.sh export-dns mycloud.local > /tmp/dns-entries
-  service-registry.sh export-traefik curiios.com 100.122.68.75 > routes.yml
+  service-registry.sh export-dns                    # Uses CLUSTER_DOMAIN from config
+  service-registry.sh export-dns minicloud.local    # Explicit domain
+  service-registry.sh export-traefik example.com 100.122.68.75 > routes.yml
 
 EOF
         exit 1

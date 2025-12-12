@@ -14,7 +14,14 @@
 #   --node-type <type>        Node type: laptop, vps, worker (default: laptop)
 #   --node-name <name>        Node name (default: hostname)
 #   --api-token <token>       API token for authentication
+#   --ssh-user <user>         SSH user on control plane (to fetch token)
 #   --poll-interval <secs>    Polling interval in seconds (default: 60)
+#
+# Token Acquisition (check, install, check, fallback):
+#   1. Check if --api-token provided
+#   2. Try to fetch token via SSH from control plane
+#   3. Prompt user interactively
+#   4. Fallback: Install without token and provide manual instructions
 ###############################################################################
 
 set -euo pipefail
@@ -47,9 +54,11 @@ CONTROL_PLANE_IP=""
 NODE_TYPE="laptop"
 NODE_NAME="$(hostname)"
 API_TOKEN=""
+SSH_USER=""
 POLL_INTERVAL="60"
 HEARTBEAT_INTERVAL="60"
 API_PORT="8443"
+TOKEN_FETCH_ATTEMPTED=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -74,6 +83,10 @@ while [[ $# -gt 0 ]]; do
             POLL_INTERVAL="$2"
             shift 2
             ;;
+        --ssh-user)
+            SSH_USER="$2"
+            shift 2
+            ;;
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
@@ -82,6 +95,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --node-type <type>        Node type: laptop, vps, worker (default: laptop)"
             echo "  --node-name <name>        Node name (default: hostname)"
             echo "  --api-token <token>       API token for authentication"
+            echo "  --ssh-user <user>         SSH user on control plane (to fetch token)"
             echo "  --poll-interval <secs>    Polling interval (default: 60)"
             exit 0
             ;;
@@ -162,6 +176,99 @@ fi
 
 log_success "Prerequisites OK"
 
+###############################################################################
+# Retry Helper
+###############################################################################
+
+MAX_RETRIES=3
+RETRY_DELAY=2
+
+retry_with_backoff() {
+    local description="$1"
+    shift
+    local attempt=1
+    local delay=$RETRY_DELAY
+    
+    while [[ $attempt -le $MAX_RETRIES ]]; do
+        if "$@"; then
+            return 0
+        fi
+        
+        if [[ $attempt -lt $MAX_RETRIES ]]; then
+            log_warn "$description failed (attempt $attempt/$MAX_RETRIES). Retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))  # Exponential backoff
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    log_warn "$description failed after $MAX_RETRIES attempts"
+    return 1
+}
+
+###############################################################################
+# API Token Acquisition (check, install, check, fallback) - with retries
+###############################################################################
+
+# Fetch token via SSH (separate function for retry)
+fetch_token_via_ssh() {
+    local fetched_token
+    fetched_token=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+        "${SSH_USER}@${CONTROL_PLANE_IP}" \
+        "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null) || return 1
+    
+    if [[ -n "$fetched_token" && ${#fetched_token} -ge 32 ]]; then
+        API_TOKEN="$fetched_token"
+        return 0
+    fi
+    return 1
+}
+
+acquire_api_token() {
+    # Step 1: Check if token already provided via --api-token
+    if [[ -n "$API_TOKEN" ]]; then
+        log_success "API token provided via command line"
+        return 0
+    fi
+    
+    log_info "API token not provided, attempting to acquire..."
+    
+    # Step 2: Try to fetch token via SSH from control plane (with retries)
+    if [[ -n "$SSH_USER" ]]; then
+        log_info "Attempting to fetch token via SSH from ${SSH_USER}@${CONTROL_PLANE_IP}..."
+        
+        if retry_with_backoff "SSH token fetch" fetch_token_via_ssh; then
+            log_success "API token fetched successfully via SSH"
+            return 0
+        else
+            log_warn "Could not fetch token via SSH (may need password or token file doesn't exist)"
+        fi
+    fi
+    
+    # Step 3: Prompt user interactively
+    echo ""
+    echo "To authenticate with the control plane, you need the API token."
+    echo "You can get it from the control plane with:"
+    echo "  ssh <user>@${CONTROL_PLANE_IP} 'sudo cat /etc/mynodeone/api-token'"
+    echo ""
+    read -p "Enter API token (or press Enter to skip): " -r user_token
+    
+    if [[ -n "$user_token" && ${#user_token} -ge 32 ]]; then
+        API_TOKEN="$user_token"
+        log_success "API token provided by user"
+        return 0
+    fi
+    
+    # Step 4: Fallback - continue without token
+    log_warn "No API token configured"
+    log_warn "The agent will be installed but may not authenticate with the control plane"
+    return 1
+}
+
+# Acquire token
+acquire_api_token
+TOKEN_FETCH_ATTEMPTED=true
+
 # Create config directory
 log_info "Creating config directory..."
 mkdir -p /etc/mynodeone
@@ -185,7 +292,7 @@ NODE_TYPE=$NODE_TYPE
 POLL_INTERVAL=$POLL_INTERVAL
 HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
 
-# API authentication (optional but recommended)
+# API authentication
 API_TOKEN=$API_TOKEN
 EOF
 
@@ -230,9 +337,82 @@ else
     log_info "Check logs: journalctl -u mynodeone-node-agent -n 20"
 fi
 
-# Run initial sync
-log_info "Running initial sync..."
-/usr/local/bin/mynodeone-node-agent sync 2>/dev/null || log_warn "Initial sync failed (will retry)"
+###############################################################################
+# Post-Installation Verification (check heartbeat, fallback with instructions)
+###############################################################################
+
+# Single heartbeat attempt (used by retry wrapper)
+send_single_heartbeat() {
+    # Build auth header if token exists
+    local auth_header=""
+    if [[ -n "$API_TOKEN" ]]; then
+        auth_header="-H X-API-Token:${API_TOKEN}"
+    fi
+    
+    # Build heartbeat payload
+    local payload
+    payload=$(cat <<EOJSON
+{
+    "node_name": "$NODE_NAME",
+    "node_type": "$NODE_TYPE",
+    "node_ip": "$(tailscale ip -4 2>/dev/null || echo 'unknown')",
+    "config_version": "install-test",
+    "uptime_seconds": 0
+}
+EOJSON
+)
+    
+    # Send test heartbeat
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        $auth_header \
+        -d "$payload" \
+        "http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/heartbeat" 2>/dev/null) || true
+    
+    # Store for error reporting
+    LAST_HEARTBEAT_CODE="$http_code"
+    
+    [[ "$http_code" == "200" ]]
+}
+
+verify_heartbeat() {
+    log_info "Verifying heartbeat authentication (with retries)..."
+    
+    LAST_HEARTBEAT_CODE=""
+    
+    # Use retry with backoff
+    if retry_with_backoff "Heartbeat verification" send_single_heartbeat; then
+        log_success "Heartbeat verification passed - node registered with control plane"
+        return 0
+    fi
+    
+    # Report specific error based on last attempt
+    case "$LAST_HEARTBEAT_CODE" in
+        401)
+            log_warn "Heartbeat failed: Authentication error (HTTP 401)"
+            log_warn "The API token is missing or incorrect"
+            ;;
+        403)
+            log_warn "Heartbeat failed: Forbidden (HTTP 403)"
+            log_warn "Check if this node's Tailscale IP is allowed"
+            ;;
+        000|"")
+            log_warn "Heartbeat failed: Could not connect to control plane"
+            ;;
+        *)
+            log_warn "Heartbeat failed: HTTP $LAST_HEARTBEAT_CODE"
+            ;;
+    esac
+    return 1
+}
+
+# Verify heartbeat works
+HEARTBEAT_OK=false
+if verify_heartbeat; then
+    HEARTBEAT_OK=true
+fi
 
 # Display summary
 echo ""
@@ -240,10 +420,19 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  Installation Complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Node Agent is running and will:"
-echo "  - Poll for config changes every ${POLL_INTERVAL} seconds"
-echo "  - Send heartbeat every ${HEARTBEAT_INTERVAL} seconds"
-echo "  - Apply config changes automatically"
+
+if [[ "$HEARTBEAT_OK" == "true" ]]; then
+    echo -e "${GREEN}✓ Node Agent is running and authenticated${NC}"
+    echo ""
+    echo "Node Agent will:"
+    echo "  - Poll for config changes every ${POLL_INTERVAL} seconds"
+    echo "  - Send heartbeat every ${HEARTBEAT_INTERVAL} seconds"
+    echo "  - Apply config changes automatically"
+else
+    echo -e "${YELLOW}⚠ Node Agent is running but authentication may have issues${NC}"
+    echo ""
+fi
+
 echo ""
 echo "Commands:"
 echo "  View logs:     journalctl -u mynodeone-node-agent -f"
@@ -252,11 +441,24 @@ echo "  Manual sync:   sudo mynodeone-node-agent sync"
 echo "  Restart:       sudo systemctl restart mynodeone-node-agent"
 echo ""
 
-# Show API token reminder if not set
-if [[ -z "$API_TOKEN" ]]; then
-    echo "Note: No API token configured. For better security, add the token:"
-    echo "  1. Get token from control plane: cat /etc/mynodeone/api-token"
-    echo "  2. Edit /etc/mynodeone/agent.env and set API_TOKEN=<token>"
-    echo "  3. Restart: sudo systemctl restart mynodeone-node-agent"
+# Show remediation steps if heartbeat failed
+if [[ "$HEARTBEAT_OK" != "true" ]]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Manual Token Configuration Required"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "To fix authentication:"
+    echo ""
+    echo "  1. Get the API token from the control plane:"
+    echo "     ssh <user>@${CONTROL_PLANE_IP} 'sudo cat /etc/mynodeone/api-token'"
+    echo ""
+    echo "  2. Update the token in the agent config:"
+    echo "     sudo sed -i 's/^API_TOKEN=.*/API_TOKEN=<your-token>/' /etc/mynodeone/agent.env"
+    echo ""
+    echo "  3. Restart the agent:"
+    echo "     sudo systemctl restart mynodeone-node-agent"
+    echo ""
+    echo "  4. Verify heartbeat is working:"
+    echo "     journalctl -u mynodeone-node-agent -n 5 | grep -i heartbeat"
     echo ""
 fi

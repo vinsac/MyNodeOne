@@ -370,10 +370,22 @@ log_info "Step 10: Installing Node Agent..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
-    # Get API token from config if available
+    # Get API token from config if available (set by VPS orchestrator)
     API_TOKEN="${API_TOKEN:-}"
     
-    if bash "$SCRIPT_DIR/lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "${NODE_NAME:-$(hostname)}"; then
+    # Get SSH user for control plane to enable automatic token fetch as fallback
+    # The orchestrator sets CONTROL_PLANE_SSH_USER in the config
+    CP_SSH_USER="${CONTROL_PLANE_SSH_USER:-${CONTROL_PLANE_USER:-}}"
+    
+    # If token is already set, no need for SSH user (faster path)
+    if [ -n "$API_TOKEN" ]; then
+        log_info "API token found in config (set by control plane orchestrator)"
+        CP_SSH_USER=""  # Don't need SSH fetch if we have token
+    fi
+    
+    # Call install-config-sync with ssh-user parameter for automatic token fetch
+    # Arguments: node-type control-plane-ip api-token node-name ssh-user
+    if bash "$SCRIPT_DIR/lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "${NODE_NAME:-$(hostname)}" "$CP_SSH_USER"; then
         log_success "Node Agent installed"
         log_info "VPS will now pull config updates from control plane"
     else

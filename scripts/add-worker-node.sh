@@ -249,7 +249,13 @@ install_node_agent() {
         # Get API token from config if available
         API_TOKEN="${API_TOKEN:-}"
         
-        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME"; then
+        # Get SSH user for control plane to enable automatic token fetch
+        # Try to get from config or environment
+        CP_SSH_USER="${CONTROL_PLANE_USER:-}"
+        
+        # Call install-config-sync with ssh-user parameter for automatic token fetch
+        # Arguments: node-type control-plane-ip api-token node-name ssh-user
+        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Worker will now pull config updates from control plane"
         else

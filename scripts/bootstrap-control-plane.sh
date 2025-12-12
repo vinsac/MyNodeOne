@@ -2417,6 +2417,42 @@ main() {
     # Offer to deploy LLM chat app
     offer_llm_chat
     
+    # Install Config API Server for pull-based node sync (HTTP instead of SSH)
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Installing Config API Server"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "Installing Config API Server for pull-based node sync..."
+    
+    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" control-plane; then
+            log_success "Config API Server installed"
+            log_info "Nodes can now pull config updates via HTTP on port 8443"
+            
+            # Display the API token for reference
+            if [ -f /etc/mynodeone/api-token ]; then
+                log_info "API token stored in: /etc/mynodeone/api-token"
+                log_info "Node agents will need this token to authenticate"
+            fi
+        else
+            log_warn "Config API Server installation had issues"
+            log_warn "You can install manually later:"
+            log_warn "  sudo ./scripts/lib/install-config-sync.sh control-plane"
+            log_warn "Or: sudo ./scripts/install-config-api.sh"
+        fi
+    elif [ -f "$SCRIPT_DIR/install-config-api.sh" ]; then
+        if bash "$SCRIPT_DIR/install-config-api.sh"; then
+            log_success "Config API Server installed"
+        else
+            log_warn "Config API Server installation had issues"
+        fi
+    else
+        log_warn "Config API installer not found, skipping"
+        log_warn "Pull-based sync will not work; SSH-based sync will be used as fallback"
+    fi
+    echo
+    
     # Final sync: Ensure all services are registered and DNS is updated
     log_info "Final sync: Registering all services and updating DNS..."
     if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then

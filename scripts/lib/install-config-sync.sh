@@ -14,7 +14,13 @@
 # - Validation after install
 #
 # Usage:
-#   install-config-sync.sh <node-type> [control-plane-ip] [api-token]
+#   install-config-sync.sh <node-type> [control-plane-ip] [api-token] [node-name] [ssh-user]
+#
+# Token Acquisition (check, install, check, fallback):
+#   1. Check if api-token provided as argument
+#   2. Try to fetch token via SSH from control plane (if ssh-user provided)
+#   3. Prompt user interactively
+#   4. Fallback: Install without token and provide manual instructions
 #
 # Node types: control-plane, vps, worker, laptop
 ###############################################################################
@@ -325,6 +331,63 @@ install_node_agent_binary() {
     log_success "Node Agent installed"
 }
 
+# Try to acquire API token via SSH (with retries)
+acquire_api_token_via_ssh() {
+    local control_plane_ip="$1"
+    local ssh_user="$2"
+    local max_attempts="${3:-3}"
+    
+    if [[ -z "$ssh_user" ]]; then
+        return 1
+    fi
+    
+    log_info "Attempting to fetch token via SSH from ${ssh_user}@${control_plane_ip} (with retries)..."
+    
+    local attempt=1
+    local delay=2
+    
+    while [ $attempt -le $max_attempts ]; do
+        local fetched_token
+        fetched_token=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+            "${ssh_user}@${control_plane_ip}" \
+            "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null) || true
+        
+        if [[ -n "$fetched_token" && ${#fetched_token} -ge 32 ]]; then
+            echo "$fetched_token"
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_attempts ]; then
+            log_warn "SSH token fetch failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))  # Exponential backoff
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    log_warn "SSH token fetch failed after $max_attempts attempts"
+    return 1
+}
+
+# Prompt user for API token interactively
+prompt_for_api_token() {
+    local control_plane_ip="$1"
+    
+    echo ""
+    echo "To authenticate with the control plane, you need the API token."
+    echo "You can get it from the control plane with:"
+    echo "  ssh <user>@${control_plane_ip} 'sudo cat /etc/mynodeone/api-token'"
+    echo ""
+    read -p "Enter API token (or press Enter to skip): " -r user_token
+    
+    if [[ -n "$user_token" && ${#user_token} -ge 32 ]]; then
+        echo "$user_token"
+        return 0
+    fi
+    
+    return 1
+}
+
 configure_node_agent() {
     local node_type="$1"
     local control_plane_ip="$2"
@@ -433,11 +496,118 @@ validate_node_agent() {
     fi
 }
 
+# Verify heartbeat works after installation (with retries)
+verify_node_agent_heartbeat() {
+    local control_plane_ip="$1"
+    local api_token="$2"
+    local node_name="$3"
+    local node_type="$4"
+    local max_attempts="${5:-3}"
+    
+    log_info "Verifying heartbeat authentication (with retries)..."
+    
+    # Build auth header if token exists
+    local auth_header=""
+    if [[ -n "$api_token" ]]; then
+        auth_header="-H X-API-Token:${api_token}"
+    fi
+    
+    # Build heartbeat payload
+    local payload
+    payload=$(cat <<EOJSON
+{
+    "node_name": "$node_name",
+    "node_type": "$node_type",
+    "node_ip": "$(tailscale ip -4 2>/dev/null || echo 'unknown')",
+    "config_version": "install-test",
+    "uptime_seconds": 0
+}
+EOJSON
+)
+    
+    local attempt=1
+    local delay=2
+    local last_http_code=""
+    
+    while [ $attempt -le $max_attempts ]; do
+        # Send test heartbeat
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            $auth_header \
+            -d "$payload" \
+            "http://${control_plane_ip}:8443/api/v1/heartbeat" 2>/dev/null) || true
+        
+        last_http_code="$http_code"
+        
+        if [[ "$http_code" == "200" ]]; then
+            log_success "Heartbeat verification passed - node registered with control plane"
+            return 0
+        fi
+        
+        # Don't retry on auth errors (401/403) - those won't fix themselves
+        if [[ "$http_code" == "401" || "$http_code" == "403" ]]; then
+            break
+        fi
+        
+        if [ $attempt -lt $max_attempts ]; then
+            log_warn "Heartbeat attempt failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))  # Exponential backoff
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    # Report specific error based on last attempt
+    case "$last_http_code" in
+        401)
+            log_warn "Heartbeat failed: Authentication error (HTTP 401)"
+            ;;
+        403)
+            log_warn "Heartbeat failed: Forbidden (HTTP 403)"
+            ;;
+        000|"")
+            log_warn "Heartbeat failed: Could not connect to control plane after $max_attempts attempts"
+            ;;
+        *)
+            log_warn "Heartbeat failed: HTTP $last_http_code"
+            ;;
+    esac
+    return 1
+}
+
+# Show remediation steps for failed heartbeat
+show_token_remediation() {
+    local control_plane_ip="$1"
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Manual Token Configuration Required"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "To fix authentication:"
+    echo ""
+    echo "  1. Get the API token from the control plane:"
+    echo "     ssh <user>@${control_plane_ip} 'sudo cat /etc/mynodeone/api-token'"
+    echo ""
+    echo "  2. Update the token in the agent config:"
+    echo "     sudo sed -i 's/^API_TOKEN=.*/API_TOKEN=<your-token>/' /etc/mynodeone/agent.env"
+    echo ""
+    echo "  3. Restart the agent:"
+    echo "     sudo systemctl restart mynodeone-node-agent"
+    echo ""
+    echo "  4. Verify heartbeat is working:"
+    echo "     journalctl -u mynodeone-node-agent -n 5 | grep -i heartbeat"
+    echo ""
+}
+
 install_node_agent() {
     local node_type="$1"
     local control_plane_ip="$2"
     local api_token="${3:-}"
     local node_name="${4:-$(hostname)}"
+    local ssh_user="${5:-}"
     
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -451,6 +621,40 @@ install_node_agent() {
         return 1
     fi
     
+    ###########################################################################
+    # Token Acquisition: check, install, check, fallback
+    ###########################################################################
+    
+    # Step 1: Check if token provided as argument
+    if [[ -n "$api_token" ]]; then
+        log_success "API token provided via argument"
+    else
+        log_info "API token not provided, attempting to acquire..."
+        
+        # Step 2: Try to fetch via SSH
+        if [[ -n "$ssh_user" ]]; then
+            local fetched_token
+            if fetched_token=$(acquire_api_token_via_ssh "$control_plane_ip" "$ssh_user"); then
+                api_token="$fetched_token"
+                log_success "API token fetched successfully via SSH"
+            else
+                log_warn "Could not fetch token via SSH"
+            fi
+        fi
+        
+        # Step 3: Prompt user interactively if still no token
+        if [[ -z "$api_token" ]]; then
+            local user_token
+            if user_token=$(prompt_for_api_token "$control_plane_ip"); then
+                api_token="$user_token"
+                log_success "API token provided by user"
+            else
+                # Step 4: Fallback - continue without token
+                log_warn "No API token configured - agent may not authenticate"
+            fi
+        fi
+    fi
+    
     # Check if already installed
     if check_node_agent_installed; then
         log_success "Node Agent already installed"
@@ -461,7 +665,11 @@ install_node_agent() {
         # Restart to pick up new config
         systemctl restart mynodeone-node-agent
         
-        validate_node_agent "$control_plane_ip" || true
+        # Verify heartbeat works
+        if ! verify_node_agent_heartbeat "$control_plane_ip" "$api_token" "$node_name" "$node_type"; then
+            show_token_remediation "$control_plane_ip"
+        fi
+        
         return 0
     fi
     
@@ -497,18 +705,17 @@ install_node_agent() {
     # Validate connection to control plane
     validate_node_agent "$control_plane_ip" || true
     
-    # Verify API token was configured
-    if [ -f /etc/mynodeone/node-agent.conf ]; then
-        if grep -q "API_TOKEN=" /etc/mynodeone/node-agent.conf && \
-           [ -n "$(grep "API_TOKEN=" /etc/mynodeone/node-agent.conf | cut -d= -f2)" ]; then
-            log_success "API token configured in Node Agent"
-        else
-            log_warn "API token not configured - get token from control plane:"
-            log_warn "  cat /etc/mynodeone/api-token"
-        fi
+    ###########################################################################
+    # Post-installation verification: check heartbeat, fallback with instructions
+    ###########################################################################
+    
+    if verify_node_agent_heartbeat "$control_plane_ip" "$api_token" "$node_name" "$node_type"; then
+        log_success "Node Agent installation complete - authenticated with control plane"
+    else
+        log_warn "Node Agent installed but authentication may have issues"
+        show_token_remediation "$control_plane_ip"
     fi
     
-    log_success "Node Agent installation complete"
     return 0
 }
 
@@ -549,6 +756,7 @@ main() {
     local control_plane_ip="${2:-}"
     local api_token="${3:-}"
     local node_name="${4:-$(hostname)}"
+    local ssh_user="${5:-}"
     
     if [ -z "$node_type" ]; then
         usage
@@ -560,7 +768,7 @@ main() {
             install_config_api_server
             ;;
         vps|worker|laptop)
-            install_node_agent "$node_type" "$control_plane_ip" "$api_token" "$node_name"
+            install_node_agent "$node_type" "$control_plane_ip" "$api_token" "$node_name" "$ssh_user"
             ;;
         *)
             log_error "Unknown node type: $node_type"

@@ -240,11 +240,61 @@ kubectl run gpu-test --rm -it --restart=Never \
 
 ---
 
-## Using GPUs in Pods
+## K3s GPU Configuration (Critical)
 
-### Requesting GPU Resources
+K3s handles GPU configuration differently than standard Kubernetes. Understanding this is **essential** for GPU workloads to function correctly.
 
-Add `nvidia.com/gpu` to your pod's resource limits:
+### How K3s Auto-Detects NVIDIA Runtime
+
+When K3s starts (or restarts), it automatically:
+
+1. **Scans for `nvidia-container-runtime`** in the system PATH
+2. **Configures containerd** to use the NVIDIA runtime
+3. **Creates Kubernetes RuntimeClasses** for all detected runtimes
+
+```bash
+# Verify K3s detected the NVIDIA runtime
+grep nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+
+# Check RuntimeClasses were created
+kubectl get runtimeclass
+# Should show: nvidia, nvidia-experimental, etc.
+```
+
+### The Critical runtimeClassName Requirement
+
+**⚠️ IMPORTANT:** Just requesting `nvidia.com/gpu` is NOT enough!
+
+Pods need **two things** to use the GPU:
+
+| Requirement | Purpose | What Happens Without It |
+|-------------|---------|------------------------|
+| `resources.limits.nvidia.com/gpu: 1` | Reserves GPU from scheduler | Pod won't be scheduled on GPU node |
+| `runtimeClassName: nvidia` | Uses NVIDIA container runtime | Container can't access GPU libraries (libnvidia-ml.so) |
+
+### Why runtimeClassName is Required
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WITHOUT runtimeClassName: nvidia                                       │
+│                                                                         │
+│  Container uses default 'runc' runtime                                 │
+│  → NVIDIA libraries NOT mounted into container                          │
+│  → nvidia-smi fails: "libnvidia-ml.so.1: cannot open shared object"    │
+│  → GPU visible to scheduler but NOT to application                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WITH runtimeClassName: nvidia                                          │
+│                                                                         │
+│  Container uses 'nvidia-container-runtime'                             │
+│  → NVIDIA libraries mounted from host: /usr/lib/x86_64-linux-gnu/...   │
+│  → nvidia-smi works: shows GPU info                                    │
+│  → Application (Ollama, vLLM) can use CUDA                             │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Correct GPU Pod Specification
 
 ```yaml
 apiVersion: v1
@@ -252,13 +302,62 @@ kind: Pod
 metadata:
   name: gpu-pod
 spec:
+  runtimeClassName: nvidia    # ← CRITICAL: Use NVIDIA container runtime
   containers:
   - name: cuda-container
     image: nvidia/cuda:12.2.0-base-ubuntu22.04
     command: ["nvidia-smi"]
     resources:
       limits:
-        nvidia.com/gpu: 1  # Request 1 GPU
+        nvidia.com/gpu: 1     # ← Reserve GPU from scheduler
+```
+
+### NVIDIA Device Plugin Also Needs runtimeClassName
+
+The NVIDIA Device Plugin DaemonSet itself needs `runtimeClassName: nvidia` to function correctly. Without it, the plugin can't access NVIDIA libraries to detect GPUs.
+
+MyNodeOne's device plugin manifest includes this:
+
+```yaml
+# manifests/gpu/nvidia-device-plugin.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      runtimeClassName: nvidia   # ← Required for plugin to detect GPUs
+      containers:
+      - name: nvidia-device-plugin-ctr
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.5
+```
+
+**Note:** The upstream NVIDIA manifest does NOT include `runtimeClassName`. MyNodeOne adds it.
+
+---
+
+## Using GPUs in Pods
+
+### Requesting GPU Resources
+
+**Complete example** with both required elements:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-pod
+spec:
+  runtimeClassName: nvidia    # Required for GPU library access
+  containers:
+  - name: cuda-container
+    image: nvidia/cuda:12.2.0-base-ubuntu22.04
+    command: ["nvidia-smi"]
+    resources:
+      limits:
+        nvidia.com/gpu: 1     # Required for GPU scheduling
 ```
 
 ### Example: vLLM Deployment
@@ -279,6 +378,7 @@ spec:
       labels:
         app: vllm
     spec:
+      runtimeClassName: nvidia    # ← CRITICAL
       containers:
       - name: vllm
         image: vllm/vllm-openai:latest
@@ -338,6 +438,7 @@ spec:
       labels:
         app: ollama
     spec:
+      runtimeClassName: nvidia    # ← CRITICAL
       containers:
       - name: ollama
         image: ollama/ollama:latest
@@ -560,7 +661,31 @@ args:
 
 ## Troubleshooting
 
+### Quick Diagnostic Commands
+
+```bash
+# 1. Check GPU visible to host
+nvidia-smi
+
+# 2. Check GPU visible to Kubernetes
+kubectl describe node | grep nvidia.com/gpu
+
+# 3. Check RuntimeClass exists
+kubectl get runtimeclass nvidia
+
+# 4. Check device plugin is running
+kubectl get pods -n kube-system -l name=nvidia-device-plugin-ds
+
+# 5. Check device plugin logs
+kubectl logs -n kube-system -l name=nvidia-device-plugin-ds --tail=50
+
+# 6. Check if K3s detected nvidia runtime
+grep nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+```
+
 ### GPU Not Detected by Kubernetes
+
+Symptom: `kubectl describe node | grep nvidia.com/gpu` shows nothing.
 
 ```bash
 # Check driver is working
@@ -568,12 +693,102 @@ nvidia-smi
 
 # Check container toolkit
 nvidia-ctk --version
+nvidia-container-runtime --version
 
 # Check device plugin pods
 kubectl get pods -n kube-system | grep nvidia
 
 # Check device plugin logs
 kubectl logs -n kube-system -l name=nvidia-device-plugin-ds
+```
+
+### Device Plugin Shows "Incompatible Platform" or "libnvidia-ml.so not found"
+
+Symptom: Device plugin logs show:
+```
+E factory.go:115] Incompatible platform detected
+E factory.go:116] If this is a GPU node, did you configure the NVIDIA Container Toolkit?
+main.go:287] No devices found. Waiting indefinitely.
+```
+
+**Root Cause:** Device plugin pod is missing `runtimeClassName: nvidia`.
+
+**Fix:**
+```bash
+# Use MyNodeOne's patched manifest
+kubectl delete daemonset nvidia-device-plugin-daemonset -n kube-system
+kubectl apply -f manifests/gpu/nvidia-device-plugin.yaml
+
+# Or patch existing deployment
+kubectl patch daemonset nvidia-device-plugin-daemonset -n kube-system \
+  --type='json' -p='[{"op": "add", "path": "/spec/template/spec/runtimeClassName", "value": "nvidia"}]'
+```
+
+### GPU Detected but Application Shows "0 B VRAM" or "offloaded 0 layers to GPU"
+
+Symptom: Ollama/vLLM logs show:
+```
+msg="inference compute" id=cpu library=cpu ... total="128.0 GiB"
+msg="entering low vram mode" "total vram"="0 B"
+msg="offloaded 0/25 layers to GPU"
+```
+
+**Root Cause:** Application pod has GPU resource request but missing `runtimeClassName: nvidia`.
+
+**Diagnosis:**
+```bash
+# Check pod's runtimeClassName
+kubectl get pod <pod-name> -n <namespace> -o yaml | grep runtimeClassName
+# Should output: runtimeClassName: nvidia
+
+# Check pod's resource requests
+kubectl get pod <pod-name> -n <namespace> -o yaml | grep -A10 resources:
+```
+
+**Fix:**
+```bash
+# Patch deployment to add runtimeClassName
+kubectl patch deployment <app-name> -n <namespace> --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/runtimeClassName", "value": "nvidia"}]'
+
+# Wait for rollout
+kubectl rollout status deployment/<app-name> -n <namespace>
+```
+
+### Verifying GPU is Actually Being Used
+
+```bash
+# For Ollama - check logs for CUDA detection
+kubectl logs -n llm-chat -l app=ollama --tail=100 | grep -i -E "cuda|gpu|vram"
+
+# Should show:
+#   msg="inference compute" ... library=CUDA ... total="24.0 GiB"
+#   msg="gpu memory" ... available="23.1 GiB"
+#   ggml_cuda_init: found 1 CUDA devices
+#   msg="offloaded 25/25 layers to GPU"
+
+# For any GPU pod - check nvidia-smi inside container
+kubectl exec -it <pod-name> -n <namespace> -- nvidia-smi
+```
+
+### RuntimeClass Not Found
+
+Symptom: `kubectl get runtimeclass nvidia` returns "not found".
+
+**Root Cause:** K3s didn't detect nvidia-container-runtime at startup.
+
+**Fix:**
+```bash
+# Verify nvidia-container-runtime exists
+which nvidia-container-runtime
+# Should return: /usr/bin/nvidia-container-runtime
+
+# Restart K3s to trigger runtime detection
+sudo systemctl restart k3s
+
+# Wait and check again
+sleep 30
+kubectl get runtimeclass nvidia
 ```
 
 ### Pod Stuck in Pending
@@ -584,6 +799,10 @@ kubectl describe node <node-name> | grep -A10 "Allocated resources"
 
 # Check pod events
 kubectl describe pod <pod-name>
+
+# Common causes:
+# - "Insufficient nvidia.com/gpu" → All GPUs in use
+# - "node(s) didn't match Pod's node affinity" → No GPU nodes available
 ```
 
 ### CUDA Out of Memory

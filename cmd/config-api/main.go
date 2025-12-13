@@ -353,7 +353,7 @@ func (s *Server) getDNSEntries() ([]DNSEntry, error) {
 	// Extract DNS entries from flat registry format
 	// Format: {"servicename": {"subdomain": "x", "ip": "y", ...}, ...}
 	entries := []DNSEntry{}
-	for name, svc := range services {
+	for _, svc := range services {
 		if svcMap, ok := svc.(map[string]interface{}); ok {
 			ip, _ := svcMap["ip"].(string)
 			subdomain, _ := svcMap["subdomain"].(string)

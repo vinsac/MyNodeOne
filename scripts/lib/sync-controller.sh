@@ -92,7 +92,15 @@ push_sync_to_node() {
         local api_port="${API_PORT:-8443}"
         local control_plane_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
         
-        if curl -s --connect-timeout 2 "http://${control_plane_ip}:${api_port}/api/v1/nodes" 2>/dev/null | \
+        # Get API token for authentication
+        local api_token=""
+        if [[ -f /etc/mynodeone/api-token ]]; then
+            api_token=$(cat /etc/mynodeone/api-token 2>/dev/null)
+        fi
+        
+        if [[ -n "$api_token" ]] && \
+            curl -s --connect-timeout 2 -H "Authorization: Bearer $api_token" \
+                "http://${control_plane_ip}:${api_port}/api/v1/nodes" 2>/dev/null | \
             jq -e ".nodes[]? | select(.ip == \"$node_ip\" and .status == \"online\")" &>/dev/null; then
             log_info "Node $node_ip is using V2 sync (Node Agent active) - skipping SSH push"
             return 0

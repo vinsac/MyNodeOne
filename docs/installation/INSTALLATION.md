@@ -869,7 +869,9 @@ sudo systemctl restart mynodeone-node-agent
 
 # If Node Agent is not installed, reinstall:
 cd ~/MyNodeOne
-sudo ./scripts/lib/install-config-sync.sh node-agent laptop
+# Get control plane IP and API token from your config
+source ~/.mynodeone/config.env
+sudo ./scripts/lib/install-config-sync.sh laptop "$CONTROL_PLANE_IP" "$API_TOKEN"
 ```
 
 ### Issue: Laptop was offline, now DNS is stale

@@ -99,7 +99,7 @@ push_sync_to_node() {
         fi
         
         if [[ -n "$api_token" ]] && \
-            curl -s --connect-timeout 2 -H "Authorization: Bearer $api_token" \
+            curl -s --connect-timeout 2 -H "X-API-Token: $api_token" \
                 "http://${control_plane_ip}:${api_port}/api/v1/nodes" 2>/dev/null | \
             jq -e ".nodes[]? | select(.ip == \"$node_ip\" and .status == \"online\")" &>/dev/null; then
             log_info "Node $node_ip is using V2 sync (Node Agent active) - skipping SSH push"

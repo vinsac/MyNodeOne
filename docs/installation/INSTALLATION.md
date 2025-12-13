@@ -12,8 +12,9 @@ This guide has **4 independent sections** - one for each node type:
 |---------|-----------|-------------|
 | **[1. Control Plane](#section-1-control-plane-installation)** | First node (master) | **START HERE** - Always install this first |
 | **[2. VPS Edge Node](#section-2-vps-edge-node-installation)** | Public internet access | Add after control plane for public apps |
-| **[3. Management Laptop](#section-3-management-laptop-setup)** | Admin workstation | Recommended - Control cluster from laptop |
-| **[4. Worker Node](#section-4-worker-node-installation)** | Additional compute | Optional - Add more resources to cluster |
+| **[3. Management Laptop or Workstation](#section-3-management-laptop-or-workstation-setup)** | Admin workstation | Recommended - Control cluster from laptop |
+
+| **[4. Worker Node](#section-4-worker-node-installation-(optional))** | Additional compute | Optional - Add more resources to cluster |
 
 **Always start with Section 1 (Control Plane), then choose which other sections you need.**
 
@@ -610,7 +611,7 @@ The sync system automatically propagates configuration changes to all nodes:
 
 ---
 
-# SECTION 3: Management Laptop/Workstation Setup
+# SECTION 3: Management Laptop or Workstation Setup
 
 Set up a laptop or desktop so you can control your cluster/private cloud using `kubectl` from anywhere (for example, your gaming PC stays at home but you manage the cluster from college or a coffee shop), without sitting in front of the control plane machine.
 

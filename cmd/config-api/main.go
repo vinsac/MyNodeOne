@@ -350,17 +350,18 @@ func (s *Server) getDNSEntries() ([]DNSEntry, error) {
 		return nil, fmt.Errorf("failed to parse service registry: %v", err)
 	}
 
-	// Extract DNS entries
+	// Extract DNS entries from flat registry format
+	// Format: {"servicename": {"subdomain": "x", "ip": "y", ...}, ...}
 	entries := []DNSEntry{}
-	if servicesMap, ok := services["services"].(map[string]interface{}); ok {
-		for name, svc := range servicesMap {
-			if svcMap, ok := svc.(map[string]interface{}); ok {
-				if ip, ok := svcMap["ip"].(string); ok && ip != "" {
-					entries = append(entries, DNSEntry{
-						Name: name,
-						IP:   ip,
-					})
-				}
+	for name, svc := range services {
+		if svcMap, ok := svc.(map[string]interface{}); ok {
+			ip, _ := svcMap["ip"].(string)
+			subdomain, _ := svcMap["subdomain"].(string)
+			if ip != "" && subdomain != "" {
+				entries = append(entries, DNSEntry{
+					Name: subdomain,
+					IP:   ip,
+				})
 			}
 		}
 	}
@@ -389,32 +390,31 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 		return nil, fmt.Errorf("failed to parse service registry: %v", err)
 	}
 
-	// Extract routes for public services
+	// Extract routes for public services from flat registry format
+	// Format: {"servicename": {"subdomain": "x", "public": true, ...}, ...}
 	routes := []TraefikRoute{}
-	if servicesMap, ok := services["services"].(map[string]interface{}); ok {
-		for name, svc := range servicesMap {
-			if svcMap, ok := svc.(map[string]interface{}); ok {
-				// Only include public services
-				visibility, _ := svcMap["visibility"].(string)
-				if visibility != "public" {
-					continue
-				}
+	for name, svc := range services {
+		if svcMap, ok := svc.(map[string]interface{}); ok {
+			// Only include public services
+			isPublic, _ := svcMap["public"].(bool)
+			if !isPublic {
+				continue
+			}
 
-				ip, _ := svcMap["ip"].(string)
-				port, _ := svcMap["port"].(float64)
-				domain, _ := svcMap["domain"].(string)
+			ip, _ := svcMap["ip"].(string)
+			port, _ := svcMap["port"].(float64)
+			domain, _ := svcMap["domain"].(string)
 
-				if ip != "" && domain != "" {
-					backend := ip
-					if port > 0 {
-						backend = fmt.Sprintf("%s:%.0f", ip, port)
-					}
-					routes = append(routes, TraefikRoute{
-						Service: name,
-						Domain:  domain,
-						Backend: backend,
-					})
+			if ip != "" && domain != "" {
+				backend := ip
+				if port > 0 {
+					backend = fmt.Sprintf("%s:%.0f", ip, port)
 				}
+				routes = append(routes, TraefikRoute{
+					Service: name,
+					Domain:  domain,
+					Backend: backend,
+				})
 			}
 		}
 	}

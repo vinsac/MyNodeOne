@@ -1,6 +1,54 @@
 # Sync Controller V2 - Pull-Based Architecture
 
-This document describes the redesigned sync controller that replaces SSH-based push with HTTP-based pull and heartbeat.
+This document describes the redesigned sync controller that uses HTTP-based pull and heartbeat as the primary mechanism, with SSH-based push as a fallback.
+
+---
+
+## Quick Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          CONTROL PLANE                                       │
+│                                                                              │
+│   ┌────────────────────────┐        ┌─────────────────────────────────────┐ │
+│   │  Config API Server     │        │  SSH Sync Controller Daemon         │ │
+│   │  (mynodeone-config-api)│        │  (mynodeone-sync-controller)        │ │
+│   │                        │        │                                     │ │
+│   │  • Serves config       │◄───────│  • Watches service-registry         │ │
+│   │  • Receives heartbeats │        │  • Checks which nodes are online    │ │
+│   │  • Tracks node status  │        │  • Pushes via SSH if node offline   │ │
+│   └────────────────────────┘        └─────────────────────────────────────┘ │
+│             ▲                                        │                       │
+└─────────────┼────────────────────────────────────────┼───────────────────────┘
+              │ HTTP (Primary)                         │ SSH (Fallback)
+              │                                        │
+    ┌─────────┴─────────┐                    ┌─────────┴─────────┐
+    │                   │                    │                   │
+    ▼                   ▼                    ▼                   ▼
+┌────────────┐    ┌────────────┐       ┌────────────┐    ┌────────────┐
+│ VPS Node   │    │ Laptop     │       │ VPS Node   │    │ Laptop     │
+│ Agent      │    │ Agent      │       │ (offline)  │    │ (offline)  │
+│ ✓ online   │    │ ✓ online   │       │ SSH push   │    │ SSH push   │
+└────────────┘    └────────────┘       └────────────┘    └────────────┘
+```
+
+### Services Installed
+
+| Node Type | Services | Purpose |
+|-----------|----------|---------|
+| **Control Plane** | `mynodeone-config-api` | Serves config, tracks heartbeats |
+| **Control Plane** | `mynodeone-sync-controller` | SSH fallback when Node Agent fails |
+| **VPS/Laptop/Worker** | `mynodeone-node-agent` | Pulls config, sends heartbeats |
+
+### How It Works
+
+1. **Node Agent polls** control plane every 60 seconds for config updates
+2. **Node Agent sends heartbeat** to report online status
+3. **Config API tracks** which nodes are online/stale/offline
+4. **When config changes** (app install/uninstall), sync-controller:
+   - Checks which nodes have active Node Agent (via Config API)
+   - Skips SSH for online nodes (Node Agent will pull)
+   - Uses SSH push for stale/offline nodes
 
 ---
 

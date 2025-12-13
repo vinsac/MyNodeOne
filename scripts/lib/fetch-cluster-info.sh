@@ -202,11 +202,19 @@ REMOTE_SUDO_EOF
     
     log_success "Connected to control plane"
     
-    # Extract values from output
-    local cluster_name=$(grep "^CLUSTER_NAME=" "$temp_output" | cut -d= -f2- | tr -d '\r')
-    local cluster_domain=$(grep "^CLUSTER_DOMAIN=" "$temp_output" | cut -d= -f2- | tr -d '\r')
-    local repo_path=$(grep "^REPO_PATH=" "$temp_output" | cut -d= -f2- | tr -d '\r')
-    local api_token=$(grep "^API_TOKEN=" "$temp_output" | cut -d= -f2- | tr -d '\r')
+    # Debug: Show raw output for troubleshooting
+    if [ "${DEBUG:-}" = "1" ]; then
+        log_info "DEBUG: Raw output from control plane:"
+        cat "$temp_output"
+        echo "---END DEBUG---"
+    fi
+    
+    # Extract values from output - handle both with and without terminal escape sequences
+    # The output may have terminal control characters from -tt, so we clean aggressively
+    local cluster_name=$(grep "CLUSTER_NAME=" "$temp_output" | tail -1 | sed 's/.*CLUSTER_NAME=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
+    local cluster_domain=$(grep "CLUSTER_DOMAIN=" "$temp_output" | tail -1 | sed 's/.*CLUSTER_DOMAIN=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
+    local repo_path=$(grep "REPO_PATH=" "$temp_output" | tail -1 | sed 's/.*REPO_PATH=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
+    local api_token=$(grep "API_TOKEN=" "$temp_output" | tail -1 | sed 's/.*API_TOKEN=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
     
     # Extract and decode kubeconfig
     local kubeconfig_b64=$(sed -n '/===KUBECONFIG_START===/,/===KUBECONFIG_END===/p' "$temp_output" | grep -v "===" | tr -d '\r\n')
@@ -214,6 +222,10 @@ REMOTE_SUDO_EOF
     if [ -z "$cluster_name" ] || [ -z "$cluster_domain" ]; then
         log_error "Could not find cluster-info configmap on control plane"
         log_info "Make sure the control plane was bootstrapped correctly"
+        log_info "DEBUG: Showing raw output for diagnosis:"
+        echo "--- START RAW OUTPUT ---"
+        cat "$temp_output" | head -30
+        echo "--- END RAW OUTPUT ---"
         return 1
     fi
     

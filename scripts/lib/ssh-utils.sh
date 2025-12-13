@@ -42,34 +42,35 @@ setup_ssh_control_master() {
     local remote_host="$2"
     local control_path="${3:-/tmp/ssh-mux-%r@%h:%p}"
     
-    log_info "Setting up SSH connection multiplexing..."
+    log_info "Checking for existing SSH multiplexing..."
     
     # Create SSH control socket with agent forwarding
     # -A enables agent forwarding so control plane can use laptop's SSH credentials
     SSH_CONTROL_OPTS="-A -o ControlMaster=auto -o ControlPath=$control_path -o ControlPersist=600"
     
-    # Test connection and establish master
+    # Test if we already have a working connection (BatchMode=yes won't prompt)
+    log_info "Testing if passwordless SSH works..."
     if ssh $SSH_CONTROL_OPTS -o BatchMode=yes -o ConnectTimeout=5 "$remote_user@$remote_host" "exit" 2>/dev/null; then
         log_success "SSH ControlMaster established (no password needed)"
         export SSH_CONTROL_OPTS
         return 0
+    fi
+    
+    log_info "Passwordless SSH not available, will prompt for password..."
+    log_info "Running: ssh $SSH_CONTROL_OPTS -o ConnectTimeout=10 $remote_user@$remote_host exit"
+    
+    # Establish master connection with password
+    # Use /dev/tty to ensure password prompt goes to terminal
+    if ssh $SSH_CONTROL_OPTS -o ConnectTimeout=10 "$remote_user@$remote_host" "exit" </dev/tty; then
+        log_success "SSH ControlMaster established successfully"
+        log_success "Subsequent connections will reuse this session (no more passwords!)"
+        export SSH_CONTROL_OPTS
+        return 0
     else
-        log_info "Establishing SSH ControlMaster connection..."
-        log_info "You may be prompted for password ONCE"
-        
-        # Establish master connection with password (don't hide stderr - need password prompt!)
-        if ssh $SSH_CONTROL_OPTS -o ConnectTimeout=10 "$remote_user@$remote_host" "exit"; then
-            log_success "SSH ControlMaster established successfully"
-            log_success "Subsequent connections will reuse this session (no more passwords!)"
-            log_success "SSH agent forwarding enabled for nested connections"
-            export SSH_CONTROL_OPTS
-            return 0
-        else
-            log_warn "Could not establish SSH ControlMaster"
-            log_warn "You may be prompted for password multiple times"
-            export SSH_CONTROL_OPTS=""
-            return 1
-        fi
+        log_warn "Could not establish SSH ControlMaster"
+        log_warn "You may be prompted for password multiple times"
+        export SSH_CONTROL_OPTS=""
+        return 1
     fi
 }
 

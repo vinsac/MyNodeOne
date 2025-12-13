@@ -140,11 +140,8 @@ if [ -z "$REPO_PATH" ]; then
 fi
 echo "REPO_PATH=$REPO_PATH"
 
-# Get API token
-API_TOKEN=""
-if [ -f /etc/mynodeone/api-token ]; then
-    API_TOKEN=$(sudo cat /etc/mynodeone/api-token 2>/dev/null || echo "")
-fi
+# Get API token (directory has 700 permissions, need sudo for everything)
+API_TOKEN=$(sudo cat /etc/mynodeone/api-token 2>/dev/null || echo "")
 echo "API_TOKEN=$API_TOKEN"
 
 # Get kubeconfig (base64 encoded to preserve formatting)
@@ -212,10 +209,8 @@ if [ -z "\$REPO_PATH" ]; then
 fi
 echo "REPO_PATH=\$REPO_PATH"
 
-API_TOKEN=""
-if [ -f /etc/mynodeone/api-token ]; then
-    API_TOKEN=\$(echo "$sudo_pass" | sudo -S cat /etc/mynodeone/api-token 2>/dev/null || echo "")
-fi
+# Get API token (directory has 700 permissions, need sudo for everything)
+API_TOKEN=\$(echo "$sudo_pass" | sudo -S cat /etc/mynodeone/api-token 2>/dev/null || echo "")
 echo "API_TOKEN=\$API_TOKEN"
 
 echo "===KUBECONFIG_START==="

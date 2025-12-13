@@ -741,6 +741,12 @@ save_configuration() {
     
     mkdir -p "$CONFIG_DIR"
     
+    # Preserve API_TOKEN from existing config (fetched by fetch-cluster-info.sh)
+    local existing_api_token=""
+    if [ -f "$CONFIG_FILE" ]; then
+        existing_api_token=$(grep "^API_TOKEN=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' || echo "")
+    fi
+    
     cat > "$CONFIG_FILE" <<EOF
 # MyNodeOne Configuration
 # Generated: $(date)
@@ -792,6 +798,15 @@ NUM_VPS="$NUM_VPS"
 ENABLE_LLM="$ENABLE_LLM"
 ENABLE_DATABASES="$ENABLE_DATABASES"
 HAS_GPU="$HAS_GPU"
+EOF
+    fi
+    
+    # Preserve API_TOKEN if it was fetched earlier
+    if [ -n "$existing_api_token" ]; then
+        cat >> "$CONFIG_FILE" <<EOF
+
+# API Token (for Node Agent)
+API_TOKEN="$existing_api_token"
 EOF
     fi
     

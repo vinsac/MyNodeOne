@@ -300,7 +300,8 @@ fi
 echo
 
 # Step 2: Clean Kubernetes ConfigMaps (CRITICAL - before removing K3s)
-if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ]; then
+# Only delete ConfigMaps when uninstalling control-plane, not management laptops!
+if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$NODE_TYPE" = "control-plane" ]; then
     log_info "[2/12] Cleaning Kubernetes ConfigMaps..."
     if command -v kubectl &> /dev/null; then
         # Remove MyNodeOne ConfigMaps (contains registry data)
@@ -316,6 +317,29 @@ if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ]; then
         log_success "ConfigMaps cleaned"
     else
         log_info "kubectl not available, skipping ConfigMap cleanup"
+    fi
+elif [ "$NODE_TYPE" = "management" ]; then
+    log_info "[2/12] Skipping ConfigMap cleanup (management laptop - ConfigMaps live on control plane)"
+    
+    # Unregister this laptop from the node registry on control plane
+    if command -v kubectl &> /dev/null && kubectl cluster-info &>/dev/null; then
+        laptop_ip=$(tailscale ip -4 2>/dev/null || echo "")
+        if [ -n "$laptop_ip" ]; then
+            log_info "Unregistering laptop from cluster node registry..."
+            # Remove from sync-controller-registry
+            registry=$(kubectl get configmap sync-controller-registry -n kube-system \
+                -o jsonpath='{.data.registry\.json}' 2>/dev/null || echo '{}')
+            if [ -n "$registry" ] && [ "$registry" != "{}" ]; then
+                # Remove this laptop's entry
+                updated=$(echo "$registry" | jq --arg ip "$laptop_ip" \
+                    'del(.management_laptops[$ip])' 2>/dev/null || echo "$registry")
+                if [ "$updated" != "$registry" ]; then
+                    kubectl patch configmap sync-controller-registry -n kube-system \
+                        --type merge -p "{\"data\":{\"registry.json\":$(echo "$updated" | jq -c '.' | jq -Rs '.')}}" \
+                        2>/dev/null && log_success "Unregistered laptop ($laptop_ip) from node registry" || true
+                fi
+            fi
+        fi
     fi
 elif [ "$KEEP_CONFIG" = true ]; then
     log_info "[2/12] Keeping ConfigMaps (--keep-config specified)"

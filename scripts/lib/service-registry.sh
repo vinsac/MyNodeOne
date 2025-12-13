@@ -246,8 +246,61 @@ sync_registry() {
         log_info "Skipped/Failed: $failed services"
     fi
     
+    # Clean up stale entries (services that no longer exist in cluster)
+    cleanup_stale_entries
+    
     # Restore strict error handling
     set -e
+}
+
+# Remove registry entries for services that no longer exist in the cluster
+cleanup_stale_entries() {
+    log_info "Checking for stale registry entries..."
+    
+    # Get current registry entries
+    local registry=$(kubectl get configmap -n kube-system service-registry \
+        -o jsonpath='{.data.services\.json}' 2>/dev/null || echo '{}')
+    
+    if [[ "$registry" == "{}" ]]; then
+        return 0
+    fi
+    
+    # Get list of registered service names
+    local registered_names=$(echo "$registry" | jq -r 'keys[]' 2>/dev/null)
+    
+    if [[ -z "$registered_names" ]]; then
+        return 0
+    fi
+    
+    local removed=0
+    local new_registry="$registry"
+    
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        
+        # Get namespace from registry entry
+        local namespace=$(echo "$registry" | jq -r --arg name "$name" '.[$name].namespace // empty' 2>/dev/null)
+        
+        if [[ -z "$namespace" ]]; then
+            continue
+        fi
+        
+        # Check if service still exists in cluster
+        if ! kubectl get svc -n "$namespace" "$name" &>/dev/null; then
+            log_info "Removing stale entry: $name (namespace $namespace no longer exists)"
+            new_registry=$(echo "$new_registry" | jq --arg name "$name" 'del(.[$name])')
+            ((removed++))
+        fi
+    done <<< "$registered_names"
+    
+    # Update registry if entries were removed
+    if [[ $removed -gt 0 ]]; then
+        kubectl patch configmap -n kube-system service-registry \
+            --type merge -p "{\"data\":{\"services.json\":$(echo "$new_registry" | jq -c '.')}}"
+        log_success "Removed $removed stale entries from registry"
+    else
+        log_info "No stale entries found"
+    fi
 }
 
 # Export registry to DNS format for /etc/hosts

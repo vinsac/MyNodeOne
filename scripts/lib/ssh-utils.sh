@@ -57,8 +57,8 @@ setup_ssh_control_master() {
         log_info "Establishing SSH ControlMaster connection..."
         log_info "You may be prompted for password ONCE"
         
-        # Establish master connection with password
-        if ssh $SSH_CONTROL_OPTS -o ConnectTimeout=10 "$remote_user@$remote_host" "exit" 2>/dev/null; then
+        # Establish master connection with password (don't hide stderr - need password prompt!)
+        if ssh $SSH_CONTROL_OPTS -o ConnectTimeout=10 "$remote_user@$remote_host" "exit"; then
             log_success "SSH ControlMaster established successfully"
             log_success "Subsequent connections will reuse this session (no more passwords!)"
             log_success "SSH agent forwarding enabled for nested connections"

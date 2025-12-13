@@ -108,12 +108,34 @@ fi
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -n1 || echo "")
 echo "TAILSCALE_IP=$TAILSCALE_IP"
 
-# Get cluster info from configmap
-CLUSTER_NAME=$(sudo kubectl get configmap cluster-info -n kube-system -o jsonpath='{.data.cluster-name}' 2>/dev/null || echo "")
-CLUSTER_DOMAIN=$(sudo kubectl get configmap cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
-REPO_PATH=$(sudo kubectl get configmap cluster-info -n kube-system -o jsonpath='{.data.repo-path}' 2>/dev/null || echo "")
-echo "CLUSTER_NAME=$CLUSTER_NAME"
-echo "CLUSTER_DOMAIN=$CLUSTER_DOMAIN"
+# Get cluster info from config.env (single source of truth)
+# This is the same file VPS installation reads from
+CONFIG_FILE=""
+for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+    if [ -f "$cfg" ]; then
+        CONFIG_FILE="$cfg"
+        break
+    fi
+done
+
+if [ -n "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+    echo "CONFIG_FILE=$CONFIG_FILE"
+fi
+echo "CLUSTER_NAME=${CLUSTER_NAME:-}"
+echo "CLUSTER_DOMAIN=${CLUSTER_DOMAIN:-}"
+
+# Get repo path from config or detect it
+REPO_PATH="${CONTROL_PLANE_REPO_PATH:-}"
+if [ -z "$REPO_PATH" ]; then
+    # Try to find MyNodeOne directory
+    for p in /home/*/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+        if [ -d "$p" ]; then
+            REPO_PATH="$p"
+            break
+        fi
+    done
+fi
 echo "REPO_PATH=$REPO_PATH"
 
 # Get API token
@@ -158,11 +180,32 @@ echo "SUDO_TYPE=password"
 TAILSCALE_IP=\$(tailscale ip -4 2>/dev/null | head -n1 || echo "")
 echo "TAILSCALE_IP=\$TAILSCALE_IP"
 
-CLUSTER_NAME=\$(echo "$sudo_pass" | sudo -S kubectl get configmap cluster-info -n kube-system -o jsonpath='{.data.cluster-name}' 2>/dev/null || echo "")
-CLUSTER_DOMAIN=\$(echo "$sudo_pass" | sudo -S kubectl get configmap cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
-REPO_PATH=\$(echo "$sudo_pass" | sudo -S kubectl get configmap cluster-info -n kube-system -o jsonpath='{.data.repo-path}' 2>/dev/null || echo "")
-echo "CLUSTER_NAME=\$CLUSTER_NAME"
-echo "CLUSTER_DOMAIN=\$CLUSTER_DOMAIN"
+# Get cluster info from config.env (single source of truth)
+CONFIG_FILE=""
+for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+    if [ -f "\$cfg" ]; then
+        CONFIG_FILE="\$cfg"
+        break
+    fi
+done
+
+if [ -n "\$CONFIG_FILE" ]; then
+    source "\$CONFIG_FILE"
+    echo "CONFIG_FILE=\$CONFIG_FILE"
+fi
+echo "CLUSTER_NAME=\${CLUSTER_NAME:-}"
+echo "CLUSTER_DOMAIN=\${CLUSTER_DOMAIN:-}"
+
+# Get repo path from config or detect it
+REPO_PATH="\${CONTROL_PLANE_REPO_PATH:-}"
+if [ -z "\$REPO_PATH" ]; then
+    for p in /home/*/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+        if [ -d "\$p" ]; then
+            REPO_PATH="\$p"
+            break
+        fi
+    done
+fi
 echo "REPO_PATH=\$REPO_PATH"
 
 API_TOKEN=""

@@ -73,7 +73,8 @@ setup_ssh_access() {
         print_info "Attempt $((retry_count + 1))/$max_retries: Copying SSH keys to VPS..."
         
         # Copy user's SSH key
-        if sudo -u "$ACTUAL_USER" ssh-copy-id -i "$ssh_key" -o StrictHostKeyChecking=no "$vps_user@$vps_ip" 2>/dev/null; then
+        # Use </dev/tty to ensure password prompt works when run via sudo
+        if sudo -u "$ACTUAL_USER" ssh-copy-id -i "$ssh_key" -o StrictHostKeyChecking=no "$vps_user@$vps_ip" </dev/tty; then
             print_success "User SSH key copied successfully"
             
             # Also copy root's SSH key for sync-controller (which runs as root)

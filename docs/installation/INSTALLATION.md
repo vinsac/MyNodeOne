@@ -709,25 +709,29 @@ sudo ./scripts/mynodeone
 - **Resilience** - Ensures your laptop stays in sync even if HTTP polling breaks
 
 ```bash
-# On management laptop:
+# On management laptop (run from MyNodeOne directory):
+cd ~/MyNodeOne
 ./scripts/setup-management-laptop-ssh.sh \
     <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
     <laptop-user> LAPTOP_TAILSCALE_IP
 
 # Example:
 ./scripts/setup-management-laptop-ssh.sh \
-    vinaysachdeva 100.101.4.2 \
-    vinay 100.101.4.3
+    vinaysachdeva 100.115.64.91 \
+    vinay 100.120.243.100
 ```
 
+> **Note:** Run this script without `sudo`. It will prompt for passwords when needed and handles file ownership correctly.
+
 **You'll be prompted for:**
-- Control plane password (to SSH to control plane)
-- Laptop password (for ssh-copy-id to copy keys)
+- Control plane SSH password (to connect and generate keys)
 
 **What this does:**
-1. Generates SSH keys on control plane (if they don't exist)
-2. Copies keys to your laptop's `~/.ssh/authorized_keys`
-3. Verifies SSH access works from control plane to laptop
+1. Connects to control plane via SSH
+2. Generates SSH keys on control plane (for root and user)
+3. Copies public keys to your laptop's `~/.ssh/authorized_keys`
+4. Verifies SSH works from control plane → laptop
+5. Sets correct file permissions (700 for .ssh/, 600 for authorized_keys)
 
 ---
 

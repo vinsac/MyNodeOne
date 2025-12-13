@@ -284,25 +284,44 @@ setup_management_laptop_ssh() {
     # Step 3: Append keys to laptop's authorized_keys (locally, no nested SSH!)
     log_info "Adding control plane keys to laptop's authorized_keys..."
     
-    mkdir -p ~/.ssh
-    chmod 700 ~/.ssh
-    touch ~/.ssh/authorized_keys
-    chmod 600 ~/.ssh/authorized_keys
+    # Get the correct home directory for the laptop user
+    # This handles the case where script is run with sudo
+    local laptop_home
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        laptop_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        laptop_home="$HOME"
+    fi
+    
+    local ssh_dir="$laptop_home/.ssh"
+    local auth_keys="$ssh_dir/authorized_keys"
+    
+    # Create .ssh directory with correct ownership
+    mkdir -p "$ssh_dir"
+    chmod 700 "$ssh_dir"
+    touch "$auth_keys"
+    chmod 600 "$auth_keys"
+    
+    # Fix ownership if running as root via sudo
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        chown "$SUDO_USER:$SUDO_USER" "$ssh_dir"
+        chown "$SUDO_USER:$SUDO_USER" "$auth_keys"
+    fi
     
     # Check if root key already exists
-    if grep -qF "$root_pub_key" ~/.ssh/authorized_keys 2>/dev/null; then
+    if grep -qF "$root_pub_key" "$auth_keys" 2>/dev/null; then
         log_info "Root key already in authorized_keys"
     else
-        echo "$root_pub_key" >> ~/.ssh/authorized_keys
+        echo "$root_pub_key" >> "$auth_keys"
         log_success "Added root key to authorized_keys"
     fi
     
     # Check if user key already exists (if not root)
     if [ -n "$user_pub_key" ]; then
-        if grep -qF "$user_pub_key" ~/.ssh/authorized_keys 2>/dev/null; then
+        if grep -qF "$user_pub_key" "$auth_keys" 2>/dev/null; then
             log_info "User key already in authorized_keys"
         else
-            echo "$user_pub_key" >> ~/.ssh/authorized_keys
+            echo "$user_pub_key" >> "$auth_keys"
             log_success "Added user key to authorized_keys"
         fi
     fi

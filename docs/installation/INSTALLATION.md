@@ -631,16 +631,11 @@ In this section, "management laptop" and "management workstation" are used inter
 
 ## Prerequisites
 
-> **REQUIREMENT:** Control plane must be installed and passwordless sudo configured!
+> **REQUIREMENT:** Control plane must be installed first!
 
-```bash
-# Verify on control plane:
-sudo kubectl get nodes
-# Must show: "Ready"
-
-sudo kubectl version --client
-# Must NOT ask for password
-```
+Before starting, you need:
+1. **Control plane Tailscale IP** (run `tailscale ip -4` on control plane)
+2. **SSH credentials** for the control plane (username and password)
 
 ---
 
@@ -665,23 +660,49 @@ tailscale ip -4
 
 ---
 
-### Step 2: Setup SSH Access (Control Plane → Management Laptop)
-
-**IMPORTANT:** This step must be done **before** adding the management workstation to the cluster
-
-**Why this is needed:**
-- Control plane's sync service needs to SSH to your laptop to push DNS updates
-- Service runs as root, so we need root's SSH key
-- We also copy your user's key for manual operations and flexibility
-
-**Run the automated setup script (ON YOUR LAPTOP):**
+### Step 2: Install Management Workstation
 
 ```bash
-# On management laptop, clone MyNodeOne first:
+# On management laptop, clone MyNodeOne:
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
-# Run SSH setup script (it will SSH to control plane and set up keys):
+# Run installation:
+sudo ./scripts/mynodeone
+# Select Option 4: Management Workstation
+```
+
+**You will be prompted for:**
+1. **Control plane Tailscale IP** (e.g., `100.115.64.91`)
+2. **SSH username on control plane** (e.g., `vinaysachdeva`)
+3. **SSH password** (entered once for secure connection)
+4. **Sudo password on control plane** (if passwordless sudo is not configured)
+
+**What the installation does automatically:**
+
+1. **Connects to control plane via SSH** (single password prompt)
+2. **Fetches cluster configuration** (cluster name, domain, API token)
+3. **Copies kubeconfig** from control plane (enables kubectl access)
+4. **Installs Node Agent** for automatic DNS sync
+5. **Updates /etc/hosts** with current .local domain names
+6. **Registers laptop** in control plane node registry
+
+**Result:** 
+- kubectl works from laptop
+- Services accessible via .local domains
+- Node Agent polls for DNS updates (no SSH keys required)
+
+---
+
+### Step 3 (Optional): Setup SSH Keys for Fallback Sync
+
+> **Note:** This step is optional. The Node Agent handles sync via HTTP polling.
+> SSH keys are only needed as a fallback mechanism.
+
+If you want SSH-based sync as a backup:
+
+```bash
+# On management laptop:
 ./scripts/setup-management-laptop-ssh.sh \
     <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
     <laptop-user> LAPTOP_TAILSCALE_IP
@@ -690,97 +711,16 @@ cd MyNodeOne
 ./scripts/setup-management-laptop-ssh.sh \
     vinaysachdeva 100.101.4.2 \
     vinay 100.101.4.3
-
-# Here, CONTROL_PLANE_TAILSCALE_IP and LAPTOP_TAILSCALE_IP are the **Tailscale IPv4 addresses** of your control plane and laptop, taken from running `tailscale ip -4` on each machine. These are **not** public IP addresses.
-# The script will:
-# 1. SSH to control plane
-# 2. Generate mynodeone SSH keys on control plane (if missing)
-# 3. Copy those keys back to your laptop
-# 4. Verify SSH access works
 ```
 
-**What this script does automatically:**
-1. **Generates SSH keys** on control plane (if they don't exist)
-   - Creates `/root/.ssh/mynodeone_id_ed25519` (for sync service)
-   - Creates `~/.ssh/mynodeone_id_ed25519` (for manual operations)
-2. **Copies keys to laptop** using `ssh-copy-id` (handles retries, edge cases)
-   - Root's key → Required for automatic sync service
-   - User's key → Allows manual SSH without sudo
-3. **Verifies SSH access** works from control plane to laptop
-4. **Handles edge cases:** missing keys, authentication failures, timeouts
-
-**You'll be prompted for:**
-- Control plane password (to SSH to control plane)
-- Laptop password (for ssh-copy-id to copy keys)
-
-**Security:**
-- SSH over encrypted Tailscale VPN only
-- Key-based authentication (no passwords after setup)
-- Both root and user keys for redundancy
-
----
-
-### Step 3: Install Management Workstation
-
-```bash
-# On laptop (already cloned in Step 2):
-cd MyNodeOne
-
-# Run installation:
-sudo ./scripts/mynodeone
-# Select Option 4: Management Workstation
-```
-
-**Interactive prompts:**
-1. **Control plane IP:** → Your control plane Tailscale IP
-2. **SSH username:** → Your username on control plane
-
-**What the installation does automatically:**
-
-- **Configures passwordless sudo** (allows automatic `/etc/hosts` updates)
-- **Copies kubeconfig** from control plane (enables kubectl access)
-- **Updates /etc/hosts** with current .local domain names
-- **Registers laptop** in control plane sync registry
-- **Runs initial DNS sync**
-
-**Result:** 
-- kubectl works from laptop
-- Services accessible via .local domains
-- Auto-sync enabled (DNS updates pushed automatically when apps are installed)
+**What this does:**
+- Exchanges SSH keys between control plane and laptop
+- Enables SSH-based DNS sync as fallback if Node Agent is not working
+- Allows direct SSH from control plane to laptop for troubleshooting
 
 ---
 
 ### Step 4: Verify Installation
-
-**Verify Security Configuration:**
-
-```bash
-# On management laptop:
-
-# 1. Test passwordless sudo
-sudo -n echo "Passwordless sudo works!"
-# Should print message without password prompt
-
-# 2. Verify both SSH keys were added
-cat ~/.ssh/authorized_keys | grep mynodeone
-# Should show TWO keys: root's and user's
-
-# On control plane:
-
-# 3. Test SSH as root (what sync service uses - critical!)
-sudo ssh username@LAPTOP_TAILSCALE_IP "echo 'Root SSH works!'"
-# Should print "Root SSH works!" without password prompt
-
-# 4. Test SSH as your user (for manual operations)
-ssh username@LAPTOP_TAILSCALE_IP "echo 'User SSH works!'"
-# Should print "User SSH works!" without password prompt
-
-# 5. Test the actual sync command (as root)
-sudo ssh username@LAPTOP_TAILSCALE_IP "cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
-# Should complete without errors
-```
-
-In these examples, replace `username` with your Linux username on the laptop and `LAPTOP_TAILSCALE_IP` with the laptop's **Tailscale IPv4 address** from `tailscale ip -4`.
 
 **Verify Cluster Access:**
 
@@ -818,26 +758,34 @@ curl http://photos.minicloud.local
 - Deploy apps without SSHing to control plane
 - View logs, restart pods, manage resources
 
-**Automatic DNS Sync:**
-When you install new apps on the control plane, DNS entries are **automatically synced** to your laptop! Just wait a few seconds and the new service will be accessible via its .local domain.
+**Automatic DNS Sync (Node Agent):**
+The Node Agent runs on your laptop and polls the control plane for configuration updates every 60 seconds. When you install new apps, DNS entries are automatically synced to your laptop!
 
 **Example workflow (from your management laptop):**
 ```bash
-# 1. Install app using kubectl on your management laptop (kubeconfig already configured)
+# 1. Install app using kubectl on your management laptop
 kubectl apply -f my-app.yaml
 
-# 2. Wait for app to get LoadBalancer IP (still from your management laptop)
+# 2. Wait for app to get LoadBalancer IP
 kubectl get svc -n my-app
 
-# 3. DNS automatically syncs (no action needed!)
-# Wait ~10 seconds for auto-sync
+# 3. DNS automatically syncs via Node Agent (no action needed!)
+# Wait up to 60 seconds for auto-sync
 
 # 4. Access via .local domain from your management laptop
 curl http://my-app.minicloud.local
 ```
 
-**Manual sync (if needed, on your management laptop):**
-If you need to force an immediate sync from your management laptop:
+**Check Node Agent Status:**
+```bash
+# On management laptop:
+sudo systemctl status mynodeone-node-agent
+
+# View agent logs:
+sudo journalctl -u mynodeone-node-agent -f
+```
+
+**Manual sync (if needed):**
 ```bash
 cd ~/MyNodeOne
 sudo ./scripts/sync-dns.sh

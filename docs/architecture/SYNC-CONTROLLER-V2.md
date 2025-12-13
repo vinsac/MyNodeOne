@@ -359,8 +359,8 @@ HEARTBEAT_INTERVAL=60
 ### CLI Commands
 
 ```bash
-# Check node status from control plane
-./scripts/nodes-status.sh
+# Check node status from control plane (requires sudo to read API token)
+sudo ./scripts/nodes-status.sh
 
 # Output:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -446,5 +446,5 @@ sudo ./scripts/install-node-agent.sh \
 ### Check Status
 
 ```bash
-./scripts/nodes-status.sh
+sudo ./scripts/nodes-status.sh
 ```

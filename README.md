@@ -82,11 +82,11 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 |-------|-------------|
 | [Getting Started](docs/guides/GETTING-STARTED.md) | Entry point for new users |
 | [Installation](docs/installation/INSTALLATION.md) | Step-by-step installation |
-| [Operations Guide](docs/guides/operations.md) | Daily management and troubleshooting |
-| [App Store](docs/reference/APP-STORE.md) | Available one-click apps |
+| [Admin Guide](docs/guides/ADMIN-GUIDE.md) | Daily management and troubleshooting |
+| [App Store](docs/apps/APP-STORE.md) | Available one-click apps |
 | [FAQ](docs/reference/FAQ.md) | Frequently asked questions |
 | [Architecture](docs/architecture/ARCHITECTURE.md) | Technical design and components |
-| [Documentation Index](docs/reference/DOCUMENTATION-INDEX.md) | Complete documentation map |
+| [Documentation Index](docs/DOCUMENTATION-INDEX.md) | Complete documentation map |
 
 **Terminology:**
 - **Node**: A single machine (PC, laptop, mini PC, or server) in your cluster

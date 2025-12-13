@@ -16,7 +16,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"What are the options?"** → [INSTALLATION.md](../installation/INSTALLATION.md) - node types, VPS, worker nodes, and management workstation
 - **"How does it work?"** → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 - **"What about networking?"** → [NETWORKING.md](../architecture/NETWORKING.md)
-- **"What's new in v2?"** → [UPDATES-v2.md](UPDATES-v2.md)
+- **"What's new in v2?"** → [SYNC-CONTROLLER-V2.md](architecture/SYNC-CONTROLLER-V2.md)
 
 ### Daily usage
 - **"How do I manage it?"** → [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
@@ -30,9 +30,9 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"Network issues"** → [NETWORKING.md](../architecture/NETWORKING.md)
 
 ### Advanced
-- **"Complete technical docs"** → [FINAL-SUMMARY.md](FINAL-SUMMARY.md)
-- **"Design decisions"** → [ANSWERS-TO-QUESTIONS.md](ANSWERS-TO-QUESTIONS.md)
-- **"Contribute"** → [CONTRIBUTING.md](CONTRIBUTING.md)
+- **"Architecture deep-dive"** → [ARCHITECTURE.md](architecture/ARCHITECTURE.md)
+- **"Sync system design"** → [SYNC-CONTROLLER-V2.md](architecture/SYNC-CONTROLLER-V2.md)
+- **"Contribute"** → [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ---
 
@@ -59,8 +59,9 @@ mynodeone/
 │   │   ├── GETTING-STARTED.md        ← Entry point for new users
 │   │   ├── TERMINAL-BASICS.md        ← Terminal for beginners
 │   │   └── MOBILE-ACCESS-GUIDE.md    ← Phone/tablet access
+│   ├── apps/                         ← App catalog
+│   │   └── APP-STORE.md              ← Available apps
 │   ├── reference/                    ← Reference documentation
-│   │   ├── APP-STORE.md              ← Available apps
 │   │   └── FAQ.md                    ← Common questions
 │   ├── security/                     ← Security documentation
 │   │   ├── SECURITY.md               ← Security overview

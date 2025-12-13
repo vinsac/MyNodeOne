@@ -316,8 +316,8 @@ This section covers how to add or remove nodes from your MyNodeOne cluster.
 MyNodeOne uses a heartbeat system to track which nodes are online. Each node runs a Node Agent that reports its status to the control plane.
 
 ```bash
-# View all nodes and their status
-./scripts/nodes-status.sh
+# View all nodes and their status (requires sudo to read API token)
+sudo ./scripts/nodes-status.sh
 ```
 
 Output shows:
@@ -333,7 +333,7 @@ To add a new node (such as a VPS, Worker, or another Management Laptop), follow 
 2. Configure it to connect to your control plane
 3. Start sending heartbeats immediately
 
-The node will appear in `./scripts/nodes-status.sh` within 60 seconds.
+The node will appear in `sudo ./scripts/nodes-status.sh` within 60 seconds.
 
 ### Permanently Removing a Node
 
@@ -345,7 +345,7 @@ kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 kubectl delete node <node-name>
 
 # Step 2: Remove from sync controller registry
-./scripts/nodes-status.sh remove <node-name>
+sudo ./scripts/nodes-status.sh remove <node-name>
 ```
 
 **Note:** Nodes are never automatically removed. This is a safety measure to prevent accidental removal due to temporary network outages. An offline node will stay in the registry (showing as "offline") until you explicitly remove it.

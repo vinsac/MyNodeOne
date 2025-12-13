@@ -604,8 +604,8 @@ The sync system automatically propagates configuration changes to all nodes:
 
 **Node status:**
 ```bash
-# View all nodes and their sync status
-./scripts/nodes-status.sh
+# View all nodes and their sync status (requires sudo to read API token)
+sudo ./scripts/nodes-status.sh
 ```
 
 ---
@@ -849,8 +849,8 @@ cd ~/MyNodeOne
 **Diagnosis:**
 ```bash
 # 1. Check if laptop is registered and online
-# On control plane:
-./scripts/nodes-status.sh
+# On control plane (requires sudo):
+sudo ./scripts/nodes-status.sh
 # Should show your laptop with status "online"
 
 # 2. Check if Node Agent service is running

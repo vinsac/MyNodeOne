@@ -670,8 +670,8 @@ MyNodeOne uses a **two-tier sync system**:
 ### How do I check which nodes are online?
 
 ```bash
-# On control plane
-./scripts/nodes-status.sh
+# On control plane (requires sudo to read API token)
+sudo ./scripts/nodes-status.sh
 ```
 
 This shows all nodes with their status (online/stale/offline), last heartbeat time, and config version.
@@ -684,7 +684,7 @@ kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 kubectl delete node <node-name>
 
 # Remove from sync controller registry
-./scripts/nodes-status.sh remove <node-name>
+sudo ./scripts/nodes-status.sh remove <node-name>
 ```
 
 ### What happens if a node goes offline?

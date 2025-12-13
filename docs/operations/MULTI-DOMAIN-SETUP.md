@@ -68,8 +68,8 @@ sudo ./scripts/lib/multi-domain-registry.sh register-vps \
 Nodes automatically register via the Node Agent heartbeat system. Check status:
 
 ```bash
-# View all nodes and their sync status
-./scripts/nodes-status.sh
+# View all nodes and their sync status (requires sudo)
+sudo ./scripts/nodes-status.sh
 ```
 
 > **Note:** The Node Agent (HTTP-based sync) is the primary mechanism. Each node pulls config from the control plane and sends heartbeats. SSH-based sync is only used as a fallback if the Node Agent is not working on a node.

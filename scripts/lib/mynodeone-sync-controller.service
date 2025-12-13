@@ -16,7 +16,7 @@ RestartSec=10
 
 # Environment
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="KUBECONFIG=/root/.kube/config"
+Environment="KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
 
 # Logging
 StandardOutput=journal

@@ -254,6 +254,7 @@ REMOTE_SUDO_EOF
     
     # Extract values from output - handle both with and without terminal escape sequences
     # The output may have terminal control characters from -tt, so we clean aggressively
+    local config_file=$(grep "CONFIG_FILE=" "$temp_output" | tail -1 | sed 's/.*CONFIG_FILE=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
     local cluster_name=$(grep "CLUSTER_NAME=" "$temp_output" | tail -1 | sed 's/.*CLUSTER_NAME=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
     local cluster_domain=$(grep "CLUSTER_DOMAIN=" "$temp_output" | tail -1 | sed 's/.*CLUSTER_DOMAIN=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
     local repo_path=$(grep "REPO_PATH=" "$temp_output" | tail -1 | sed 's/.*REPO_PATH=//' | tr -d '\r\n' | sed 's/\x1b\[[0-9;]*m//g')
@@ -262,9 +263,16 @@ REMOTE_SUDO_EOF
     # Extract and decode kubeconfig
     local kubeconfig_b64=$(sed -n '/===KUBECONFIG_START===/,/===KUBECONFIG_END===/p' "$temp_output" | grep -v "===" | tr -d '\r\n')
     
+    # Log where config was found
+    if [ -n "$config_file" ]; then
+        log_info "Config source: $config_file (on control plane)"
+    else
+        log_warn "No config.env found on control plane"
+    fi
+    
     if [ -z "$cluster_name" ] || [ -z "$cluster_domain" ]; then
-        log_error "Could not find cluster-info configmap on control plane"
-        log_info "Make sure the control plane was bootstrapped correctly"
+        log_error "Could not read cluster configuration from control plane"
+        log_info "Make sure ~/.mynodeone/config.env exists on control plane"
         log_info "DEBUG: Showing raw output for diagnosis:"
         echo "--- START RAW OUTPUT ---"
         cat "$temp_output" | head -30
@@ -272,7 +280,7 @@ REMOTE_SUDO_EOF
         return 1
     fi
     
-    log_success "Cluster info retrieved:"
+    log_success "Cluster info retrieved from config.env:"
     echo "  • Cluster Name: $cluster_name"
     echo "  • Domain: ${cluster_domain}.local"
     echo "  • Control Plane: $control_plane_ip"

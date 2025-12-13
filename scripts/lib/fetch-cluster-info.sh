@@ -111,27 +111,18 @@ echo "TAILSCALE_IP=$TAILSCALE_IP"
 # Get cluster info from config.env (single source of truth)
 # This is the same file VPS installation reads from
 CONFIG_FILE=""
-
-# First try $HOME (most reliable)
-if [ -f "$HOME/.mynodeone/config.env" ]; then
-    CONFIG_FILE="$HOME/.mynodeone/config.env"
-else
-    # Fallback: search common locations
-    for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
-        if [ -f "$cfg" ] 2>/dev/null; then
-            CONFIG_FILE="$cfg"
-            break
-        fi
-    done
-fi
-
-# Debug: show what we found
-echo "DEBUG_HOME=$HOME"
-echo "DEBUG_CONFIG_EXISTS=$([ -f "$HOME/.mynodeone/config.env" ] && echo 'yes' || echo 'no')"
+for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+    if [ -f "$cfg" ]; then
+        CONFIG_FILE="$cfg"
+        break
+    fi
+done
 
 if [ -n "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
     echo "CONFIG_FILE=$CONFIG_FILE"
+    # Use sudo to read file (may have restricted permissions)
+    CLUSTER_NAME=$(sudo grep '^CLUSTER_NAME=' "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
+    CLUSTER_DOMAIN=$(sudo grep '^CLUSTER_DOMAIN=' "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
 fi
 echo "CLUSTER_NAME=${CLUSTER_NAME:-}"
 echo "CLUSTER_DOMAIN=${CLUSTER_DOMAIN:-}"
@@ -193,27 +184,18 @@ echo "TAILSCALE_IP=\$TAILSCALE_IP"
 
 # Get cluster info from config.env (single source of truth)
 CONFIG_FILE=""
-
-# First try \$HOME (most reliable)
-if [ -f "\$HOME/.mynodeone/config.env" ]; then
-    CONFIG_FILE="\$HOME/.mynodeone/config.env"
-else
-    # Fallback: search common locations
-    for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
-        if [ -f "\$cfg" ] 2>/dev/null; then
-            CONFIG_FILE="\$cfg"
-            break
-        fi
-    done
-fi
-
-# Debug: show what we found
-echo "DEBUG_HOME=\$HOME"
-echo "DEBUG_CONFIG_EXISTS=\$([ -f \"\$HOME/.mynodeone/config.env\" ] && echo 'yes' || echo 'no')"
+for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+    if [ -f "\$cfg" ]; then
+        CONFIG_FILE="\$cfg"
+        break
+    fi
+done
 
 if [ -n "\$CONFIG_FILE" ]; then
-    source "\$CONFIG_FILE"
     echo "CONFIG_FILE=\$CONFIG_FILE"
+    # Use sudo to read file (may have restricted permissions)
+    CLUSTER_NAME=\$(echo "$sudo_pass" | sudo -S grep '^CLUSTER_NAME=' "\$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
+    CLUSTER_DOMAIN=\$(echo "$sudo_pass" | sudo -S grep '^CLUSTER_DOMAIN=' "\$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
 fi
 echo "CLUSTER_NAME=\${CLUSTER_NAME:-}"
 echo "CLUSTER_DOMAIN=\${CLUSTER_DOMAIN:-}"

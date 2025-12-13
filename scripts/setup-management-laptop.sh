@@ -551,6 +551,14 @@ main() {
     
     if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
         # Get API token from config if available
+        # First check if it's in user's config.env (saved by fetch-cluster-info.sh)
+        local user_config="${ACTUAL_HOME:-$HOME}/.mynodeone/config.env"
+        if [ -z "${API_TOKEN:-}" ] && [ -f "$user_config" ]; then
+            API_TOKEN=$(grep "^API_TOKEN=" "$user_config" 2>/dev/null | cut -d'=' -f2- | tr -d '"' || echo "")
+            if [ -n "$API_TOKEN" ]; then
+                log_info "API token loaded from config.env"
+            fi
+        fi
         API_TOKEN="${API_TOKEN:-}"
         
         # Get SSH user for control plane to enable automatic token fetch

@@ -694,12 +694,12 @@ sudo ./scripts/mynodeone
 
 ---
 
-### Step 3 (Optional): Setup SSH Keys for Fallback Sync
+### Step 3: Setup SSH Keys for Fallback Sync
 
-> **Note:** This step is optional. The Node Agent handles sync via HTTP polling.
-> SSH keys are only needed as a fallback mechanism.
-
-If you want SSH-based sync as a backup:
+**Why this is needed:**
+- Provides SSH-based sync as fallback if Node Agent is not working
+- Allows control plane to push urgent updates immediately
+- Enables direct SSH from control plane to laptop for troubleshooting
 
 ```bash
 # On management laptop:
@@ -713,10 +713,14 @@ If you want SSH-based sync as a backup:
     vinay 100.101.4.3
 ```
 
+**You'll be prompted for:**
+- Control plane password (to SSH to control plane)
+- Laptop password (for ssh-copy-id to copy keys)
+
 **What this does:**
-- Exchanges SSH keys between control plane and laptop
-- Enables SSH-based DNS sync as fallback if Node Agent is not working
-- Allows direct SSH from control plane to laptop for troubleshooting
+1. Generates SSH keys on control plane (if they don't exist)
+2. Copies keys to your laptop's `~/.ssh/authorized_keys`
+3. Verifies SSH access works from control plane to laptop
 
 ---
 

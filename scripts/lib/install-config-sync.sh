@@ -406,6 +406,16 @@ configure_node_agent() {
         poll_interval=30  # VPS nodes poll more frequently
     fi
     
+    # Get cluster domain from local config (for DNS entries)
+    local cluster_domain="mynodeone"
+    if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+        local configured_domain
+        configured_domain=$(grep "^CLUSTER_DOMAIN=" "$ACTUAL_HOME/.mynodeone/config.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "")
+        if [ -n "$configured_domain" ]; then
+            cluster_domain="$configured_domain"
+        fi
+    fi
+    
     # For VPS nodes, detect Traefik config directory
     local traefik_config_dir=""
     if [ "$node_type" = "vps" ]; then
@@ -430,6 +440,9 @@ API_PORT=8443
 # Node identity
 NODE_NAME=$node_name
 NODE_TYPE=$node_type
+
+# Cluster domain (for DNS entries like dashboard.{domain}.local)
+CLUSTER_DOMAIN=$cluster_domain
 
 # Polling intervals (seconds)
 POLL_INTERVAL=$poll_interval

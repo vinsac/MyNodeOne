@@ -55,6 +55,7 @@ load_config() {
     HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-60}"
     API_PORT="${API_PORT:-8443}"
     API_TOKEN="${API_TOKEN:-}"
+    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"  # Used for DNS entries (e.g., dashboard.{domain}.local)
     
     # Validate required config
     if [[ -z "$CONTROL_PLANE_IP" ]]; then
@@ -164,7 +165,8 @@ apply_dns_config() {
     
     # Extract DNS entries
     local entries
-    entries=$(echo "$config" | jq -r '.dns_entries[]? | "\(.ip) \(.name).mynodeone.local \(.name)"' 2>/dev/null)
+    local domain="${CLUSTER_DOMAIN:-mynodeone}.local"
+    entries=$(echo "$config" | jq -r --arg domain "$domain" '.dns_entries[]? | "\(.ip) \(.name).\($domain) \(.name)"' 2>/dev/null)
     
     if [[ -z "$entries" ]]; then
         log_info "No DNS entries to apply"
@@ -182,7 +184,8 @@ apply_dns_config() {
     # Remove old MyNodeOne entries
     local temp_file
     temp_file=$(mktemp)
-    grep -v "# MyNodeOne" "$hosts_file" | grep -v ".mynodeone.local" > "$temp_file" || true
+    local domain="${CLUSTER_DOMAIN:-mynodeone}.local"
+    grep -v "# MyNodeOne" "$hosts_file" | grep -v ".${domain}" > "$temp_file" || true
     
     # Add new entries
     echo "" >> "$temp_file"

@@ -317,9 +317,9 @@ export_dns() {
         fi
         if [ -f "$actual_home/.mynodeone/config.env" ]; then
             source "$actual_home/.mynodeone/config.env"
-            domain="${CLUSTER_DOMAIN:-mycloud}.local"
+            domain="${CLUSTER_DOMAIN:-mynodeone}.local"
         else
-            domain="mycloud.local"
+            domain="mynodeone.local"
         fi
     fi
     

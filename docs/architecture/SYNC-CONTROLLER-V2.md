@@ -264,6 +264,41 @@ done
 - If node has no heartbeat → fall back to SSH push
 - **Use case:** Node is active but Node Agent is not working (crashed, failed install, service stopped)
 
+### Comparison: Node Agent vs SSH Fallback
+
+| Mechanism | Heartbeat | Config Sync | Trigger |
+|-----------|-----------|-------------|---------|
+| **Node Agent** | ✅ Every 60s | ✅ Pulls on each poll | Continuous (always running) |
+| **SSH Fallback** | ❌ None | ✅ Pushes when needed | Event-driven (config change) |
+
+**Key Insight:** The Node Agent handles both heartbeats AND config sync (pulling changes). The SSH fallback only pushes config changes when triggered - it has no heartbeat capability.
+
+### When SSH Fallback Triggers Automatically
+
+The SSH fallback only activates when **both conditions are met**:
+
+1. **A config change occurs** (e.g., app installed/uninstalled → service-registry ConfigMap changes)
+2. **The node's heartbeat is stale/offline** (Node Agent not responding)
+
+**Sequence:**
+```
+App Installed → service-registry updated → Sync Controller triggered
+    ↓
+Check node heartbeat status via Config API
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ If heartbeat recent (< 2 min):                      │
+│   → Skip SSH, Node Agent will pull config          │
+│                                                     │
+│ If heartbeat stale/offline (> 2 min):              │
+│   → Use SSH to push config to node                 │
+└─────────────────────────────────────────────────────┘
+```
+
+**This means:**
+- If no config changes happen, SSH fallback is never triggered (even if Node Agent is stopped)
+- To test SSH fallback: stop Node Agent, wait for heartbeat to become stale, then install/uninstall an app
+
 ### How Fallback Works
 
 ```

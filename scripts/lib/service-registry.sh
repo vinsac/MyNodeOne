@@ -295,8 +295,11 @@ cleanup_stale_entries() {
     
     # Update registry if entries were removed
     if [[ $removed -gt 0 ]]; then
-        kubectl patch configmap -n kube-system service-registry \
-            --type merge -p "{\"data\":{\"services.json\":$(echo "$new_registry" | jq -c '.')}}"
+        # Use kubectl create --dry-run + apply to handle JSON escaping properly
+        kubectl create configmap service-registry \
+            -n kube-system \
+            --from-literal="services.json=$(echo "$new_registry" | jq -c '.')" \
+            --dry-run=client -o yaml | kubectl apply -f -
         log_success "Removed $removed stale entries from registry"
     else
         log_info "No stale entries found"

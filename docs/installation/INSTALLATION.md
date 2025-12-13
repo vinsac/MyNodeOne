@@ -12,7 +12,7 @@ This guide has **4 independent sections** - one for each node type:
 |---------|-----------|-------------|
 | **[1. Control Plane](#section-1-control-plane-installation)** | First node (master) | **START HERE** - Always install this first |
 | **[2. VPS Edge Node](#section-2-vps-edge-node-installation)** | Public internet access | Add after control plane for public apps |
-| **[3. Management Laptop](#section-3-management-laptop-setup)** | Admin workstation | Optional - Control cluster from laptop |
+| **[3. Management Laptop](#section-3-management-laptop-setup)** | Admin workstation | Recommended - Control cluster from laptop |
 | **[4. Worker Node](#section-4-worker-node-installation)** | Additional compute | Optional - Add more resources to cluster |
 
 **Always start with Section 1 (Control Plane), then choose which other sections you need.**
@@ -610,9 +610,11 @@ The sync system automatically propagates configuration changes to all nodes:
 
 ---
 
-# SECTION 3: Management Laptop/Workstation Setup (Optional)
+# SECTION 3: Management Laptop/Workstation Setup
 
-**Optional:** Set up a laptop or desktop so you can control your cluster/private cloud using `kubectl` from anywhere (for example, your gaming PC stays at home but you manage the cluster from college or a coffee shop), without sitting in front of the control plane machine.
+Set up a laptop or desktop so you can control your cluster/private cloud using `kubectl` from anywhere (for example, your gaming PC stays at home but you manage the cluster from college or a coffee shop), without sitting in front of the control plane machine.
+
+> **Note:** This section is optional if you prefer to SSH directly to the control plane. However, most users find a management laptop more convenient for day-to-day operations.
 
 ---
 
@@ -621,7 +623,7 @@ The sync system automatically propagates configuration changes to all nodes:
 - **Remote admin workstation** - Your laptop or desktop that you can use from anywhere (for example, your gaming PC is at home but you control the cluster from campus or a coffee shop)
 - **Runs kubectl commands** - Deploy apps, check status, and manage your private cloud from a terminal
 - **Does NOT run workloads** - Only for administration
-- **Optional but convenient** - Useful if you do not want to sit in front of your control plane PC and prefer to manage things while you are mobile (you can always just SSH directly to the control plane instead)
+- **Recommended** - Useful if you do not want to sit in front of your control plane PC and prefer to manage things while you are mobile (you can always SSH directly to the control plane instead, but this is more convenient)
 
 In simple terms, `kubectl` is the command-line tool for talking to your Kubernetes cluster. You type commands like `kubectl get pods` and it asks the cluster what's running or tells it what to do (for example, deploy an app, scale it up or down, or show logs).
 
@@ -690,16 +692,21 @@ sudo ./scripts/mynodeone
 **Result:** 
 - kubectl works from laptop
 - Services accessible via .local domains
-- Node Agent polls for DNS updates (no SSH keys required)
+- Node Agent polls for DNS updates every 60 seconds
+
+> **Important:** Continue to Step 3 to set up SSH fallback sync for resilience.
 
 ---
 
-### Step 3: Setup SSH Keys for Fallback Sync
+### Step 3: Setup SSH Keys for Sync Fallback (Required)
 
-**Why this is needed:**
-- Provides SSH-based sync as fallback if Node Agent is not working
-- Allows control plane to push urgent updates immediately
-- Enables direct SSH from control plane to laptop for troubleshooting
+**This step is mandatory** to ensure robust DNS sync. While the Node Agent handles most updates via HTTP polling, SSH-based sync provides critical fallback capabilities.
+
+**Why this is required:**
+- **Fallback mechanism** - If Node Agent fails or is slow, SSH sync takes over
+- **Immediate updates** - Control plane can push urgent changes instantly
+- **Troubleshooting** - Enables direct SSH from control plane to laptop
+- **Resilience** - Ensures your laptop stays in sync even if HTTP polling breaks
 
 ```bash
 # On management laptop:

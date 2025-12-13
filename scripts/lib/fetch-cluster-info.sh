@@ -111,12 +111,23 @@ echo "TAILSCALE_IP=$TAILSCALE_IP"
 # Get cluster info from config.env (single source of truth)
 # This is the same file VPS installation reads from
 CONFIG_FILE=""
-for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
-    if [ -f "$cfg" ]; then
-        CONFIG_FILE="$cfg"
-        break
-    fi
-done
+
+# First try $HOME (most reliable)
+if [ -f "$HOME/.mynodeone/config.env" ]; then
+    CONFIG_FILE="$HOME/.mynodeone/config.env"
+else
+    # Fallback: search common locations
+    for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+        if [ -f "$cfg" ] 2>/dev/null; then
+            CONFIG_FILE="$cfg"
+            break
+        fi
+    done
+fi
+
+# Debug: show what we found
+echo "DEBUG_HOME=$HOME"
+echo "DEBUG_CONFIG_EXISTS=$([ -f "$HOME/.mynodeone/config.env" ] && echo 'yes' || echo 'no')"
 
 if [ -n "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
@@ -182,12 +193,23 @@ echo "TAILSCALE_IP=\$TAILSCALE_IP"
 
 # Get cluster info from config.env (single source of truth)
 CONFIG_FILE=""
-for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
-    if [ -f "\$cfg" ]; then
-        CONFIG_FILE="\$cfg"
-        break
-    fi
-done
+
+# First try \$HOME (most reliable)
+if [ -f "\$HOME/.mynodeone/config.env" ]; then
+    CONFIG_FILE="\$HOME/.mynodeone/config.env"
+else
+    # Fallback: search common locations
+    for cfg in /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+        if [ -f "\$cfg" ] 2>/dev/null; then
+            CONFIG_FILE="\$cfg"
+            break
+        fi
+    done
+fi
+
+# Debug: show what we found
+echo "DEBUG_HOME=\$HOME"
+echo "DEBUG_CONFIG_EXISTS=\$([ -f \"\$HOME/.mynodeone/config.env\" ] && echo 'yes' || echo 'no')"
 
 if [ -n "\$CONFIG_FILE" ]; then
     source "\$CONFIG_FILE"

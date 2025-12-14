@@ -76,13 +76,32 @@ retry_command() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Detect actual user
+# Detect actual user (multiple fallback methods)
+# Priority: SUDO_USER > logname > who am i > whoami
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     ACTUAL_USER="$SUDO_USER"
     ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+elif [ -n "$(logname 2>/dev/null)" ] && [ "$(logname 2>/dev/null)" != "root" ]; then
+    ACTUAL_USER=$(logname 2>/dev/null)
+    ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
+elif [ -n "$(who am i 2>/dev/null | awk '{print $1}')" ]; then
+    ACTUAL_USER=$(who am i 2>/dev/null | awk '{print $1}')
+    ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
 else
     ACTUAL_USER=$(whoami)
     ACTUAL_HOME="$HOME"
+fi
+
+# Final validation - if ACTUAL_HOME is /root but we're running as sudo, try harder
+if [ "$ACTUAL_HOME" = "/root" ] && [ "$(id -u)" -eq 0 ]; then
+    # Check if there's a non-root user's .mynodeone config we should use
+    for user_home in /home/*; do
+        if [ -f "$user_home/.mynodeone/config.env" ]; then
+            ACTUAL_HOME="$user_home"
+            ACTUAL_USER=$(basename "$user_home")
+            break
+        fi
+    done
 fi
 
 ###############################################################################

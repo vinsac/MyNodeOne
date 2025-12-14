@@ -810,8 +810,15 @@ API_TOKEN="$existing_api_token"
 EOF
     fi
     
-    # Set permissions
+    # Set permissions and ownership
     chmod 600 "$CONFIG_FILE"
+    
+    # Fix ownership if running as root via sudo
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        chown -R "$SUDO_USER:$SUDO_USER" "$CONFIG_DIR"
+    elif [ -n "${ACTUAL_USER:-}" ] && [ "$ACTUAL_USER" != "root" ]; then
+        chown -R "$ACTUAL_USER:$ACTUAL_USER" "$CONFIG_DIR"
+    fi
     
     print_success "Configuration saved to: $CONFIG_FILE"
     echo

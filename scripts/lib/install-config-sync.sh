@@ -408,12 +408,19 @@ configure_node_agent() {
     
     # Get cluster domain from local config (for DNS entries)
     local cluster_domain="mynodeone"
-    if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+    local config_file="$ACTUAL_HOME/.mynodeone/config.env"
+    log_info "Looking for cluster domain in: $config_file"
+    if [ -f "$config_file" ]; then
         local configured_domain
-        configured_domain=$(grep "^CLUSTER_DOMAIN=" "$ACTUAL_HOME/.mynodeone/config.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "")
+        configured_domain=$(grep "^CLUSTER_DOMAIN=" "$config_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "")
         if [ -n "$configured_domain" ]; then
             cluster_domain="$configured_domain"
+            log_info "Using cluster domain from config: $cluster_domain"
+        else
+            log_warn "CLUSTER_DOMAIN not found in config, using default: $cluster_domain"
         fi
+    else
+        log_warn "Config file not found: $config_file, using default domain: $cluster_domain"
     fi
     
     # For VPS nodes, detect Traefik config directory

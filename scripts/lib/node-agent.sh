@@ -192,11 +192,13 @@ apply_dns_config() {
     echo "# MyNodeOne DNS entries (managed by node-agent)" >> "$temp_file"
     echo "$entries" >> "$temp_file"
     
-    # Apply changes
+    # Apply changes and ensure proper permissions (644 so all users can read)
     if [[ "$(id -u)" -eq 0 ]]; then
         mv "$temp_file" "$hosts_file"
+        chmod 644 "$hosts_file"
     else
         sudo mv "$temp_file" "$hosts_file"
+        sudo chmod 644 "$hosts_file"
     fi
     
     local count

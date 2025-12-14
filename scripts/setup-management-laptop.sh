@@ -614,6 +614,46 @@ main() {
     fi
     echo
     
+    # Final defensive checks - ensure critical files have correct permissions
+    print_header "Final Verification"
+    
+    # Check /etc/hosts permissions
+    local hosts_perms
+    hosts_perms=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+    if [ "$hosts_perms" != "644" ]; then
+        log_warn "/etc/hosts has permissions $hosts_perms, fixing to 644..."
+        sudo chmod 644 /etc/hosts
+        hosts_perms=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+    fi
+    
+    if [ "$hosts_perms" = "644" ]; then
+        log_success "/etc/hosts permissions: 644 ✓"
+    else
+        log_error "/etc/hosts permissions still wrong: $hosts_perms"
+    fi
+    
+    # Check agent.env CLUSTER_DOMAIN
+    if [ -f /etc/mynodeone/agent.env ]; then
+        local agent_domain
+        agent_domain=$(sudo grep "^CLUSTER_DOMAIN=" /etc/mynodeone/agent.env 2>/dev/null | cut -d'=' -f2 || echo "")
+        if [ "$agent_domain" = "$CLUSTER_DOMAIN" ]; then
+            log_success "Agent CLUSTER_DOMAIN: $agent_domain ✓"
+        else
+            log_warn "Agent CLUSTER_DOMAIN mismatch: $agent_domain (expected: $CLUSTER_DOMAIN)"
+            log_warn "Fixing..."
+            sudo sed -i "s/^CLUSTER_DOMAIN=.*/CLUSTER_DOMAIN=$CLUSTER_DOMAIN/" /etc/mynodeone/agent.env
+        fi
+    fi
+    
+    # Verify DNS works
+    if getent hosts dashboard.${CLUSTER_DOMAIN}.local >/dev/null 2>&1; then
+        log_success "DNS resolution working ✓"
+    else
+        log_warn "DNS resolution failed - check /etc/hosts"
+    fi
+    
+    echo
+    
     # Final summary
     print_header "Setup Complete!"
     

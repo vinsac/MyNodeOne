@@ -201,6 +201,18 @@ apply_dns_config() {
         sudo chmod 644 "$hosts_file"
     fi
     
+    # Defensive check: Verify permissions are correct
+    local perms
+    perms=$(stat -c "%a" "$hosts_file" 2>/dev/null || echo "unknown")
+    if [[ "$perms" != "644" ]]; then
+        log_warn "/etc/hosts has permissions $perms, forcing to 644"
+        if [[ "$(id -u)" -eq 0 ]]; then
+            chmod 644 "$hosts_file"
+        else
+            sudo chmod 644 "$hosts_file"
+        fi
+    fi
+    
     local count
     count=$(echo "$entries" | wc -l)
     log_success "Applied $count DNS entries to /etc/hosts"

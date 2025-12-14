@@ -468,7 +468,23 @@ EOF
     
     chmod 600 /etc/mynodeone/agent.env
     
-    log_success "Node Agent configured"
+    # Defensive verification: Ensure agent.env has correct values
+    local saved_domain
+    saved_domain=$(grep "^CLUSTER_DOMAIN=" /etc/mynodeone/agent.env 2>/dev/null | cut -d'=' -f2 || echo "")
+    if [ "$saved_domain" != "$cluster_domain" ]; then
+        log_warn "CLUSTER_DOMAIN mismatch! Expected: $cluster_domain, Got: $saved_domain"
+        log_warn "Forcing correct value..."
+        sed -i "s/^CLUSTER_DOMAIN=.*/CLUSTER_DOMAIN=$cluster_domain/" /etc/mynodeone/agent.env
+    fi
+    
+    # Verify control plane IP is set
+    local saved_ip
+    saved_ip=$(grep "^CONTROL_PLANE_IP=" /etc/mynodeone/agent.env 2>/dev/null | cut -d'=' -f2 || echo "")
+    if [ -z "$saved_ip" ]; then
+        log_error "CONTROL_PLANE_IP not set in agent.env!"
+    fi
+    
+    log_success "Node Agent configured (CLUSTER_DOMAIN=$cluster_domain)"
 }
 
 install_node_agent_service() {

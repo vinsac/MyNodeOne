@@ -181,11 +181,27 @@ log_info "Adding new DNS entries..."
 # Count services
 SERVICE_COUNT=$(echo "$DNS_ENTRIES" | grep -v '^$' | wc -l)
 
+# Defensive check: Ensure /etc/hosts has correct permissions
+HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+if [ "$HOSTS_PERMS" != "644" ]; then
+    log_warn "/etc/hosts has permissions $HOSTS_PERMS, fixing to 644..."
+    sudo chmod 644 /etc/hosts
+fi
+
 log_success "DNS sync complete!"
 echo ""
 echo "✅ Updated $SERVICE_COUNT service entries:"
 echo "$DNS_ENTRIES" | sed 's/^/   /'
 echo ""
+
+# Verify DNS resolution works
+if getent hosts dashboard.${CLUSTER_DOMAIN}.local >/dev/null 2>&1; then
+    log_success "DNS resolution verified ✓"
+else
+    log_warn "DNS resolution failed - /etc/hosts may have permission issues"
+    HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+    log_warn "Current /etc/hosts permissions: $HOSTS_PERMS"
+fi
 
 log_info "You can now access services via .local domains"
 echo ""

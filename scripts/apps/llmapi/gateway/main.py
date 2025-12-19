@@ -831,10 +831,10 @@ async def chat_completions(
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
     
-    # Build request data
+    # Build request data - exclude None values to avoid backend parse errors
     data = {
         "model": model,
-        "messages": [m.model_dump() for m in request.messages],
+        "messages": [m.model_dump(exclude_none=True) for m in request.messages],
         "temperature": request.temperature,
         "max_tokens": request.max_tokens,
         "stream": request.stream,

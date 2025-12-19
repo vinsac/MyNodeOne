@@ -69,10 +69,12 @@ type DNSEntry struct {
 }
 
 // TraefikRoute represents a route for VPS Traefik
+// Includes all data needed to generate Traefik config matching V1 SSH-based sync
 type TraefikRoute struct {
-	Service string `json:"service"`
-	Domain  string `json:"domain"`
-	Backend string `json:"backend"`
+	Service   string `json:"service"`   // Service name (e.g., "open-webui")
+	Subdomain string `json:"subdomain"` // Subdomain (e.g., "open-webui" or "@" for root)
+	Domain    string `json:"domain"`    // Full domain (e.g., "open-webui.curiios.com")
+	Backend   string `json:"backend"`   // Backend URL (e.g., "100.72.41.208:80")
 }
 
 // ConfigResponse is the response for /api/v1/config/{type}
@@ -369,9 +371,9 @@ func (s *Server) getDNSEntries() ([]DNSEntry, error) {
 	return entries, nil
 }
 
-// getTraefikRoutes fetches routes for VPS from service-registry ConfigMap
+// getTraefikRoutes fetches routes for VPS from service-registry and domain-registry ConfigMaps
 func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
-	// Run kubectl to get service registry
+	// Step 1: Get service registry (contains service info: subdomain, ip, port, public flag)
 	cmd := exec.Command("kubectl", "get", "configmap", "-n", "kube-system",
 		"service-registry", "-o", "jsonpath={.data.services\\.json}")
 	output, err := cmd.Output()
@@ -384,41 +386,90 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 		return []TraefikRoute{}, nil
 	}
 
-	// Parse the JSON
+	// Parse service registry
 	var services map[string]interface{}
 	if err := json.Unmarshal(output, &services); err != nil {
 		return nil, fmt.Errorf("failed to parse service registry: %v", err)
 	}
 
-	// Extract routes for public services from flat registry format
-	// Format: {"servicename": {"subdomain": "x", "public": true, ...}, ...}
+	// Step 2: Get domain-registry routing config (maps services to domains)
+	cmd = exec.Command("kubectl", "get", "configmap", "-n", "kube-system",
+		"domain-registry", "-o", "jsonpath={.data.routing\\.json}")
+	routingOutput, err := cmd.Output()
+	if err != nil {
+		log.Printf("Warning: Could not get domain-registry routing: %v", err)
+		// Continue without routing - use legacy mode
+	}
+
+	// Parse routing config
+	// Format: {"servicename": {"domains": ["curiios.com"], "vps_nodes": ["100.x.x.x"], ...}, ...}
+	var routing map[string]interface{}
+	if len(routingOutput) > 0 {
+		if err := json.Unmarshal(routingOutput, &routing); err != nil {
+			log.Printf("Warning: Failed to parse routing config: %v", err)
+			routing = make(map[string]interface{})
+		}
+	} else {
+		routing = make(map[string]interface{})
+	}
+
+	// Step 3: Generate routes by combining service-registry + domain-registry
 	routes := []TraefikRoute{}
 	for name, svc := range services {
-		if svcMap, ok := svc.(map[string]interface{}); ok {
-			// Only include public services
-			isPublic, _ := svcMap["public"].(bool)
-			if !isPublic {
-				continue
-			}
+		svcMap, ok := svc.(map[string]interface{})
+		if !ok {
+			continue
+		}
 
-			ip, _ := svcMap["ip"].(string)
-			port, _ := svcMap["port"].(float64)
-			domain, _ := svcMap["domain"].(string)
+		// Only include public services
+		isPublic, _ := svcMap["public"].(bool)
+		if !isPublic {
+			continue
+		}
 
-			if ip != "" && domain != "" {
-				backend := ip
-				if port > 0 {
-					backend = fmt.Sprintf("%s:%.0f", ip, port)
+		ip, _ := svcMap["ip"].(string)
+		port, _ := svcMap["port"].(float64)
+		subdomain, _ := svcMap["subdomain"].(string)
+
+		if ip == "" || subdomain == "" {
+			continue
+		}
+
+		// Build backend URL
+		backend := ip
+		if port > 0 {
+			backend = fmt.Sprintf("%s:%.0f", ip, port)
+		}
+
+		// Check if service has routing config in domain-registry
+		if routingInfo, exists := routing[name]; exists {
+			if routingMap, ok := routingInfo.(map[string]interface{}); ok {
+				// Get domains from routing config
+				if domainsRaw, ok := routingMap["domains"].([]interface{}); ok {
+					for _, domainRaw := range domainsRaw {
+						if domain, ok := domainRaw.(string); ok {
+							// Build full domain: subdomain.domain (e.g., open-webui.curiios.com)
+							fullDomain := subdomain + "." + domain
+							if subdomain == "@" {
+								fullDomain = domain // Root domain
+							}
+							routes = append(routes, TraefikRoute{
+								Service:   name,
+								Subdomain: subdomain,
+								Domain:    fullDomain,
+								Backend:   backend,
+							})
+						}
+					}
 				}
-				routes = append(routes, TraefikRoute{
-					Service: name,
-					Domain:  domain,
-					Backend: backend,
-				})
 			}
+		} else {
+			// Legacy mode: service has no routing config, skip (or use PUBLIC_DOMAIN if available)
+			log.Printf("Service %s is public but has no routing config in domain-registry", name)
 		}
 	}
 
+	log.Printf("Generated %d routes for VPS nodes", len(routes))
 	return routes, nil
 }
 

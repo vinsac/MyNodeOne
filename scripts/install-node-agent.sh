@@ -276,6 +276,28 @@ chmod 700 /etc/mynodeone
 
 # Create agent config file
 log_info "Creating agent configuration..."
+
+# Detect TRAEFIK_CONFIG_DIR for VPS nodes
+TRAEFIK_CONFIG_DIR=""
+CLUSTER_DOMAIN="minicloud"
+
+if [[ "$NODE_TYPE" == "vps" ]]; then
+    # Try to find existing Traefik config directory
+    for dir in /home/*/traefik/config /root/traefik/config /etc/traefik/config; do
+        if [[ -d "$dir" ]]; then
+            TRAEFIK_CONFIG_DIR="$dir"
+            log_info "Found Traefik config directory: $TRAEFIK_CONFIG_DIR"
+            break
+        fi
+    done
+    
+    if [[ -z "$TRAEFIK_CONFIG_DIR" ]]; then
+        # Default to /etc/traefik/config for VPS
+        TRAEFIK_CONFIG_DIR="/etc/traefik/config"
+        log_warn "Traefik config directory not found, using default: $TRAEFIK_CONFIG_DIR"
+    fi
+fi
+
 cat > /etc/mynodeone/agent.env <<EOF
 # MyNodeOne Node Agent Configuration
 # Generated: $(date -Iseconds)
@@ -288,6 +310,9 @@ API_PORT=$API_PORT
 NODE_NAME=$NODE_NAME
 NODE_TYPE=$NODE_TYPE
 
+# Cluster domain (for DNS entries like dashboard.{domain}.local)
+CLUSTER_DOMAIN=$CLUSTER_DOMAIN
+
 # Polling intervals (seconds)
 POLL_INTERVAL=$POLL_INTERVAL
 HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
@@ -295,6 +320,13 @@ HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
 # API authentication
 API_TOKEN=$API_TOKEN
 EOF
+
+# Add VPS-specific config
+if [[ "$NODE_TYPE" == "vps" && -n "$TRAEFIK_CONFIG_DIR" ]]; then
+    echo "" >> /etc/mynodeone/agent.env
+    echo "# VPS-specific config" >> /etc/mynodeone/agent.env
+    echo "TRAEFIK_CONFIG_DIR=$TRAEFIK_CONFIG_DIR" >> /etc/mynodeone/agent.env
+fi
 
 chmod 600 /etc/mynodeone/agent.env
 log_success "Config created: /etc/mynodeone/agent.env"

@@ -103,7 +103,7 @@ spec:
           fi
           
           echo "Starting vLLM with: $ARGS"
-          exec python -m vllm.entrypoints.openai.api_server $ARGS
+          exec python3 -m vllm.entrypoints.openai.api_server $ARGS
         envFrom:
         - configMapRef:
             name: vllm-config

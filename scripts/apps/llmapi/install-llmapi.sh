@@ -453,7 +453,7 @@ EOF
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
     echo "🚀 Deploying vLLM (GPU backend)..."
     
-    # Update vLLM config
+    # Update vLLM config with selected model
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
@@ -462,15 +462,17 @@ metadata:
   namespace: $NAMESPACE
 data:
   MODEL_NAME: "$VLLM_MODEL"
-  MAX_MODEL_LEN: "8192"
+  SERVED_MODEL_NAME: "$VLLM_MODEL_NAME"
+  MAX_MODEL_LEN: "16384"
   GPU_MEMORY_UTILIZATION: "0.90"
   MAX_NUM_SEQS: "32"
   QUANTIZATION: "awq"
+  ENABLE_CHUNKED_PREFILL: "true"
+  ENFORCE_EAGER: "false"
 EOF
 
-    # Update vLLM deployment with selected model
-    sed "s|--served-model-name.*|--served-model-name\n        - \"$VLLM_MODEL_NAME\"|g" \
-        "$SCRIPT_DIR/manifests/vllm.yaml" | kubectl apply -f -
+    # Deploy vLLM StatefulSet
+    kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
 else
     echo "⏭️  Skipping vLLM (no GPU or not selected)"
 fi
@@ -479,7 +481,7 @@ fi
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🧠 Deploying llama.cpp (CPU backend)..."
     
-    # Update llama.cpp config
+    # Update llama.cpp config with selected model
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
@@ -489,11 +491,12 @@ metadata:
 data:
   MODEL_URL: "$LLAMACPP_MODEL_URL"
   MODEL_FILE: "$LLAMACPP_MODEL_FILE"
-  CONTEXT_SIZE: "8192"
-  BATCH_SIZE: "2048"
+  CONTEXT_SIZE: "32768"
+  BATCH_SIZE: "4096"
   THREADS: "16"
   GPU_LAYERS: "0"
   PARALLEL: "4"
+  CHAT_TEMPLATE: "llama3"
 EOF
 
     kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml"

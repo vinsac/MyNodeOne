@@ -122,7 +122,7 @@ spec:
         - "8080"
         # OpenAI-compatible API
         - "--chat-template"
-        - "llama2"
+        - "$(CHAT_TEMPLATE)"
         envFrom:
         - configMapRef:
             name: llamacpp-config

@@ -442,6 +442,7 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 		}
 
 		// Check if service has routing config in domain-registry
+		routeAdded := false
 		if routingInfo, exists := routing[name]; exists {
 			if routingMap, ok := routingInfo.(map[string]interface{}); ok {
 				// Get domains from routing config
@@ -459,13 +460,31 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 								Domain:    fullDomain,
 								Backend:   backend,
 							})
+							routeAdded = true
 						}
 					}
 				}
 			}
-		} else {
-			// Legacy mode: service has no routing config, skip (or use PUBLIC_DOMAIN if available)
-			log.Printf("Service %s is public but has no routing config in domain-registry", name)
+		}
+
+		// Fallback: Use PUBLIC_DOMAIN env var if no routing config exists
+		if !routeAdded {
+			publicDomain := os.Getenv("PUBLIC_DOMAIN")
+			if publicDomain != "" {
+				fullDomain := subdomain + "." + publicDomain
+				if subdomain == "@" {
+					fullDomain = publicDomain
+				}
+				routes = append(routes, TraefikRoute{
+					Service:   name,
+					Subdomain: subdomain,
+					Domain:    fullDomain,
+					Backend:   backend,
+				})
+				log.Printf("Service %s using fallback PUBLIC_DOMAIN: %s", name, fullDomain)
+			} else {
+				log.Printf("Service %s is public but has no routing config and PUBLIC_DOMAIN not set", name)
+			}
 		}
 	}
 

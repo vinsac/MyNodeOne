@@ -334,13 +334,31 @@ class RedisClient:
         return int(current_rpm), max(0, ttl)
     
     async def add_token_usage(self, api_key: str, input_tokens: int, output_tokens: int):
-        """Track token usage."""
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        """Track token usage (daily and hourly)."""
+        now = datetime.utcnow()
+        today = now.strftime("%Y-%m-%d")
+        hour = now.hour
+        total_tokens = input_tokens + output_tokens
+        
         key = f"tokens:{api_key}:{today}"
+        hourly_key = f"hourly_tokens:{api_key}:{today}:{hour}"
+        requests_key = f"requests:{api_key}:{today}"
+        hourly_req_key = f"hourly:{api_key}:{today}:{hour}"
+        
         pipe = self.client.pipeline()
+        # Daily token tracking
         pipe.hincrby(key, "input", input_tokens)
         pipe.hincrby(key, "output", output_tokens)
         pipe.expire(key, 86400 * 7)  # Keep for 7 days
+        # Hourly token tracking
+        pipe.incrby(hourly_key, total_tokens)
+        pipe.expire(hourly_key, 86400 * 2)  # Keep for 2 days
+        # Daily request count
+        pipe.incr(requests_key)
+        pipe.expire(requests_key, 86400 * 7)
+        # Hourly request count
+        pipe.incr(hourly_req_key)
+        pipe.expire(hourly_req_key, 86400 * 2)
         await pipe.execute()
     
     async def get_token_usage(self, api_key: str) -> tuple[int, int]:
@@ -1361,8 +1379,41 @@ ADMIN_HTML = """
                 <i data-lucide="bar-chart-3" class="w-5 h-5 text-green-400"></i>
                 Usage Statistics
             </h2>
-            <div id="usage-stats" class="text-gray-400">
-                <p>Enter an API key above to view its usage.</p>
+            
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <p class="text-sm text-gray-400">Total Requests Today</p>
+                    <p id="stats-total-requests" class="text-2xl font-bold text-green-400">-</p>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <p class="text-sm text-gray-400">Total Tokens Today</p>
+                    <p id="stats-total-tokens" class="text-2xl font-bold text-purple-400">-</p>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <p class="text-sm text-gray-400">Active API Keys</p>
+                    <p id="stats-active-keys" class="text-2xl font-bold text-blue-400">-</p>
+                </div>
+            </div>
+            
+            <!-- Usage by API Key -->
+            <div class="mb-6">
+                <h3 class="font-medium mb-3">Usage by API Key</h3>
+                <div id="stats-by-key" class="space-y-2">
+                    <p class="text-gray-400 text-sm">Loading...</p>
+                </div>
+            </div>
+            
+            <!-- Hourly Chart (simple bar representation) -->
+            <div>
+                <h3 class="font-medium mb-3">Requests (Last 24 Hours)</h3>
+                <div id="stats-hourly" class="flex items-end gap-1 h-24 bg-gray-700 rounded-lg p-2">
+                    <p class="text-gray-400 text-sm">Loading...</p>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 mt-1 px-2">
+                    <span>24h ago</span>
+                    <span>Now</span>
+                </div>
             </div>
         </div>
     </div>
@@ -1820,17 +1871,71 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 alert('Failed to revoke key: ' + e.message);
             }
         }
+        
+        async function loadStats() {
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/stats`);
+                const data = await resp.json();
+                
+                // Update summary cards
+                document.getElementById('stats-total-requests').textContent = 
+                    data.summary.total_requests_today.toLocaleString();
+                document.getElementById('stats-total-tokens').textContent = 
+                    data.summary.total_tokens_today.toLocaleString();
+                document.getElementById('stats-active-keys').textContent = 
+                    data.summary.active_keys;
+                
+                // Update usage by key
+                const keysList = document.getElementById('stats-by-key');
+                if (data.by_key.length === 0) {
+                    keysList.innerHTML = '<p class="text-gray-500 text-sm">No usage data yet</p>';
+                } else {
+                    keysList.innerHTML = data.by_key.map(k => `
+                        <div class="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+                            <div>
+                                <p class="font-medium">${k.name}</p>
+                                <p class="text-xs text-gray-400">${k.api_key_preview}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm">
+                                    <span class="text-purple-400">${k.tokens_today.toLocaleString()}</span>
+                                    <span class="text-gray-500">/ ${k.tokens_limit.toLocaleString()} tokens</span>
+                                </p>
+                                <p class="text-xs text-gray-400">
+                                    ${k.requests_today} requests today
+                                </p>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                // Update hourly chart
+                const hourlyEl = document.getElementById('stats-hourly');
+                const maxReq = Math.max(...data.by_hour.map(h => h.requests), 1);
+                hourlyEl.innerHTML = data.by_hour.map(h => {
+                    const height = Math.max(4, (h.requests / maxReq) * 100);
+                    const title = `${h.hour}: ${h.requests} requests, ${h.tokens.toLocaleString()} tokens`;
+                    return `<div class="flex-1 bg-green-500 rounded-t opacity-70 hover:opacity-100 transition cursor-pointer" 
+                                 style="height: ${height}%" title="${title}"></div>`;
+                }).join('');
+                
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
 
         // Load everything on page load
         loadStatus();
         loadModels();
         loadKeys();
         loadBackendConfig();
+        loadStats();
         
         // Refresh status every 30 seconds
         setInterval(loadStatus, 30000);
         setInterval(loadBackendConfig, 60000);
         setInterval(loadModels, 30000);
+        setInterval(loadStats, 60000);  // Refresh stats every minute
     </script>
 </body>
 </html>
@@ -1955,6 +2060,108 @@ async def admin_get_usage(api_key: str, auth: bool = Depends(verify_admin_auth))
     }
 
 
+@app.get("/admin/stats")
+async def admin_get_stats(auth: bool = Depends(verify_admin_auth)):
+    """Get comprehensive usage statistics for all API keys."""
+    from datetime import datetime
+    
+    stats = {
+        "summary": {
+            "total_requests_today": 0,
+            "total_tokens_today": 0,
+            "active_keys": 0,
+        },
+        "by_key": [],
+        "by_hour": [],
+    }
+    
+    if not redis_client.client:
+        return stats
+    
+    # Get all API keys and their usage
+    keys = await redis_client.client.keys("apikey:*")
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    for key in keys:
+        key_str = key.decode() if isinstance(key, bytes) else key
+        api_key = key_str.replace("apikey:", "")
+        
+        # Get key config
+        key_config = await redis_client.get_api_key_config(api_key)
+        if not key_config:
+            continue
+        
+        # Get token usage
+        input_tokens, output_tokens = await redis_client.get_token_usage(api_key)
+        total_tokens = input_tokens + output_tokens
+        
+        # Get request count from rate limit
+        current_rpm, _ = await redis_client.get_rate_limit_info(api_key)
+        
+        # Get daily request count if stored
+        daily_requests = await redis_client.client.get(f"requests:{api_key}:{today}") or 0
+        if isinstance(daily_requests, bytes):
+            daily_requests = int(daily_requests.decode())
+        elif isinstance(daily_requests, str):
+            daily_requests = int(daily_requests)
+        
+        key_stats = {
+            "name": key_config.get("name", "Unknown"),
+            "api_key_preview": api_key[:16] + "..." if len(api_key) > 16 else api_key,
+            "tokens_today": total_tokens,
+            "tokens_limit": key_config.get("tokens_per_day", 0),
+            "requests_today": daily_requests,
+            "requests_per_min": current_rpm,
+            "rpm_limit": key_config.get("requests_per_minute", 0),
+        }
+        
+        stats["by_key"].append(key_stats)
+        stats["summary"]["total_tokens_today"] += total_tokens
+        stats["summary"]["total_requests_today"] += daily_requests
+        if total_tokens > 0 or daily_requests > 0:
+            stats["summary"]["active_keys"] += 1
+    
+    # Get hourly stats (last 24 hours)
+    for hour_offset in range(24):
+        hour_time = datetime.now().replace(minute=0, second=0, microsecond=0)
+        hour_key = (hour_time.hour - hour_offset) % 24
+        hour_label = f"{hour_key:02d}:00"
+        
+        # Sum requests for this hour across all keys
+        hour_requests = 0
+        hour_tokens = 0
+        
+        for key in keys:
+            key_str = key.decode() if isinstance(key, bytes) else key
+            api_key = key_str.replace("apikey:", "")
+            
+            req_count = await redis_client.client.get(f"hourly:{api_key}:{today}:{hour_key}") or 0
+            tok_count = await redis_client.client.get(f"hourly_tokens:{api_key}:{today}:{hour_key}") or 0
+            
+            if isinstance(req_count, bytes):
+                req_count = int(req_count.decode())
+            elif isinstance(req_count, str):
+                req_count = int(req_count)
+            if isinstance(tok_count, bytes):
+                tok_count = int(tok_count.decode())
+            elif isinstance(tok_count, str):
+                tok_count = int(tok_count)
+                
+            hour_requests += req_count
+            hour_tokens += tok_count
+        
+        stats["by_hour"].insert(0, {
+            "hour": hour_label,
+            "requests": hour_requests,
+            "tokens": hour_tokens,
+        })
+    
+    # Sort by_key by tokens used (descending)
+    stats["by_key"].sort(key=lambda x: x["tokens_today"], reverse=True)
+    
+    return stats
+
+
 # =============================================================================
 # Model Management Endpoints
 # =============================================================================
@@ -2047,25 +2254,49 @@ async def admin_get_config(auth: bool = Depends(verify_admin_auth)):
         if llamacpp_model_url:
             llamacpp_model_url = llamacpp_model_url.decode() if isinstance(llamacpp_model_url, bytes) else llamacpp_model_url
     
-    # Fall back to environment if not in Redis
-    if not vllm_model:
-        vllm_model = os.getenv("VLLM_MODEL_ID", "Not configured")
-    if not llamacpp_model_url:
-        llamacpp_model_url = os.getenv("LLAMACPP_MODEL_URL", "Not configured")
-    
-    # Get llama.cpp replica count from Kubernetes
+    # Try to get from Kubernetes ConfigMaps if not in Redis
     try:
         from kubernetes import client, config as k8s_config
         try:
             k8s_config.load_incluster_config()
         except:
             k8s_config.load_kube_config()
+        
+        core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
-        llamacpp_replicas = deploy.spec.replicas or 0
+        
+        # Get vLLM model from ConfigMap
+        if not vllm_model:
+            try:
+                vllm_config = core_v1.read_namespaced_config_map("vllm-config", namespace)
+                vllm_model = vllm_config.data.get("MODEL_NAME", "Not configured")
+            except Exception as e:
+                logger.debug(f"Could not read vllm-config: {e}")
+        
+        # Get llamacpp model URL from ConfigMap
+        if not llamacpp_model_url:
+            try:
+                llamacpp_config = core_v1.read_namespaced_config_map("llamacpp-config", namespace)
+                llamacpp_model_url = llamacpp_config.data.get("MODEL_URL", "Not configured")
+            except Exception as e:
+                logger.debug(f"Could not read llamacpp-config: {e}")
+        
+        # Get llama.cpp replica count
+        try:
+            deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
+            llamacpp_replicas = deploy.spec.replicas or 0
+        except Exception as e:
+            logger.debug(f"Could not get llama.cpp replicas: {e}")
+            
     except Exception as e:
-        logger.debug(f"Could not get llama.cpp replicas: {e}")
+        logger.debug(f"Kubernetes API error: {e}")
+    
+    # Final fallback to environment variables
+    if not vllm_model or vllm_model == "Not configured":
+        vllm_model = os.getenv("VLLM_MODEL_ID") or os.getenv("MODEL_NAME", "Not configured")
+    if not llamacpp_model_url or llamacpp_model_url == "Not configured":
+        llamacpp_model_url = os.getenv("LLAMACPP_MODEL_URL", "Not configured")
     
     return {
         "hf_token_configured": hf_token_set,

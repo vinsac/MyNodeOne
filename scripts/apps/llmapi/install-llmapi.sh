@@ -163,13 +163,18 @@ echo ""
 VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
 VLLM_MODEL_NAME="qwen2.5-14b"
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
-    echo "🤖 Choose primary GPU model:"
+    echo "🤖 Choose primary GPU model (vLLM):"
     echo ""
-    echo "  1. Qwen2.5-14B (AWQ) - Best balance of quality and speed"
-    echo "  2. Qwen2.5-7B - Faster, good for autocomplete"
-    echo "  3. Mistral-7B - Fast, general purpose"
-    echo "  4. CodeLlama-34B (AWQ) - Best for coding tasks"
-    echo "  5. Custom - Enter your own HuggingFace model"
+    echo "  Popular Models (AWQ quantized for fast GPU inference):"
+    echo "  1. Qwen2.5-14B (AWQ) - Best balance of quality and speed (~10GB VRAM)"
+    echo "  2. Qwen2.5-7B        - Faster, good for autocomplete (~6GB VRAM)"
+    echo "  3. Mistral-7B        - Fast, general purpose (~6GB VRAM)"
+    echo "  4. CodeLlama-34B (AWQ) - Best for coding tasks (~20GB VRAM)"
+    echo ""
+    echo "  Custom Model:"
+    echo "  5. Enter your own HuggingFace model ID"
+    echo ""
+    echo -e "  ${BLUE}Browse models: https://huggingface.co/models?library=vllm${NC}"
     echo ""
     read -p "Choose model [1-5, default: 1]: " MODEL_CHOICE
     MODEL_CHOICE="${MODEL_CHOICE:-1}"
@@ -192,8 +197,19 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
             VLLM_MODEL_NAME="codellama-34b"
             ;;
         5)
-            read -p "Enter HuggingFace model ID: " VLLM_MODEL
-            read -p "Enter model name for API: " VLLM_MODEL_NAME
+            echo ""
+            echo "  Enter the HuggingFace model ID (e.g., Qwen/Qwen2.5-7B-Instruct)"
+            echo "  Find models at: https://huggingface.co/models?library=vllm"
+            read -p "  Model ID: " VLLM_MODEL
+            echo ""
+            echo "  Enter a short name for API calls (e.g., qwen-7b, my-model)"
+            read -p "  API name: " VLLM_MODEL_NAME
+            # Validate
+            if [ -z "$VLLM_MODEL" ]; then
+                echo -e "${YELLOW}No model entered, using default Qwen2.5-14B${NC}"
+                VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
+                VLLM_MODEL_NAME="qwen2.5-14b"
+            fi
             ;;
     esac
     echo ""
@@ -203,13 +219,20 @@ fi
 LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
 LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
-    echo "🧠 Choose CPU/RAM model (for overflow or primary):"
+    echo "🧠 Choose CPU/RAM model (llama.cpp - GGUF format):"
     echo ""
+    echo "  Large Models (best quality, need high RAM):"
     echo "  1. Llama-3.1-70B (Q4_K_M) - ~45GB RAM, excellent quality"
     echo "  2. Llama-3.1-70B (Q5_K_M) - ~55GB RAM, higher quality"
-    echo "  3. Mixtral-8x7B (Q4_K_M) - ~30GB RAM, fast MoE"
-    echo "  4. Llama-3.1-8B (Q8) - ~10GB RAM, fast"
-    echo "  5. Custom - Enter your own GGUF URL"
+    echo "  3. Mixtral-8x7B (Q4_K_M)  - ~30GB RAM, fast MoE architecture"
+    echo ""
+    echo "  Smaller Models (faster, lower RAM):"
+    echo "  4. Llama-3.1-8B (Q8)      - ~10GB RAM, fast and good quality"
+    echo ""
+    echo "  Custom Model:"
+    echo "  5. Enter your own GGUF URL from HuggingFace"
+    echo ""
+    echo -e "  ${BLUE}Browse GGUF models: https://huggingface.co/models?library=gguf${NC}"
     echo ""
     read -p "Choose model [1-5, default: 1]: " CPU_MODEL_CHOICE
     CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-1}"
@@ -232,8 +255,24 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
             LLAMACPP_MODEL_FILE="Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
             ;;
         5)
-            read -p "Enter GGUF model URL: " LLAMACPP_MODEL_URL
-            read -p "Enter model filename: " LLAMACPP_MODEL_FILE
+            echo ""
+            echo "  Enter the full URL to the GGUF file"
+            echo "  Example: https://huggingface.co/TheBloke/Llama-2-13B-GGUF/resolve/main/llama-2-13b.Q4_K_M.gguf"
+            echo "  Find models at: https://huggingface.co/models?library=gguf"
+            read -p "  GGUF URL: " LLAMACPP_MODEL_URL
+            # Extract filename from URL
+            LLAMACPP_MODEL_FILE=$(basename "$LLAMACPP_MODEL_URL")
+            echo "  Detected filename: $LLAMACPP_MODEL_FILE"
+            read -p "  Override filename? [press Enter to keep]: " CUSTOM_FILENAME
+            if [ -n "$CUSTOM_FILENAME" ]; then
+                LLAMACPP_MODEL_FILE="$CUSTOM_FILENAME"
+            fi
+            # Validate
+            if [ -z "$LLAMACPP_MODEL_URL" ]; then
+                echo -e "${YELLOW}No URL entered, using default Llama-3.1-70B${NC}"
+                LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+                LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+            fi
             ;;
     esac
     echo ""

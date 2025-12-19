@@ -797,7 +797,7 @@ check_component "Gateway" "app=llmapi-gateway"
 [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]) && check_component "vLLM (GPU)" "app=vllm"
 ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]) && check_component "llama.cpp (CPU)" "app=llamacpp"
 check_component "Embedding" "app=embedding"
-check_component "Ollama" "app=ollama"
+check_component "Ollama" "app=llmapi-ollama"
 
 echo "─────────────────────────────────────────────────────"
 

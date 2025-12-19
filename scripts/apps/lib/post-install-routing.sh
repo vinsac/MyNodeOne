@@ -32,12 +32,12 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "Would you like to make ${APP_NAME} accessible from the internet?"
 echo ""
-echo "  ${GREEN}Public access enables:${NC}"
+echo -e "  ${GREEN}Public access enables:${NC}"
 echo "  • Access from any device on any network"
 echo "  • Share with friends and family"
 echo "  • Use from mobile devices outside your home"
 echo ""
-echo "  ${YELLOW}Requirements for public access:${NC}"
+echo -e "  ${YELLOW}Requirements for public access:${NC}"
 echo "  • A domain name configured with Cloudflare"
 echo "  • Cloudflare tunnel or similar ingress configured"
 echo ""
@@ -52,13 +52,9 @@ if [[ "${MAKE_PUBLIC,,}" == "y" || "${MAKE_PUBLIC,,}" == "yes" ]]; then
     echo "🌐 Configuring public access..."
     
     if [[ -f "$PROJECT_ROOT/scripts/manage-app-visibility.sh" ]]; then
-        # Run the visibility manager in public mode
-        sudo bash "$PROJECT_ROOT/scripts/manage-app-visibility.sh" \
-            --app "$APP_NAME" \
-            --namespace "$APP_NAMESPACE" \
-            --service "$APP_SERVICE" \
-            --port "$APP_PORT" \
-            --public 2>/dev/null
+        # Run the visibility manager in public mode with positional arguments
+        # Usage: manage-app-visibility.sh public <service-name>
+        sudo bash "$PROJECT_ROOT/scripts/manage-app-visibility.sh" public "$APP_NAME"
         
         if [[ $? -eq 0 ]]; then
             echo -e "${GREEN}✓ Public access configured!${NC}"
@@ -67,7 +63,7 @@ if [[ "${MAKE_PUBLIC,,}" == "y" || "${MAKE_PUBLIC,,}" == "yes" ]]; then
             echo "Check your Cloudflare dashboard for the public URL."
         else
             echo -e "${YELLOW}⚠️  Could not configure public access automatically.${NC}"
-            echo "Run this command later to configure:"
+            echo "Run the interactive mode to configure:"
             echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
         fi
     else

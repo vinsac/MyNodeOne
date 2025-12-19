@@ -325,8 +325,14 @@ data:
   LAZY_LOAD_BACKEND: "ollama"
 EOF
 
-# Deploy gateway using a pre-built Python image with inline code
-cat <<EOF | kubectl apply -f -
+# Create ConfigMap with gateway Python code
+echo "📄 Creating gateway code ConfigMap..."
+kubectl create configmap gateway-code -n $NAMESPACE \
+    --from-file=main.py="$SCRIPT_DIR/gateway/main.py" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+# Deploy gateway using Python image with code from ConfigMap
+cat <<'EOF' | sed "s/\$NAMESPACE/$NAMESPACE/g" | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -344,30 +350,53 @@ spec:
       labels:
         app: llmapi-gateway
     spec:
+      serviceAccountName: gateway
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+      - name: install-deps
+        image: python:3.11-slim
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes --quiet
+        volumeMounts:
+        - name: app-deps
+          mountPath: /app/deps
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
       containers:
       - name: gateway
         image: python:3.11-slim
         ports:
         - containerPort: 8000
           name: http
-        command:
-        - /bin/sh
-        - -c
+        command: ["/bin/sh", "-c"]
+        args:
         - |
-          pip install fastapi uvicorn httpx redis pydantic prometheus-client --quiet
-          cat > /tmp/main.py << 'GATEWAY_CODE'
-$(cat "$SCRIPT_DIR/gateway/main.py")
-GATEWAY_CODE
-          cd /tmp && uvicorn main:app --host 0.0.0.0 --port 8000
+          export PYTHONPATH=/app/deps
+          cd /app && python -m uvicorn main:app --host 0.0.0.0 --port 8000
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         envFrom:
         - configMapRef:
             name: gateway-config
+        volumeMounts:
+        - name: gateway-code
+          mountPath: /app/main.py
+          subPath: main.py
+        - name: app-deps
+          mountPath: /app/deps
         resources:
           requests:
             memory: "512Mi"
@@ -385,15 +414,24 @@ GATEWAY_CODE
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 60
+          initialDelaySeconds: 120
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 5
----
+      volumes:
+      - name: gateway-code
+        configMap:
+          name: gateway-code
+      - name: app-deps
+        emptyDir: {}
+EOF
+
+# Create gateway service
+cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Service
 metadata:

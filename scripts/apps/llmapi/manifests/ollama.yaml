@@ -65,9 +65,10 @@ spec:
         resources:
           requests:
             memory: "8Gi"
-            cpu: "2"
+            cpu: "2000m"
           limits:
             memory: "64Gi"  # Allow RAM overflow
+            cpu: "16000m"
             nvidia.com/gpu: "1"
         livenessProbe:
           httpGet:

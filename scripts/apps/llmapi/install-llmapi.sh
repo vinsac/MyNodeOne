@@ -367,6 +367,13 @@ spec:
         volumeMounts:
         - name: app-deps
           mountPath: /app/deps
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

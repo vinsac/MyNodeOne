@@ -70,10 +70,21 @@ spec:
         app: llamacpp
     spec:
       terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       # Download model if not present
       - name: model-downloader
         image: curlimages/curl:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         command:
         - /bin/sh
         - -c
@@ -102,6 +113,11 @@ spec:
       containers:
       - name: llamacpp
         image: ghcr.io/ggerganov/llama.cpp:server
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8080
           name: http

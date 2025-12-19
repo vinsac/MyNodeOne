@@ -18,8 +18,8 @@ metadata:
   namespace: llmapi
 data:
   # Default model (will be downloaded on first run)
-  MODEL_URL: "https://huggingface.co/TheBloke/Llama-2-70B-Chat-GGUF/resolve/main/llama-2-70b-chat.Q4_K_M.gguf"
-  MODEL_FILE: "llama-2-70b-chat.Q4_K_M.gguf"
+  MODEL_URL: "https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+  MODEL_FILE: "Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
   
   # ==========================================================================
   # Context & Memory Configuration (256GB RAM system)
@@ -50,7 +50,7 @@ data:
   
   # Chat template (must match model)
   # Options: llama2, llama3, chatml, alpaca, vicuna, mistral
-  CHAT_TEMPLATE: "llama2"
+  CHAT_TEMPLATE: "llama3"
 ---
 apiVersion: apps/v1
 kind: Deployment

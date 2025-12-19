@@ -84,7 +84,7 @@ spec:
             cpu: "500m"
       containers:
       - name: embedding
-        image: ghcr.io/ggerganov/llama.cpp:server
+        image: ghcr.io/ggml-org/llama.cpp:server
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

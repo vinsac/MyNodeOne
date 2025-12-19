@@ -31,10 +31,9 @@ spec:
       labels:
         app: llmapi-ollama
     spec:
-      # GPU access
-      runtimeClassName: nvidia
+      # CPU-only mode (vLLM uses the GPU)
       securityContext:
-        runAsNonRoot: false  # Ollama needs root for GPU access
+        runAsNonRoot: false  # Ollama needs root for model access
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -67,9 +66,9 @@ spec:
             memory: "8Gi"
             cpu: "2000m"
           limits:
-            memory: "64Gi"  # Allow RAM overflow
+            memory: "64Gi"  # Allow RAM for CPU inference
             cpu: "16000m"
-            nvidia.com/gpu: "1"
+            # No GPU - vLLM uses the GPU, Ollama runs on CPU
         livenessProbe:
           httpGet:
             path: /api/tags

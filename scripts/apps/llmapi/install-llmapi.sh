@@ -513,41 +513,115 @@ echo "🦙 Deploying Ollama (dynamic model loading)..."
 kubectl apply -f "$SCRIPT_DIR/manifests/ollama.yaml"
 
 # =============================================================================
-# Wait for deployments
+# Wait for deployments with retries and diagnostics
 # =============================================================================
 
 echo ""
 echo "⏳ Waiting for components to start..."
 
-kubectl wait --for=condition=available --timeout=120s deployment/redis -n "$NAMESPACE" || true
-kubectl wait --for=condition=available --timeout=300s deployment/gateway -n "$NAMESPACE" || true
+# Helper function to wait for deployment with retries and diagnostics
+wait_for_deployment() {
+    local name="$1"
+    local type="$2"  # deployment or statefulset
+    local timeout="$3"
+    local desc="$4"
+    
+    echo "   ⏳ $desc..."
+    
+    if kubectl wait --for=condition=available --timeout=${timeout}s ${type}/${name} -n "$NAMESPACE" 2>/dev/null; then
+        echo -e "   ${GREEN}✓ $name is ready${NC}"
+        return 0
+    else
+        echo -e "   ${YELLOW}⚠ $name not ready after ${timeout}s - checking status...${NC}"
+        
+        # Show pod status
+        echo "   Pod status:"
+        kubectl get pods -n "$NAMESPACE" -l app=${name} --no-headers 2>/dev/null | while read line; do
+            echo "      $line"
+        done
+        
+        # Show recent events
+        echo "   Recent events:"
+        kubectl get events -n "$NAMESPACE" --field-selector involvedObject.name=${name} \
+            --sort-by='.lastTimestamp' 2>/dev/null | tail -3 | while read line; do
+            echo "      $line"
+        done
+        
+        # For gateway, show init container logs if present
+        if [ "$name" = "gateway" ]; then
+            local pod=$(kubectl get pods -n "$NAMESPACE" -l app=llmapi-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            if [ -n "$pod" ]; then
+                echo "   Init container logs (last 10 lines):"
+                kubectl logs -n "$NAMESPACE" "$pod" -c install-deps --tail=10 2>/dev/null | while read line; do
+                    echo "      $line"
+                done
+            fi
+        fi
+        
+        return 1
+    fi
+}
 
+# Wait for Redis first (required by gateway)
+if ! wait_for_deployment "redis" "deployment" "120" "Starting Redis"; then
+    echo -e "${RED}   ✗ Redis failed to start. Check logs: kubectl logs -n $NAMESPACE deploy/redis${NC}"
+fi
+
+# Wait for Gateway (may take time for pip install in initContainer)
+if ! wait_for_deployment "gateway" "deployment" "600" "Starting Gateway (installing dependencies)"; then
+    echo -e "${YELLOW}   Gateway still initializing. This is normal on first install.${NC}"
+    echo "   Monitor progress: kubectl logs -n $NAMESPACE deploy/gateway -c install-deps -f"
+fi
+
+# Wait for vLLM if deployed (model download can take 10-30 minutes)
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
-    echo "   Waiting for vLLM (this may take several minutes for model download)..."
-    kubectl wait --for=condition=available --timeout=900s statefulset/vllm -n "$NAMESPACE" || {
-        echo -e "${YELLOW}   vLLM still starting - model download in progress${NC}"
-    }
+    echo ""
+    echo "   📥 vLLM model download may take 10-30 minutes for first install..."
+    if ! kubectl wait --for=condition=available --timeout=60s statefulset/vllm -n "$NAMESPACE" 2>/dev/null; then
+        echo -e "   ${YELLOW}vLLM is downloading model. Monitor: kubectl logs -n $NAMESPACE statefulset/vllm -f${NC}"
+    else
+        echo -e "   ${GREEN}✓ vLLM is ready${NC}"
+    fi
 fi
 
+# Wait for llama.cpp if deployed (model download can take 5-15 minutes)
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
-    echo "   Waiting for llama.cpp (model download may take time)..."
-    kubectl wait --for=condition=available --timeout=900s deployment/llamacpp -n "$NAMESPACE" || {
-        echo -e "${YELLOW}   llama.cpp still starting - model download in progress${NC}"
-    }
+    echo ""
+    echo "   📥 llama.cpp model download may take 5-15 minutes for first install..."
+    if ! kubectl wait --for=condition=available --timeout=60s deployment/llamacpp -n "$NAMESPACE" 2>/dev/null; then
+        echo -e "   ${YELLOW}llama.cpp is downloading model. Monitor: kubectl logs -n $NAMESPACE deploy/llamacpp -c model-downloader -f${NC}"
+    else
+        echo -e "   ${GREEN}✓ llama.cpp is ready${NC}"
+    fi
 fi
 
-kubectl wait --for=condition=available --timeout=300s deployment/embedding -n "$NAMESPACE" || true
-kubectl wait --for=condition=available --timeout=300s deployment/ollama -n "$NAMESPACE" || true
+# Wait for embedding service
+wait_for_deployment "embedding" "deployment" "120" "Starting Embedding service" || true
 
-# Get service IP
-sleep 5
+# Wait for Ollama
+wait_for_deployment "ollama" "deployment" "120" "Starting Ollama" || true
+
+# Get service IP with retry
+echo ""
+echo "🔍 Getting service IP..."
+for i in {1..5}; do
+    SERVICE_IP=$(kubectl get svc llmapi -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    if [ -n "$SERVICE_IP" ]; then
+        break
+    fi
+    SERVICE_IP=$(kubectl get svc llmapi -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo "")
+    if [ -n "$SERVICE_IP" ]; then
+        break
+    fi
+    sleep 2
+done
 SERVICE_IP=$(kubectl get svc llmapi -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
 if [ -z "$SERVICE_IP" ]; then
     SERVICE_IP=$(kubectl get svc llmapi -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
 fi
 
 # =============================================================================
-# Create initial API key
+# Create initial API key (with retries)
 # =============================================================================
 
 echo ""
@@ -557,10 +631,22 @@ echo "🔑 Creating initial API key..."
 API_KEY_ID=$(openssl rand -hex 16)
 API_KEY="sk-mynodeone-${API_KEY_ID}"
 
-# Store in Redis via kubectl exec
-kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli SET "apikey:${API_KEY}" \
-    "{\"name\":\"default\",\"requests_per_minute\":${DEFAULT_RPM},\"tokens_per_day\":${DEFAULT_TOKENS},\"created_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-    2>/dev/null || true
+# Store in Redis via kubectl exec (with retries)
+API_KEY_CREATED=false
+for attempt in {1..5}; do
+    if kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli SET "apikey:${API_KEY}" \
+        "{\"name\":\"default\",\"requests_per_minute\":${DEFAULT_RPM},\"tokens_per_day\":${DEFAULT_TOKENS},\"created_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        2>/dev/null; then
+        API_KEY_CREATED=true
+        break
+    fi
+    echo "   Waiting for Redis... (attempt $attempt/5)"
+    sleep 3
+done
+
+if [ "$API_KEY_CREATED" = false ]; then
+    echo -e "${YELLOW}   Could not create API key in Redis. You can create one later via Admin UI.${NC}"
+fi
 
 # Save API key to file
 mkdir -p "$ACTUAL_HOME/.mynodeone"
@@ -584,12 +670,49 @@ if [ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]; then
 fi
 
 # =============================================================================
+# Status Summary
+# =============================================================================
+
+echo ""
+echo "📊 Component Status:"
+echo "─────────────────────────────────────────────────────"
+
+# Check each component
+check_component() {
+    local name="$1"
+    local selector="$2"
+    local status=$(kubectl get pods -n "$NAMESPACE" -l "$selector" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
+    local ready=$(kubectl get pods -n "$NAMESPACE" -l "$selector" -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "False")
+    
+    if [ "$status" = "Running" ] && [ "$ready" = "True" ]; then
+        echo -e "   ${GREEN}✓${NC} $name: Running"
+    elif [ "$status" = "Running" ]; then
+        echo -e "   ${YELLOW}◐${NC} $name: Starting (containers initializing)"
+    elif [ "$status" = "Pending" ]; then
+        echo -e "   ${YELLOW}◯${NC} $name: Pending (waiting for resources)"
+    elif [ "$status" = "NotFound" ]; then
+        echo -e "   ${BLUE}○${NC} $name: Not deployed"
+    else
+        echo -e "   ${RED}✗${NC} $name: $status"
+    fi
+}
+
+check_component "Redis" "app=redis"
+check_component "Gateway" "app=llmapi-gateway"
+[ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]) && check_component "vLLM (GPU)" "app=vllm"
+([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]) && check_component "llama.cpp (CPU)" "app=llamacpp"
+check_component "Embedding" "app=embedding"
+check_component "Ollama" "app=ollama"
+
+echo "─────────────────────────────────────────────────────"
+
+# =============================================================================
 # Success
 # =============================================================================
 
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  ✓ LLM API Service Installed Successfully!${NC}"
+echo -e "${GREEN}  ✓ LLM API Service Installed!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "📍 Access the API at:"
@@ -645,10 +768,23 @@ echo ""
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo -e "${YELLOW}⚠️  Note: Models are downloading in the background.${NC}"
     echo "   This may take 10-60 minutes depending on model size."
-    echo "   Monitor progress: kubectl logs -n $NAMESPACE -l app=vllm -f"
-    echo "                     kubectl logs -n $NAMESPACE -l app=llamacpp -f"
     echo ""
 fi
+
+echo "🔧 Troubleshooting Commands:"
+echo "   # Check all pods"
+echo "   kubectl get pods -n $NAMESPACE"
+echo ""
+echo "   # View gateway logs (if API not responding)"
+echo "   kubectl logs -n $NAMESPACE deploy/gateway -c gateway -f"
+echo ""
+echo "   # View model download progress"
+echo "   kubectl logs -n $NAMESPACE statefulset/vllm -f         # vLLM"
+echo "   kubectl logs -n $NAMESPACE deploy/llamacpp -c model-downloader -f  # llama.cpp"
+echo ""
+echo "   # Restart a component"
+echo "   kubectl rollout restart deployment/gateway -n $NAMESPACE"
+echo ""
 
 # =============================================================================
 # Public Access Configuration

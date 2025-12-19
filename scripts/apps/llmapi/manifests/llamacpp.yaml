@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llamacpp-models
+  namespace: llmapi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 300Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llamacpp-config
+  namespace: llmapi
+data:
+  # Default model (will be downloaded on first run)
+  MODEL_URL: "https://huggingface.co/TheBloke/Llama-2-70B-Chat-GGUF/resolve/main/llama-2-70b-chat.Q4_K_M.gguf"
+  MODEL_FILE: "llama-2-70b-chat.Q4_K_M.gguf"
+  
+  # ==========================================================================
+  # Context & Memory Configuration (256GB RAM system)
+  # ==========================================================================
+  
+  # Context size (tokens). Each token uses ~0.5-1KB RAM depending on model.
+  # 70B Q4 model + 32K context ≈ 60GB RAM total
+  # With 256GB RAM, you can safely use 32768 or higher.
+  CONTEXT_SIZE: "32768"
+  
+  # Batch size for prompt processing. Higher = faster prompt processing.
+  # Should not exceed context size. 2048-4096 is typical.
+  BATCH_SIZE: "4096"
+  
+  # CPU threads. Set to physical core count (not hyperthreads).
+  # For 16-core CPU, use 16.
+  THREADS: "16"
+  
+  # GPU offload layers (0 = CPU only, -1 = all layers to GPU)
+  # For pure CPU inference with 70B model, keep at 0.
+  # If you have spare VRAM, set to 10-20 for hybrid inference.
+  GPU_LAYERS: "0"
+  
+  # Number of parallel request slots. Each slot reserves context memory.
+  # parallel=4 with context=32768 means 4 concurrent 32K conversations.
+  # RAM usage ≈ model_size + (parallel × context × bytes_per_token)
+  PARALLEL: "4"
+  
+  # Chat template (must match model)
+  # Options: llama2, llama3, chatml, alpaca, vicuna, mistral
+  CHAT_TEMPLATE: "llama2"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llamacpp
+  namespace: llmapi
+  labels:
+    app: llamacpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llamacpp
+  template:
+    metadata:
+      labels:
+        app: llamacpp
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+      # Download model if not present
+      - name: model-downloader
+        image: curlimages/curl:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          MODEL_PATH="/models/${MODEL_FILE}"
+          if [ ! -f "$MODEL_PATH" ]; then
+            echo "Downloading model from ${MODEL_URL}..."
+            curl -L -o "$MODEL_PATH" "${MODEL_URL}"
+            echo "Download complete."
+          else
+            echo "Model already exists at $MODEL_PATH"
+          fi
+        envFrom:
+        - configMapRef:
+            name: llamacpp-config
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      containers:
+      - name: llamacpp
+        image: ghcr.io/ggerganov/llama.cpp:server
+        ports:
+        - containerPort: 8080
+          name: http
+        args:
+        - "--model"
+        - "/models/$(MODEL_FILE)"
+        - "--ctx-size"
+        - "$(CONTEXT_SIZE)"
+        - "--batch-size"
+        - "$(BATCH_SIZE)"
+        - "--threads"
+        - "$(THREADS)"
+        - "--parallel"
+        - "$(PARALLEL)"
+        - "--host"
+        - "0.0.0.0"
+        - "--port"
+        - "8080"
+        # OpenAI-compatible API
+        - "--chat-template"
+        - "llama2"
+        envFrom:
+        - configMapRef:
+            name: llamacpp-config
+        resources:
+          requests:
+            memory: "64Gi"
+            cpu: "8000m"
+          limits:
+            memory: "180Gi"
+            cpu: "24000m"
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 20
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: llamacpp-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llamacpp
+  namespace: llmapi
+spec:
+  selector:
+    app: llamacpp
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP

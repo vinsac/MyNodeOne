@@ -1,0 +1,112 @@
+# Ollama - Experimentation Backend
+# Supports: dynamic model loading, VRAM→RAM overflow, model caching
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: llmapi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Ti  # Cache for multiple large models
+  storageClassName: longhorn
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: llmapi
+  labels:
+    app: llmapi-ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llmapi-ollama
+  template:
+    metadata:
+      labels:
+        app: llmapi-ollama
+    spec:
+      # GPU access
+      runtimeClassName: nvidia
+      securityContext:
+        runAsNonRoot: false  # Ollama needs root for GPU access
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+          name: http
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0:11434"
+        # Keep models loaded for 30 min before unloading
+        - name: OLLAMA_KEEP_ALIVE
+          value: "30m"
+        # Allow models to use all available VRAM + overflow to RAM
+        - name: OLLAMA_NUM_PARALLEL
+          value: "4"
+        # HuggingFace token for gated models (set via admin UI)
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: llmapi-secrets
+              key: hf-token
+              optional: true
+        volumeMounts:
+        - name: models
+          mountPath: /root/.ollama
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "2"
+          limits:
+            memory: "64Gi"  # Allow RAM overflow
+            nvidia.com/gpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: ollama-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: llmapi
+spec:
+  selector:
+    app: llmapi-ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+    name: http
+  type: ClusterIP
+---
+# Secret for HuggingFace token (created empty, updated via admin UI)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llmapi-secrets
+  namespace: llmapi
+type: Opaque
+stringData:
+  hf-token: ""
+  admin-password: "admin"

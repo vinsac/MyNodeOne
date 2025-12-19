@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: llmapi
+data:
+  REDIS_URL: "redis://redis:6379/0"
+  VLLM_URLS: "http://vllm-0.vllm:8000"
+  LLAMACPP_URL: "http://llamacpp:8080"
+  EMBEDDING_URL: "http://embedding:8080"
+  OLLAMA_URL: "http://ollama:11434"
+  # Model names for discovery (llama.cpp/embedding don't have /v1/models)
+  LLAMACPP_MODEL_NAME: "llama-cpu"
+  EMBEDDING_MODEL_NAME: "embedding"
+  # Default quotas
+  DEFAULT_REQUESTS_PER_MINUTE: "60"
+  DEFAULT_TOKENS_PER_DAY: "100000"
+  # Lazy loading (Ollama backend)
+  LAZY_LOAD_ENABLED: "true"
+  LAZY_LOAD_BACKEND: "ollama"
+  AUTO_DOWNLOAD: "false"
+  # Admin password (change this!)
+  ADMIN_PASSWORD: "admin"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: llmapi
+  labels:
+    app: llmapi-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llmapi-gateway
+  template:
+    metadata:
+      labels:
+        app: llmapi-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: gateway
+        image: ghcr.io/mynodeone/llmapi-gateway:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: gateway-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmapi
+  namespace: llmapi
+  annotations:
+    mynodeone.io/subdomain: "llmapi"
+spec:
+  selector:
+    app: llmapi-gateway
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmapi-internal
+  namespace: llmapi
+spec:
+  selector:
+    app: llmapi-gateway
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  type: ClusterIP

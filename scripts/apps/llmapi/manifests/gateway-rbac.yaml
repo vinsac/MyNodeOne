@@ -1,0 +1,52 @@
+# RBAC permissions for the gateway to modify backend deployments and configs
+# This allows the Admin UI to:
+# - Change vLLM and llama.cpp models
+# - Update context length, GPU memory, batch size, etc.
+# - Start/stop llama.cpp
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway
+  namespace: llmapi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gateway-backend-manager
+  namespace: llmapi
+rules:
+  # Read and update StatefulSets (for vLLM)
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "patch", "update"]
+  # Read and update Deployments (for llama.cpp, embedding, ollama)
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch", "update"]
+  # Read and update Deployment scale (for start/stop)
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch", "update"]
+  # Read and update ConfigMaps (for backend configuration)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "patch", "update"]
+  # Read pods for status checking
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gateway-backend-manager
+  namespace: llmapi
+subjects:
+  - kind: ServiceAccount
+    name: gateway
+    namespace: llmapi
+roleRef:
+  kind: Role
+  name: gateway-backend-manager
+  apiGroup: rbac.authorization.k8s.io

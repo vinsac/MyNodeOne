@@ -1,0 +1,619 @@
+#!/bin/bash
+
+###############################################################################
+# LLM API Service - One-Click Installation
+# 
+# Production-ready OpenAI-compatible LLM API with:
+# - vLLM for GPU inference (continuous batching)
+# - llama.cpp for CPU/RAM overflow and large models
+# - Ollama for dynamic model loading and experimentation
+# - Dedicated embedding service
+# - Rate limiting, priority queuing, usage metering
+# - Web Admin UI for model management
+#
+# DOCUMENTATION:
+# - Architecture: scripts/apps/llmapi/ARCHITECTURE.md
+# - Quick start: scripts/apps/llmapi/README.md
+# - Public access configuration: docs/APP-PUBLIC-ACCESS.md
+# - After installation, you'll be asked if you want to make this app public
+# - You can change visibility anytime: sudo ./scripts/manage-app-visibility.sh
+###############################################################################
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Load configuration
+if [ -z "${ACTUAL_HOME:-}" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        export ACTUAL_HOME="$HOME"
+    fi
+fi
+CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+fi
+
+# Get cluster domain
+if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
+fi
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+
+NAMESPACE="llmapi"
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Installing LLM API Service${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# =============================================================================
+# Prerequisites Check
+# =============================================================================
+
+echo "🔍 Checking prerequisites..."
+
+if ! command -v kubectl &> /dev/null; then
+    echo -e "${RED}Error: kubectl not found. Please install Kubernetes first.${NC}"
+    exit 1
+fi
+
+if ! kubectl get nodes &> /dev/null; then
+    echo -e "${RED}Error: Cannot connect to Kubernetes cluster.${NC}"
+    exit 1
+fi
+
+# Check for GPU
+GPU_AVAILABLE=false
+GPU_COUNT=0
+if kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | grep -q "[0-9]"; then
+    GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' | paste -sd+ | bc 2>/dev/null || echo "1")
+    if [ "$GPU_COUNT" -gt 0 ] 2>/dev/null; then
+        GPU_AVAILABLE=true
+    fi
+fi
+
+# Check for Longhorn
+if ! kubectl get storageclass longhorn &> /dev/null; then
+    echo -e "${YELLOW}Warning: Longhorn storage class not found.${NC}"
+    read -p "Continue anyway? [y/N]: " continue_without_storage
+    if [[ "$continue_without_storage" != "y" ]]; then
+        exit 1
+    fi
+fi
+
+# Get system resources
+TOTAL_RAM_KB=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.memory}' | sed 's/Ki//')
+TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
+TOTAL_CPU=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.cpu}')
+
+echo ""
+echo "📊 Cluster Resources Detected:"
+echo "   • CPU Cores: $TOTAL_CPU"
+echo "   • RAM: ${TOTAL_RAM_GB}GB"
+if [ "$GPU_AVAILABLE" = true ]; then
+    echo -e "   • GPUs: ${GREEN}${GPU_COUNT} NVIDIA GPU(s)${NC}"
+else
+    echo -e "   • GPUs: ${YELLOW}None detected${NC}"
+fi
+echo ""
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Configuration${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Subdomain
+echo "🌐 Choose a subdomain for the LLM API:"
+echo "   Local access: <subdomain>.${CLUSTER_DOMAIN}.local"
+echo ""
+read -p "Enter subdomain [default: llmapi]: " APP_SUBDOMAIN
+APP_SUBDOMAIN="${APP_SUBDOMAIN:-llmapi}"
+APP_SUBDOMAIN=$(echo "$APP_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+if [ -z "$APP_SUBDOMAIN" ]; then
+    APP_SUBDOMAIN="llmapi"
+fi
+echo ""
+
+# Deployment mode
+echo "🚀 Choose deployment mode:"
+echo ""
+echo "  1. Full Stack (recommended)"
+echo "     • vLLM on GPU for fast inference"
+echo "     • llama.cpp on CPU for overflow/large models"
+echo "     • Dedicated embedding service"
+echo ""
+echo "  2. GPU Only"
+echo "     • vLLM only (requires GPU)"
+echo "     • Best for real-time inference"
+echo ""
+echo "  3. CPU Only"
+echo "     • llama.cpp only (no GPU required)"
+echo "     • Good for large models with high RAM"
+echo ""
+echo "  4. Minimal"
+echo "     • Embedding service only"
+echo "     • For document indexing/RAG"
+echo ""
+
+if [ "$GPU_AVAILABLE" = true ]; then
+    read -p "Choose mode [1-4, default: 1]: " DEPLOY_MODE
+    DEPLOY_MODE="${DEPLOY_MODE:-1}"
+else
+    echo -e "${YELLOW}Note: No GPU detected. Options 1 and 2 will skip vLLM.${NC}"
+    read -p "Choose mode [1-4, default: 3]: " DEPLOY_MODE
+    DEPLOY_MODE="${DEPLOY_MODE:-3}"
+fi
+echo ""
+
+# Model selection for vLLM
+VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
+VLLM_MODEL_NAME="qwen2.5-14b"
+if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
+    echo "🤖 Choose primary GPU model:"
+    echo ""
+    echo "  1. Qwen2.5-14B (AWQ) - Best balance of quality and speed"
+    echo "  2. Qwen2.5-7B - Faster, good for autocomplete"
+    echo "  3. Mistral-7B - Fast, general purpose"
+    echo "  4. CodeLlama-34B (AWQ) - Best for coding tasks"
+    echo "  5. Custom - Enter your own HuggingFace model"
+    echo ""
+    read -p "Choose model [1-5, default: 1]: " MODEL_CHOICE
+    MODEL_CHOICE="${MODEL_CHOICE:-1}"
+    
+    case "$MODEL_CHOICE" in
+        1)
+            VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
+            VLLM_MODEL_NAME="qwen2.5-14b"
+            ;;
+        2)
+            VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct"
+            VLLM_MODEL_NAME="qwen2.5-7b"
+            ;;
+        3)
+            VLLM_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
+            VLLM_MODEL_NAME="mistral-7b"
+            ;;
+        4)
+            VLLM_MODEL="TheBloke/CodeLlama-34B-Instruct-AWQ"
+            VLLM_MODEL_NAME="codellama-34b"
+            ;;
+        5)
+            read -p "Enter HuggingFace model ID: " VLLM_MODEL
+            read -p "Enter model name for API: " VLLM_MODEL_NAME
+            ;;
+    esac
+    echo ""
+fi
+
+# Model selection for llama.cpp
+LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
+    echo "🧠 Choose CPU/RAM model (for overflow or primary):"
+    echo ""
+    echo "  1. Llama-3.1-70B (Q4_K_M) - ~45GB RAM, excellent quality"
+    echo "  2. Llama-3.1-70B (Q5_K_M) - ~55GB RAM, higher quality"
+    echo "  3. Mixtral-8x7B (Q4_K_M) - ~30GB RAM, fast MoE"
+    echo "  4. Llama-3.1-8B (Q8) - ~10GB RAM, fast"
+    echo "  5. Custom - Enter your own GGUF URL"
+    echo ""
+    read -p "Choose model [1-5, default: 1]: " CPU_MODEL_CHOICE
+    CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-1}"
+    
+    case "$CPU_MODEL_CHOICE" in
+        1)
+            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+            ;;
+        2)
+            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q5_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q5_K_M.gguf"
+            ;;
+        3)
+            LLAMACPP_MODEL_URL="https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
+            ;;
+        4)
+            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
+            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
+            ;;
+        5)
+            read -p "Enter GGUF model URL: " LLAMACPP_MODEL_URL
+            read -p "Enter model filename: " LLAMACPP_MODEL_FILE
+            ;;
+    esac
+    echo ""
+fi
+
+# Default quotas
+echo "📊 Default API quotas for new keys:"
+read -p "Tokens per day [default: 100000]: " DEFAULT_TOKENS
+DEFAULT_TOKENS="${DEFAULT_TOKENS:-100000}"
+read -p "Requests per minute [default: 60]: " DEFAULT_RPM
+DEFAULT_RPM="${DEFAULT_RPM:-60}"
+echo ""
+
+# Confirm
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Deployment Summary${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "   Subdomain: ${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+echo "   Mode: $(case $DEPLOY_MODE in 1) echo 'Full Stack';; 2) echo 'GPU Only';; 3) echo 'CPU Only';; 4) echo 'Minimal';; esac)"
+if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
+    echo "   GPU Model: $VLLM_MODEL_NAME"
+fi
+if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
+    echo "   CPU Model: $LLAMACPP_MODEL_FILE"
+fi
+echo "   Default Quota: ${DEFAULT_TOKENS} tokens/day, ${DEFAULT_RPM} req/min"
+echo ""
+read -p "Proceed with installation? [Y/n]: " CONFIRM
+if [ "${CONFIRM,,}" = "n" ]; then
+    echo "Installation cancelled."
+    exit 0
+fi
+echo ""
+
+# =============================================================================
+# Installation
+# =============================================================================
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Installing Components${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Generate secure admin password
+ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 20)
+echo "🔐 Generated admin password: $ADMIN_PASSWORD"
+echo "   (Save this! You'll need it to access the Admin UI)"
+echo ""
+
+# Create namespace
+echo "📦 Creating namespace..."
+kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
+
+# Deploy RBAC for gateway (allows model changes from Admin UI)
+echo "🔐 Deploying gateway RBAC..."
+kubectl apply -f "$SCRIPT_DIR/manifests/gateway-rbac.yaml"
+
+# Deploy Redis
+echo "🔴 Deploying Redis..."
+kubectl apply -f "$SCRIPT_DIR/manifests/redis.yaml"
+
+# Build and deploy gateway (using inline image for now)
+echo "🌐 Deploying API Gateway..."
+
+# Determine model names for gateway config
+LLAMACPP_MODEL_API_NAME="${LLAMACPP_MODEL_FILE%.gguf}"
+LLAMACPP_MODEL_API_NAME=$(echo "$LLAMACPP_MODEL_API_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+
+# Update gateway config with custom settings
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: $NAMESPACE
+data:
+  REDIS_URL: "redis://redis:6379/0"
+  VLLM_URLS: "http://vllm-0.vllm:8000"
+  LLAMACPP_URL: "http://llamacpp:8080"
+  EMBEDDING_URL: "http://embedding:8080"
+  LLAMACPP_MODEL_NAME: "${LLAMACPP_MODEL_API_NAME:-llama-cpu}"
+  EMBEDDING_MODEL_NAME: "embedding"
+  DEFAULT_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
+  DEFAULT_TOKENS_PER_DAY: "$DEFAULT_TOKENS"
+  ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+  OLLAMA_URL: "http://ollama:11434"
+  LAZY_LOAD_ENABLED: "true"
+  LAZY_LOAD_BACKEND: "ollama"
+EOF
+
+# Deploy gateway using a pre-built Python image with inline code
+cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: $NAMESPACE
+  labels:
+    app: llmapi-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llmapi-gateway
+  template:
+    metadata:
+      labels:
+        app: llmapi-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: gateway
+        image: python:3.11-slim
+        ports:
+        - containerPort: 8000
+          name: http
+        command:
+        - /bin/sh
+        - -c
+        - |
+          pip install fastapi uvicorn httpx redis pydantic prometheus-client --quiet
+          cat > /tmp/main.py << 'GATEWAY_CODE'
+$(cat "$SCRIPT_DIR/gateway/main.py")
+GATEWAY_CODE
+          cd /tmp && uvicorn main:app --host 0.0.0.0 --port 8000
+        envFrom:
+        - configMapRef:
+            name: gateway-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmapi
+  namespace: $NAMESPACE
+  annotations:
+    mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
+spec:
+  selector:
+    app: llmapi-gateway
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
+  type: LoadBalancer
+EOF
+
+# Deploy vLLM if GPU available and mode requires it
+if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
+    echo "🚀 Deploying vLLM (GPU backend)..."
+    
+    # Update vLLM config
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-config
+  namespace: $NAMESPACE
+data:
+  MODEL_NAME: "$VLLM_MODEL"
+  MAX_MODEL_LEN: "8192"
+  GPU_MEMORY_UTILIZATION: "0.90"
+  MAX_NUM_SEQS: "32"
+  QUANTIZATION: "awq"
+EOF
+
+    # Update vLLM deployment with selected model
+    sed "s|--served-model-name.*|--served-model-name\n        - \"$VLLM_MODEL_NAME\"|g" \
+        "$SCRIPT_DIR/manifests/vllm.yaml" | kubectl apply -f -
+else
+    echo "⏭️  Skipping vLLM (no GPU or not selected)"
+fi
+
+# Deploy llama.cpp if mode requires it
+if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
+    echo "🧠 Deploying llama.cpp (CPU backend)..."
+    
+    # Update llama.cpp config
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llamacpp-config
+  namespace: $NAMESPACE
+data:
+  MODEL_URL: "$LLAMACPP_MODEL_URL"
+  MODEL_FILE: "$LLAMACPP_MODEL_FILE"
+  CONTEXT_SIZE: "8192"
+  BATCH_SIZE: "2048"
+  THREADS: "16"
+  GPU_LAYERS: "0"
+  PARALLEL: "4"
+EOF
+
+    kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml"
+else
+    echo "⏭️  Skipping llama.cpp (not selected)"
+fi
+
+# Deploy embedding service
+echo "📐 Deploying embedding service..."
+kubectl apply -f "$SCRIPT_DIR/manifests/embedding.yaml"
+
+# Deploy Ollama (flexible model management)
+echo "🦙 Deploying Ollama (dynamic model loading)..."
+kubectl apply -f "$SCRIPT_DIR/manifests/ollama.yaml"
+
+# =============================================================================
+# Wait for deployments
+# =============================================================================
+
+echo ""
+echo "⏳ Waiting for components to start..."
+
+kubectl wait --for=condition=available --timeout=120s deployment/redis -n "$NAMESPACE" || true
+kubectl wait --for=condition=available --timeout=300s deployment/gateway -n "$NAMESPACE" || true
+
+if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
+    echo "   Waiting for vLLM (this may take several minutes for model download)..."
+    kubectl wait --for=condition=available --timeout=900s statefulset/vllm -n "$NAMESPACE" || {
+        echo -e "${YELLOW}   vLLM still starting - model download in progress${NC}"
+    }
+fi
+
+if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
+    echo "   Waiting for llama.cpp (model download may take time)..."
+    kubectl wait --for=condition=available --timeout=900s deployment/llamacpp -n "$NAMESPACE" || {
+        echo -e "${YELLOW}   llama.cpp still starting - model download in progress${NC}"
+    }
+fi
+
+kubectl wait --for=condition=available --timeout=300s deployment/embedding -n "$NAMESPACE" || true
+kubectl wait --for=condition=available --timeout=300s deployment/ollama -n "$NAMESPACE" || true
+
+# Get service IP
+sleep 5
+SERVICE_IP=$(kubectl get svc llmapi -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+if [ -z "$SERVICE_IP" ]; then
+    SERVICE_IP=$(kubectl get svc llmapi -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
+fi
+
+# =============================================================================
+# Create initial API key
+# =============================================================================
+
+echo ""
+echo "🔑 Creating initial API key..."
+
+# Generate API key
+API_KEY_ID=$(openssl rand -hex 16)
+API_KEY="sk-mynodeone-${API_KEY_ID}"
+
+# Store in Redis via kubectl exec
+kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli SET "apikey:${API_KEY}" \
+    "{\"name\":\"default\",\"requests_per_minute\":${DEFAULT_RPM},\"tokens_per_day\":${DEFAULT_TOKENS},\"created_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    2>/dev/null || true
+
+# Save API key to file
+mkdir -p "$ACTUAL_HOME/.mynodeone"
+echo "$API_KEY" > "$ACTUAL_HOME/.mynodeone/llmapi-key"
+chmod 600 "$ACTUAL_HOME/.mynodeone/llmapi-key"
+
+# =============================================================================
+# DNS Registration
+# =============================================================================
+
+echo ""
+echo "🌐 Registering service..."
+
+if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+    bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
+        "llmapi" "$APP_SUBDOMAIN" "$NAMESPACE" "llmapi" "80" "false" 2>/dev/null || true
+fi
+
+if [ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]; then
+    sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null || true
+fi
+
+# =============================================================================
+# Success
+# =============================================================================
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  ✓ LLM API Service Installed Successfully!${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "📍 Access the API at:"
+echo "   • Direct: http://$SERVICE_IP"
+echo "   • Local:  http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+echo ""
+echo "🔑 Your API Key:"
+echo "   $API_KEY"
+echo "   (saved to ~/.mynodeone/llmapi-key)"
+echo ""
+echo "🧪 Test the API:"
+echo ""
+echo "   # List models"
+echo "   curl -H \"Authorization: Bearer \$API_KEY\" \\"
+echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1/models"
+echo ""
+echo "   # Chat completion"
+echo "   curl -H \"Authorization: Bearer \$API_KEY\" \\"
+echo "        -H \"Content-Type: application/json\" \\"
+echo "        -d '{\"model\":\"$VLLM_MODEL_NAME\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}' \\"
+echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1/chat/completions"
+echo ""
+echo "📚 Python/OpenAI SDK:"
+echo ""
+echo "   from openai import OpenAI"
+echo "   client = OpenAI("
+echo "       base_url=\"http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1\","
+echo "       api_key=\"$API_KEY\""
+echo "   )"
+echo ""
+echo "🎛️  Admin UI:"
+echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/admin"
+echo ""
+echo "   Login Credentials (HTTP Basic Auth):"
+echo "   • Username: admin (or any username)"
+echo "   • Password: $ADMIN_PASSWORD"
+echo ""
+echo "   Features:"
+echo "   • Download/manage Ollama models"
+echo "   • Change vLLM/llama.cpp models + context/memory settings"
+echo "   • Start/stop llama.cpp (free RAM when not needed)"
+echo "   • Manage API keys and view usage"
+echo ""
+echo "🔧 Management:"
+echo "   • Status:  ./scripts/apps/llmapi/monitor-llmapi.sh"
+echo "   • Keys:    ./scripts/apps/llmapi/manage-keys.sh"
+echo "   • Scale:   ./scripts/apps/llmapi/scale-backends.sh"
+echo ""
+echo "📖 Documentation: scripts/apps/llmapi/ARCHITECTURE.md"
+echo ""
+
+# Note about model download
+if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ] || [ "$DEPLOY_MODE" = "3" ]; then
+    echo -e "${YELLOW}⚠️  Note: Models are downloading in the background.${NC}"
+    echo "   This may take 10-60 minutes depending on model size."
+    echo "   Monitor progress: kubectl logs -n $NAMESPACE -l app=vllm -f"
+    echo "                     kubectl logs -n $NAMESPACE -l app=llamacpp -f"
+    echo ""
+fi
+
+# =============================================================================
+# Public Access Configuration
+# =============================================================================
+
+# Automatically configure routing and ask about public access
+if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "llmapi" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "llmapi"
+fi

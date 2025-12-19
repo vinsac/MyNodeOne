@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: embedding-models
+  namespace: llmapi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: embedding-config
+  namespace: llmapi
+data:
+  # Embedding model - nomic-embed-text is excellent and efficient
+  MODEL_URL: "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q8_0.gguf"
+  MODEL_FILE: "nomic-embed-text-v1.5.Q8_0.gguf"
+  # Server settings
+  CONTEXT_SIZE: "8192"
+  BATCH_SIZE: "512"
+  THREADS: "4"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding
+  namespace: llmapi
+  labels:
+    app: embedding
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: embedding
+  template:
+    metadata:
+      labels:
+        app: embedding
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+      - name: model-downloader
+        image: curlimages/curl:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          MODEL_PATH="/models/${MODEL_FILE}"
+          if [ ! -f "$MODEL_PATH" ]; then
+            echo "Downloading embedding model from ${MODEL_URL}..."
+            curl -L -o "$MODEL_PATH" "${MODEL_URL}"
+            echo "Download complete."
+          else
+            echo "Model already exists at $MODEL_PATH"
+          fi
+        envFrom:
+        - configMapRef:
+            name: embedding-config
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      containers:
+      - name: embedding
+        image: ghcr.io/ggerganov/llama.cpp:server
+        ports:
+        - containerPort: 8080
+          name: http
+        args:
+        - "--model"
+        - "/models/$(MODEL_FILE)"
+        - "--ctx-size"
+        - "$(CONTEXT_SIZE)"
+        - "--batch-size"
+        - "$(BATCH_SIZE)"
+        - "--threads"
+        - "$(THREADS)"
+        - "--host"
+        - "0.0.0.0"
+        - "--port"
+        - "8080"
+        - "--embedding"
+        envFrom:
+        - configMapRef:
+            name: embedding-config
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: embedding-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: embedding
+  namespace: llmapi
+spec:
+  selector:
+    app: embedding
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP

@@ -1,0 +1,194 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-models
+  namespace: llmapi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 200Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-config
+  namespace: llmapi
+data:
+  # Default model to load
+  MODEL_NAME: "Qwen/Qwen2.5-14B-Instruct-AWQ"
+  
+  # ==========================================================================
+  # VRAM & Context Configuration (RTX 3090 24GB optimized)
+  # ==========================================================================
+  
+  # Maximum context length (tokens). Higher = more VRAM for KV cache.
+  # RTX 3090 + 14B AWQ: safe=8192, moderate=16384, aggressive=24576
+  # If OOM occurs, reduce this value.
+  MAX_MODEL_LEN: "16384"
+  
+  # Fraction of GPU memory to use (0.0-1.0). Leave headroom for KV cache.
+  # 0.90 = safe, 0.95 = aggressive (may OOM on large batches)
+  GPU_MEMORY_UTILIZATION: "0.90"
+  
+  # Maximum concurrent sequences (batch size). Higher = more throughput but more VRAM.
+  # Reduce if OOM with many concurrent requests.
+  MAX_NUM_SEQS: "32"
+  
+  # Quantization method. Must match model format.
+  # Options: awq, gptq, squeezellm, fp8, none
+  QUANTIZATION: "awq"
+  
+  # Enable chunked prefill to handle long prompts more efficiently
+  ENABLE_CHUNKED_PREFILL: "true"
+  
+  # Enforce eager mode (disable CUDA graphs) - more stable but slightly slower
+  # Set to "true" if experiencing OOM or CUDA errors
+  ENFORCE_EAGER: "false"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vllm
+  namespace: llmapi
+  labels:
+    app: vllm
+spec:
+  serviceName: vllm
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      # CRITICAL: Required for GPU access in K3s
+      runtimeClassName: nvidia
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          ARGS="--model $(MODEL_NAME) \
+                --max-model-len $(MAX_MODEL_LEN) \
+                --gpu-memory-utilization $(GPU_MEMORY_UTILIZATION) \
+                --max-num-seqs $(MAX_NUM_SEQS) \
+                --host 0.0.0.0 \
+                --port 8000 \
+                --served-model-name qwen2.5-14b \
+                --trust-remote-code"
+          
+          # Add quantization if not 'none'
+          if [ "$(QUANTIZATION)" != "none" ]; then
+            ARGS="$ARGS --quantization $(QUANTIZATION)"
+          fi
+          
+          # Add chunked prefill if enabled
+          if [ "$(ENABLE_CHUNKED_PREFILL)" = "true" ]; then
+            ARGS="$ARGS --enable-chunked-prefill"
+          fi
+          
+          # Add enforce eager if enabled (helps with OOM)
+          if [ "$(ENFORCE_EAGER)" = "true" ]; then
+            ARGS="$ARGS --enforce-eager"
+          fi
+          
+          echo "Starting vLLM with: $ARGS"
+          exec python -m vllm.entrypoints.openai.api_server $ARGS
+        envFrom:
+        - configMapRef:
+            name: vllm-config
+        env:
+        - name: HF_HOME
+          value: "/models"
+        - name: TRANSFORMERS_CACHE
+          value: "/models"
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+              optional: true
+        resources:
+          requests:
+            memory: "16Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "32Gi"
+            cpu: "8000m"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        - name: shm
+          mountPath: /dev/shm
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 30
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: vllm-models
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: llmapi
+spec:
+  selector:
+    app: vllm
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  clusterIP: None
+---
+# Headless service for StatefulSet DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-lb
+  namespace: llmapi
+spec:
+  selector:
+    app: vllm
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  type: ClusterIP

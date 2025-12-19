@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llmapi
+  labels:
+    app.kubernetes.io/name: llmapi
+    app.kubernetes.io/component: ai-inference
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: llmapi-quota
+  namespace: llmapi
+spec:
+  hard:
+    requests.cpu: "32"
+    requests.memory: 256Gi
+    limits.cpu: "64"
+    limits.memory: 300Gi
+    requests.nvidia.com/gpu: "4"

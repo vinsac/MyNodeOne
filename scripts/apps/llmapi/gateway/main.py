@@ -170,9 +170,9 @@ class ModelRegistry:
         self.cached_models = {}
         for model in models:
             name = model.get("name") or model.get("model", "")
-            # Normalize model name (remove :latest suffix)
-            if ":" in name:
-                name = name.split(":")[0]
+            # Only remove :latest suffix (keep other tags like :1b, :7b, etc.)
+            if name.endswith(":latest"):
+                name = name[:-7]
             self.cached_models[name] = {
                 "backend": "ollama",
                 "size": model.get("size"),
@@ -507,7 +507,10 @@ class BackendManager:
             if ps_resp.status_code == 200:
                 ps_data = ps_resp.json()
                 for model in ps_data.get("models", []):
-                    model_name = model.get("name", "").split(":")[0]
+                    model_name = model.get("name", "")
+                    # Only strip :latest suffix, keep other tags
+                    if model_name.endswith(":latest"):
+                        model_name = model_name[:-7]
                     if model_name:
                         model_registry.register_model(model_name, "ollama", "ready", model)
                         logger.info(f"Discovered loaded Ollama model: {model_name}")

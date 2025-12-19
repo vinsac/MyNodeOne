@@ -247,6 +247,24 @@ read -p "Requests per minute [default: 60]: " DEFAULT_RPM
 DEFAULT_RPM="${DEFAULT_RPM:-60}"
 echo ""
 
+# HuggingFace Token (optional but recommended for faster downloads)
+HF_TOKEN=""
+if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ] || [ "$DEPLOY_MODE" = "3" ]; then
+    echo "🔑 HuggingFace Token (recommended for faster model downloads):"
+    echo ""
+    echo "   A HuggingFace token removes rate limits and enables gated models."
+    echo "   Get a free token at: https://huggingface.co/settings/tokens"
+    echo "   (Leave empty to skip - downloads will be slower)"
+    echo ""
+    read -p "Enter HuggingFace token [optional]: " HF_TOKEN
+    if [ -n "$HF_TOKEN" ]; then
+        echo -e "   ${GREEN}✓ Token provided - downloads will be faster${NC}"
+    else
+        echo -e "   ${YELLOW}⚠ No token - downloads may be rate-limited${NC}"
+    fi
+    echo ""
+fi
+
 # Confirm
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  Deployment Summary${NC}"
@@ -460,6 +478,30 @@ EOF
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
     echo "🚀 Deploying vLLM (GPU backend)..."
     
+    # Create HuggingFace token secret if provided
+    if [ -n "$HF_TOKEN" ]; then
+        echo "   Creating HuggingFace token secret..."
+        kubectl create secret generic hf-token -n $NAMESPACE \
+            --from-literal=token="$HF_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+    fi
+    
+    # Pre-pull vLLM image to avoid Docker Hub rate limits during deployment
+    VLLM_IMAGE="vllm/vllm-openai:v0.6.6.post1"
+    echo "   📥 Pre-pulling vLLM image (this may take a few minutes)..."
+    echo "      Image: $VLLM_IMAGE"
+    
+    # Try to pull image via containerd (K3s uses containerd)
+    if command -v ctr &> /dev/null; then
+        if sudo ctr -n k8s.io image pull "docker.io/$VLLM_IMAGE" 2>/dev/null; then
+            echo -e "   ${GREEN}✓ vLLM image pulled successfully${NC}"
+        else
+            echo -e "   ${YELLOW}⚠ Image pre-pull failed - will retry during deployment${NC}"
+        fi
+    else
+        echo "   ⏳ Image will be pulled during deployment..."
+    fi
+    
     # Update vLLM config with selected model
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -487,6 +529,13 @@ fi
 # Deploy llama.cpp if mode requires it
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🧠 Deploying llama.cpp (CPU backend)..."
+    
+    # Create HuggingFace token secret if provided and not already created
+    if [ -n "$HF_TOKEN" ]; then
+        kubectl create secret generic hf-token -n $NAMESPACE \
+            --from-literal=token="$HF_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+    fi
     
     # Update llama.cpp config with selected model
     cat <<EOF | kubectl apply -f -

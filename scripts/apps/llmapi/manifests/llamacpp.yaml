@@ -92,11 +92,24 @@ spec:
           MODEL_PATH="/models/${MODEL_FILE}"
           if [ ! -f "$MODEL_PATH" ]; then
             echo "Downloading model from ${MODEL_URL}..."
-            curl -L -o "$MODEL_PATH" "${MODEL_URL}"
+            # Use HuggingFace token if available for faster downloads
+            if [ -n "${HF_TOKEN:-}" ]; then
+              echo "Using HuggingFace token for authenticated download..."
+              curl -L -H "Authorization: Bearer ${HF_TOKEN}" -o "$MODEL_PATH" "${MODEL_URL}"
+            else
+              curl -L -o "$MODEL_PATH" "${MODEL_URL}"
+            fi
             echo "Download complete."
           else
             echo "Model already exists at $MODEL_PATH"
           fi
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+              optional: true
         envFrom:
         - configMapRef:
             name: llamacpp-config

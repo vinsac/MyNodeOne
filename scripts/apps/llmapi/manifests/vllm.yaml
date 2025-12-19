@@ -71,7 +71,7 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
       - name: vllm
-        image: vllm/vllm-openai:latest
+        image: vllm/vllm-openai:v0.6.6.post1
         ports:
         - containerPort: 8000
           name: http

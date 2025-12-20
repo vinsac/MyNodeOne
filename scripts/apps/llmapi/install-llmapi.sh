@@ -176,14 +176,136 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
     if [[ -z "$PRE_DOWNLOADED_VLLM" ]] && [[ -z "$PRE_DOWNLOADED_LLAMACPP" ]] && [[ -z "$PRE_DOWNLOADED_EMBEDDING" ]]; then
         echo -e "   ${YELLOW}No pre-downloaded models found${NC}"
         echo ""
-        echo -e "   ${BLUE}Tip: Pre-download models for faster installation:${NC}"
-        echo "   sudo $SCRIPT_DIR/download-models.sh"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}⚠️  Models Not Pre-Downloaded${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "LLM models are large (10-50GB) and downloading them during"
+        echo "installation can be slow and may cause pod timeouts."
+        echo ""
+        echo "Pre-downloading is recommended because:"
+        echo "  • Uses aria2c with 16 parallel connections (5-10x faster)"
+        echo "  • Models persist in /var/lib/llmapi/models/ across reinstalls"
+        echo "  • Can resume interrupted downloads"
+        echo ""
+        echo "Options:"
+        echo "  1) Download models now (recommended)"
+        echo "  2) Continue without pre-downloading (slower, may timeout)"
+        echo "  3) Exit and download manually"
+        echo ""
+        read -p "Choose an option [1/2/3]: " download_choice
+        case "$download_choice" in
+            1)
+                echo ""
+                echo "🚀 Launching model download manager..."
+                echo ""
+                "$SCRIPT_DIR/download-models.sh"
+                # Re-check for downloaded models
+                if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
+                    for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
+                        [[ -d "$model_dir" ]] && PRE_DOWNLOADED_VLLM="$model_dir"
+                    done
+                fi
+                if [[ -d "$PRE_DOWNLOAD_DIR/llamacpp" ]]; then
+                    for gguf_file in "$PRE_DOWNLOAD_DIR/llamacpp"/*.gguf; do
+                        [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_LLAMACPP="$gguf_file"
+                    done
+                fi
+                if [[ -d "$PRE_DOWNLOAD_DIR/embedding" ]]; then
+                    for gguf_file in "$PRE_DOWNLOAD_DIR/embedding"/*.gguf; do
+                        [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_EMBEDDING="$gguf_file"
+                    done
+                fi
+                echo ""
+                echo "Continuing with installation..."
+                ;;
+            2)
+                echo ""
+                echo -e "${YELLOW}⚠️  Continuing without pre-downloaded models.${NC}"
+                echo "   Models will be downloaded by pods during startup (slower)."
+                echo ""
+                ;;
+            3)
+                echo ""
+                echo "To download models manually, run:"
+                echo "  sudo $SCRIPT_DIR/download-models.sh"
+                echo ""
+                echo "Then re-run this installation script."
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Invalid option. Exiting.${NC}"
+                exit 1
+                ;;
+        esac
     fi
     echo ""
 else
     echo ""
-    echo -e "${BLUE}💡 Tip: Pre-download models for faster installation:${NC}"
-    echo "   sudo $SCRIPT_DIR/download-models.sh"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}⚠️  Models Not Pre-Downloaded${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "LLM models are large (10-50GB) and downloading them during"
+    echo "installation can be slow and may cause pod timeouts."
+    echo ""
+    echo "Pre-downloading is recommended because:"
+    echo "  • Uses aria2c with 16 parallel connections (5-10x faster)"
+    echo "  • Models persist in /var/lib/llmapi/models/ across reinstalls"
+    echo "  • Can resume interrupted downloads"
+    echo ""
+    echo "Options:"
+    echo "  1) Download models now (recommended)"
+    echo "  2) Continue without pre-downloading (slower, may timeout)"
+    echo "  3) Exit and download manually"
+    echo ""
+    read -p "Choose an option [1/2/3]: " download_choice
+    case "$download_choice" in
+        1)
+            echo ""
+            echo "🚀 Launching model download manager..."
+            echo ""
+            # Create the directory first
+            sudo mkdir -p "$PRE_DOWNLOAD_DIR"
+            "$SCRIPT_DIR/download-models.sh"
+            # Re-check for downloaded models
+            if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
+                for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
+                    [[ -d "$model_dir" ]] && PRE_DOWNLOADED_VLLM="$model_dir"
+                done
+            fi
+            if [[ -d "$PRE_DOWNLOAD_DIR/llamacpp" ]]; then
+                for gguf_file in "$PRE_DOWNLOAD_DIR/llamacpp"/*.gguf; do
+                    [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_LLAMACPP="$gguf_file"
+                done
+            fi
+            if [[ -d "$PRE_DOWNLOAD_DIR/embedding" ]]; then
+                for gguf_file in "$PRE_DOWNLOAD_DIR/embedding"/*.gguf; do
+                    [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_EMBEDDING="$gguf_file"
+                done
+            fi
+            echo ""
+            echo "Continuing with installation..."
+            ;;
+        2)
+            echo ""
+            echo -e "${YELLOW}⚠️  Continuing without pre-downloaded models.${NC}"
+            echo "   Models will be downloaded by pods during startup (slower)."
+            echo ""
+            ;;
+        3)
+            echo ""
+            echo "To download models manually, run:"
+            echo "  sudo $SCRIPT_DIR/download-models.sh"
+            echo ""
+            echo "Then re-run this installation script."
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid option. Exiting.${NC}"
+            exit 1
+            ;;
+    esac
     echo ""
 fi
 

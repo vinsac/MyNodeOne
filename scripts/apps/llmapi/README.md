@@ -15,8 +15,28 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 
 ## Quick Start
 
+### Step 1: Pre-Download Models (Recommended)
+
+Large language models can be 10-50GB. Pre-downloading them ensures faster installation and avoids pod timeouts:
+
 ```bash
-# Install the LLM API service
+# Download all recommended models (vLLM, llama.cpp, embedding)
+sudo ./scripts/apps/llmapi/download-models.sh --model all
+
+# Or download specific models interactively
+sudo ./scripts/apps/llmapi/download-models.sh
+```
+
+**Why pre-download?**
+- Downloads use aria2c with 16 parallel connections (5-10x faster)
+- Models are persisted in `/var/lib/llmapi/models/` and survive reinstalls
+- Avoids Kubernetes pod timeouts during slow downloads
+- Can resume interrupted downloads
+
+### Step 2: Install the Service
+
+```bash
+# Install the LLM API service (will use pre-downloaded models if available)
 sudo ./scripts/apps/llmapi/install-llmapi.sh
 
 # Create an API key

@@ -25,6 +25,14 @@ NC='\033[0m'
 POST_INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$POST_INSTALL_DIR")")")"
 
+# Get configured domains from cluster
+CONFIGURED_DOMAINS=""
+if command -v kubectl &> /dev/null; then
+    CONFIGURED_DOMAINS=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+        jq -r '.domains | keys[]' 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+fi
+
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  Public Access Configuration${NC}"
@@ -34,12 +42,16 @@ echo "Would you like to make ${APP_NAME} accessible from the internet?"
 echo ""
 echo -e "  ${GREEN}Public access enables:${NC}"
 echo "  • Access from any device on any network"
-echo "  • Share with friends and family"
 echo "  • Use from mobile devices outside your home"
 echo ""
-echo -e "  ${YELLOW}Requirements for public access:${NC}"
-echo "  • A domain name configured with Cloudflare"
-echo "  • Cloudflare tunnel or similar ingress configured"
+
+if [ -n "$CONFIGURED_DOMAINS" ]; then
+    echo -e "  ${GREEN}Your configured domain(s):${NC} $CONFIGURED_DOMAINS"
+    echo "  Public URL will be: ${APP_SUBDOMAIN}.${CONFIGURED_DOMAINS%%,*}"
+else
+    echo -e "  ${YELLOW}No public domains configured yet.${NC}"
+    echo "  Run: sudo $PROJECT_ROOT/scripts/add-domain.sh"
+fi
 echo ""
 echo "  You can change this later by running:"
 echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"

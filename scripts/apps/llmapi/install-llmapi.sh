@@ -108,6 +108,71 @@ fi
 echo ""
 
 # =============================================================================
+# Check for Existing Installation and Cached Models
+# =============================================================================
+
+EXISTING_INSTALL=false
+CACHED_MODELS=""
+
+if kubectl get namespace llmapi &>/dev/null; then
+    EXISTING_INSTALL=true
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  Existing Installation Detected${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Check for cached models in PVCs
+    echo "📦 Checking for cached models..."
+    
+    # Check vLLM models
+    VLLM_MODEL_CACHED=$(kubectl exec -n llmapi statefulset/vllm -- ls -la /models 2>/dev/null | grep -v "^total" | head -5 || echo "")
+    if [ -n "$VLLM_MODEL_CACHED" ]; then
+        echo -e "   ${GREEN}✓ vLLM models cached${NC}"
+        CACHED_MODELS="vllm"
+    fi
+    
+    # Check llama.cpp models  
+    LLAMACPP_MODEL_CACHED=$(kubectl exec -n llmapi deploy/llamacpp -c llamacpp -- ls -la /models 2>/dev/null | grep "\.gguf" | head -3 || echo "")
+    if [ -n "$LLAMACPP_MODEL_CACHED" ]; then
+        echo -e "   ${GREEN}✓ llama.cpp GGUF models cached${NC}"
+        CACHED_MODELS="${CACHED_MODELS} llamacpp"
+    fi
+    
+    # Check Ollama models
+    OLLAMA_MODELS=$(kubectl exec -n llmapi deploy/ollama -- du -sh /root/.ollama/models 2>/dev/null | cut -f1 || echo "0")
+    if [ "$OLLAMA_MODELS" != "0" ] && [ -n "$OLLAMA_MODELS" ]; then
+        echo -e "   ${GREEN}✓ Ollama models cached (~${OLLAMA_MODELS})${NC}"
+        CACHED_MODELS="${CACHED_MODELS} ollama"
+    fi
+    
+    echo ""
+    echo "Options:"
+    echo "  1. Upgrade/Reconfigure (keeps cached models)"
+    echo "  2. Fresh install (deletes everything including models)"
+    echo "  3. Cancel"
+    echo ""
+    read -p "Choose option [1-3, default: 1]: " INSTALL_OPTION
+    INSTALL_OPTION="${INSTALL_OPTION:-1}"
+    
+    case "$INSTALL_OPTION" in
+        1)
+            echo -e "   ${GREEN}✓ Keeping cached models${NC}"
+            ;;
+        2)
+            echo -e "   ${YELLOW}⚠ Deleting namespace and all data...${NC}"
+            kubectl delete namespace llmapi --timeout=120s 2>/dev/null || true
+            EXISTING_INSTALL=false
+            CACHED_MODELS=""
+            ;;
+        3)
+            echo "Installation cancelled."
+            exit 0
+            ;;
+    esac
+    echo ""
+fi
+
+# =============================================================================
 # Configuration
 # =============================================================================
 

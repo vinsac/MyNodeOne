@@ -183,26 +183,8 @@ make_public() {
         fi
     fi
     
-    # Trigger sync - use push-force to ensure immediate SSH sync for VPS nodes
-    # This bypasses V2 node agent check because we need immediate route generation
-    # (Node agents poll every 60s which is too slow for interactive use)
-    log_info "Pushing configuration to VPS nodes..."
-    if ! retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push-force"; then
-        log_error "Failed to push configuration to VPS after 3 attempts"
-        echo ""
-        echo "Troubleshooting:"
-        echo "  1. Check VPS is reachable via Tailscale"
-        echo "  2. Verify SSH access: ssh <user>@<vps-ip>"
-        echo "  3. Check sync-controller logs above for errors"
-        echo "  4. Manually sync: sudo ./scripts/lib/sync-controller.sh push"
-        echo ""
-        return 1
-    fi
-    
-    log_success "Configuration pushed successfully"
-    
     # Verify configuration in ConfigMap
-    sleep 2
+    sleep 1
     local is_public=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
         jq -r ".[\"$service_name\"].public" || echo "false")
@@ -220,38 +202,78 @@ make_public() {
         jq -r ".[\"$service_name\"]")
     local subdomain=$(echo "$service_info" | jq -r '.subdomain')
     
-    # Verify routes on VPS nodes
+    # Wait for Node Agent to sync routes to VPS nodes
+    # Node Agents poll every 60s, Config API updates every 30s
+    # Total max wait: ~90s, but usually faster
     if [ -n "$vps_nodes" ]; then
+        log_info "Waiting for Node Agent to sync routes to VPS nodes..."
+        echo "  (Node Agents poll every 60s - this may take up to 90 seconds)"
+        echo ""
+        
+        local max_wait=120  # 2 minutes max
+        local poll_interval=10
+        local elapsed=0
+        local all_synced=false
+        
+        IFS=',' read -ra VPS_ARRAY <<< "$vps_nodes"
+        
+        while [ $elapsed -lt $max_wait ]; do
+            all_synced=true
+            
+            for vps_ip in "${VPS_ARRAY[@]}"; do
+                vps_ip=$(echo "$vps_ip" | xargs)
+                
+                # Get VPS SSH user from registry
+                local vps_user=$(kubectl get configmap -n kube-system sync-controller-registry \
+                    -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
+                    jq -r ".vps_nodes[] | select(.ip==\"$vps_ip\") | .ssh_user" || echo "root")
+                
+                # Check if routes file contains our service
+                local route_check="test -f ~/traefik/config/mynodeone-routes.yml && (grep -q '$subdomain:' ~/traefik/config/mynodeone-routes.yml || grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml)"
+                
+                if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
+                    all_synced=false
+                    break
+                fi
+            done
+            
+            if [ "$all_synced" = true ]; then
+                break
+            fi
+            
+            echo "  Waiting for sync... (${elapsed}s/${max_wait}s)"
+            sleep $poll_interval
+            elapsed=$((elapsed + poll_interval))
+        done
+        
+        # Verify final state
         log_info "Verifying routes on VPS nodes..."
         local verification_failed=false
         
-        IFS=',' read -ra VPS_ARRAY <<< "$vps_nodes"
         for vps_ip in "${VPS_ARRAY[@]}"; do
-            vps_ip=$(echo "$vps_ip" | xargs)  # Trim whitespace
+            vps_ip=$(echo "$vps_ip" | xargs)
             
-            # Get VPS SSH user from registry
             local vps_user=$(kubectl get configmap -n kube-system sync-controller-registry \
                 -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
                 jq -r ".vps_nodes[] | select(.ip==\"$vps_ip\") | .ssh_user" || echo "root")
             
             log_info "Checking VPS: $vps_ip (user: $vps_user)..."
             
-            # Check if routes file exists and contains our service
-            # Routes use subdomain as the key in YAML (e.g., "photos:" or "@:" for root domain)
-            # We check for both:
-            #   1. subdomain with colon (primary check - matches YAML key)
-            #   2. service name (fallback - for edge cases)
-            # This handles:
-            #   - Custom subdomains (immich service -> photos subdomain)
-            #   - Root domain services (subdomain = "@")
-            #   - Services without explicit subdomain (uses service name)
             local route_check="test -f ~/traefik/config/mynodeone-routes.yml && (grep -q '$subdomain:' ~/traefik/config/mynodeone-routes.yml || grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml)"
             
             if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
-                log_success "  ✓ Routes file contains service (subdomain: $subdomain)"
+                log_success "  ✓ Routes synced via Node Agent (subdomain: $subdomain)"
             else
-                log_error "  ✗ Routes file missing or doesn't contain service (subdomain: $subdomain)"
-                verification_failed=true
+                log_warn "  ⚠ Node Agent sync pending - falling back to SSH sync..."
+                
+                # Fallback: Force SSH sync for this VPS
+                if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
+                    "cd ~/mynodeone && sudo ./scripts/sync-vps-routes.sh" 2>/dev/null; then
+                    log_success "  ✓ SSH sync completed"
+                else
+                    log_error "  ✗ SSH sync also failed"
+                    verification_failed=true
+                fi
             fi
             
             # Check if Traefik is running
@@ -268,9 +290,9 @@ make_public() {
             log_error "VPS verification failed - routes may not be accessible"
             echo ""
             echo "Troubleshooting:"
-            echo "  1. SSH to VPS and check: docker logs traefik --tail 50"
-            echo "  2. Verify routes file: cat ~/traefik/config/mynodeone-routes.yml"
-            echo "  3. Manually sync: ssh <user>@<vps-ip> 'cd ~/mynodeone && sudo ./scripts/sync-vps-routes.sh'"
+            echo "  1. Check Node Agent status: ssh <user>@<vps-ip> 'systemctl status mynodeone-agent'"
+            echo "  2. Check Traefik logs: ssh <user>@<vps-ip> 'docker logs traefik --tail 50'"
+            echo "  3. Verify routes file: ssh <user>@<vps-ip> 'cat ~/traefik/config/mynodeone-routes.yml'"
             echo ""
             return 1
         fi
@@ -363,13 +385,11 @@ make_private() {
         log_warn "Could not update routing (may not have been configured)"
     fi
     
-    # Trigger sync - use push-force for immediate route removal on VPS
-    log_info "Pushing configuration to VPS nodes..."
-    if retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push-force"; then
-        log_success "Configuration pushed successfully"
-    else
-        log_warn "Sync failed, but you can manually sync later"
-    fi
+    # Wait for Node Agent to remove routes from VPS nodes
+    # Node Agents poll every 60s - route removal will happen on next sync
+    log_info "Waiting for Node Agent to update VPS routes..."
+    echo "  (Routes will be removed on next Node Agent sync cycle)"
+    sleep 5  # Brief wait - we don't need to wait for full sync for private
     
     # Verify
     sleep 2

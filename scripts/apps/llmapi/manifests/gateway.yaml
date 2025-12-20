@@ -19,6 +19,11 @@ data:
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
   AUTO_DOWNLOAD: "false"
+  # Overflow settings: route from GPU to CPU when overloaded
+  # Format: "vllm_model:llamacpp_model" (comma-separated for multiple)
+  # Example: "qwen2.5-14b:qwen2.5-14b-cpu" routes overflow to CPU version
+  OVERFLOW_MODELS: ""
+  OVERFLOW_THRESHOLD: "8"
   # Admin password (change this!)
   ADMIN_PASSWORD: "admin"
 ---

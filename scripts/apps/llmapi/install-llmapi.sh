@@ -507,15 +507,19 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "  2. Llama-3.1-70B (Q5_K_M) - ~55GB RAM, higher quality"
     echo "  3. Mixtral-8x7B (Q4_K_M)  - ~30GB RAM, fast MoE architecture"
     echo ""
+    echo "  Medium Models (good balance):"
+    echo "  4. Qwen2.5-14B (Q4_K_M)   - ~10GB RAM, same as GPU model (overflow capacity)"
+    echo "  5. Qwen2.5-14B (Q8_0)     - ~16GB RAM, higher quality version"
+    echo ""
     echo "  Smaller Models (faster, lower RAM):"
-    echo "  4. Llama-3.1-8B (Q8)      - ~10GB RAM, fast and good quality"
+    echo "  6. Llama-3.1-8B (Q8)      - ~10GB RAM, fast and good quality"
     echo ""
     echo "  Custom Model:"
-    echo "  5. Enter your own GGUF URL from HuggingFace"
+    echo "  7. Enter your own GGUF URL from HuggingFace"
     echo ""
     echo -e "  ${BLUE}Browse GGUF models: https://huggingface.co/models?library=gguf${NC}"
     echo ""
-    read -p "Choose model [1-5, default: 1]: " CPU_MODEL_CHOICE
+    read -p "Choose model [1-7, default: 1]: " CPU_MODEL_CHOICE
     CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-1}"
     
     case "$CPU_MODEL_CHOICE" in
@@ -532,10 +536,20 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
             LLAMACPP_MODEL_FILE="mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
             ;;
         4)
+            # Qwen2.5-14B Q4 - same model as GPU vLLM, provides overflow capacity
+            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
+            LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
+            ;;
+        5)
+            # Qwen2.5-14B Q8 - higher quality version
+            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q8_0.gguf"
+            LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q8_0.gguf"
+            ;;
+        6)
             LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
             LLAMACPP_MODEL_FILE="Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
             ;;
-        5)
+        7)
             echo ""
             echo "  Enter the full URL to the GGUF file"
             echo "  Example: https://huggingface.co/TheBloke/Llama-2-13B-GGUF/resolve/main/llama-2-13b.Q4_K_M.gguf"
@@ -557,6 +571,25 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
             ;;
     esac
     echo ""
+fi
+
+# Determine llama.cpp model name for API (derive from filename)
+LLAMACPP_MODEL_NAME=""
+if [ -n "$LLAMACPP_MODEL_FILE" ]; then
+    # Convert filename to API-friendly name: lowercase, remove .gguf, replace special chars
+    LLAMACPP_MODEL_NAME=$(echo "$LLAMACPP_MODEL_FILE" | sed 's/\.gguf$//' | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+fi
+
+# Check if same model family is used for GPU and CPU (enables overflow)
+OVERFLOW_MODELS=""
+if [ "$DEPLOY_MODE" = "1" ] && [ "$GPU_AVAILABLE" = true ]; then
+    # Check if both are Qwen2.5-14B variants
+    if [[ "$VLLM_MODEL_NAME" == "qwen2.5-14b" ]] && [[ "$LLAMACPP_MODEL_FILE" == *"qwen2.5-14b"* ]]; then
+        OVERFLOW_MODELS="${VLLM_MODEL_NAME}:${LLAMACPP_MODEL_NAME}"
+        echo -e "${GREEN}✓ Overflow enabled: ${VLLM_MODEL_NAME} → ${LLAMACPP_MODEL_NAME}${NC}"
+        echo "   When GPU is overloaded, requests will automatically route to CPU"
+        echo ""
+    fi
 fi
 
 # Default quotas
@@ -765,7 +798,7 @@ data:
   VLLM_URLS: "http://vllm-0.vllm:8000"
   LLAMACPP_URL: "http://llamacpp:8080"
   EMBEDDING_URL: "http://embedding:8080"
-  LLAMACPP_MODEL_NAME: "${LLAMACPP_MODEL_API_NAME:-llama-cpu}"
+  LLAMACPP_MODEL_NAME: "${LLAMACPP_MODEL_NAME:-llama-cpu}"
   EMBEDDING_MODEL_NAME: "embedding"
   DEFAULT_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
   DEFAULT_TOKENS_PER_DAY: "$DEFAULT_TOKENS"
@@ -773,6 +806,9 @@ data:
   OLLAMA_URL: "http://ollama:11434"
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
+  # Overflow: route from GPU to CPU when overloaded (empty = disabled)
+  OVERFLOW_MODELS: "${OVERFLOW_MODELS}"
+  OVERFLOW_THRESHOLD: "8"
 EOF
 
 # Create ConfigMap with gateway Python code

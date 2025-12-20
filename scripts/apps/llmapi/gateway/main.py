@@ -69,6 +69,12 @@ class Config:
     LAZY_LOAD_BACKEND = os.getenv("LAZY_LOAD_BACKEND", "ollama")
     AUTO_DOWNLOAD = os.getenv("AUTO_DOWNLOAD", "false").lower() == "true"
     
+    # Overflow settings: when vLLM is overloaded, route to llama.cpp if same model is available
+    # Format: "vllm_model:llamacpp_model" pairs (comma-separated)
+    # Example: "qwen2.5-14b:qwen2.5-14b-cpu" means requests for qwen2.5-14b can overflow to qwen2.5-14b-cpu
+    OVERFLOW_MODELS = os.getenv("OVERFLOW_MODELS", "")  # e.g., "qwen2.5-14b:qwen2.5-14b-cpu"
+    OVERFLOW_THRESHOLD = int(os.getenv("OVERFLOW_THRESHOLD", "8"))  # Max inflight requests before overflow
+    
     # Model name aliases (map OpenAI names to our internal names)
     MODEL_ALIASES = {
         "gpt-4": "default",
@@ -445,7 +451,7 @@ class BackendManager:
             await self.http_client.aclose()
     
     def get_backend_url(self, model: str) -> tuple[str, str]:
-        """Get backend URL for a model."""
+        """Get backend URL for a model, with overflow support."""
         model_info = model_registry.get_model(model)
         if not model_info:
             return None, None
@@ -456,13 +462,33 @@ class BackendManager:
             # Load balance across vLLM instances
             min_inflight = float("inf")
             best_url = config.VLLM_URLS[0] if config.VLLM_URLS else None
+            total_vllm_inflight = 0
+            
             for url in config.VLLM_URLS:
                 key = f"vllm:{url}"
                 if self.backend_health.get(key, False):
                     inflight = self.backend_inflight.get(key, 0)
+                    total_vllm_inflight += inflight
                     if inflight < min_inflight:
                         min_inflight = inflight
                         best_url = url
+            
+            # Check if we should overflow to llama.cpp
+            if config.OVERFLOW_MODELS and total_vllm_inflight >= config.OVERFLOW_THRESHOLD:
+                overflow_map = self._parse_overflow_models()
+                if model in overflow_map:
+                    overflow_model = overflow_map[model]
+                    # Check if overflow model is available on llama.cpp
+                    overflow_info = model_registry.get_model(overflow_model)
+                    if overflow_info and overflow_info.get("backend") == "llamacpp":
+                        llamacpp_key = f"llamacpp:{config.LLAMACPP_URL}"
+                        if self.backend_health.get(llamacpp_key, False):
+                            llamacpp_inflight = self.backend_inflight.get(llamacpp_key, 0)
+                            # Only overflow if llama.cpp has capacity
+                            if llamacpp_inflight < config.OVERFLOW_THRESHOLD:
+                                logger.info(f"Overflow: routing {model} to llama.cpp ({overflow_model}), vLLM inflight={total_vllm_inflight}")
+                                return "llamacpp", config.LLAMACPP_URL
+            
             return "vllm", best_url
         elif backend_type == "llamacpp":
             return "llamacpp", config.LLAMACPP_URL
@@ -472,6 +498,17 @@ class BackendManager:
             return "embedding", config.EMBEDDING_URL
         else:
             return None, None
+    
+    def _parse_overflow_models(self) -> dict[str, str]:
+        """Parse OVERFLOW_MODELS config into a dict mapping vllm_model -> llamacpp_model."""
+        overflow_map = {}
+        if config.OVERFLOW_MODELS:
+            for pair in config.OVERFLOW_MODELS.split(","):
+                pair = pair.strip()
+                if ":" in pair:
+                    vllm_model, llamacpp_model = pair.split(":", 1)
+                    overflow_map[vllm_model.strip()] = llamacpp_model.strip()
+        return overflow_map
     
     async def discover_models(self):
         """Query backends to discover loaded models."""

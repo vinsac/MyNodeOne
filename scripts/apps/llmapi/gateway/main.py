@@ -755,7 +755,7 @@ app.add_middleware(
 # Endpoints
 # =============================================================================
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     """Root endpoint - returns 200 OK for health checks and public access verification."""
     return {"status": "ok", "service": "llmapi", "version": "1.0.0"}

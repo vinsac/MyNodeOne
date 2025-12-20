@@ -439,25 +439,32 @@ PYEOF
     else
         log_warn "huggingface_hub not installed. Installing..."
         
-        # Try pip3 first, then python3 -m pip
-        # Use --break-system-packages for Ubuntu 24.04+ (PEP 668)
+        local pip_installed=false
+        
+        # Try pip3 with --break-system-packages (required for Ubuntu 24.04+)
         if command -v pip3 &>/dev/null; then
-            if ! pip3 install --quiet --user huggingface_hub hf_transfer 2>/dev/null; then
-                # Ubuntu 24.04+ requires --break-system-packages
-                pip3 install --quiet --break-system-packages huggingface_hub hf_transfer 2>/dev/null || {
-                    log_error "Failed to install huggingface_hub. Try: sudo apt install python3-pip"
-                    return 1
-                }
+            log_info "Installing via pip3..."
+            if pip3 install --break-system-packages huggingface_hub hf_transfer 2>&1 | tail -5; then
+                pip_installed=true
             fi
-        elif command -v python3 &>/dev/null; then
-            python3 -m pip install --quiet --break-system-packages huggingface_hub hf_transfer 2>/dev/null || {
-                log_error "Failed to install huggingface_hub"
-                return 1
-            }
-        else
-            log_error "Python3/pip3 not found. Please install: sudo apt install python3-pip"
+        fi
+        
+        # Fallback: try python3 -m pip
+        if [[ "$pip_installed" != "true" ]] && command -v python3 &>/dev/null; then
+            log_info "Trying python3 -m pip..."
+            if python3 -m pip install --break-system-packages huggingface_hub hf_transfer 2>&1 | tail -5; then
+                pip_installed=true
+            fi
+        fi
+        
+        # Verify installation
+        if ! python3 -c "import huggingface_hub" 2>/dev/null; then
+            log_error "Failed to install huggingface_hub"
+            log_info "Try manually: sudo pip3 install --break-system-packages huggingface_hub"
             return 1
         fi
+        
+        log_success "huggingface_hub installed successfully"
         
         # Retry with installed package
         download_hf_model "$repo_id" "$output_dir" "$source"

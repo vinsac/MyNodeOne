@@ -142,19 +142,22 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
         for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
             if [[ -d "$model_dir" ]]; then
                 model_name=$(basename "$model_dir")
-                # Check for actual model files (safetensors)
-                if find "$model_dir" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
-                    # Calculate size properly (may need to traverse as original user)
-                    model_size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
-                    # Fallback: sum up safetensors files
-                    if [[ "$model_size" == "4.0K" ]] || [[ "$model_size" == "0" ]]; then
-                        model_bytes=$(find "$model_dir" -name "*.safetensors" -exec stat -c%s {} + 2>/dev/null | awk '{s+=$1}END{print s}')
+                # Check for actual model files (safetensors) - search recursively
+                safetensors_count=$(find "$model_dir" -name "*.safetensors" -type f 2>/dev/null | wc -l)
+                if [[ "$safetensors_count" -gt 0 ]]; then
+                    # Calculate size by summing safetensors files
+                    model_bytes=$(find "$model_dir" -name "*.safetensors" -type f -exec stat -c%s {} + 2>/dev/null | awk '{s+=$1}END{print s}')
+                    if [[ -n "$model_bytes" ]] && [[ "$model_bytes" -gt 0 ]]; then
                         model_size=$(echo "$model_bytes" | awk '{printf "%.1fG", $1/1024/1024/1024}')
+                    else
+                        model_size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
                     fi
-                    echo -e "   ${GREEN}✓ vLLM: $model_name ($model_size)${NC}"
+                    echo -e "   ${GREEN}✓ vLLM: $model_name ($model_size, $safetensors_count files)${NC}"
                     PRE_DOWNLOADED_VLLM="$model_dir"
                 else
-                    echo -e "   ${YELLOW}⚠ vLLM: $model_name (no model weights found)${NC}"
+                    # Debug: show what's in the directory
+                    file_count=$(find "$model_dir" -type f 2>/dev/null | wc -l)
+                    echo -e "   ${YELLOW}⚠ vLLM: $model_name (no .safetensors files, has $file_count other files)${NC}"
                 fi
             fi
         done

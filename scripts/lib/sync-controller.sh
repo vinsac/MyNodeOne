@@ -351,10 +351,18 @@ push_sync_to_node() {
 }
 
 # Push sync to all registered nodes
+# Set FORCE_SSH=true to bypass V2 node agent check and force SSH sync
 push_sync_all() {
+    local force_mode="${FORCE_SSH:-false}"
+    
     log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_info "  Pushing Config Updates to All Nodes"
     log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    if [[ "$force_mode" == "true" ]]; then
+        log_info "Force mode: SSH sync for all nodes (including V2)"
+        export SKIP_V2_CHECK=true
+    fi
     
     init_node_registry
     
@@ -570,6 +578,11 @@ case "${1:-}" in
     push)
         push_sync_all
         ;;
+    push-force)
+        # Force SSH sync even for nodes with active Node Agent
+        # Use this for immediate operations like making apps public
+        FORCE_SSH=true push_sync_all
+        ;;
     watch)
         watch_and_push
         ;;
@@ -594,7 +607,11 @@ Commands:
                                 Register a node for automatic sync
                                 Types: management_laptops, vps_nodes, worker_nodes
 
-  push                          Immediately push sync to all registered nodes
+  push                          Push sync to all registered nodes
+                                (skips nodes with active Node Agent)
+
+  push-force                    Force SSH sync to ALL nodes
+                                (ignores Node Agent status - use for immediate ops)
 
   watch                         Watch for ConfigMap changes and auto-push
                                 Syncs immediately when apps are installed
@@ -613,8 +630,11 @@ Examples:
   sync-controller.sh register management_laptops 100.86.112.112 vinay-laptop vinaysachdeva
   sync-controller.sh register vps_nodes 100.68.225.92 contabo-vps root
 
-  # One-time push to all nodes
+  # One-time push to nodes without active Node Agent
   sync-controller.sh push
+
+  # Force SSH sync to all nodes (ignores Node Agent)
+  sync-controller.sh push-force
 
   # Recommended mode (watch + reconcile every 1 hour)
   sync-controller.sh daemon 1

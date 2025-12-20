@@ -183,10 +183,11 @@ make_public() {
         fi
     fi
     
-    # Trigger sync - let node agents handle it (they poll every 60s and react to config changes)
-    # SSH push is only used for nodes without active node agents
+    # Trigger sync - use push-force to ensure immediate SSH sync for VPS nodes
+    # This bypasses V2 node agent check because we need immediate route generation
+    # (Node agents poll every 60s which is too slow for interactive use)
     log_info "Pushing configuration to VPS nodes..."
-    if ! retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push"; then
+    if ! retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push-force"; then
         log_error "Failed to push configuration to VPS after 3 attempts"
         echo ""
         echo "Troubleshooting:"
@@ -362,9 +363,9 @@ make_private() {
         log_warn "Could not update routing (may not have been configured)"
     fi
     
-    # Trigger sync
+    # Trigger sync - use push-force for immediate route removal on VPS
     log_info "Pushing configuration to VPS nodes..."
-    if retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push"; then
+    if retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push-force"; then
         log_success "Configuration pushed successfully"
     else
         log_warn "Sync failed, but you can manually sync later"

@@ -61,46 +61,15 @@ read -p "Make ${APP_NAME} publicly accessible? [y/N]: " MAKE_PUBLIC
 
 if [[ "${MAKE_PUBLIC,,}" == "y" || "${MAKE_PUBLIC,,}" == "yes" ]]; then
     echo ""
-    echo "🌐 Configuring public access..."
     
     if [[ -f "$PROJECT_ROOT/scripts/manage-app-visibility.sh" ]]; then
-        # Get domains and VPS nodes from cluster config
-        DOMAINS=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-            jq -r '.domains | keys | join(",")' 2>/dev/null || echo "")
+        echo "Launching interactive public access configuration..."
+        echo "You'll be able to select which domains and VPS nodes to use."
+        echo ""
         
-        VPS_NODES=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-            jq -r '.vps_nodes[].tailscale_ip' 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
-        
-        if [ -z "$DOMAINS" ] || [ -z "$VPS_NODES" ]; then
-            echo -e "${YELLOW}⚠️  No domains or VPS nodes configured yet.${NC}"
-            echo "Run the full interactive setup:"
-            echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
-            echo ""
-        else
-            echo "  Using domain(s): $DOMAINS"
-            echo "  Using VPS node(s): $VPS_NODES"
-            echo ""
-            
-            # Run visibility manager with full config
-            sudo bash "$PROJECT_ROOT/scripts/manage-app-visibility.sh" public "$APP_NAME" "$DOMAINS" "$VPS_NODES"
-            
-            if [[ $? -eq 0 ]]; then
-                echo -e "${GREEN}✓ Public access configured!${NC}"
-                echo ""
-                # Show actual URLs
-                FIRST_DOMAIN="${DOMAINS%%,*}"
-                echo "Your app is now available at:"
-                echo -e "  ${GREEN}• https://${APP_SUBDOMAIN}.${FIRST_DOMAIN}${NC}"
-                echo ""
-                echo "Note: SSL certificate may take 30-60 seconds to be issued."
-            else
-                echo -e "${YELLOW}⚠️  Could not configure public access automatically.${NC}"
-                echo "Run the interactive mode to troubleshoot:"
-                echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
-            fi
-        fi
+        # Run in full interactive mode so user can choose domains and VPS nodes
+        # This handles multiple domains/VPS gracefully
+        sudo bash "$PROJECT_ROOT/scripts/manage-app-visibility.sh"
     else
         echo -e "${YELLOW}⚠️  manage-app-visibility.sh not found${NC}"
         echo "Public access will need to be configured manually."

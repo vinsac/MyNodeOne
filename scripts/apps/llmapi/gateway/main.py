@@ -1162,14 +1162,27 @@ ADMIN_HTML = """
         <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
             <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
                 <i data-lucide="boxes" class="w-5 h-5 text-purple-400"></i>
-                Models
+                Model Management
             </h2>
             
-            <!-- Download Model Form -->
-            <div class="bg-gray-700 rounded-lg p-4 mb-4">
-                <h3 class="font-medium mb-3">Download New Model</h3>
+            <!-- Section: Ollama (Flexible) -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-purple-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-purple-400"></i>
+                        Ollama (Flexible Backend)
+                    </h3>
+                    <a href="https://ollama.com/library" target="_blank" 
+                       class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                        Browse Models
+                    </a>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">
+                    Best for: Quick experimentation, smaller models, CPU/GPU flexible. Models are cached locally.
+                </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" id="model-name" placeholder="Model name (e.g., llama3.2, qwen2.5:7b)" 
+                    <input type="text" id="model-name" placeholder="Model name (e.g., llama3.2, qwen2.5:7b, mistral)" 
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 col-span-2">
                     <button onclick="downloadModel()" 
                             class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
@@ -1184,18 +1197,34 @@ ADMIN_HTML = """
                     <p id="download-status" class="text-xs text-gray-400 mt-1"></p>
                 </div>
                 <p class="text-xs text-gray-500 mt-2">
-                    Browse models at <a href="https://ollama.com/library" target="_blank" class="text-purple-400 hover:underline">ollama.com/library</a>
+                    Popular: <code class="bg-gray-600 px-1 rounded">llama3.2</code> 
+                    <code class="bg-gray-600 px-1 rounded">qwen2.5:7b</code>
+                    <code class="bg-gray-600 px-1 rounded">mistral</code>
+                    <code class="bg-gray-600 px-1 rounded">codellama</code>
                 </p>
             </div>
             
-            <!-- Change vLLM Model -->
-            <div class="bg-gray-700 rounded-lg p-4 mb-4">
+            <!-- Section: vLLM (GPU) -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-green-500">
                 <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-medium">Change vLLM Model (GPU)</h3>
-                    <span class="text-xs bg-red-900 text-red-300 px-2 py-1 rounded">~10-30 min downtime</span>
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-4 h-4 text-green-400"></i>
+                        vLLM (GPU - High Performance)
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs bg-red-900 text-red-300 px-2 py-1 rounded">~10-30 min to change</span>
+                        <a href="https://huggingface.co/models?other=awq" target="_blank" 
+                           class="text-xs text-green-400 hover:text-green-300 flex items-center gap-1">
+                            <i data-lucide="external-link" class="w-3 h-3"></i>
+                            Browse AWQ Models
+                        </a>
+                    </div>
                 </div>
+                <p class="text-xs text-gray-400 mb-3">
+                    Best for: Production workloads, high throughput. Uses GPU VRAM. Requires AWQ/GPTQ quantized models for 24GB VRAM.
+                </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" id="vllm-model" placeholder="HuggingFace model (e.g., Qwen/Qwen2.5-7B-Instruct-AWQ)" 
+                    <input type="text" id="vllm-model" placeholder="HuggingFace model (e.g., Qwen/Qwen2.5-14B-Instruct-AWQ)" 
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 col-span-2">
                     <button onclick="changeVllmModel()" 
                             class="bg-green-700 hover:bg-green-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
@@ -1204,21 +1233,37 @@ ADMIN_HTML = """
                     </button>
                 </div>
                 <p id="vllm-current" class="text-xs text-gray-500 mt-2">Current: Loading...</p>
+                <p class="text-xs text-gray-500 mt-1">
+                    Recommended for 24GB VRAM: 
+                    <code class="bg-gray-600 px-1 rounded">Qwen/Qwen2.5-14B-Instruct-AWQ</code>
+                    <code class="bg-gray-600 px-1 rounded">TheBloke/Llama-2-13B-chat-AWQ</code>
+                </p>
             </div>
             
-            <!-- Change llama.cpp Model -->
-            <div class="bg-gray-700 rounded-lg p-4 mb-4">
+            <!-- Section: llama.cpp (CPU) -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-blue-500">
                 <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-medium">llama.cpp (CPU) - Large Model Support</h3>
-                    <div class="flex items-center gap-2">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="hard-drive" class="w-4 h-4 text-blue-400"></i>
+                        llama.cpp (CPU - Large Models)
+                    </h3>
+                    <div class="flex items-center gap-3">
                         <span id="llamacpp-running" class="text-xs px-2 py-1 rounded bg-gray-600">Checking...</span>
                         <button onclick="toggleLlamacpp()" id="llamacpp-toggle"
                                 class="text-xs bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 transition">
                             Start/Stop
                         </button>
+                        <a href="https://huggingface.co/models?library=gguf&sort=downloads" target="_blank" 
+                           class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                            <i data-lucide="external-link" class="w-3 h-3"></i>
+                            Browse GGUF Models
+                        </a>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                <p class="text-xs text-gray-400 mb-3">
+                    Best for: 70B+ models that don't fit in GPU. Uses system RAM (~40GB for 70B). Stop when not in use to free memory.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="text" id="llamacpp-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../model.Q4_K_M.gguf)" 
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 col-span-2">
                     <button onclick="changeLlamacppModel()" 
@@ -1229,38 +1274,82 @@ ADMIN_HTML = """
                 </div>
                 <p id="llamacpp-current" class="text-xs text-gray-500 mt-2">Current: Loading...</p>
                 <p class="text-xs text-gray-500 mt-1">
-                    ⚠️ Model stays in RAM while running (~40GB for 70B). Stop when not needed to free memory.
-                    <a href="https://huggingface.co/models?library=gguf" target="_blank" class="text-blue-400 hover:underline">Browse GGUF models</a>
+                    Recommended for 256GB RAM: 
+                    <code class="bg-gray-600 px-1 rounded text-xs">Llama-3.1-70B-Q4_K_M.gguf</code>
+                    <code class="bg-gray-600 px-1 rounded text-xs">Qwen2.5-72B-Q4_K_M.gguf</code>
                 </p>
             </div>
             
-            <!-- HuggingFace Token (for vLLM gated models) -->
-            <div class="bg-gray-700 rounded-lg p-4 mb-4">
-                <h3 class="font-medium mb-3">HuggingFace Token (for vLLM gated models)</h3>
+            <!-- Section: Embedding -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-yellow-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="binary" class="w-4 h-4 text-yellow-400"></i>
+                        Embedding Model
+                    </h3>
+                    <a href="https://huggingface.co/models?pipeline_tag=feature-extraction&library=gguf&sort=downloads" target="_blank" 
+                       class="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1">
+                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                        Browse Embedding Models
+                    </a>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">
+                    Used for: Document search, RAG, semantic similarity. Runs on CPU, lightweight (~150MB).
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input type="text" id="embedding-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../nomic-embed-text.gguf)" 
+                           class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 col-span-2">
+                    <button onclick="changeEmbeddingModel()" 
+                            class="bg-yellow-700 hover:bg-yellow-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        Change Model
+                    </button>
+                </div>
+                <p id="embedding-current" class="text-xs text-gray-500 mt-2">Current: Loading...</p>
+                <p class="text-xs text-gray-500 mt-1">
+                    Recommended: 
+                    <code class="bg-gray-600 px-1 rounded text-xs">nomic-embed-text-v1.5.Q8_0.gguf</code>
+                    <code class="bg-gray-600 px-1 rounded text-xs">bge-base-en-v1.5.Q8_0.gguf</code>
+                </p>
+            </div>
+            
+            <!-- Section: HuggingFace Token -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-gray-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="key-round" class="w-4 h-4 text-gray-400"></i>
+                        HuggingFace Token
+                    </h3>
+                    <a href="https://huggingface.co/settings/tokens" target="_blank" 
+                       class="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1">
+                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                        Get Token
+                    </a>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">
+                    Required for gated models (Llama-3, CodeLlama, Mistral). Token is stored securely.
+                </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="password" id="hf-token" placeholder="hf_xxxxx..." 
-                           class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 col-span-2">
+                           class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 col-span-2">
                     <button onclick="setHfToken()" 
                             class="bg-gray-600 hover:bg-gray-500 rounded px-4 py-2 text-sm font-medium transition">
                         Save Token
                     </button>
                 </div>
-                <p class="text-xs text-gray-500 mt-2">
-                    Required when changing vLLM to gated models (Llama-3, CodeLlama). Token is stored securely and used on next vLLM restart.
-                </p>
             </div>
             
             <!-- Advanced: Backend Configuration -->
             <details class="bg-gray-700 rounded-lg p-4 mb-4">
                 <summary class="font-medium cursor-pointer flex items-center gap-2">
                     <i data-lucide="settings" class="w-4 h-4"></i>
-                    Advanced: Backend Configuration
+                    Advanced Settings
                     <span class="text-xs bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded ml-2">Requires Restart</span>
                 </summary>
                 <div class="mt-4 space-y-4">
                     <!-- vLLM Config -->
-                    <div class="border-l-2 border-blue-500 pl-4">
-                        <h4 class="text-sm font-medium text-blue-400 mb-2">vLLM (GPU)</h4>
+                    <div class="border-l-2 border-green-500 pl-4">
+                        <h4 class="text-sm font-medium text-green-400 mb-2">vLLM Configuration</h4>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400">Context Length</label>
@@ -1290,14 +1379,14 @@ ADMIN_HTML = """
                             </div>
                         </div>
                         <button onclick="updateVllmConfig()" 
-                                class="mt-3 bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 text-xs">
-                            Apply vLLM Config (restarts pod)
+                                class="mt-3 bg-green-700 hover:bg-green-600 rounded px-3 py-1 text-xs">
+                            Apply vLLM Config
                         </button>
                     </div>
                     
                     <!-- llama.cpp Config -->
-                    <div class="border-l-2 border-green-500 pl-4">
-                        <h4 class="text-sm font-medium text-green-400 mb-2">llama.cpp (CPU)</h4>
+                    <div class="border-l-2 border-blue-500 pl-4">
+                        <h4 class="text-sm font-medium text-blue-400 mb-2">llama.cpp Configuration</h4>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400">Context Length</label>
@@ -1323,20 +1412,45 @@ ADMIN_HTML = """
                             </div>
                         </div>
                         <button onclick="updateLlamacppConfig()" 
-                                class="mt-3 bg-green-700 hover:bg-green-600 rounded px-3 py-1 text-xs">
-                            Apply llama.cpp Config (restarts pod)
+                                class="mt-3 bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 text-xs">
+                            Apply llama.cpp Config
+                        </button>
+                    </div>
+                    
+                    <!-- Embedding Config -->
+                    <div class="border-l-2 border-yellow-500 pl-4">
+                        <h4 class="text-sm font-medium text-yellow-400 mb-2">Embedding Configuration</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400">Context Size</label>
+                                <input type="number" id="embedding-ctx" value="8192" 
+                                       class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400">Batch Size</label>
+                                <input type="number" id="embedding-batch" value="512" 
+                                       class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400">CPU Threads</label>
+                                <input type="number" id="embedding-threads" value="4" 
+                                       class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
+                            </div>
+                        </div>
+                        <button onclick="updateEmbeddingConfig()" 
+                                class="mt-3 bg-yellow-700 hover:bg-yellow-600 rounded px-3 py-1 text-xs">
+                            Apply Embedding Config
                         </button>
                     </div>
                     
                     <p class="text-xs text-gray-500 mt-2">
                         ⚠️ <strong>OOM Prevention:</strong> If you get out-of-memory errors, reduce context length or GPU memory %.
-                        For vLLM, context length × batch size determines VRAM usage for KV cache.
                     </p>
                 </div>
             </details>
             
             <!-- Models List -->
-            <h3 class="font-medium mb-3">Available Models</h3>
+            <h3 class="font-medium mb-3">Loaded Models</h3>
             <div id="models-list" class="space-y-2">
                 <p class="text-gray-400">Loading...</p>
             </div>
@@ -1661,6 +1775,11 @@ ADMIN_HTML = """
                     const filename = url.split('/').pop();
                     document.getElementById('llamacpp-current').textContent = 'Current: ' + filename;
                 }
+                if (data.embedding_model_url) {
+                    const url = data.embedding_model_url;
+                    const filename = url.split('/').pop();
+                    document.getElementById('embedding-current').textContent = 'Current: ' + filename;
+                }
                 
                 // Update llama.cpp running status
                 const llamacppStatus = document.getElementById('llamacpp-running');
@@ -1673,6 +1792,83 @@ ADMIN_HTML = """
                 }
             } catch (e) {
                 console.error('Failed to load backend config:', e);
+            }
+        }
+        
+        async function changeEmbeddingModel() {
+            const modelUrl = document.getElementById('embedding-model').value.trim();
+            if (!modelUrl) {
+                alert('Please enter a GGUF model URL');
+                return;
+            }
+            if (!modelUrl.endsWith('.gguf')) {
+                alert('URL must point to a .gguf file');
+                return;
+            }
+            
+            const confirmed = confirm(
+                `⚠️ CHANGE EMBEDDING MODEL\\n\\n` +
+                `New model URL: ${modelUrl}\\n\\n` +
+                `This will:\\n` +
+                `• Stop the embedding service (~2-5 min downtime)\\n` +
+                `• Download the new GGUF model\\n` +
+                `• Restart the service\\n\\n` +
+                `Continue?`
+            );
+            if (!confirmed) return;
+            
+            try {
+                const resp = await fetch(`${API_BASE}/admin/backend/embedding`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model_url: modelUrl})
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    alert('Embedding model change initiated! The service will restart and download the new model.');
+                    document.getElementById('embedding-model').value = '';
+                    loadBackendConfig();
+                } else {
+                    alert('Failed: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to change model: ' + e.message);
+            }
+        }
+        
+        async function updateEmbeddingConfig() {
+            const ctx = document.getElementById('embedding-ctx').value;
+            const batch = document.getElementById('embedding-batch').value;
+            const threads = document.getElementById('embedding-threads').value;
+            
+            const msg = `This will restart embedding service with:
+• Context: ${ctx} tokens
+• Batch Size: ${batch}
+• Threads: ${threads}
+
+Continue?`;
+            
+            if (!confirm(msg)) return;
+            
+            try {
+                const resp = await fetch(`${API_BASE}/admin/backend/embedding/config`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        context_size: parseInt(ctx),
+                        batch_size: parseInt(batch),
+                        threads: parseInt(threads)
+                    })
+                });
+                if (resp.ok) {
+                    alert('Embedding config updated! Pod is restarting...');
+                    loadBackendConfig();
+                } else {
+                    const data = await resp.json();
+                    alert('Failed: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed: ' + e.message);
             }
         }
         
@@ -2294,15 +2490,26 @@ async def admin_get_config(auth: bool = Depends(verify_admin_auth)):
             llamacpp_replicas = deploy.spec.replicas or 0
         except Exception as e:
             logger.debug(f"Could not get llama.cpp replicas: {e}")
+        
+        # Get embedding model URL from ConfigMap
+        embedding_model_url = None
+        try:
+            embedding_config = core_v1.read_namespaced_config_map("embedding-config", namespace)
+            embedding_model_url = embedding_config.data.get("MODEL_URL", "Not configured")
+        except Exception as e:
+            logger.debug(f"Could not read embedding-config: {e}")
             
     except Exception as e:
         logger.debug(f"Kubernetes API error: {e}")
+        embedding_model_url = None
     
     # Final fallback to environment variables
     if not vllm_model or vllm_model == "Not configured":
         vllm_model = os.getenv("VLLM_MODEL_ID") or os.getenv("MODEL_NAME", "Not configured")
     if not llamacpp_model_url or llamacpp_model_url == "Not configured":
         llamacpp_model_url = os.getenv("LLAMACPP_MODEL_URL", "Not configured")
+    if not embedding_model_url or embedding_model_url == "Not configured":
+        embedding_model_url = os.getenv("EMBEDDING_MODEL_URL", "Not configured")
     
     return {
         "hf_token_configured": hf_token_set,
@@ -2311,6 +2518,7 @@ async def admin_get_config(auth: bool = Depends(verify_admin_auth)):
         "vllm_model": vllm_model,
         "llamacpp_model_url": llamacpp_model_url,
         "llamacpp_replicas": llamacpp_replicas,
+        "embedding_model_url": embedding_model_url,
         "backends": {
             "vllm": config.VLLM_URLS,
             "ollama": config.OLLAMA_URL,
@@ -2578,6 +2786,104 @@ async def admin_scale_llamacpp(request: Request, auth: bool = Depends(verify_adm
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
         logger.error(f"Failed to scale llama.cpp: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admin/backend/embedding")
+async def admin_change_embedding_model(request: Request, auth: bool = Depends(verify_admin_auth)):
+    """Change the embedding model. This triggers a pod restart with new model."""
+    body = await request.json()
+    model_url = body.get("model_url")
+    
+    if not model_url:
+        raise HTTPException(status_code=400, detail="model_url is required")
+    
+    if not model_url.endswith(".gguf"):
+        raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
+    
+    try:
+        from kubernetes import client, config as k8s_config
+        
+        try:
+            k8s_config.load_incluster_config()
+        except:
+            k8s_config.load_kube_config()
+        
+        core_v1 = client.CoreV1Api()
+        apps_v1 = client.AppsV1Api()
+        namespace = os.getenv("NAMESPACE", "llmapi")
+        
+        # Update ConfigMap with new model URL
+        cm = core_v1.read_namespaced_config_map("embedding-config", namespace)
+        cm.data["MODEL_URL"] = model_url
+        cm.data["MODEL_FILE"] = model_url.split("/")[-1]
+        core_v1.patch_namespaced_config_map("embedding-config", namespace, cm)
+        
+        # Trigger rollout restart
+        deploy = apps_v1.read_namespaced_deployment("embedding", namespace)
+        if deploy.spec.template.metadata.annotations is None:
+            deploy.spec.template.metadata.annotations = {}
+        deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
+        apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
+        
+        # Store in Redis for UI
+        await redis_client.client.set("config:embedding_model_url", model_url)
+        
+        logger.info(f"Embedding model change initiated: {model_url}")
+        return {"status": "initiated", "model_url": model_url, "message": "Embedding pod is restarting with new model"}
+        
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
+    except Exception as e:
+        logger.error(f"Failed to change embedding model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admin/backend/embedding/config")
+async def admin_update_embedding_config(request: Request, auth: bool = Depends(verify_admin_auth)):
+    """Update embedding configuration (context size, batch size, threads). Triggers pod restart."""
+    body = await request.json()
+    
+    try:
+        from kubernetes import client, config as k8s_config
+        
+        try:
+            k8s_config.load_incluster_config()
+        except:
+            k8s_config.load_kube_config()
+        
+        core_v1 = client.CoreV1Api()
+        apps_v1 = client.AppsV1Api()
+        namespace = os.getenv("NAMESPACE", "llmapi")
+        
+        # Get current ConfigMap
+        cm = core_v1.read_namespaced_config_map("embedding-config", namespace)
+        
+        # Update values
+        if "context_size" in body:
+            cm.data["CONTEXT_SIZE"] = str(body["context_size"])
+        if "batch_size" in body:
+            cm.data["BATCH_SIZE"] = str(body["batch_size"])
+        if "threads" in body:
+            cm.data["THREADS"] = str(body["threads"])
+        
+        # Apply ConfigMap update
+        core_v1.patch_namespaced_config_map("embedding-config", namespace, cm)
+        
+        # Trigger rollout restart
+        deploy = apps_v1.read_namespaced_deployment("embedding", namespace)
+        if deploy.spec.template.metadata.annotations is None:
+            deploy.spec.template.metadata.annotations = {}
+        deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
+        apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
+        
+        logger.info(f"Embedding config updated: {body}")
+        return {"status": "updated", "config": body, "message": "Embedding pod is restarting with new config"}
+        
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Kubernetes client not available")
+    except Exception as e:
+        logger.error(f"Failed to update embedding config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

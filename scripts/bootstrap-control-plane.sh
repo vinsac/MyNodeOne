@@ -609,6 +609,49 @@ EOF
             log_success "Kubeconfig saved to $USER_HOME/.kube/config"
         fi
     fi
+    
+    # Fix CoreDNS to use public DNS instead of /etc/resolv.conf
+    # This is needed because systemd-resolved uses 127.0.0.53 which doesn't work from inside pods
+    fix_coredns_upstream_dns
+}
+
+# Fix CoreDNS to use public upstream DNS servers
+# systemd-resolved uses 127.0.0.53 which is inaccessible from inside pods
+fix_coredns_upstream_dns() {
+    log_info "Configuring CoreDNS with public upstream DNS..."
+    
+    # Wait for CoreDNS to be available
+    local retries=30
+    while ! kubectl get configmap -n kube-system coredns &>/dev/null && [ $retries -gt 0 ]; do
+        sleep 2
+        ((retries--))
+    done
+    
+    if [ $retries -eq 0 ]; then
+        log_warn "CoreDNS configmap not found, skipping DNS fix"
+        return 0
+    fi
+    
+    # Check current config
+    local current_forward
+    current_forward=$(kubectl get configmap -n kube-system coredns -o jsonpath='{.data.Corefile}' 2>/dev/null | grep "forward")
+    
+    if echo "$current_forward" | grep -q "/etc/resolv.conf"; then
+        log_info "Patching CoreDNS to use 8.8.8.8 and 1.1.1.1 instead of /etc/resolv.conf"
+        
+        # Patch the configmap
+        kubectl get configmap -n kube-system coredns -o json | \
+            jq '.data.Corefile = (.data.Corefile | sub("forward . /etc/resolv.conf"; "forward . 8.8.8.8 1.1.1.1"))' | \
+            kubectl apply -f - &>/dev/null
+        
+        # Restart CoreDNS to pick up changes
+        kubectl rollout restart deployment coredns -n kube-system &>/dev/null
+        kubectl rollout status deployment coredns -n kube-system --timeout=60s &>/dev/null
+        
+        log_success "CoreDNS configured with public DNS servers"
+    else
+        log_info "CoreDNS already configured with upstream DNS"
+    fi
 }
 
 # GPU Setup for Kubernetes (after K3s is installed)

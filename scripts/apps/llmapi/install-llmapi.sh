@@ -142,9 +142,20 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
         for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
             if [[ -d "$model_dir" ]]; then
                 model_name=$(basename "$model_dir")
-                model_size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
-                echo -e "   ${GREEN}✓ vLLM: $model_name ($model_size)${NC}"
-                PRE_DOWNLOADED_VLLM="$model_dir"
+                # Check for actual model files (safetensors)
+                if find "$model_dir" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
+                    # Calculate size properly (may need to traverse as original user)
+                    model_size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
+                    # Fallback: sum up safetensors files
+                    if [[ "$model_size" == "4.0K" ]] || [[ "$model_size" == "0" ]]; then
+                        model_bytes=$(find "$model_dir" -name "*.safetensors" -exec stat -c%s {} + 2>/dev/null | awk '{s+=$1}END{print s}')
+                        model_size=$(echo "$model_bytes" | awk '{printf "%.1fG", $1/1024/1024/1024}')
+                    fi
+                    echo -e "   ${GREEN}✓ vLLM: $model_name ($model_size)${NC}"
+                    PRE_DOWNLOADED_VLLM="$model_dir"
+                else
+                    echo -e "   ${YELLOW}⚠ vLLM: $model_name (no model weights found)${NC}"
+                fi
             fi
         done
     fi

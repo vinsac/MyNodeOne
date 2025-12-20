@@ -202,7 +202,13 @@ ensure_directories() {
 }
 
 human_size() {
-    local bytes=$1
+    local bytes="${1:-0}"
+    
+    # Ensure bytes is a valid number
+    if ! [[ "$bytes" =~ ^[0-9]+$ ]]; then
+        bytes=0
+    fi
+    
     if [[ $bytes -ge 1073741824 ]]; then
         echo "$(awk "BEGIN {printf \"%.1f\", $bytes/1073741824}")G"
     elif [[ $bytes -ge 1048576 ]]; then
@@ -224,7 +230,8 @@ test_download_speed() {
     local test_size=10485760  # 10MB test
     local timeout=30
     
-    log_info "Testing download speed from $name..."
+    # Print status to stderr so it doesn't get captured
+    echo -e "${BLUE}[INFO]${NC} Testing download speed from $name..." >&2
     
     local start_time=$(date +%s.%N)
     local bytes_downloaded=0
@@ -277,9 +284,15 @@ select_best_source() {
     
     for source in "${!sources[@]}"; do
         local url="${sources[$source]}"
-        local speed=$(test_download_speed "$url" "$source")
+        local speed
+        speed=$(test_download_speed "$url" "$source")
         
-        log_info "  $source: $(human_size $speed)/s"
+        # Ensure speed is a number
+        if ! [[ "$speed" =~ ^[0-9]+$ ]]; then
+            speed=0
+        fi
+        
+        echo -e "${BLUE}[INFO]${NC}   $source: $(human_size $speed)/s" >&2
         
         if [[ $speed -gt $best_speed ]]; then
             best_speed=$speed
@@ -288,7 +301,7 @@ select_best_source() {
     done
     
     if [[ $best_speed -lt $MIN_SPEED ]]; then
-        log_warn "All sources are slow (< 1 MB/s). Download may take a long time."
+        echo -e "${YELLOW}[WARN]${NC} All sources are slow (< 1 MB/s). Download may take a long time." >&2
     fi
     
     echo "$best_source:$best_speed"
@@ -409,7 +422,16 @@ except Exception as e:
 PYEOF
     else
         log_warn "huggingface_hub not installed. Installing..."
-        pip install --quiet huggingface_hub hf_transfer
+        
+        # Try pip3 first, then python3 -m pip
+        if command -v pip3 &>/dev/null; then
+            pip3 install --quiet --user huggingface_hub hf_transfer
+        elif command -v python3 &>/dev/null; then
+            python3 -m pip install --quiet --user huggingface_hub hf_transfer
+        else
+            log_error "Python3/pip3 not found. Please install: sudo apt install python3-pip"
+            return 1
+        fi
         
         # Retry with installed package
         download_hf_model "$repo_id" "$output_dir" "$source"

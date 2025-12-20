@@ -121,7 +121,9 @@ sudo apt install -y curl
 curl -fsSL https://tailscale.com/install.sh | sh
 
 # Connect to your Tailscale network
-sudo tailscale up
+# Note: --accept-dns=false prevents Tailscale from managing DNS
+# This avoids DNS resolution issues if Tailscale's DNS fails
+sudo tailscale up --accept-dns=false
 # Open the URL shown in your browser to authenticate
 
 # Verify connection
@@ -129,6 +131,8 @@ tailscale status
 tailscale ip -4
 # Note this IP - you'll need it for VPS/management workstation setup!
 ```
+
+> **Why `--accept-dns=false`?** Tailscale can take over DNS resolution, but if its internal DNS server fails, your system loses the ability to resolve any domain names (like github.com). This flag keeps your system's DNS working normally while still allowing all Tailscale networking features (VPN, subnet routing, etc.).
 
 #### 5. NVIDIA GPU Support (optional)
 

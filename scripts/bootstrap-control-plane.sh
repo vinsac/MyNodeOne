@@ -1138,9 +1138,12 @@ configure_tailscale_subnet_routes() {
     fi
     
     # Advertise MetalLB subnet to Tailscale network
+    # Note: --accept-dns=false prevents Tailscale from overwriting /etc/resolv.conf
+    # This avoids DNS resolution issues when Tailscale's internal DNS (100.100.100.100) fails
+    # Subnet routing and all other Tailscale features still work normally
     log_info "Advertising subnet ${TAILSCALE_SUBNET}.0/24 to Tailscale..."
-    if tailscale up --advertise-routes=${TAILSCALE_SUBNET}.0/24 --accept-routes 2>/dev/null; then
-        log_success "Subnet route advertised to Tailscale"
+    if tailscale up --advertise-routes=${TAILSCALE_SUBNET}.0/24 --accept-routes --accept-dns=false 2>/dev/null; then
+        log_success "Subnet route advertised to Tailscale (DNS managed by system)"
     else
         log_warn "Could not advertise subnet automatically. This is not critical."
     fi

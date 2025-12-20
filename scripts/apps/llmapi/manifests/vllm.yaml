@@ -10,43 +10,8 @@ spec:
   resources:
     requests:
       storage: 200Gi
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vllm-config
-  namespace: llmapi
-data:
-  # Default model to load
-  MODEL_NAME: "Qwen/Qwen2.5-14B-Instruct-AWQ"
-  
-  # ==========================================================================
-  # VRAM & Context Configuration (RTX 3090 24GB optimized)
-  # ==========================================================================
-  
-  # Maximum context length (tokens). Higher = more VRAM for KV cache.
-  # RTX 3090 + 14B AWQ: safe=8192, moderate=16384, aggressive=24576
-  # If OOM occurs, reduce this value.
-  MAX_MODEL_LEN: "16384"
-  
-  # Fraction of GPU memory to use (0.0-1.0). Leave headroom for KV cache.
-  # 0.90 = safe, 0.95 = aggressive (may OOM on large batches)
-  GPU_MEMORY_UTILIZATION: "0.90"
-  
-  # Maximum concurrent sequences (batch size). Higher = more throughput but more VRAM.
-  # Reduce if OOM with many concurrent requests.
-  MAX_NUM_SEQS: "32"
-  
-  # Quantization method. Must match model format.
-  # Options: awq, gptq, squeezellm, fp8, none
-  QUANTIZATION: "awq"
-  
-  # Enable chunked prefill to handle long prompts more efficiently
-  ENABLE_CHUNKED_PREFILL: "true"
-  
-  # Enforce eager mode (disable CUDA graphs) - more stable but slightly slower
-  # Set to "true" if experiencing OOM or CUDA errors
-  ENFORCE_EAGER: "false"
+# NOTE: vllm-config ConfigMap is created dynamically by install-llmapi.sh
+# This allows the install script to set MODEL_NAME and SERVED_MODEL_NAME based on user selection
 ---
 apiVersion: apps/v1
 kind: StatefulSet

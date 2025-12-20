@@ -259,6 +259,130 @@ A fundamental security principle in MyNodeOne is the **unidirectional flow of tr
 - **No inbound public access to Control Plane**: The Control Plane's SSH port is never exposed to the public internet. It is only accessible via your local LAN or Tailscale.
 - **Minimal attack surface**: If a public-facing VPS is compromised, an attacker has no network path or credentials to access the Control Plane.
 
+## Configuration Sync Architecture
+
+MyNodeOne uses a **pull-based configuration distribution** model where nodes pull config from the control plane, rather than the control plane pushing to nodes. This is more secure and firewall-friendly.
+
+### Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **Config API** | Control Plane | Serves config to nodes via HTTP API |
+| **Node Agent** | Each node (VPS, laptop, worker) | Polls Config API for updates, applies config |
+| **Sync Controller** | Control Plane | Fallback SSH push, reconciliation |
+| **ConfigMaps** | Kubernetes | Source of truth for all config |
+
+### Node Agent (V2 Sync - Primary)
+
+The Node Agent runs as a systemd service on each node and handles:
+
+1. **Config Polling**: Fetches `/api/v1/config/{node-type}` every 60 seconds
+2. **Heartbeat**: Reports node status every 60 seconds
+3. **Config Application**: Applies routes (VPS) or DNS entries (laptop/worker)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CONTROL PLANE                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────┐     ┌─────────────────────────────────┐   │
+│  │   ConfigMaps    │────>│         Config API               │   │
+│  │ (service-reg,   │     │  - GET /api/v1/config/vps        │   │
+│  │  domain-reg)    │     │  - GET /api/v1/config/laptop     │   │
+│  └─────────────────┘     │  - POST /api/v1/heartbeat        │   │
+│                          │  - GET /api/v1/nodes             │   │
+│                          └──────────────┬──────────────────┘   │
+│                                         │                       │
+└─────────────────────────────────────────│───────────────────────┘
+                                          │ HTTP (Tailscale)
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+           ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+           │  VPS Node     │     │    Laptop     │     │    Worker     │
+           │  Agent        │     │    Agent      │     │    Agent      │
+           │               │     │               │     │               │
+           │ • Poll /60s   │     │ • Poll /60s   │     │ • Poll /60s   │
+           │ • Apply routes│     │ • Apply DNS   │     │ • Apply DNS   │
+           │ • Heartbeat   │     │ • Heartbeat   │     │ • Heartbeat   │
+           └───────────────┘     └───────────────┘     └───────────────┘
+```
+
+### Config Types by Node
+
+| Node Type | Config Received | Action |
+|-----------|-----------------|--------|
+| **VPS** | Traefik routes (services → backends) | Writes `mynodeone-routes.yml` |
+| **Laptop** | DNS entries (subdomain → IP) | Updates `/etc/hosts` |
+| **Worker** | DNS entries (subdomain → IP) | Updates `/etc/hosts` |
+
+### Making Apps Public - Sync Flow
+
+When you make an app public via `manage-app-visibility.sh`:
+
+```
+Time    Control Plane                    Config API                      VPS Node Agent
+─────   ──────────────────────────       ──────────────────              ──────────────────
+ 0s     Update ConfigMaps
+        (service-registry,
+         domain-registry)
+                                         │
+~30s                                     Detect ConfigMap change
+                                         Update internal version
+                                         │
+~60s                                                                     Poll /api/v1/config/vps
+                                         ◄───────────────────────────────
+                                         Return routes JSON
+                                         ─────────────────────────────────►
+                                                                         Apply routes to Traefik
+                                                                         (mynodeone-routes.yml)
+                                         │
+~90s    Poll VPS to verify routes ───────────────────────────────────────►
+        ✓ Routes found! Done.
+```
+
+**Maximum delay**: ~90 seconds (30s Config API detection + 60s Node Agent poll)
+
+### SSH Fallback (V1 Sync)
+
+If the Node Agent doesn't sync within 2 minutes, the system falls back to SSH:
+
+```bash
+# Automatic fallback in manage-app-visibility.sh
+ssh user@vps "cd ~/mynodeone && sudo ./scripts/sync-vps-routes.sh"
+```
+
+This ensures reliability even if the Node Agent is down or misconfigured.
+
+### Sync Controller
+
+The Sync Controller runs on the control plane and provides:
+
+1. **`push`**: Push to nodes without active Node Agent
+2. **`push-force`**: Force SSH push to all nodes (for troubleshooting)
+3. **`watch`**: Watch ConfigMaps for changes, push to V1 nodes
+4. **`daemon`**: Combined watch + periodic reconciliation
+
+```bash
+# Check sync status
+sudo ./scripts/lib/sync-controller.sh health
+
+# Force sync to all nodes (bypasses Node Agent)
+sudo ./scripts/lib/sync-controller.sh push-force
+```
+
+### Why Pull-Based?
+
+| Push (SSH) | Pull (Node Agent) |
+|------------|-------------------|
+| Requires SSH keys on all nodes | No SSH keys needed |
+| Control plane must reach nodes | Nodes reach control plane |
+| Blocked by firewalls | Works through NAT/firewalls |
+| Immediate | ~60s delay (acceptable) |
+| Single point of failure | Nodes retry independently |
+
+The pull-based model is more resilient and works in restrictive network environments where nodes can't be reached from the control plane.
+
 ### Network Security
 - **Tailscale**: WireGuard-based encryption
 - **VPS Firewall**: Only 80, 443, 22 open

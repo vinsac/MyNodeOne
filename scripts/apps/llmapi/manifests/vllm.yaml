@@ -34,6 +34,97 @@ spec:
       # CRITICAL: Required for GPU access in K3s
       runtimeClassName: nvidia
       terminationGracePeriodSeconds: 60
+      # Init container to pre-download model before vLLM starts
+      # This ensures model is cached and vLLM startup is fast
+      initContainers:
+      - name: model-downloader
+        # Use slim Python image and install huggingface_hub
+        image: python:3.11-slim-bookworm
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -e
+          echo "=== vLLM Model Pre-Download ==="
+          echo "Model: $MODEL_NAME"
+          echo "HF Token configured: $([ -n \"$HUGGING_FACE_HUB_TOKEN\" ] && echo 'yes' || echo 'no')"
+          
+          # Check if model already cached (check both old and new cache locations)
+          CACHE_DIR="/models/models--$(echo $MODEL_NAME | tr '/' '--')"
+          CACHE_DIR_HUB="/models/hub/models--$(echo $MODEL_NAME | tr '/' '--')"
+          
+          for DIR in "$CACHE_DIR" "$CACHE_DIR_HUB"; do
+            if [ -d "$DIR/snapshots" ] && [ "$(ls -A $DIR/snapshots 2>/dev/null)" ]; then
+              CACHED_SIZE=$(du -sh "$DIR" 2>/dev/null | cut -f1)
+              echo "Checking cache at $DIR ($CACHED_SIZE)..."
+              # Quick verification - check if safetensors files exist
+              if find "$DIR" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
+                echo "Model weights found. Skipping download."
+                exit 0
+              fi
+            fi
+          done
+          
+          # Install huggingface_hub with hf_transfer for faster downloads
+          echo "Installing huggingface_hub..."
+          pip install --quiet --no-cache-dir huggingface_hub hf_transfer
+          export HF_HUB_ENABLE_HF_TRANSFER=1
+          
+          echo ""
+          echo "Downloading model from HuggingFace..."
+          echo "Using hf_transfer for accelerated download (up to 500 MB/s)"
+          echo ""
+          
+          # Download with resume support and progress using Python API
+          python3 << 'PYEOF'
+          import os
+          from huggingface_hub import snapshot_download
+          
+          model_name = os.environ.get("MODEL_NAME")
+          token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
+          
+          print(f"Downloading {model_name}...")
+          snapshot_download(
+              repo_id=model_name,
+              cache_dir="/models",
+              token=token if token else None,
+              resume_download=True
+          )
+          print("Download complete!")
+          PYEOF
+          
+          # Verify download
+          if find "/models" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
+            FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
+            echo ""
+            echo "Total cache size: $FINAL_SIZE"
+          else
+            echo "ERROR: Model download may have failed."
+            exit 1
+          fi
+        env:
+        - name: MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: vllm-config
+              key: MODEL_NAME
+        - name: HF_HOME
+          value: "/models"
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+              optional: true
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
       containers:
       - name: vllm
         image: vllm/vllm-openai:v0.6.6.post1
@@ -109,17 +200,20 @@ spec:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 120
+          initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
+        # Dynamic startup probe: Model is pre-downloaded by init container
+        # so startup only needs time for GPU loading (~2-5 min for most models)
+        # Formula: initialDelay=30s + failureThreshold(60) * period(10s) = 630s = 10.5 min max
         startupProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
+          initialDelaySeconds: 30
+          periodSeconds: 10
           timeoutSeconds: 10
-          failureThreshold: 30
+          failureThreshold: 60
       volumes:
       - name: models
         persistentVolumeClaim:

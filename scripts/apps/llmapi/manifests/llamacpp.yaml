@@ -77,9 +77,10 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
-      # Download model if not present
+      # Download model if not present - uses wget with resume support
       - name: model-downloader
-        image: curlimages/curl:latest
+        # Use alpine with wget pre-installed (supports resume)
+        image: alpine:3.19
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -89,19 +90,61 @@ spec:
         - /bin/sh
         - -c
         - |
+          set -e
           MODEL_PATH="/models/${MODEL_FILE}"
-          if [ ! -f "$MODEL_PATH" ]; then
-            echo "Downloading model from ${MODEL_URL}..."
-            # Use HuggingFace token if available for faster downloads
+          
+          echo "=== llama.cpp Model Downloader ==="
+          echo "Model URL: ${MODEL_URL}"
+          echo "Target: ${MODEL_PATH}"
+          echo "HF Token: $([ -n \"${HF_TOKEN:-}\" ] && echo 'configured' || echo 'not set')"
+          
+          # Check if model already exists and is complete
+          if [ -f "$MODEL_PATH" ]; then
+            EXISTING_SIZE=$(stat -c%s "$MODEL_PATH" 2>/dev/null || echo 0)
+            echo "Existing file found: $(echo $EXISTING_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
+            
+            # Get expected size from server (follow redirects)
             if [ -n "${HF_TOKEN:-}" ]; then
-              echo "Using HuggingFace token for authenticated download..."
-              curl -L -H "Authorization: Bearer ${HF_TOKEN}" -o "$MODEL_PATH" "${MODEL_URL}"
+              EXPECTED_SIZE=$(wget --spider --header="Authorization: Bearer ${HF_TOKEN}" -S "${MODEL_URL}" 2>&1 | grep -i "Content-Length" | tail -1 | awk '{print $2}')
             else
-              curl -L -o "$MODEL_PATH" "${MODEL_URL}"
+              EXPECTED_SIZE=$(wget --spider -S "${MODEL_URL}" 2>&1 | grep -i "Content-Length" | tail -1 | awk '{print $2}')
             fi
-            echo "Download complete."
+            
+            echo "Expected size: $(echo $EXPECTED_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
+            
+            if [ -n "$EXPECTED_SIZE" ] && [ "$EXISTING_SIZE" -ge "$EXPECTED_SIZE" ]; then
+              echo "Model already complete. Skipping download."
+              exit 0
+            else
+              echo "Incomplete download detected. Will resume..."
+            fi
+          fi
+          
+          echo ""
+          echo "Starting download with wget (with resume support)..."
+          echo "This may take 30-60 minutes for a 40GB model."
+          echo ""
+          
+          # Download with resume support (-c) - BusyBox wget doesn't support --progress
+          if [ -n "${HF_TOKEN:-}" ]; then
+            wget -c \
+              --header="Authorization: Bearer ${HF_TOKEN}" \
+              -O "$MODEL_PATH" \
+              "${MODEL_URL}"
           else
-            echo "Model already exists at $MODEL_PATH"
+            wget -c \
+              -O "$MODEL_PATH" \
+              "${MODEL_URL}"
+          fi
+          
+          # Verify download
+          if [ -f "$MODEL_PATH" ]; then
+            FINAL_SIZE=$(stat -c%s "$MODEL_PATH")
+            echo ""
+            echo "Download complete! Size: $(echo $FINAL_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
+          else
+            echo "ERROR: Download failed!"
+            exit 1
           fi
         env:
         - name: HF_TOKEN
@@ -118,11 +161,11 @@ spec:
           mountPath: /models
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
             memory: "512Mi"
             cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
       containers:
       - name: llamacpp
         image: ghcr.io/ggml-org/llama.cpp:server

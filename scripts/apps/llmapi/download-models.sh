@@ -424,10 +424,20 @@ PYEOF
         log_warn "huggingface_hub not installed. Installing..."
         
         # Try pip3 first, then python3 -m pip
+        # Use --break-system-packages for Ubuntu 24.04+ (PEP 668)
         if command -v pip3 &>/dev/null; then
-            pip3 install --quiet --user huggingface_hub hf_transfer
+            if ! pip3 install --quiet --user huggingface_hub hf_transfer 2>/dev/null; then
+                # Ubuntu 24.04+ requires --break-system-packages
+                pip3 install --quiet --break-system-packages huggingface_hub hf_transfer 2>/dev/null || {
+                    log_error "Failed to install huggingface_hub. Try: sudo apt install python3-pip"
+                    return 1
+                }
+            fi
         elif command -v python3 &>/dev/null; then
-            python3 -m pip install --quiet --user huggingface_hub hf_transfer
+            python3 -m pip install --quiet --break-system-packages huggingface_hub hf_transfer 2>/dev/null || {
+                log_error "Failed to install huggingface_hub"
+                return 1
+            }
         else
             log_error "Python3/pip3 not found. Please install: sudo apt install python3-pip"
             return 1

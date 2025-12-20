@@ -216,14 +216,18 @@ download_with_aria2() {
     local output="$2"
     local connections="${3:-16}"
     
+    # Ensure output is an absolute path
+    local output_dir=$(dirname "$output")
+    local output_file=$(basename "$output")
+    
     local aria_opts="-x $connections -s $connections -k 10M --file-allocation=none"
     aria_opts="$aria_opts --console-log-level=notice --summary-interval=10"
     aria_opts="$aria_opts -c"  # Continue/resume
     
     if [[ -n "$HF_TOKEN" ]] && [[ "$url" == *"huggingface.co"* ]]; then
-        aria2c $aria_opts --header="Authorization: Bearer $HF_TOKEN" -o "$output" "$url"
+        aria2c $aria_opts --header="Authorization: Bearer $HF_TOKEN" -d "$output_dir" -o "$output_file" "$url"
     else
-        aria2c $aria_opts -o "$output" "$url"
+        aria2c $aria_opts -d "$output_dir" -o "$output_file" "$url"
     fi
 }
 

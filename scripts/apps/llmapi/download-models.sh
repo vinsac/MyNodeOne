@@ -88,25 +88,112 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 check_dependencies() {
     local missing=()
+    local to_install=()
     
     # Required
     command -v curl &>/dev/null || missing+=("curl")
     
-    # Optional but recommended
+    # Check for aria2c and pv - auto-install if missing
     if ! command -v aria2c &>/dev/null; then
-        log_warn "aria2c not found. Install for faster multi-threaded downloads:"
-        log_warn "  sudo apt install aria2"
+        to_install+=("aria2")
     fi
     
     if ! command -v pv &>/dev/null; then
-        log_warn "pv not found. Install for progress bars:"
-        log_warn "  sudo apt install pv"
+        to_install+=("pv")
+    fi
+    
+    # Auto-install missing optional dependencies
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        log_info "Installing recommended packages: ${to_install[*]}..."
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq "${to_install[@]}" 2>/dev/null || {
+                log_warn "Could not auto-install ${to_install[*]}. Downloads may be slower."
+            }
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y -q "${to_install[@]}" 2>/dev/null || {
+                log_warn "Could not auto-install ${to_install[*]}. Downloads may be slower."
+            }
+        elif command -v yum &>/dev/null; then
+            sudo yum install -y -q "${to_install[@]}" 2>/dev/null || {
+                log_warn "Could not auto-install ${to_install[*]}. Downloads may be slower."
+            }
+        else
+            log_warn "Could not auto-install ${to_install[*]}. Please install manually for better performance."
+        fi
+        
+        # Verify installation
+        if command -v aria2c &>/dev/null; then
+            log_success "aria2c installed (16x parallel downloads enabled)"
+        fi
+        if command -v pv &>/dev/null; then
+            log_success "pv installed (progress bars enabled)"
+        fi
     fi
     
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required dependencies: ${missing[*]}"
         exit 1
     fi
+}
+
+prompt_hf_token() {
+    # Skip if token already set
+    if [[ -n "$HF_TOKEN" ]]; then
+        log_info "Using HuggingFace token from environment"
+        return 0
+    fi
+    
+    # Check if token exists in Kubernetes secret
+    if command -v kubectl &>/dev/null; then
+        local k8s_token
+        k8s_token=$(kubectl get secret hf-token -n llmapi -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+        if [[ -n "$k8s_token" ]]; then
+            HF_TOKEN="$k8s_token"
+            log_info "Using HuggingFace token from Kubernetes secret"
+            return 0
+        fi
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  HuggingFace Token (Recommended)${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "A HuggingFace token enables:"
+    echo "  • Faster download speeds (authenticated users get priority)"
+    echo "  • Access to gated models (Llama 3, CodeLlama, etc.)"
+    echo ""
+    echo "Get your free token at: https://huggingface.co/settings/tokens"
+    echo "(Create a 'Read' token - no special permissions needed)"
+    echo ""
+    read -p "Enter HuggingFace token (or press Enter to skip): " user_token
+    
+    if [[ -n "$user_token" ]]; then
+        # Validate token format (should start with hf_)
+        if [[ "$user_token" == hf_* ]]; then
+            HF_TOKEN="$user_token"
+            log_success "HuggingFace token set"
+            
+            # Offer to save to Kubernetes if available
+            if command -v kubectl &>/dev/null && kubectl get namespace llmapi &>/dev/null 2>&1; then
+                read -p "Save token to Kubernetes for future use? [Y/n]: " save_k8s
+                if [[ "${save_k8s,,}" != "n" ]]; then
+                    kubectl create secret generic hf-token -n llmapi \
+                        --from-literal=token="$HF_TOKEN" \
+                        --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null && \
+                        log_success "Token saved to Kubernetes secret 'hf-token'" || \
+                        log_warn "Could not save to Kubernetes (namespace may not exist yet)"
+                fi
+            fi
+        else
+            log_warn "Token doesn't look like a HuggingFace token (should start with 'hf_')"
+            log_warn "Continuing without token - downloads may be slower"
+        fi
+    else
+        log_info "Continuing without HuggingFace token"
+        log_info "Downloads will work but may be slower for large models"
+    fi
+    echo ""
 }
 
 ensure_directories() {
@@ -741,8 +828,19 @@ copy_to_k8s() {
 # =============================================================================
 
 main() {
+    echo ""
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║           LLM Model Download Manager                          ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
     check_dependencies
     ensure_directories
+    
+    # Prompt for HuggingFace token (unless --list or --status)
+    if [[ "${1:-}" != "--list" ]] && [[ "${1:-}" != "--status" ]]; then
+        prompt_hf_token
+    fi
     
     case "${1:-}" in
         --model)

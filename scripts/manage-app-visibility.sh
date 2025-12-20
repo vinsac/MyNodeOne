@@ -184,8 +184,9 @@ make_public() {
     fi
     
     # Trigger sync with mandatory success
+    # Force SSH push even for V2 nodes to ensure immediate route deployment
     log_info "Pushing configuration to VPS nodes..."
-    if ! retry_command 3 "bash '$SCRIPT_DIR/lib/sync-controller.sh' push"; then
+    if ! retry_command 3 "SKIP_V2_CHECK=true bash '$SCRIPT_DIR/lib/sync-controller.sh' push"; then
         log_error "Failed to push configuration to VPS after 3 attempts"
         echo ""
         echo "Troubleshooting:"

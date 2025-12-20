@@ -231,9 +231,8 @@ spec:
         - "0.0.0.0"
         - "--port"
         - "8080"
-        # OpenAI-compatible API
-        - "--chat-template"
-        - "$(CHAT_TEMPLATE)"
+        # Use model's built-in jinja chat template (Llama 3.1 has it embedded)
+        - "--jinja"
         envFrom:
         - configMapRef:
             name: llamacpp-config

@@ -108,6 +108,69 @@ fi
 echo ""
 
 # =============================================================================
+# Check for Pre-Downloaded Models
+# =============================================================================
+
+# Default pre-download directory
+PRE_DOWNLOAD_DIR="${LLM_MODEL_DIR:-/var/lib/llmapi/models}"
+PRE_DOWNLOADED_VLLM=""
+PRE_DOWNLOADED_LLAMACPP=""
+PRE_DOWNLOADED_EMBEDDING=""
+
+if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
+    echo "📦 Checking for pre-downloaded models in $PRE_DOWNLOAD_DIR..."
+    
+    # Check for vLLM models
+    if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
+        for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
+            if [[ -d "$model_dir" ]]; then
+                model_name=$(basename "$model_dir")
+                model_size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
+                echo -e "   ${GREEN}✓ vLLM: $model_name ($model_size)${NC}"
+                PRE_DOWNLOADED_VLLM="$model_dir"
+            fi
+        done
+    fi
+    
+    # Check for llama.cpp models
+    if [[ -d "$PRE_DOWNLOAD_DIR/llamacpp" ]]; then
+        for gguf_file in "$PRE_DOWNLOAD_DIR/llamacpp"/*.gguf; do
+            if [[ -f "$gguf_file" ]]; then
+                filename=$(basename "$gguf_file")
+                filesize=$(du -h "$gguf_file" 2>/dev/null | cut -f1)
+                echo -e "   ${GREEN}✓ llama.cpp: $filename ($filesize)${NC}"
+                PRE_DOWNLOADED_LLAMACPP="$gguf_file"
+            fi
+        done
+    fi
+    
+    # Check for embedding models
+    if [[ -d "$PRE_DOWNLOAD_DIR/embedding" ]]; then
+        for gguf_file in "$PRE_DOWNLOAD_DIR/embedding"/*.gguf; do
+            if [[ -f "$gguf_file" ]]; then
+                filename=$(basename "$gguf_file")
+                filesize=$(du -h "$gguf_file" 2>/dev/null | cut -f1)
+                echo -e "   ${GREEN}✓ Embedding: $filename ($filesize)${NC}"
+                PRE_DOWNLOADED_EMBEDDING="$gguf_file"
+            fi
+        done
+    fi
+    
+    if [[ -z "$PRE_DOWNLOADED_VLLM" ]] && [[ -z "$PRE_DOWNLOADED_LLAMACPP" ]] && [[ -z "$PRE_DOWNLOADED_EMBEDDING" ]]; then
+        echo -e "   ${YELLOW}No pre-downloaded models found${NC}"
+        echo ""
+        echo -e "   ${BLUE}Tip: Pre-download models for faster installation:${NC}"
+        echo "   sudo $SCRIPT_DIR/download-models.sh"
+    fi
+    echo ""
+else
+    echo ""
+    echo -e "${BLUE}💡 Tip: Pre-download models for faster installation:${NC}"
+    echo "   sudo $SCRIPT_DIR/download-models.sh"
+    echo ""
+fi
+
+# =============================================================================
 # Check for Existing Installation and Cached Models
 # =============================================================================
 
@@ -413,6 +476,118 @@ kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
 # Deploy RBAC for gateway (allows model changes from Admin UI)
 echo "🔐 Deploying gateway RBAC..."
 kubectl apply -f "$SCRIPT_DIR/manifests/gateway-rbac.yaml"
+
+# =============================================================================
+# Copy Pre-Downloaded Models to PVCs (if available)
+# =============================================================================
+
+copy_predownloaded_models() {
+    local model_type="$1"
+    local source_path="$2"
+    local pvc_name="$3"
+    
+    if [[ -z "$source_path" ]] || [[ ! -e "$source_path" ]]; then
+        return 0
+    fi
+    
+    echo "   📦 Copying pre-downloaded $model_type model to PVC..."
+    
+    # First, ensure the PVC exists by applying the manifest
+    case "$model_type" in
+        vllm)
+            kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml" --dry-run=server -o yaml 2>/dev/null | grep -q "PersistentVolumeClaim" && \
+            kubectl apply -f <(kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml" --dry-run=client -o yaml 2>/dev/null | grep -A20 "kind: PersistentVolumeClaim") 2>/dev/null || true
+            ;;
+        llamacpp)
+            kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml" --dry-run=server -o yaml 2>/dev/null | grep -q "PersistentVolumeClaim" && \
+            kubectl apply -f <(kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml" --dry-run=client -o yaml 2>/dev/null | grep -A20 "kind: PersistentVolumeClaim") 2>/dev/null || true
+            ;;
+    esac
+    
+    # Wait for PVC to be bound
+    echo "   ⏳ Waiting for PVC $pvc_name to be ready..."
+    kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/$pvc_name -n $NAMESPACE --timeout=120s 2>/dev/null || {
+        echo -e "   ${YELLOW}⚠ PVC not ready, will download during deployment${NC}"
+        return 0
+    }
+    
+    # Create a temporary pod to copy files
+    local copy_pod="model-copy-$$"
+    
+    cat <<COPYPOD | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $copy_pod
+  namespace: $NAMESPACE
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: copy
+    image: busybox
+    command: ["sleep", "300"]
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+    volumeMounts:
+    - name: models
+      mountPath: /models
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "500m"
+  volumes:
+  - name: models
+    persistentVolumeClaim:
+      claimName: $pvc_name
+COPYPOD
+    
+    # Wait for pod to be ready
+    kubectl wait --for=condition=Ready pod/$copy_pod -n $NAMESPACE --timeout=60s 2>/dev/null || {
+        kubectl delete pod $copy_pod -n $NAMESPACE --force --grace-period=0 2>/dev/null || true
+        echo -e "   ${YELLOW}⚠ Copy pod failed to start, will download during deployment${NC}"
+        return 0
+    }
+    
+    # Copy files
+    echo "   📤 Copying files (this may take a while for large models)..."
+    if [[ -d "$source_path" ]]; then
+        # Directory (vLLM model)
+        kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/" 2>/dev/null || {
+            echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
+        }
+    else
+        # Single file (GGUF)
+        kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/$(basename "$source_path")" 2>/dev/null || {
+            echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
+        }
+    fi
+    
+    # Cleanup
+    kubectl delete pod $copy_pod -n $NAMESPACE --force --grace-period=0 2>/dev/null || true
+    
+    echo -e "   ${GREEN}✓ Pre-downloaded model copied to PVC${NC}"
+}
+
+# Copy pre-downloaded models if available
+if [[ -n "$PRE_DOWNLOADED_VLLM" ]] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
+    copy_predownloaded_models "vllm" "$PRE_DOWNLOADED_VLLM" "vllm-models"
+fi
+
+if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]); then
+    copy_predownloaded_models "llamacpp" "$PRE_DOWNLOADED_LLAMACPP" "llamacpp-models"
+fi
 
 # Deploy Redis
 echo "🔴 Deploying Redis..."

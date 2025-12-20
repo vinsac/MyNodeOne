@@ -227,8 +227,8 @@ human_size() {
 test_download_speed() {
     local url="$1"
     local name="${2:-source}"
-    local test_size=10485760  # 10MB test
-    local timeout=30
+    local test_size=5242880  # 5MB test chunk
+    local timeout=15
     
     # Print status to stderr so it doesn't get captured
     echo -e "${BLUE}[INFO]${NC} Testing download speed from $name..." >&2
@@ -236,7 +236,9 @@ test_download_speed() {
     local start_time=$(date +%s.%N)
     local bytes_downloaded=0
     
-    # Download with timeout and capture bytes
+    # For small files (like index.json), curl returns the whole file
+    # For large files, -r 0-N downloads first N bytes
+    # Use timeout to limit test duration
     if [[ -n "$HF_TOKEN" ]] && [[ "$url" == *"huggingface.co"* ]]; then
         bytes_downloaded=$(curl -sL --max-time $timeout -r 0-$test_size \
             -H "Authorization: Bearer $HF_TOKEN" \
@@ -249,8 +251,23 @@ test_download_speed() {
     local end_time=$(date +%s.%N)
     local duration=$(awk "BEGIN {printf \"%.2f\", $end_time - $start_time}")
     
-    if [[ "$bytes_downloaded" -gt 0 ]] && [[ $(awk "BEGIN {print ($duration > 0)}") -eq 1 ]]; then
+    # Validate bytes_downloaded is numeric
+    if ! [[ "$bytes_downloaded" =~ ^[0-9]+$ ]]; then
+        bytes_downloaded=0
+    fi
+    
+    # Calculate speed if we downloaded enough data (at least 100KB) and took reasonable time
+    if [[ "$bytes_downloaded" -gt 102400 ]] && [[ $(awk "BEGIN {print ($duration > 0.5)}") -eq 1 ]]; then
         local speed=$(awk "BEGIN {printf \"%.0f\", $bytes_downloaded / $duration}")
+        echo "$speed"
+    elif [[ "$bytes_downloaded" -gt 0 ]] && [[ "$bytes_downloaded" -lt 102400 ]]; then
+        # Small file - estimate based on actual download, but warn it's unreliable
+        echo -e "${YELLOW}[WARN]${NC}   Small test file, speed may be inaccurate" >&2
+        local speed=$(awk "BEGIN {printf \"%.0f\", $bytes_downloaded / ($duration > 0 ? $duration : 1)}")
+        # Assume at least 1MB/s if file downloaded quickly
+        if [[ "$speed" -lt 100000 ]] && [[ $(awk "BEGIN {print ($duration < 2)}") -eq 1 ]]; then
+            speed=1000000  # Assume 1MB/s minimum
+        fi
         echo "$speed"
     else
         echo "0"
@@ -261,20 +278,19 @@ select_best_source() {
     local model_type="$1"
     local model_id="$2"
     
+    # For vLLM models, we use huggingface_hub Python library which handles 
+    # source selection internally. Skip speed test and default to huggingface.
+    if [[ "$model_type" == "vllm" ]]; then
+        log_info "Using HuggingFace (primary source for vLLM models)"
+        echo "huggingface"
+        return 0
+    fi
+    
     declare -A sources
     
     case "$model_type" in
-        vllm)
-            # HuggingFace
-            sources["huggingface"]="https://huggingface.co/$model_id/resolve/main/config.json"
-            
-            # ModelScope mirror if available
-            if [[ -n "${MODELSCOPE_MIRRORS[$model_id]:-}" ]]; then
-                sources["modelscope"]="https://modelscope.cn/models/${MODELSCOPE_MIRRORS[$model_id]}/resolve/master/config.json"
-            fi
-            ;;
         llamacpp|embedding)
-            # Direct URL - test the actual file
+            # Direct URL - test the actual file (large GGUF files support range requests)
             sources["huggingface"]="$model_id"
             ;;
     esac

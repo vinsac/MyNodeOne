@@ -700,15 +700,32 @@ copy_predownloaded_models() {
             ;;
     esac
     
-    # Wait for PVC to be bound
+    # Wait for PVC to be bound with retry logic
     echo "   ⏳ Waiting for PVC $pvc_name to be ready..."
-    kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/$pvc_name -n $NAMESPACE --timeout=120s 2>/dev/null || {
-        echo -e "   ${YELLOW}⚠ PVC not ready, will download during deployment${NC}"
-        return 0
-    }
     
-    # Create a temporary pod to copy files
-    local copy_pod="model-copy-$$"
+    local retry_count=0
+    local max_retries=3
+    local timeout=180  # 3 minutes per attempt
+    
+    while [ $retry_count -lt $max_retries ]; do
+        if kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/$pvc_name -n $NAMESPACE --timeout=${timeout}s 2>/dev/null; then
+            echo -e "   ${GREEN}✓ PVC $pvc_name is ready${NC}"
+            break
+        else
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo "   ⏳ PVC not ready, retrying ($retry_count/$max_retries)..."
+                sleep 30
+            else
+                echo -e "   ${YELLOW}⚠ PVC not ready after $max_retries attempts, will download during deployment${NC}"
+                echo -e "   ${BLUE}💡 You can copy models later using: $SCRIPT_DIR/manage-models.sh copy-predownloaded${NC}"
+                return 0
+            fi
+        fi
+    done
+    
+    # Create a temporary pod to receive copied files (no hostPath needed)
+    local copy_pod="model-copy-$model_type-$$"
     
     cat <<COPYPOD | kubectl apply -f -
 apiVersion: v1
@@ -719,15 +736,14 @@ metadata:
 spec:
   restartPolicy: Never
   securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    fsGroup: 1000
+    runAsNonRoot: false
+    runAsUser: 0
     seccompProfile:
       type: RuntimeDefault
   containers:
   - name: copy
-    image: busybox
-    command: ["sleep", "300"]
+    image: busybox:1.35
+    command: ["sleep", "3600"]
     securityContext:
       allowPrivilegeEscalation: false
       capabilities:
@@ -741,8 +757,8 @@ spec:
         memory: "64Mi"
         cpu: "100m"
       limits:
-        memory: "256Mi"
-        cpu: "500m"
+        memory: "512Mi"
+        cpu: "1000m"
   volumes:
   - name: models
     persistentVolumeClaim:
@@ -750,30 +766,47 @@ spec:
 COPYPOD
     
     # Wait for pod to be ready
-    kubectl wait --for=condition=Ready pod/$copy_pod -n $NAMESPACE --timeout=60s 2>/dev/null || {
+    kubectl wait --for=condition=Ready pod/$copy_pod -n $NAMESPACE --timeout=120s 2>/dev/null || {
         kubectl delete pod $copy_pod -n $NAMESPACE --force --grace-period=0 2>/dev/null || true
         echo -e "   ${YELLOW}⚠ Copy pod failed to start, will download during deployment${NC}"
         return 0
     }
     
-    # Copy files
+    # Copy files using kubectl cp
     echo "   📤 Copying files (this may take a while for large models)..."
+    
+    local copy_success=false
     if [[ -d "$source_path" ]]; then
-        # Directory (vLLM model)
-        kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/" 2>/dev/null || {
-            echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
-        }
+        # Directory (vLLM model) - copy contents
+        echo "   📁 Copying directory: $(basename "$source_path")"
+        if kubectl cp "$source_path/." "$NAMESPACE/$copy_pod:/models/" 2>/dev/null; then
+            copy_success=true
+            echo "   ✓ Directory copied successfully"
+        else
+            echo -e "   ${YELLOW}⚠ Directory copy failed${NC}"
+        fi
     else
         # Single file (GGUF)
-        kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/$(basename "$source_path")" 2>/dev/null || {
-            echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
-        }
+        echo "   📄 Copying file: $(basename "$source_path")"
+        if kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/$(basename "$source_path")" 2>/dev/null; then
+            copy_success=true
+            echo "   ✓ File copied successfully"
+        else
+            echo -e "   ${YELLOW}⚠ File copy failed${NC}"
+        fi
+    fi
+    
+    # Verify copy
+    if [ "$copy_success" = true ]; then
+        echo "   🔍 Verifying copied files..."
+        kubectl exec $copy_pod -n $NAMESPACE -- ls -la /models/ 2>/dev/null || true
+        echo -e "   ${GREEN}✓ Pre-downloaded model copied to PVC${NC}"
+    else
+        echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
     fi
     
     # Cleanup
     kubectl delete pod $copy_pod -n $NAMESPACE --force --grace-period=0 2>/dev/null || true
-    
-    echo -e "   ${GREEN}✓ Pre-downloaded model copied to PVC${NC}"
 }
 
 # Copy pre-downloaded models if available

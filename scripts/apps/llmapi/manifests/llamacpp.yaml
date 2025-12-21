@@ -120,42 +120,9 @@ spec:
             fi
           fi
           
-          # 2. Check for pre-downloaded model on host
+          # 2. Skip predownload check (models should be copied by install script)
           echo ""
-          echo "Checking for pre-downloaded model on host..."
-          if [ -d "/predownload/llamacpp" ]; then
-            for GGUF_FILE in /predownload/llamacpp/*.gguf; do
-              if [ -f "$GGUF_FILE" ]; then
-                HOST_FILENAME=$(basename "$GGUF_FILE")
-                HOST_SIZE=$(stat -c%s "$GGUF_FILE" 2>/dev/null || echo 0)
-                echo "Found: $HOST_FILENAME ($(echo $HOST_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}'))"
-                
-                # Check if this matches the requested model (by filename pattern)
-                if echo "$MODEL_FILE" | grep -qi "$(echo $HOST_FILENAME | cut -d'-' -f1-2)"; then
-                  echo "✓ Match found! Copying to PVC..."
-                  cp "$GGUF_FILE" "/models/$HOST_FILENAME"
-                  # Create symlink if filenames differ
-                  if [ "$HOST_FILENAME" != "$MODEL_FILE" ]; then
-                    ln -sf "/models/$HOST_FILENAME" "$MODEL_PATH"
-                  fi
-                  echo "✓ Copy complete!"
-                  exit 0
-                fi
-              fi
-            done
-            # If no specific match, use first available GGUF
-            FIRST_GGUF=$(ls /predownload/llamacpp/*.gguf 2>/dev/null | head -1)
-            if [ -n "$FIRST_GGUF" ] && [ -f "$FIRST_GGUF" ]; then
-              FIRST_FILENAME=$(basename "$FIRST_GGUF")
-              echo "Using available model: $FIRST_FILENAME"
-              cp "$FIRST_GGUF" "/models/$FIRST_FILENAME"
-              ln -sf "/models/$FIRST_FILENAME" "$MODEL_PATH"
-              echo "✓ Copy complete!"
-              exit 0
-            fi
-          fi
-          
-          # 3. Download from URL
+          echo "Proceeding with download if model not found in PVC..."
           echo ""
           echo "No cached model found. Downloading from URL..."
           echo "This may take 30-60 minutes for a 40GB model."
@@ -195,9 +162,6 @@ spec:
         volumeMounts:
         - name: models
           mountPath: /models
-        - name: predownload
-          mountPath: /predownload
-          readOnly: true
         resources:
           requests:
             memory: "512Mi"
@@ -272,10 +236,6 @@ spec:
       - name: models
         persistentVolumeClaim:
           claimName: llamacpp-models
-      - name: predownload
-        hostPath:
-          path: /var/lib/llmapi/models
-          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

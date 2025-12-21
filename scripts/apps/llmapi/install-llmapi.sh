@@ -324,7 +324,6 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
             ;;
     esac
     echo ""
-fi
 
 # =============================================================================
 # Check for Existing Installation and Cached Models

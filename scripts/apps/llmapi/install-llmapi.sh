@@ -497,59 +497,53 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
 fi
 
 # Model selection for llama.cpp
-LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
-LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+# Default to Qwen2.5-14B (same as vLLM) for consistent responses across backends
+LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
+LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🧠 Choose CPU/RAM model (llama.cpp - GGUF format):"
     echo ""
-    echo "  Large Models (best quality, need high RAM):"
-    echo "  1. Llama-3.1-70B (Q4_K_M) - ~45GB RAM, excellent quality"
-    echo "  2. Llama-3.1-70B (Q5_K_M) - ~55GB RAM, higher quality"
-    echo "  3. Mixtral-8x7B (Q4_K_M)  - ~30GB RAM, fast MoE architecture"
+    echo -e "  ${GREEN}Recommended (same as GPU for consistent responses):${NC}"
+    echo "  1. Qwen2.5-14B (Q4_K_M)   - ~10GB RAM, matches GPU model ⭐"
+    echo "  2. Qwen2.5-14B (Q8_0)     - ~16GB RAM, higher quality version"
     echo ""
-    echo "  Medium Models (good balance):"
-    echo "  4. Qwen2.5-14B (Q4_K_M)   - ~10GB RAM, same as GPU model (overflow capacity)"
-    echo "  5. Qwen2.5-14B (Q8_0)     - ~16GB RAM, higher quality version"
-    echo ""
-    echo "  Smaller Models (faster, lower RAM):"
-    echo "  6. Llama-3.1-8B (Q8)      - ~10GB RAM, fast and good quality"
+    echo "  Alternative Models:"
+    echo "  3. Llama-3.1-8B (Q8)      - ~10GB RAM, fast and good quality"
+    echo "  4. Llama-3.1-70B (Q4_K_M) - ~45GB RAM, excellent quality"
+    echo "  5. Mixtral-8x7B (Q4_K_M)  - ~30GB RAM, fast MoE architecture"
     echo ""
     echo "  Custom Model:"
-    echo "  7. Enter your own GGUF URL from HuggingFace"
+    echo "  6. Enter your own GGUF URL from HuggingFace"
     echo ""
     echo -e "  ${BLUE}Browse GGUF models: https://huggingface.co/models?library=gguf${NC}"
     echo ""
-    read -p "Choose model [1-7, default: 1]: " CPU_MODEL_CHOICE
+    read -p "Choose model [1-6, default: 1]: " CPU_MODEL_CHOICE
     CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-1}"
     
     case "$CPU_MODEL_CHOICE" in
         1)
-            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
-            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
-            ;;
-        2)
-            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q5_K_M.gguf"
-            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q5_K_M.gguf"
-            ;;
-        3)
-            LLAMACPP_MODEL_URL="https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
-            LLAMACPP_MODEL_FILE="mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
-            ;;
-        4)
-            # Qwen2.5-14B Q4 - same model as GPU vLLM, provides overflow capacity
+            # Qwen2.5-14B Q4 - same model as GPU vLLM (recommended)
             LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
             LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
             ;;
-        5)
+        2)
             # Qwen2.5-14B Q8 - higher quality version
             LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q8_0.gguf"
             LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q8_0.gguf"
             ;;
-        6)
+        3)
             LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
             LLAMACPP_MODEL_FILE="Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
             ;;
-        7)
+        4)
+            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+            ;;
+        5)
+            LLAMACPP_MODEL_URL="https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
+            ;;
+        6)
             echo ""
             echo "  Enter the full URL to the GGUF file"
             echo "  Example: https://huggingface.co/TheBloke/Llama-2-13B-GGUF/resolve/main/llama-2-13b.Q4_K_M.gguf"
@@ -564,9 +558,9 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
             fi
             # Validate
             if [ -z "$LLAMACPP_MODEL_URL" ]; then
-                echo -e "${YELLOW}No URL entered, using default Llama-3.1-70B${NC}"
-                LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
-                LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+                echo -e "${YELLOW}No URL entered, using default Qwen2.5-14B${NC}"
+                LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
+                LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
             fi
             ;;
     esac

@@ -695,10 +695,19 @@ class BackendManager:
         model: str,
         data: dict,
         stream: bool = False
-    ) -> httpx.Response | AsyncGenerator:
-        """Forward request to appropriate backend."""
+    ) -> tuple[httpx.Response | AsyncGenerator, dict]:
+        """
+        Forward request to appropriate backend.
+        Returns (response, backend_info) tuple.
+        backend_info contains: backend_type, backend_url for response enrichment.
+        """
         backend_type, url = self.get_backend_url(model)
         backend_key = f"{backend_type}:{url}"
+        
+        backend_info = {
+            "backend": backend_type,
+            "backend_url": url,
+        }
         
         # Track in-flight requests
         self.backend_inflight[backend_key] = self.backend_inflight.get(backend_key, 0) + 1
@@ -706,7 +715,7 @@ class BackendManager:
         
         try:
             if stream:
-                return self._stream_request(url, endpoint, data, backend_type, backend_key)
+                return self._stream_request(url, endpoint, data, backend_type, backend_key, backend_info), backend_info
             else:
                 response = await self.http_client.request(
                     method,
@@ -714,7 +723,7 @@ class BackendManager:
                     json=data,
                     timeout=300.0
                 )
-                return response
+                return response, backend_info
         finally:
             if not stream:
                 self.backend_inflight[backend_key] = max(0, self.backend_inflight.get(backend_key, 0) - 1)
@@ -726,9 +735,11 @@ class BackendManager:
         endpoint: str,
         data: dict,
         backend_type: str,
-        backend_key: str
+        backend_key: str,
+        backend_info: dict
     ) -> AsyncGenerator[bytes, None]:
-        """Stream response from backend."""
+        """Stream response from backend, injecting backend info into SSE events."""
+        import json as json_module
         try:
             async with self.http_client.stream(
                 "POST",
@@ -737,6 +748,18 @@ class BackendManager:
                 timeout=300.0
             ) as response:
                 async for chunk in response.aiter_bytes():
+                    # Inject backend info into SSE data events
+                    chunk_str = chunk.decode('utf-8', errors='ignore')
+                    if chunk_str.startswith('data: ') and not chunk_str.startswith('data: [DONE]'):
+                        try:
+                            # Parse the JSON, add backend info, re-serialize
+                            json_str = chunk_str[6:].strip()
+                            if json_str:
+                                event_data = json_module.loads(json_str)
+                                event_data["system_fingerprint"] = f"{backend_type}"
+                                chunk = f"data: {json_module.dumps(event_data)}\n\n".encode()
+                        except:
+                            pass  # If parsing fails, send original chunk
                     yield chunk
         finally:
             self.backend_inflight[backend_key] = max(0, self.backend_inflight.get(backend_key, 0) - 1)
@@ -940,12 +963,14 @@ async def chat_completions(
     
     try:
         if request.stream:
-            # Streaming response
+            # Streaming response - backend info is injected into SSE events
+            stream_gen, backend_info = await backend_manager.forward_request(
+                "POST", "/v1/chat/completions", model, data, stream=True
+            )
+            
             async def stream_generator():
                 total_output_tokens = 0
-                async for chunk in await backend_manager.forward_request(
-                    "POST", "/v1/chat/completions", model, data, stream=True
-                ):
+                async for chunk in stream_gen:
                     yield chunk
                     # Rough token counting from SSE data
                     if b'"content":' in chunk:
@@ -961,11 +986,14 @@ async def chat_completions(
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
-                headers={"X-Priority": priority}
+                headers={
+                    "X-Priority": priority,
+                    "X-Backend": backend_info.get("backend", "unknown"),
+                }
             )
         else:
             # Non-streaming response
-            response = await backend_manager.forward_request(
+            response, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/chat/completions", model, data
             )
             
@@ -974,6 +1002,9 @@ async def chat_completions(
                 raise HTTPException(status_code=response.status_code, detail=response.text)
             
             result = response.json()
+            
+            # Enrich response with backend info (OpenAI-compatible)
+            result["system_fingerprint"] = backend_info.get("backend", "unknown")
             
             # Track token usage
             usage = result.get("usage", {})
@@ -1026,15 +1057,21 @@ async def completions(
     
     try:
         if request.stream:
+            stream_gen, backend_info = await backend_manager.forward_request(
+                "POST", "/v1/completions", model, data, stream=True
+            )
+            
             async def stream_generator():
-                async for chunk in await backend_manager.forward_request(
-                    "POST", "/v1/completions", model, data, stream=True
-                ):
+                async for chunk in stream_gen:
                     yield chunk
             
-            return StreamingResponse(stream_generator(), media_type="text/event-stream")
+            return StreamingResponse(
+                stream_generator(),
+                media_type="text/event-stream",
+                headers={"X-Backend": backend_info.get("backend", "unknown")}
+            )
         else:
-            response = await backend_manager.forward_request(
+            response, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/completions", model, data
             )
             
@@ -1042,6 +1079,8 @@ async def completions(
                 raise HTTPException(status_code=response.status_code, detail=response.text)
             
             result = response.json()
+            result["system_fingerprint"] = backend_info.get("backend", "unknown")
+            
             duration = time.time() - start_time
             REQUEST_DURATION.labels(model=model, priority=priority, endpoint="completions").observe(duration)
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="completions").inc()
@@ -1103,6 +1142,7 @@ async def embeddings(
             cache_misses.append((i, text))
     
     # Process cache misses
+    backend_info = {"backend": "embedding"}
     if cache_misses:
         data = {
             "model": model,
@@ -1110,7 +1150,7 @@ async def embeddings(
         }
         
         try:
-            response = await backend_manager.forward_request(
+            response, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/embeddings", model, data
             )
             

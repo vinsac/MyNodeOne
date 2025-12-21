@@ -53,6 +53,45 @@ The API returns a **404 error** with the list of available models:
 2. Use a model from the returned list in requests
 3. Handle 404 gracefully (fallback to another model or queue)
 
+### What does the API response look like?
+
+Responses follow the **OpenAI API format** with an additional `system_fingerprint` field indicating which backend handled the request:
+
+```json
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1703123456,
+  "model": "qwen2.5-14b",
+  "system_fingerprint": "vllm",    // ← Backend that handled request
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello! How can I help you?"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 8,
+    "total_tokens": 18
+  }
+}
+```
+
+**Possible `system_fingerprint` values:**
+| Value | Meaning |
+|-------|---------|
+| `vllm` | Handled by GPU backend (fastest) |
+| `llamacpp` | Handled by CPU backend (overflow) |
+| `ollama` | Handled by Ollama (lazy-loaded) |
+| `embedding` | Handled by embedding service |
+
+**Streaming responses** also include `X-Backend` HTTP header with the same value.
+
 ### Can multiple apps use different models?
 
 **Yes**, but with constraints:
@@ -127,20 +166,38 @@ Embeddings on CPU is fine because:
 - Your skill names are short strings
 - CPU can handle thousands of embeddings/minute
 
-### Does llama.cpp automatically use RAM overflow?
+### How does horizontal scaling work?
 
-**Current design**: llama.cpp is a separate deployment (not automatic overflow).
+**Automatic load balancing**: The gateway routes chat requests to the least-loaded backend.
 
-**How it works**:
-- vLLM runs on GPU with one model
-- llama.cpp runs on CPU/RAM with a different (usually larger) model
-- Gateway routes to the right backend based on model name
-- No automatic failover (by design - to keep it simple)
+**Request routing priority**:
+1. **GPU instances first** (vLLM) - fastest response times
+2. **CPU fallback** (llama.cpp) - when all GPUs are busy
+3. **Ollama** - last resort for lazy-loaded models
 
-**If you want a 70B model on RAM**:
-1. Deploy llama.cpp with the 70B model
-2. Apps request that model by name
-3. It runs entirely on CPU/RAM (256GB is plenty for 70B Q4)
+```
+Request → Gateway → Check vLLM load
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+     GPU 1 (vLLM)    GPU 2 (vLLM)    CPU (llama.cpp)
+     [3 inflight]    [5 inflight]    [0 inflight]
+         │               │               │
+         └───────────────┴───────────────┘
+                         │
+              Route to least-loaded
+              (GPU 1 in this example)
+```
+
+**Recommended setup**: Run the **same model** on both GPU and CPU for consistent responses:
+- **GPU**: `Qwen2.5-14B-AWQ` (fast, default)
+- **CPU**: `Qwen2.5-14B-Q4_K_M` (same model, GGUF format)
+
+**Configuration**:
+```yaml
+HORIZONTAL_SCALING: "true"          # Enable load-based routing (default)
+MAX_INFLIGHT_PER_BACKEND: "32"      # Requests before routing to next backend
+```
 
 ### Can I download/switch models from the Admin UI?
 
@@ -286,10 +343,12 @@ DELETE /admin/models/{model_name}
 | Feature | vLLM | llama.cpp | Ollama | Embedding |
 |---------|------|-----------|--------|-----------|
 | **Hardware** | GPU (24GB VRAM) | CPU (40-80GB RAM) | GPU+RAM (auto) | CPU (1-2GB RAM) |
-| **Speed** | ⚡ Fastest | 🐢 Slowest | 🚗 Medium | ⚡ Fast |
+| **Speed** | ⚡ Fastest | 🐢 Slower | 🚗 Medium | ⚡ Fast |
+| **Routing Priority** | 1st (primary) | 2nd (overflow) | 3rd (fallback) | Dedicated |
 | **Model Cache** | ❌ No | ❌ No | ✅ 1TB PVC | ❌ No |
 | **Change Model** | Restart (10-30min) | Restart (5-15min) | Instant (lazy load) | Fixed |
 | **Admin UI Control** | Change model | Start/Stop, Change | Download, Delete | None |
+| **Default Model** | Qwen2.5-14B-AWQ | Qwen2.5-14B-Q4 | On-demand | bge-m3 |
 | **Auto-unload when idle** | ❌ No | ❌ No | ✅ Yes (30min) | ❌ No |
 | **Best for** | Production | Large models (70B+) | Experimentation | Embeddings |
 

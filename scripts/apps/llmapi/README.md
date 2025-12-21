@@ -5,12 +5,12 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 ## Features
 
 - ✅ **OpenAI-Compatible API** - Drop-in replacement for OpenAI clients
+- ✅ **Horizontal Scaling** - Automatic routing: GPU1 → GPU2 → CPU (least-loaded first)
 - ✅ **Multi-Backend** - vLLM (GPU), llama.cpp (CPU/RAM), dedicated embeddings
 - ✅ **Priority Queue** - Realtime, high, normal, low, batch priorities
 - ✅ **Rate Limiting** - Per-key request and token limits
 - ✅ **Usage Metering** - Track tokens per API key for quotas
-- ✅ **Load Balancing** - Automatic routing across backends
-- ✅ **GPU + CPU** - Use GPU for fast inference, CPU for overflow/large models
+- ✅ **Backend Transparency** - Response includes `system_fingerprint` showing which backend handled it
 - ✅ **Admin UI** - Web interface at `/admin` for key management and monitoring
 
 ## Quick Start
@@ -132,13 +132,13 @@ Access the admin UI at `http://llmapi.cluster.local/admin`:
 
 ## Default Models
 
-| Model | Type | Backend | Best For |
-|-------|------|---------|----------|
-| `qwen2.5-14b` | Chat | vLLM (GPU) | General chat, coding |
-| `llama-cpu` | Chat | llama.cpp (CPU) | Complex reasoning (70B on RAM) |
-| `embedding` | Embedding | Dedicated | Document indexing |
+| Model | Type | Backend | Purpose |
+|-------|------|---------|---------|
+| `Qwen2.5-14B-AWQ` | Chat | vLLM (GPU) | Primary - fast GPU inference |
+| `Qwen2.5-14B-Q4` | Chat | llama.cpp (CPU) | Overflow - same model on CPU |
+| `bge-m3` | Embedding | Dedicated | Document indexing |
 
-Models are auto-discovered from backends. The actual model names depend on your configuration.
+**Same model on GPU and CPU**: Using the same model family ensures consistent responses regardless of which backend handles the request.
 
 ## Architecture
 
@@ -147,25 +147,30 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
 ```
                          ┌─────────────────┐
                          │   API Gateway   │
-                         │  + Admin UI     │
-                         │  (Rate Limit)   │
+                         │  Load Balancer  │
                          └────────┬────────┘
                                   │
-     ┌─────────────┬──────────────┼──────────────┬─────────────┐
-     ▼             ▼              ▼              ▼             ▼
-┌─────────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌────────┐
-│  vLLM   │  │  Ollama  │  │ llama.cpp │  │ Embedding │  │ Redis  │
-│  (GPU)  │  │ (Flex)   │  │   (CPU)   │  │  Service  │  │        │
-│ Fixed   │  │ Dynamic  │  │ Start/Stop│  │           │  │ Queue  │
-│ Model   │  │ Models   │  │ via Admin │  │           │  │ Cache  │
-└─────────┘  └──────────┘  └───────────┘  └───────────┘  └────────┘
+               Route to least-loaded backend
+                    (GPU preferred)
+                                  │
+     ┌────────────────────────────┼────────────────────────────┐
+     ▼                            ▼                            ▼
+┌─────────┐                 ┌───────────┐                ┌───────────┐
+│  vLLM   │  ──overflow──▶  │ llama.cpp │  ──fallback──▶ │  Ollama   │
+│  (GPU)  │                 │   (CPU)   │                │  (Flex)   │
+│Priority │                 │ Priority  │                │ Priority  │
+│   1     │                 │    2      │                │    3      │
+└─────────┘                 └───────────┘                └───────────┘
+     │
+     ├── Always runs: Embedding Service (dedicated)
+     └── Always runs: Redis (queue + cache)
 ```
 
-**Backends:**
-- **vLLM**: Production GPU inference, fixed model, fastest
-- **Ollama**: Dynamic model loading, auto-unload, 1TB cache
-- **llama.cpp**: CPU/RAM for large models (70B+), start/stop via Admin
-- **Embedding**: Dedicated service for vector embeddings
+**Horizontal Scaling**:
+- Requests route to **least-loaded** backend
+- **GPU instances checked first** (fastest response)
+- **CPU fallback** when GPUs are busy
+- Response includes `system_fingerprint: "vllm"` or `"llamacpp"` so you know which backend handled it
 
 ## Management
 

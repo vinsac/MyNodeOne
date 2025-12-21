@@ -590,23 +590,41 @@ read -p "Requests per minute [default: 60]: " DEFAULT_RPM
 DEFAULT_RPM="${DEFAULT_RPM:-60}"
 echo ""
 
+# Load centralized HF token management
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hf-token.sh"
+
 # HuggingFace Token (optional but recommended for faster downloads)
 HF_TOKEN=""
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🔑 HuggingFace Token (recommended for faster model downloads):"
     echo ""
-    echo "   A HuggingFace token removes rate limits and enables gated models."
-    echo "   Get a free token at: https://huggingface.co/settings/tokens"
-    echo "   (Leave empty to skip - downloads will be slower)"
-    echo ""
-    read -p "Enter HuggingFace token [optional]: " HF_TOKEN
-    if [ -n "$HF_TOKEN" ]; then
-        echo -e "   ${GREEN}✓ Token provided - downloads will be faster${NC}"
+    
+    # Try to get existing token first
+    if HF_TOKEN=$(get_hf_token false); then
+        echo -e "   ${GREEN}✓ Using existing token (${HF_TOKEN:0:8}...)${NC}"
+        echo "   To change or remove: ./lib/hf-token.sh set|delete"
     else
-        echo -e "   ${YELLOW}⚠ No token - downloads may be rate-limited${NC}"
+        echo "   A HuggingFace token removes rate limits and enables gated models."
+        echo "   Get a free token at: https://huggingface.co/settings/tokens"
+        echo "   (Leave empty to skip - downloads will be slower)"
+        echo ""
+        read -p "Enter HuggingFace token [optional]: " user_token
+        if [ -n "$user_token" ]; then
+            if [[ "$user_token" == hf_* ]]; then
+                HF_TOKEN="$user_token"
+                save_token "$HF_TOKEN"
+                echo -e "   ${GREEN}✓ Token saved and will be reused in future installations${NC}"
+            else
+                echo -e "   ${YELLOW}⚠ Invalid token format (should start with 'hf_')${NC}"
+                HF_TOKEN=""
+            fi
+        else
+            echo -e "   ${YELLOW}⚠ No token - downloads may be rate-limited${NC}"
+        fi
     fi
-    echo ""
 fi
+echo ""
 
 # Confirm
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

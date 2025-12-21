@@ -57,6 +57,12 @@ declare -A VLLM_MODELS=(
 )
 
 declare -A LLAMACPP_MODELS=(
+    # Recommended: Same models as vLLM for consistent responses
+    ["qwen2.5-14b-q4"]="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf|9.2G|Same as GPU model (recommended)"
+    ["qwen2.5-14b-q8"]="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q8_0.gguf|15.7G|Higher quality Q8"
+    ["mistral-7b-q4"]="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf|4.4G|Fast Mistral (matches GPU)"
+    ["mistral-7b-q8"]="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q8_0.gguf|7.7G|Higher quality Mistral"
+    # Large models for high-RAM systems
     ["llama3.1-70b-q4"]="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf|40.5G|Best 70B for CPU"
     ["llama3.1-70b-q3"]="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q3_K_M.gguf|33G|Smaller 70B, slightly lower quality"
     ["llama3.1-8b-q4"]="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf|4.9G|Fast 8B model"
@@ -136,64 +142,18 @@ check_dependencies() {
     fi
 }
 
-prompt_hf_token() {
-    # Skip if token already set
-    if [[ -n "$HF_TOKEN" ]]; then
-        log_info "Using HuggingFace token from environment"
+# Load centralized HF token management
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hf-token.sh"
+
+setup_hf_token() {
+    # Use centralized token management - prompts if needed
+    if HF_TOKEN=$(get_hf_token true); then
+        export HF_TOKEN
         return 0
-    fi
-    
-    # Check if token exists in Kubernetes secret
-    if command -v kubectl &>/dev/null; then
-        local k8s_token
-        k8s_token=$(kubectl get secret hf-token -n llmapi -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-        if [[ -n "$k8s_token" ]]; then
-            HF_TOKEN="$k8s_token"
-            log_info "Using HuggingFace token from Kubernetes secret"
-            return 0
-        fi
-    fi
-    
-    echo ""
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}  HuggingFace Token (Recommended)${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "A HuggingFace token enables:"
-    echo "  • Faster download speeds (authenticated users get priority)"
-    echo "  • Access to gated models (Llama 3, CodeLlama, etc.)"
-    echo ""
-    echo "Get your free token at: https://huggingface.co/settings/tokens"
-    echo "(Create a 'Read' token - no special permissions needed)"
-    echo ""
-    read -p "Enter HuggingFace token (or press Enter to skip): " user_token
-    
-    if [[ -n "$user_token" ]]; then
-        # Validate token format (should start with hf_)
-        if [[ "$user_token" == hf_* ]]; then
-            HF_TOKEN="$user_token"
-            log_success "HuggingFace token set"
-            
-            # Offer to save to Kubernetes if available
-            if command -v kubectl &>/dev/null && kubectl get namespace llmapi &>/dev/null 2>&1; then
-                read -p "Save token to Kubernetes for future use? [Y/n]: " save_k8s
-                if [[ "${save_k8s,,}" != "n" ]]; then
-                    kubectl create secret generic hf-token -n llmapi \
-                        --from-literal=token="$HF_TOKEN" \
-                        --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null && \
-                        log_success "Token saved to Kubernetes secret 'hf-token'" || \
-                        log_warn "Could not save to Kubernetes (namespace may not exist yet)"
-                fi
-            fi
-        else
-            log_warn "Token doesn't look like a HuggingFace token (should start with 'hf_')"
-            log_warn "Continuing without token - downloads may be slower"
-        fi
     else
-        log_info "Continuing without HuggingFace token"
-        log_info "Downloads will work but may be slower for large models"
+        return 1
     fi
-    echo ""
 }
 
 ensure_directories() {
@@ -767,9 +727,9 @@ interactive_mode() {
             ;;
         4)
             echo ""
-            log_info "Downloading recommended models..."
+            log_info "Downloading recommended models (same model family for GPU + CPU)..."
             download_vllm_model "qwen2.5-14b-awq"
-            download_llamacpp_model "llama3.1-70b-q4"
+            download_llamacpp_model "qwen2.5-14b-q4"  # Same model as GPU for consistent responses
             download_embedding_model "nomic-embed-v1.5"
             ;;
         5)
@@ -892,9 +852,9 @@ main() {
     check_dependencies
     ensure_directories
     
-    # Prompt for HuggingFace token (unless --list or --status)
+    # Setup HuggingFace token (unless --list or --status)
     if [[ "${1:-}" != "--list" ]] && [[ "${1:-}" != "--status" ]]; then
-        prompt_hf_token
+        setup_hf_token
     fi
     
     case "${1:-}" in

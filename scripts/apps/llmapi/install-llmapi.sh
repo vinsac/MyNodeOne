@@ -277,26 +277,6 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
         esac
     fi
     echo ""
-else
-    echo ""
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}⚠️  Models Not Pre-Downloaded${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "LLM models are large (10-50GB) and downloading them during"
-    echo "installation can be slow and may cause pod timeouts."
-    echo ""
-    echo "Pre-downloading is recommended because:"
-    echo "  • Uses aria2c with 16 parallel connections (5-10x faster)"
-    echo "  • Models persist in /var/lib/llmapi/models/ across reinstalls"
-    echo "  • Can resume interrupted downloads"
-    echo ""
-    echo "Options:"
-    echo "  1) Download models now (recommended)"
-    echo "  2) Continue without pre-downloading (slower, may timeout)"
-    echo "  3) Exit and download manually"
-    echo ""
-    read -p "Choose an option [1/2/3]: " download_choice
     case "$download_choice" in
         1)
             echo ""

@@ -187,27 +187,50 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
         done
     fi
     
+    # Always offer download options, regardless of existing models
+    echo ""
     if [[ -z "$PRE_DOWNLOADED_VLLM" ]] && [[ -z "$PRE_DOWNLOADED_LLAMACPP" ]] && [[ -z "$PRE_DOWNLOADED_EMBEDDING" ]]; then
-        echo -e "   ${YELLOW}No pre-downloaded models found${NC}"
-        echo ""
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${YELLOW}⚠️  Models Not Pre-Downloaded${NC}"
+        echo -e "${YELLOW}⚠️  No Models Pre-Downloaded${NC}"
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
         echo "LLM models are large (10-50GB) and downloading them during"
         echo "installation can be slow and may cause pod timeouts."
+    else
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}  Model Download Options${NC}"
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
-        echo "Pre-downloading is recommended because:"
-        echo "  • Uses aria2c with 16 parallel connections (5-10x faster)"
-        echo "  • Models persist in /var/lib/llmapi/models/ across reinstalls"
-        echo "  • Can resume interrupted downloads"
-        echo ""
-        echo "Options:"
-        echo "  1) Download models now (recommended)"
-        echo "  2) Continue without pre-downloading (slower, may timeout)"
-        echo "  3) Exit and download manually"
-        echo ""
-        read -p "Choose an option [1/2/3]: " download_choice
+        echo "Found some models, but you may want to download additional ones:"
+        if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
+            echo "  ✅ GPU models (vLLM) - available"
+        else
+            echo "  ❌ GPU models (vLLM) - missing"
+        fi
+        if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]]; then
+            echo "  ✅ CPU models (llama.cpp) - available"  
+        else
+            echo "  ❌ CPU models (llama.cpp) - missing"
+        fi
+        if [[ -n "$PRE_DOWNLOADED_EMBEDDING" ]]; then
+            echo "  ✅ Embedding models - available"
+        else
+            echo "  ❌ Embedding models - missing"
+        fi
+    fi
+    echo ""
+    echo "Pre-downloading benefits:"
+    echo "  • Uses aria2c with 16 parallel connections (5-10x faster)"
+    echo "  • Models persist in /var/lib/llmapi/models/ across reinstalls"
+    echo "  • Can resume interrupted downloads"
+    echo "  • Download different model sizes/quantizations"
+    echo ""
+    echo "Options:"
+    echo "  1) Download additional models (recommended)"
+    echo "  2) Continue with current models"
+    echo "  3) Exit and download manually"
+    echo ""
+    read -p "Choose an option [1/2/3]: " download_choice
         case "$download_choice" in
             1)
                 echo ""

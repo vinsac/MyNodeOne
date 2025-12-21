@@ -19,11 +19,10 @@ data:
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
   AUTO_DOWNLOAD: "false"
-  # Overflow settings: route from GPU to CPU when overloaded
-  # Format: "vllm_model:llamacpp_model" (comma-separated for multiple)
-  # Example: "qwen2.5-14b:qwen2.5-14b-cpu" routes overflow to CPU version
-  OVERFLOW_MODELS: ""
-  OVERFLOW_THRESHOLD: "8"
+  # Horizontal scaling: route to least-loaded backend (GPU1 → GPU2 → CPU)
+  # When enabled, all chat backends are treated as equivalent
+  HORIZONTAL_SCALING: "true"
+  MAX_INFLIGHT_PER_BACKEND: "32"
   # Admin password (change this!)
   ADMIN_PASSWORD: "admin"
 ---

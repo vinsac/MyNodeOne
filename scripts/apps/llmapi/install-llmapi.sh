@@ -580,16 +580,12 @@ if [ -n "$LLAMACPP_MODEL_FILE" ]; then
     LLAMACPP_MODEL_NAME=$(echo "$LLAMACPP_MODEL_FILE" | sed 's/\.gguf$//' | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 fi
 
-# Check if same model family is used for GPU and CPU (enables overflow)
-OVERFLOW_MODELS=""
+# Horizontal scaling info
 if [ "$DEPLOY_MODE" = "1" ] && [ "$GPU_AVAILABLE" = true ]; then
-    # Check if both are Qwen2.5-14B variants
-    if [[ "$VLLM_MODEL_NAME" == "qwen2.5-14b" ]] && [[ "$LLAMACPP_MODEL_FILE" == *"qwen2.5-14b"* ]]; then
-        OVERFLOW_MODELS="${VLLM_MODEL_NAME}:${LLAMACPP_MODEL_NAME}"
-        echo -e "${GREEN}✓ Overflow enabled: ${VLLM_MODEL_NAME} → ${LLAMACPP_MODEL_NAME}${NC}"
-        echo "   When GPU is overloaded, requests will automatically route to CPU"
-        echo ""
-    fi
+    echo -e "${GREEN}✓ Horizontal scaling enabled${NC}"
+    echo "   Requests route to: GPU → CPU (least-loaded backend)"
+    echo "   Tip: Use same model family on GPU and CPU for consistent responses"
+    echo ""
 fi
 
 # Default quotas
@@ -806,9 +802,9 @@ data:
   OLLAMA_URL: "http://ollama:11434"
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
-  # Overflow: route from GPU to CPU when overloaded (empty = disabled)
-  OVERFLOW_MODELS: "${OVERFLOW_MODELS}"
-  OVERFLOW_THRESHOLD: "8"
+  # Horizontal scaling: route to least-loaded backend (GPU → CPU)
+  HORIZONTAL_SCALING: "true"
+  MAX_INFLIGHT_PER_BACKEND: "32"
 EOF
 
 # Create ConfigMap with gateway Python code

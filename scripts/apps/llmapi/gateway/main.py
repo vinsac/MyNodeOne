@@ -69,11 +69,12 @@ class Config:
     LAZY_LOAD_BACKEND = os.getenv("LAZY_LOAD_BACKEND", "ollama")
     AUTO_DOWNLOAD = os.getenv("AUTO_DOWNLOAD", "false").lower() == "true"
     
-    # Overflow settings: when vLLM is overloaded, route to llama.cpp if same model is available
-    # Format: "vllm_model:llamacpp_model" pairs (comma-separated)
-    # Example: "qwen2.5-14b:qwen2.5-14b-cpu" means requests for qwen2.5-14b can overflow to qwen2.5-14b-cpu
-    OVERFLOW_MODELS = os.getenv("OVERFLOW_MODELS", "")  # e.g., "qwen2.5-14b:qwen2.5-14b-cpu"
-    OVERFLOW_THRESHOLD = int(os.getenv("OVERFLOW_THRESHOLD", "8"))  # Max inflight requests before overflow
+    # Horizontal scaling: route chat requests to least-loaded backend
+    # When enabled, any chat model request routes to: GPU1 → GPU2 → ... → CPU
+    # This assumes all chat backends run equivalent models (e.g., all run Qwen2.5-14B)
+    HORIZONTAL_SCALING = os.getenv("HORIZONTAL_SCALING", "true").lower() == "true"
+    # Max concurrent requests per backend before routing to next
+    MAX_INFLIGHT_PER_BACKEND = int(os.getenv("MAX_INFLIGHT_PER_BACKEND", "32"))
     
     # Model name aliases (map OpenAI names to our internal names)
     MODEL_ALIASES = {
@@ -451,64 +452,97 @@ class BackendManager:
             await self.http_client.aclose()
     
     def get_backend_url(self, model: str) -> tuple[str, str]:
-        """Get backend URL for a model, with overflow support."""
+        """
+        Get backend URL for a model using simple load-balanced routing.
+        
+        For chat models with HORIZONTAL_SCALING enabled:
+          - Routes to least-loaded backend: GPU1 → GPU2 → ... → CPU
+          - All chat backends are treated as equivalent (same model family)
+        
+        For embedding models:
+          - Always routes to dedicated embedding service
+        """
         model_info = model_registry.get_model(model)
+        
+        # Handle embedding requests - always go to embedding service
+        if model_info and model_info.get("backend") == "embedding":
+            return "embedding", config.EMBEDDING_URL
+        
+        # For chat models with horizontal scaling, route to least-loaded backend
+        if config.HORIZONTAL_SCALING:
+            return self._get_least_loaded_chat_backend()
+        
+        # Fallback: route based on model's registered backend
         if not model_info:
-            return None, None
+            # If model not found but we have healthy backends, try to route anyway
+            return self._get_least_loaded_chat_backend()
         
         backend_type = model_info.get("backend")
-        
         if backend_type == "vllm":
-            # Load balance across vLLM instances
-            min_inflight = float("inf")
-            best_url = config.VLLM_URLS[0] if config.VLLM_URLS else None
-            total_vllm_inflight = 0
-            
-            for url in config.VLLM_URLS:
-                key = f"vllm:{url}"
-                if self.backend_health.get(key, False):
-                    inflight = self.backend_inflight.get(key, 0)
-                    total_vllm_inflight += inflight
-                    if inflight < min_inflight:
-                        min_inflight = inflight
-                        best_url = url
-            
-            # Check if we should overflow to llama.cpp
-            if config.OVERFLOW_MODELS and total_vllm_inflight >= config.OVERFLOW_THRESHOLD:
-                overflow_map = self._parse_overflow_models()
-                if model in overflow_map:
-                    overflow_model = overflow_map[model]
-                    # Check if overflow model is available on llama.cpp
-                    overflow_info = model_registry.get_model(overflow_model)
-                    if overflow_info and overflow_info.get("backend") == "llamacpp":
-                        llamacpp_key = f"llamacpp:{config.LLAMACPP_URL}"
-                        if self.backend_health.get(llamacpp_key, False):
-                            llamacpp_inflight = self.backend_inflight.get(llamacpp_key, 0)
-                            # Only overflow if llama.cpp has capacity
-                            if llamacpp_inflight < config.OVERFLOW_THRESHOLD:
-                                logger.info(f"Overflow: routing {model} to llama.cpp ({overflow_model}), vLLM inflight={total_vllm_inflight}")
-                                return "llamacpp", config.LLAMACPP_URL
-            
-            return "vllm", best_url
+            return self._get_least_loaded_vllm()
         elif backend_type == "llamacpp":
             return "llamacpp", config.LLAMACPP_URL
         elif backend_type == "ollama":
             return "ollama", config.OLLAMA_URL
-        elif backend_type == "embedding":
-            return "embedding", config.EMBEDDING_URL
         else:
             return None, None
     
-    def _parse_overflow_models(self) -> dict[str, str]:
-        """Parse OVERFLOW_MODELS config into a dict mapping vllm_model -> llamacpp_model."""
-        overflow_map = {}
-        if config.OVERFLOW_MODELS:
-            for pair in config.OVERFLOW_MODELS.split(","):
-                pair = pair.strip()
-                if ":" in pair:
-                    vllm_model, llamacpp_model = pair.split(":", 1)
-                    overflow_map[vllm_model.strip()] = llamacpp_model.strip()
-        return overflow_map
+    def _get_least_loaded_chat_backend(self) -> tuple[str, str]:
+        """
+        Route to least-loaded chat backend.
+        Priority: vLLM instances (GPU) → llama.cpp (CPU) → Ollama
+        """
+        best_backend = None
+        best_url = None
+        min_inflight = float("inf")
+        
+        # Check all vLLM instances (GPUs) first
+        for url in config.VLLM_URLS:
+            key = f"vllm:{url}"
+            if self.backend_health.get(key, False):
+                inflight = self.backend_inflight.get(key, 0)
+                if inflight < min_inflight and inflight < config.MAX_INFLIGHT_PER_BACKEND:
+                    min_inflight = inflight
+                    best_backend = "vllm"
+                    best_url = url
+        
+        # If all vLLM instances are busy, try llama.cpp (CPU)
+        if best_backend is None or min_inflight >= config.MAX_INFLIGHT_PER_BACKEND:
+            llamacpp_key = f"llamacpp:{config.LLAMACPP_URL}"
+            if self.backend_health.get(llamacpp_key, False):
+                inflight = self.backend_inflight.get(llamacpp_key, 0)
+                if inflight < config.MAX_INFLIGHT_PER_BACKEND:
+                    if best_backend is None or inflight < min_inflight:
+                        min_inflight = inflight
+                        best_backend = "llamacpp"
+                        best_url = config.LLAMACPP_URL
+        
+        # Last resort: Ollama
+        if best_backend is None:
+            ollama_key = f"ollama:{config.OLLAMA_URL}"
+            if self.backend_health.get(ollama_key, False):
+                best_backend = "ollama"
+                best_url = config.OLLAMA_URL
+        
+        if best_backend:
+            logger.debug(f"Routing to {best_backend} ({best_url}), inflight={min_inflight}")
+        
+        return best_backend, best_url
+    
+    def _get_least_loaded_vllm(self) -> tuple[str, str]:
+        """Get least-loaded vLLM instance."""
+        best_url = config.VLLM_URLS[0] if config.VLLM_URLS else None
+        min_inflight = float("inf")
+        
+        for url in config.VLLM_URLS:
+            key = f"vllm:{url}"
+            if self.backend_health.get(key, False):
+                inflight = self.backend_inflight.get(key, 0)
+                if inflight < min_inflight:
+                    min_inflight = inflight
+                    best_url = url
+        
+        return "vllm", best_url
     
     async def discover_models(self):
         """Query backends to discover loaded models."""

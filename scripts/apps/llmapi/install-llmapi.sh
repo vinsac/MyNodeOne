@@ -704,21 +704,38 @@ copy_predownloaded_models() {
     echo "   ⏳ Waiting for PVC $pvc_name to be ready..."
     
     local retry_count=0
-    local max_retries=3
-    local timeout=180  # 3 minutes per attempt
+    local max_retries=5
+    local timeout=240  # 4 minutes per attempt (up to 20 minutes total)
     
     while [ $retry_count -lt $max_retries ]; do
+        # Add detailed logging about PVC status
+        echo "   🔍 Checking PVC status (attempt $((retry_count + 1))/$max_retries)..."
+        local pvc_status=$(kubectl get pvc $pvc_name -n $NAMESPACE -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+        echo "      PVC $pvc_name status: $pvc_status"
+        
+        if [ "$pvc_status" = "Bound" ]; then
+            echo -e "   ${GREEN}✓ PVC $pvc_name is ready${NC}"
+            break
+        elif [ "$pvc_status" = "Pending" ]; then
+            echo "      PVC is pending - waiting for storage provisioner..."
+            # Check storage class and conditions
+            kubectl describe pvc $pvc_name -n $NAMESPACE 2>/dev/null | grep -E "(StorageClass|Events|Conditions)" || true
+        elif [ "$pvc_status" = "NotFound" ]; then
+            echo "      PVC doesn't exist yet - this may be a timing issue"
+            kubectl get pvc -n $NAMESPACE 2>/dev/null || echo "      No PVCs found in namespace"
+        fi
+        
         if kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/$pvc_name -n $NAMESPACE --timeout=${timeout}s 2>/dev/null; then
             echo -e "   ${GREEN}✓ PVC $pvc_name is ready${NC}"
             break
         else
             retry_count=$((retry_count + 1))
             if [ $retry_count -lt $max_retries ]; then
-                echo "   ⏳ PVC not ready, retrying ($retry_count/$max_retries)..."
+                echo "   ⏳ PVC not ready, retrying ($retry_count/$max_retries) in 30 seconds..."
                 sleep 30
             else
-                echo -e "   ${YELLOW}⚠ PVC not ready after $max_retries attempts, will download during deployment${NC}"
-                echo -e "   ${BLUE}💡 You can copy models later using: $SCRIPT_DIR/manage-models.sh copy-predownloaded${NC}"
+                echo -e "   ${YELLOW}⚠ PVC not ready after $max_retries attempts ($(($max_retries * $timeout / 60)) minutes total)${NC}"
+                echo -e "   ${BLUE}💡 You can copy models later using: $SCRIPT_DIR/copy-predownloaded-models.sh${NC}"
                 return 0
             fi
         fi
@@ -809,14 +826,7 @@ COPYPOD
     kubectl delete pod $copy_pod -n $NAMESPACE --force --grace-period=0 2>/dev/null || true
 }
 
-# Copy pre-downloaded models if available
-if [[ -n "$PRE_DOWNLOADED_VLLM" ]] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
-    copy_predownloaded_models "vllm" "$PRE_DOWNLOADED_VLLM" "vllm-models"
-fi
-
-if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]); then
-    copy_predownloaded_models "llamacpp" "$PRE_DOWNLOADED_LLAMACPP" "llamacpp-models"
-fi
+# Note: Model copying will happen AFTER PVCs are created during service deployment
 
 # Deploy Redis
 echo "🔴 Deploying Redis..."
@@ -1033,6 +1043,13 @@ EOF
 
     # Deploy vLLM StatefulSet
     kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
+    
+    # Copy pre-downloaded models after PVC creation
+    if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
+        echo ""
+        echo "   📦 Copying pre-downloaded vLLM model to PVC..."
+        copy_predownloaded_models "vllm" "$PRE_DOWNLOADED_VLLM" "vllm-models"
+    fi
 else
     echo "⏭️  Skipping vLLM (no GPU or not selected)"
 fi
@@ -1067,6 +1084,13 @@ data:
 EOF
 
     kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml"
+    
+    # Copy pre-downloaded models after PVC creation
+    if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]]; then
+        echo ""
+        echo "   📦 Copying pre-downloaded llamacpp model to PVC..."
+        copy_predownloaded_models "llamacpp" "$PRE_DOWNLOADED_LLAMACPP" "llamacpp-models"
+    fi
 else
     echo "⏭️  Skipping llama.cpp (not selected)"
 fi

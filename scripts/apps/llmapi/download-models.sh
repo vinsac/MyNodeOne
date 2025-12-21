@@ -57,9 +57,9 @@ declare -A VLLM_MODELS=(
 )
 
 declare -A LLAMACPP_MODELS=(
-    # Recommended: Same models as vLLM for consistent responses
-    ["qwen2.5-14b-q4"]="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf|9.2G|Same as GPU model (recommended)"
-    ["qwen2.5-14b-q8"]="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q8_0.gguf|15.7G|Higher quality Q8"
+    # Recommended: Same models as vLLM for consistent responses  
+    ["qwen2.5-14b-q4"]="https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf|9.2G|Same as GPU model (recommended)"
+    ["qwen2.5-14b-q8"]="https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q8_0.gguf|15.7G|Higher quality Q8"
     ["mistral-7b-q4"]="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf|4.4G|Fast Mistral (matches GPU)"
     ["mistral-7b-q8"]="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q8_0.gguf|7.7G|Higher quality Mistral"
     # Large models for high-RAM systems
@@ -543,6 +543,8 @@ EOF
 
 download_llamacpp_model() {
     local model_key="${1:-llama3.1-70b-q4}"
+    local max_retries=3
+    local retry_count=0
     
     if [[ -z "${LLAMACPP_MODELS[$model_key]:-}" ]]; then
         log_error "Unknown llama.cpp model: $model_key"
@@ -556,6 +558,8 @@ download_llamacpp_model() {
     
     IFS='|' read -r url size desc <<< "${LLAMACPP_MODELS[$model_key]}"
     local filename=$(basename "$url")
+    local output_dir="$DOWNLOAD_DIR/llamacpp"
+    local output_file="$output_dir/$filename"
     
     echo ""
     echo -e "${CYAN}=== Downloading llama.cpp Model ===${NC}"
@@ -564,27 +568,74 @@ download_llamacpp_model() {
     echo "Size: ~$size"
     echo ""
     
-    # Test download speed
-    log_info "Testing download speed..."
-    local speed=$(test_download_speed "$url" "HuggingFace")
-    log_info "Download speed: $(human_size $speed)/s"
+    mkdir -p "$output_dir"
     
-    if [[ $speed -gt 0 ]]; then
-        # Parse size to bytes for ETA calculation
-        local size_bytes=$(echo "$size" | sed 's/G/*1073741824/;s/M/*1048576/;s/K/*1024/' | bc)
-        local eta_seconds=$(awk "BEGIN {printf \"%.0f\", $size_bytes / $speed}")
-        local eta_human=$(date -d@$eta_seconds -u +%H:%M:%S 2>/dev/null || echo "${eta_seconds}s")
-        log_info "Estimated time: $eta_human"
+    # Check if file already exists
+    if [[ -f "$output_file" ]]; then
+        local current_size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo 0)
+        if [[ $current_size -gt 1000000 ]]; then  # > 1MB, likely valid
+            log_success "Model already downloaded: $filename ($(human_size $current_size))"
+            return 0
+        fi
     fi
+    
+    # Test download speed and select source
+    log_info "Testing download speed..."
+    local test_speed=$(test_download_speed "$url" "HuggingFace")
+    if [[ $test_speed -gt 0 ]]; then
+        log_info "Download speed: $(human_size $test_speed)/s"
+        local file_size_bytes=$(echo "$size" | sed 's/G/*1024*1024*1024/g; s/M/*1024*1024/g; s/K/*1024/g' | sed 's/[^0-9*]//g' | bc 2>/dev/null || echo 0)
+        if [[ $file_size_bytes -gt 0 ]]; then
+            local eta_seconds=$((file_size_bytes / test_speed))
+            local eta_formatted=$(printf "%02d:%02d:%02d" $((eta_seconds/3600)) $(((eta_seconds%3600)/60)) $((eta_seconds%60)))
+            log_info "Estimated time: $eta_formatted"
+        fi
+    else
+        log_warn "Could not test download speed"
+    fi
+    
+    # Download with retry mechanism
     echo ""
+    while [[ $retry_count -lt $max_retries ]]; do
+        if [[ $retry_count -gt 0 ]]; then
+            log_info "Retry attempt $retry_count/$max_retries..."
+            sleep 2  # Brief pause before retry
+        fi
+        
+        if download_file "$url" "$output_file"; then
+            # Verify downloaded file
+            if [[ -f "$output_file" ]] && [[ $(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo 0) -gt 1000000 ]]; then
+                log_success "llama.cpp model ready at: $output_file"
+                return 0
+            else
+                log_warn "Downloaded file appears corrupt or incomplete"
+                rm -f "$output_file" 2>/dev/null
+            fi
+        fi
+        
+        retry_count=$((retry_count + 1))
+    done
     
-    local output_path="$DOWNLOAD_DIR/llamacpp/$filename"
-    download_file "$url" "$output_path"
-    
-    # Create symlink with model key name
-    ln -sf "$filename" "$DOWNLOAD_DIR/llamacpp/$model_key.gguf" 2>/dev/null || true
-    
-    log_success "llama.cpp model ready at: $output_path"
+    # All retries failed - log gracefully but don't exit
+    echo ""
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}  Download Failed: llama.cpp Model${NC}"
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    log_error "Failed to download $model_key after $max_retries attempts"
+    echo ""
+    echo "Possible causes:"
+    echo "  • Network connectivity issues"
+    echo "  • Model URL changed or file moved"
+    echo "  • Repository access restrictions"
+    echo ""
+    echo "You can:"
+    echo "  1. Continue installation without this model (CPU backend will be disabled)"
+    echo "  2. Try downloading manually later: ./download-models.sh --model llamacpp"
+    echo "  3. Check for updated model URLs in the script"
+    echo ""
+    log_warn "Continuing installation without llama.cpp model..."
+    return 1
 }
 
 download_embedding_model() {
@@ -788,9 +839,61 @@ interactive_mode() {
         4)
             echo ""
             log_info "Downloading recommended models (same model family for GPU + CPU)..."
-            download_vllm_model "qwen2.5-14b-awq"
-            download_llamacpp_model "qwen2.5-14b-q4"  # Same model as GPU for consistent responses
-            download_embedding_model "nomic-embed-v1.5"
+            
+            local download_results=()
+            local failed_models=()
+            
+            # Download vLLM model
+            echo ""
+            if download_vllm_model "qwen2.5-14b-awq"; then
+                download_results+=("✅ vLLM: qwen2.5-14b-awq")
+            else
+                download_results+=("❌ vLLM: qwen2.5-14b-awq")
+                failed_models+=("vLLM GPU backend")
+            fi
+            
+            # Download llama.cpp model (same model family for consistent responses)
+            echo ""
+            if download_llamacpp_model "qwen2.5-14b-q4"; then
+                download_results+=("✅ llama.cpp: qwen2.5-14b-q4")
+            else
+                download_results+=("❌ llama.cpp: qwen2.5-14b-q4")
+                failed_models+=("llama.cpp CPU backend")
+            fi
+            
+            # Download embedding model
+            echo ""
+            if download_embedding_model "nomic-embed-v1.5"; then
+                download_results+=("✅ Embedding: nomic-embed-v1.5")
+            else
+                download_results+=("❌ Embedding: nomic-embed-v1.5")
+                failed_models+=("Embedding service")
+            fi
+            
+            # Summary
+            echo ""
+            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${BLUE}  Download Summary${NC}"
+            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            for result in "${download_results[@]}"; do
+                echo "  $result"
+            done
+            echo ""
+            
+            if [[ ${#failed_models[@]} -gt 0 ]]; then
+                echo -e "${YELLOW}⚠ Some models failed to download:${NC}"
+                for model in "${failed_models[@]}"; do
+                    echo "  • $model will not be available"
+                done
+                echo ""
+                echo "The installation can continue with available models."
+                echo "You can retry downloading failed models later:"
+                echo "  ./download-models.sh"
+                echo ""
+            else
+                log_success "All recommended models downloaded successfully!"
+            fi
             ;;
         5)
             list_models

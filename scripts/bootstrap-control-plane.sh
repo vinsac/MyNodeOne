@@ -384,6 +384,7 @@ install_dependencies() {
         git \
         jq \
         python3-yaml \
+        python3-pip \
         open-iscsi \
         nfs-common \
         util-linux \

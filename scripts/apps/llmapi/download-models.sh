@@ -96,7 +96,7 @@ check_dependencies() {
     local missing=()
     local to_install=()
     
-    # Required
+    # Required dependencies (pip3 will be auto-installed if missing)
     command -v curl &>/dev/null || missing+=("curl")
     
     # Check for aria2c and pv - auto-install if missing
@@ -400,21 +400,81 @@ PYEOF
         log_warn "huggingface_hub not installed. Installing..."
         
         local pip_installed=false
+        local packages_installed=false
         
-        # Try pip3 with --break-system-packages (required for Ubuntu 24.04+)
-        if command -v pip3 &>/dev/null; then
-            log_info "Installing via pip3..."
-            if pip3 install --break-system-packages huggingface_hub hf_transfer 2>&1 | tail -5; then
-                pip_installed=true
+        # First, ensure pip3 is available with robust fallback
+        if ! command -v pip3 &>/dev/null; then
+            log_info "pip3 not found, installing..."
+            
+            if command -v apt-get &>/dev/null; then
+                # Ubuntu/Debian
+                log_info "Installing python3-pip via apt-get..."
+                if apt-get update -qq && apt-get install -y -qq python3-pip 2>/dev/null; then
+                    pip_installed=true
+                    log_success "pip3 installed via apt-get"
+                fi
+            elif command -v dnf &>/dev/null; then
+                # RHEL/Rocky/Fedora 22+
+                log_info "Installing python3-pip via dnf..."
+                if dnf install -y -q python3-pip 2>/dev/null; then
+                    pip_installed=true
+                    log_success "pip3 installed via dnf"
+                fi
+            elif command -v yum &>/dev/null; then
+                # RHEL/CentOS 7 and older
+                log_info "Installing python3-pip via yum..."
+                if yum install -y -q python3-pip 2>/dev/null; then
+                    pip_installed=true
+                    log_success "pip3 installed via yum"
+                fi
+            elif command -v zypper &>/dev/null; then
+                # openSUSE
+                log_info "Installing python3-pip via zypper..."
+                if zypper install -y python3-pip 2>/dev/null; then
+                    pip_installed=true
+                    log_success "pip3 installed via zypper"
+                fi
+            elif command -v pacman &>/dev/null; then
+                # Arch Linux
+                log_info "Installing python-pip via pacman..."
+                if pacman -S --noconfirm python-pip 2>/dev/null; then
+                    pip_installed=true
+                    log_success "pip3 installed via pacman"
+                fi
+            else
+                log_error "Cannot install pip3 automatically on this system"
+                echo "Please install python3-pip manually for your distribution"
+                return 1
+            fi
+            
+            if [[ "$pip_installed" != "true" ]]; then
+                log_error "Failed to install pip3"
+                return 1
             fi
         fi
         
-        # Fallback: try python3 -m pip
-        if [[ "$pip_installed" != "true" ]] && command -v python3 &>/dev/null; then
-            log_info "Trying python3 -m pip..."
-            if python3 -m pip install --break-system-packages huggingface_hub hf_transfer 2>&1 | tail -5; then
-                pip_installed=true
-            fi
+        # Now install huggingface_hub with multiple fallback approaches
+        log_info "Installing huggingface_hub and hf_transfer..."
+        
+        # Try system-wide installation first (preferred for control plane)
+        if pip3 install --break-system-packages huggingface_hub hf_transfer 2>/dev/null; then
+            packages_installed=true
+            log_success "Installed packages with --break-system-packages"
+        elif pip3 install huggingface_hub hf_transfer 2>/dev/null; then
+            packages_installed=true
+            log_success "Installed packages (standard)"
+        elif pip3 install --user huggingface_hub hf_transfer 2>/dev/null; then
+            packages_installed=true
+            log_success "Installed packages with --user"
+        elif python3 -m pip install --break-system-packages huggingface_hub hf_transfer 2>/dev/null; then
+            packages_installed=true  
+            log_success "Installed packages via python3 -m pip"
+        else
+            log_error "Failed to install huggingface_hub"
+            echo ""
+            echo "Please install manually:"
+            echo "  pip3 install --break-system-packages huggingface_hub hf_transfer"
+            return 1
         fi
         
         # Verify installation

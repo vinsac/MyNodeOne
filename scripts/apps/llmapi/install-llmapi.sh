@@ -753,8 +753,10 @@ metadata:
 spec:
   restartPolicy: Never
   securityContext:
-    runAsNonRoot: false
-    runAsUser: 0
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
     seccompProfile:
       type: RuntimeDefault
   containers:
@@ -763,6 +765,9 @@ spec:
     command: ["sleep", "3600"]
     securityContext:
       allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false
+      runAsNonRoot: true
+      runAsUser: 1000
       capabilities:
         drop:
         - ALL
@@ -789,29 +794,90 @@ COPYPOD
         return 0
     }
     
-    # Copy files using kubectl cp
+    # Copy files using robust tar+pipe method
     echo "   📤 Copying files (this may take a while for large models)..."
     
     local copy_success=false
+    local copy_start_time=$(date +%s)
+    
     if [[ -d "$source_path" ]]; then
-        # Directory (vLLM model) - copy contents
-        echo "   📁 Copying directory: $(basename "$source_path")"
-        if kubectl cp "$source_path/." "$NAMESPACE/$copy_pod:/models/" 2>/dev/null; then
-            copy_success=true
-            echo "   ✓ Directory copied successfully"
+        # Directory (vLLM model) - use tar+pipe for reliability
+        local dir_size=$(du -sh "$source_path" | cut -f1)
+        echo "   📁 Copying directory: $(basename "$source_path") ($dir_size)"
+        echo "   ⏳ Using tar+pipe method for large directory transfer..."
+        
+        # Create target directory and copy with progress monitoring
+        echo "   ⏳ Creating target directory..."
+        if ! kubectl exec $copy_pod -n $NAMESPACE -- mkdir -p /models 2>/dev/null; then
+            echo -e "   ${YELLOW}⚠ Failed to create target directory${NC}"
+            return 0
+        fi
+        
+        echo "   ⏳ Starting tar+pipe transfer..."
+        # Use pv for progress if available, otherwise show periodic updates
+        if command -v pv >/dev/null 2>&1; then
+            if tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" | \
+               pv -s $(du -sb "$source_path" | cut -f1) | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+                copy_success=true
+                echo "   ✓ Directory copied successfully"
+            else
+                echo -e "   ${YELLOW}⚠ Directory copy failed${NC}"
+            fi
         else
-            echo -e "   ${YELLOW}⚠ Directory copy failed${NC}"
+            # Fallback: start copy and monitor in background
+            (
+                tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" 2>/dev/null | \
+                kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null
+                echo $? > /tmp/copy_result_$$
+            ) &
+            local copy_pid=$!
+            
+            # Show progress dots while copying
+            local dots=0
+            while kill -0 $copy_pid 2>/dev/null; do
+                printf "."
+                sleep 5
+                dots=$((dots + 1))
+                if [ $dots -eq 12 ]; then  # Every minute
+                    echo ""
+                    echo "   ⏳ Still copying... ($(($dots * 5))s elapsed)"
+                    dots=0
+                fi
+            done
+            echo ""
+            
+            wait $copy_pid
+            local copy_result=$(cat /tmp/copy_result_$$ 2>/dev/null || echo 1)
+            rm -f /tmp/copy_result_$$
+            
+            if [ "$copy_result" = "0" ]; then
+                copy_success=true
+                echo "   ✓ Directory copied successfully"
+            else
+                echo -e "   ${YELLOW}⚠ Directory copy failed${NC}"
+            fi
         fi
     else
-        # Single file (GGUF)
-        echo "   📄 Copying file: $(basename "$source_path")"
-        if kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/$(basename "$source_path")" 2>/dev/null; then
+        # Single file (GGUF) - with progress monitoring
+        local file_size=$(ls -lh "$source_path" | awk '{print $5}')
+        echo "   📄 Copying file: $(basename "$source_path") ($file_size)"
+        echo "   ⏳ Transfer in progress (large files take time)..."
+        
+        # Start copy in background and monitor
+        if timeout 600 kubectl cp "$source_path" "$NAMESPACE/$copy_pod:/models/$(basename "$source_path")" 2>/dev/null; then
             copy_success=true
             echo "   ✓ File copied successfully"
         else
-            echo -e "   ${YELLOW}⚠ File copy failed${NC}"
+            echo -e "   ${YELLOW}⚠ File copy failed or timed out${NC}"
+            # Check if partial copy exists
+            kubectl exec $copy_pod -n $NAMESPACE -- ls -la /models/ 2>/dev/null || true
         fi
     fi
+    
+    local copy_end_time=$(date +%s)
+    local copy_duration=$((copy_end_time - copy_start_time))
+    echo "   ⏱️ Copy operation took ${copy_duration}s"
     
     # Verify copy
     if [ "$copy_success" = true ]; then

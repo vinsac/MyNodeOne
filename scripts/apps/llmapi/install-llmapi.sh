@@ -774,9 +774,6 @@ spec:
     volumeMounts:
     - name: models
       mountPath: /models
-    - name: source
-      mountPath: /source
-      readOnly: true
     resources:
       requests:
         memory: "64Mi"
@@ -790,10 +787,6 @@ spec:
   - name: models
     persistentVolumeClaim:
       claimName: $pvc_name
-  - name: source
-    hostPath:
-      path: /var/lib/llmapi/models
-      type: Directory
 COPYPOD
     
     # Wait for pod to be ready
@@ -803,14 +796,16 @@ COPYPOD
         return 0
     }
     
-    # Copy files using direct mount (no kubectl exec streaming limits)
+    # Copy files using proven tar+pipe method (PodSecurity compliant)
     echo "   📤 Copying files (this may take a while for large models)..."
     
     local copy_success=false
     local copy_start_time=$(date +%s)
     
-    # Map user selection to actual model files/directories
+    # Map user selection to actual model files/directories and determine source path
     local target_model=""
+    local actual_source_path=""
+    
     if [[ "$model_type" == "vllm" ]]; then
         # Map VLLM_MODEL_NAME to actual directory name in /var/lib/llmapi/models/vllm/
         case "$VLLM_MODEL_NAME" in
@@ -820,74 +815,130 @@ COPYPOD
             "codellama-34b") target_model="codellama-34b-awq" ;;
             *) target_model="$VLLM_MODEL_NAME" ;;  # Fallback to exact name
         esac
+        actual_source_path="/var/lib/llmapi/models/vllm/$target_model"
         echo "   🎯 Selected vLLM model: $VLLM_MODEL_NAME -> $target_model"
     elif [[ "$model_type" == "llamacpp" ]]; then
         # Use exact LLAMACPP_MODEL_FILE name
         target_model="$LLAMACPP_MODEL_FILE"
+        actual_source_path="/var/lib/llmapi/models/llamacpp/$target_model"
         echo "   🎯 Selected llamacpp model: $target_model"
     else
         target_model="$(basename "$source_path")"
+        actual_source_path="$source_path"
     fi
     
-    if [[ -d "$source_path" ]]; then
-        # Directory (vLLM model) - direct copy inside pod
-        local dir_size=$(du -sh "$source_path" | cut -f1)
-        echo "   📁 Copying directory: $(basename "$source_path") ($dir_size)"
-        echo "   ⏳ Using direct copy method (no streaming limits)..."
+    # Verify the selected model exists and determine file structure
+    local model_files=()
+    if [[ "$model_type" == "vllm" ]]; then
+        # vLLM models are always directories
+        if [[ ! -d "$actual_source_path" ]]; then
+            echo -e "   ${YELLOW}⚠ Selected vLLM model directory not found: $actual_source_path${NC}"
+            echo "   📋 Available vLLM models:"
+            ls -la "$(dirname "$actual_source_path")" 2>/dev/null | head -10 || echo "   Directory not found"
+            echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
+            return 0
+        fi
+    elif [[ "$model_type" == "llamacpp" ]]; then
+        # GGUF models can be single file or multiple files
+        local base_model_name="${target_model%.*}"  # Remove .gguf extension
+        local model_dir="$(dirname "$actual_source_path")"
         
-        # Copy only the user-selected model directory
-        if kubectl exec $copy_pod -n $NAMESPACE -- sh -c "
-            echo '📋 Starting selective directory copy...' &&
-            mkdir -p /models &&
-            if [ -d '/source/vllm/$target_model' ]; then
-                echo '📁 Copying selected vLLM model: $target_model'
-                cp -rv '/source/vllm/$target_model'/* /models/ 2>/dev/null
-                echo '✓ Selected model copied successfully'
-            else
-                echo '❌ Selected model directory not found: /source/vllm/$target_model'
-                echo 'Available vLLM models:'
-                ls -la /source/vllm/ 2>/dev/null || echo 'No vLLM models directory found'
-                exit 1
-            fi
-        " 2>/dev/null; then
-            copy_success=true
-            echo "   ✓ Selected model copied successfully"
+        # Look for exact file first
+        if [[ -f "$actual_source_path" ]]; then
+            model_files=("$actual_source_path")
         else
-            echo -e "   ${YELLOW}⚠ Selected model copy failed${NC}"
+            # Look for multi-part files (e.g., model-00001-of-00003.gguf)
+            mapfile -t model_files < <(find "$model_dir" -name "${base_model_name}*.gguf" 2>/dev/null | sort)
+        fi
+        
+        if [[ ${#model_files[@]} -eq 0 ]]; then
+            echo -e "   ${YELLOW}⚠ Selected llamacpp model not found: $target_model${NC}"
+            echo "   📋 Available GGUF models:"
+            ls -la "$model_dir"/*.gguf 2>/dev/null | head -10 || echo "   No GGUF files found"
+            echo -e "   ${YELLOW}⚠ Copy failed, will download during deployment${NC}"
+            return 0
+        fi
+        
+        if [[ ${#model_files[@]} -gt 1 ]]; then
+            echo "   📚 Detected multi-file GGUF model: ${#model_files[@]} parts"
+        fi
+    fi
+    
+    if [[ "$model_type" == "vllm" ]]; then
+        # vLLM models (always directories with multiple files)
+        local dir_size=$(du -sh "$actual_source_path" | cut -f1)
+        echo "   📁 Copying vLLM directory: $target_model ($dir_size)"
+        echo "   ⏳ Using tar+pipe method for reliable transfer..."
+        
+        # Create target directory first
+        kubectl exec $copy_pod -n $NAMESPACE -- mkdir -p /models 2>/dev/null
+        
+        # Use tar+pipe method that worked perfectly for vLLM
+        if command -v pv >/dev/null 2>&1; then
+            # With progress monitoring
+            if tar -cf - -C "$(dirname "$actual_source_path")" "$(basename "$actual_source_path")" | \
+               pv -s $(du -sb "$actual_source_path" | cut -f1) | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+                copy_success=true
+                echo "   ✓ vLLM directory copied successfully"
+            else
+                echo -e "   ${YELLOW}⚠ vLLM directory copy failed${NC}"
+            fi
+        else
+            # Without progress monitoring
+            if tar -cf - -C "$(dirname "$actual_source_path")" "$(basename "$actual_source_path")" | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+                copy_success=true
+                echo "   ✓ vLLM directory copied successfully"
+            else
+                echo -e "   ${YELLOW}⚠ vLLM directory copy failed${NC}"
+            fi
         fi
     else
-        # Single file (GGUF) - direct copy inside pod
-        local file_size=$(ls -lh "$source_path" | awk '{print $5}')
-        echo "   📄 Copying file: $(basename "$source_path") ($file_size)"
-        echo "   ⏳ Using direct copy method (no streaming limits)..."
+        # GGUF models (single file OR multiple files)
+        local total_size=0
+        for file in "${model_files[@]}"; do
+            total_size=$((total_size + $(stat -c%s "$file")))
+        done
+        local human_size=$(numfmt --to=iec --suffix=B $total_size)
         
-        if kubectl exec $copy_pod -n $NAMESPACE -- sh -c "
-            echo '📋 Starting selective file copy...' &&
-            mkdir -p /models &&
-            if [ -f '/source/llamacpp/$target_model' ]; then
-                echo '� Copying selected llamacpp model: $target_model'
-                cp -v '/source/llamacpp/$target_model' /models/ 2>/dev/null
-                echo '✓ Selected model file copied successfully'
-            else
-                echo '❌ Selected model file not found: /source/llamacpp/$target_model'
-                echo 'Available llamacpp models:'
-                ls -la /source/llamacpp/ 2>/dev/null || echo 'No llamacpp models directory found'
-                exit 1
-            fi
-        " 2>/dev/null; then
-            copy_success=true
-            echo "   ✓ Selected model file copied successfully"
+        if [[ ${#model_files[@]} -eq 1 ]]; then
+            echo "   📄 Copying single GGUF file: $target_model ($human_size)"
         else
-            echo -e "   ${YELLOW}⚠ Selected model file copy failed - checking paths...${NC}"
-            # Debug: check what's available
-            kubectl exec $copy_pod -n $NAMESPACE -- sh -c "
-                echo 'Source directory contents:' &&
-                ls -la /source/ 2>/dev/null | head -10 &&
-                echo 'llamacpp directory:' &&
-                ls -la /source/llamacpp/ 2>/dev/null | head -10 &&
-                echo 'Target directory:' &&
-                ls -la /models/ 2>/dev/null || echo 'Target not accessible'
-            " 2>/dev/null || true
+            echo "   � Copying multi-part GGUF model: $target_model (${#model_files[@]} parts, $human_size total)"
+        fi
+        echo "   ⏳ Using tar+pipe method for large files..."
+        
+        # Create target directory first
+        kubectl exec $copy_pod -n $NAMESPACE -- mkdir -p /models 2>/dev/null
+        
+        # Create tar archive of all model files
+        local tar_args=()
+        local base_dir="$(dirname "${model_files[0]}")"
+        for file in "${model_files[@]}"; do
+            tar_args+=("$(basename "$file")")
+        done
+        
+        # Use tar for GGUF files to avoid kubectl exec streaming limits
+        if command -v pv >/dev/null 2>&1; then
+            # With progress monitoring
+            if tar -cf - -C "$base_dir" "${tar_args[@]}" | \
+               pv -s $total_size | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+                copy_success=true
+                echo "   ✓ GGUF model copied successfully"
+            else
+                echo -e "   ${YELLOW}⚠ GGUF model copy failed${NC}"
+            fi
+        else
+            # Without progress monitoring  
+            if tar -cf - -C "$base_dir" "${tar_args[@]}" | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+                copy_success=true
+                echo "   ✓ GGUF model copied successfully"
+            else
+                echo -e "   ${YELLOW}⚠ GGUF model copy failed${NC}"
+            fi
         fi
     fi
     

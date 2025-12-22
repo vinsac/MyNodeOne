@@ -1227,7 +1227,10 @@ EOF
     if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]]; then
         echo ""
         echo "   📦 Copying pre-downloaded llamacpp model to PVC..."
-        copy_predownloaded_models "llamacpp" "$PRE_DOWNLOADED_LLAMACPP" "llamacpp-models"
+        if copy_predownloaded_models "llamacpp" "$PRE_DOWNLOADED_LLAMACPP" "llamacpp-models"; then
+            echo "   💡 Pre-copied model detected. Init container will skip download automatically."
+            echo "   📄 Model file: $LLAMACPP_MODEL_FILE"
+        fi
     fi
 else
     echo "⏭️  Skipping llama.cpp (not selected)"

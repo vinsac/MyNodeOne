@@ -500,8 +500,8 @@ fi
 
 # Model selection for llama.cpp
 # Default to Qwen2.5-14B (same as vLLM) for consistent responses across backends
-LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
-LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
+LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🧠 Choose CPU/RAM model (llama.cpp - GGUF format):"
     echo ""
@@ -525,13 +525,13 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     case "$CPU_MODEL_CHOICE" in
         1)
             # Qwen2.5-14B Q4 - same model as GPU vLLM (recommended)
-            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
-            LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
+            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
             ;;
         2)
             # Qwen2.5-14B Q8 - higher quality version
-            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q8_0.gguf"
-            LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q8_0.gguf"
+            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q8_0.gguf"
+            LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q8_0.gguf"
             ;;
         3)
             LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
@@ -561,8 +561,8 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
             # Validate
             if [ -z "$LLAMACPP_MODEL_URL" ]; then
                 echo -e "${YELLOW}No URL entered, using default Qwen2.5-14B${NC}"
-                LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
-                LLAMACPP_MODEL_FILE="qwen2.5-14b-instruct-q4_k_m.gguf"
+                LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+                LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
             fi
             ;;
     esac
@@ -843,12 +843,17 @@ COPYPOD
         local base_model_name="${target_model%.*}"  # Remove .gguf extension
         local model_dir="$(dirname "$actual_source_path")"
         
-        # Look for exact file first
+        # Look for exact file first (case-sensitive)
         if [[ -f "$actual_source_path" ]]; then
             model_files=("$actual_source_path")
         else
-            # Look for multi-part files (e.g., model-00001-of-00003.gguf)
-            mapfile -t model_files < <(find "$model_dir" -name "${base_model_name}*.gguf" 2>/dev/null | sort)
+            # Look for case-insensitive match first
+            mapfile -t model_files < <(find "$model_dir" -iname "${target_model}" 2>/dev/null | head -1)
+            
+            # If no exact match, look for multi-part files (case-insensitive)
+            if [[ ${#model_files[@]} -eq 0 ]]; then
+                mapfile -t model_files < <(find "$model_dir" -iname "${base_model_name}*.gguf" 2>/dev/null | sort)
+            fi
         fi
         
         if [[ ${#model_files[@]} -eq 0 ]]; then

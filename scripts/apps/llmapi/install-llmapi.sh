@@ -871,22 +871,31 @@ COPYPOD
             return 0
         fi
         
-        echo "   ⏳ Starting tar+pipe transfer..."
-        # Use pv for progress if available, otherwise show periodic updates
+        echo "   ⏳ Starting optimized file transfer..."
+        # For large single files, use direct streaming approach
         if command -v pv >/dev/null 2>&1; then
-            if tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" | \
-               pv -s $(stat -c%s "$source_path") | \
-               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+            # Use cat with pv for single file streaming - more reliable than tar for large files
+            local file_size_bytes=$(stat -c%s "$source_path")
+            if cat "$source_path" | pv -s $file_size_bytes | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- sh -c "cat > /models/$(basename "$source_path")" 2>/dev/null; then
                 copy_success=true
                 echo "   ✓ File copied successfully"
             else
-                echo -e "   ${YELLOW}⚠ File copy failed${NC}"
+                echo -e "   ${YELLOW}⚠ Direct copy failed, trying tar method...${NC}"
+                # Fallback to tar method with smaller buffer
+                if tar -cf - "$(basename "$source_path")" -C "$(dirname "$source_path")" | \
+                   pv -s $file_size_bytes | \
+                   kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
+                    copy_success=true
+                    echo "   ✓ File copied successfully (tar method)"
+                else
+                    echo -e "   ${YELLOW}⚠ Both methods failed${NC}"
+                fi
             fi
         else
             # Fallback: start copy and monitor in background
             (
-                tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" 2>/dev/null | \
-                kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null
+                cat "$source_path" | kubectl exec -i $copy_pod -n $NAMESPACE -- sh -c "cat > /models/$(basename "$source_path")" 2>/dev/null
                 echo $? > /tmp/copy_result_$$
             ) &
             local copy_pid=$!

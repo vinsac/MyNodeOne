@@ -156,7 +156,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
      ┌────────────────────────────┼────────────────────────────┐
      ▼                            ▼                            ▼
 ┌─────────┐                 ┌───────────┐                ┌───────────┐
-│  vLLM   │  ──overflow──▶  │ llama.cpp │  ──fallback──▶ │  Ollama   │
+│  vLLM   │  ──load-bal──▶  │ llama.cpp │  ──fallback──▶ │  Ollama   │
 │  (GPU)  │                 │   (CPU)   │                │  (Flex)   │
 │Priority │                 │ Priority  │                │ Priority  │
 │   1     │                 │    2      │                │    3      │
@@ -166,11 +166,12 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
      └── Always runs: Redis (queue + cache)
 ```
 
-**Horizontal Scaling**:
-- Requests route to **least-loaded** backend
-- **GPU instances checked first** (fastest response)
-- **CPU fallback** when GPUs are busy
-- Response includes `system_fingerprint: "vllm"` or `"llamacpp"` so you know which backend handled it
+**Intelligent Load Balancing**:
+- Routes to **least-loaded** backend (fewest concurrent requests)
+- **GPU instances checked first** (vLLM) - fastest response times
+- **CPU overflow** (llamacpp) - when all GPUs busy (≥32 concurrent requests)
+- **Ollama fallback** - last resort for lazy-loaded models
+- Response includes `system_fingerprint: "vllm"` or `"llamacpp"` showing which backend handled it
 
 ## Management
 

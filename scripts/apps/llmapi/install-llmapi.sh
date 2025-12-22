@@ -774,17 +774,26 @@ spec:
     volumeMounts:
     - name: models
       mountPath: /models
+    - name: source
+      mountPath: /source
+      readOnly: true
     resources:
       requests:
         memory: "64Mi"
         cpu: "100m"
+        ephemeral-storage: "5Gi"
       limits:
-        memory: "512Mi"
-        cpu: "1000m"
+        memory: "4Gi"
+        cpu: "2000m"
+        ephemeral-storage: "150Gi"
   volumes:
   - name: models
     persistentVolumeClaim:
       claimName: $pvc_name
+  - name: source
+    hostPath:
+      path: /var/lib/llmapi/models
+      type: Directory
 COPYPOD
     
     # Wait for pod to be ready
@@ -794,143 +803,91 @@ COPYPOD
         return 0
     }
     
-    # Copy files using robust tar+pipe method
+    # Copy files using direct mount (no kubectl exec streaming limits)
     echo "   📤 Copying files (this may take a while for large models)..."
     
     local copy_success=false
     local copy_start_time=$(date +%s)
     
+    # Map user selection to actual model files/directories
+    local target_model=""
+    if [[ "$model_type" == "vllm" ]]; then
+        # Map VLLM_MODEL_NAME to actual directory name in /var/lib/llmapi/models/vllm/
+        case "$VLLM_MODEL_NAME" in
+            "qwen2.5-14b") target_model="qwen2.5-14b-awq" ;;
+            "qwen2.5-7b") target_model="qwen2.5-7b-instruct" ;;
+            "mistral-7b") target_model="mistral-7b-instruct" ;;
+            "codellama-34b") target_model="codellama-34b-awq" ;;
+            *) target_model="$VLLM_MODEL_NAME" ;;  # Fallback to exact name
+        esac
+        echo "   🎯 Selected vLLM model: $VLLM_MODEL_NAME -> $target_model"
+    elif [[ "$model_type" == "llamacpp" ]]; then
+        # Use exact LLAMACPP_MODEL_FILE name
+        target_model="$LLAMACPP_MODEL_FILE"
+        echo "   🎯 Selected llamacpp model: $target_model"
+    else
+        target_model="$(basename "$source_path")"
+    fi
+    
     if [[ -d "$source_path" ]]; then
-        # Directory (vLLM model) - use tar+pipe for reliability
+        # Directory (vLLM model) - direct copy inside pod
         local dir_size=$(du -sh "$source_path" | cut -f1)
         echo "   📁 Copying directory: $(basename "$source_path") ($dir_size)"
-        echo "   ⏳ Using tar+pipe method for large directory transfer..."
+        echo "   ⏳ Using direct copy method (no streaming limits)..."
         
-        # Create target directory and copy with progress monitoring
-        echo "   ⏳ Creating target directory..."
-        if ! kubectl exec $copy_pod -n $NAMESPACE -- mkdir -p /models 2>/dev/null; then
-            echo -e "   ${YELLOW}⚠ Failed to create target directory${NC}"
-            return 0
-        fi
-        
-        echo "   ⏳ Starting tar+pipe transfer..."
-        # Use pv for progress if available, otherwise show periodic updates
-        if command -v pv >/dev/null 2>&1; then
-            if tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" | \
-               pv -s $(du -sb "$source_path" | cut -f1) | \
-               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
-                copy_success=true
-                echo "   ✓ Directory copied successfully"
+        # Copy only the user-selected model directory
+        if kubectl exec $copy_pod -n $NAMESPACE -- sh -c "
+            echo '📋 Starting selective directory copy...' &&
+            mkdir -p /models &&
+            if [ -d '/source/vllm/$target_model' ]; then
+                echo '📁 Copying selected vLLM model: $target_model'
+                cp -rv '/source/vllm/$target_model'/* /models/ 2>/dev/null
+                echo '✓ Selected model copied successfully'
             else
-                echo -e "   ${YELLOW}⚠ Directory copy failed${NC}"
+                echo '❌ Selected model directory not found: /source/vllm/$target_model'
+                echo 'Available vLLM models:'
+                ls -la /source/vllm/ 2>/dev/null || echo 'No vLLM models directory found'
+                exit 1
             fi
+        " 2>/dev/null; then
+            copy_success=true
+            echo "   ✓ Selected model copied successfully"
         else
-            # Fallback: start copy and monitor in background
-            (
-                tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" 2>/dev/null | \
-                kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null
-                echo $? > /tmp/copy_result_$$
-            ) &
-            local copy_pid=$!
-            
-            # Show progress dots while copying
-            local dots=0
-            while kill -0 $copy_pid 2>/dev/null; do
-                printf "."
-                sleep 5
-                dots=$((dots + 1))
-                if [ $dots -eq 12 ]; then  # Every minute
-                    echo ""
-                    echo "   ⏳ Still copying... ($(($dots * 5))s elapsed)"
-                    dots=0
-                fi
-            done
-            echo ""
-            
-            wait $copy_pid
-            local copy_result=$(cat /tmp/copy_result_$$ 2>/dev/null || echo 1)
-            rm -f /tmp/copy_result_$$
-            
-            if [ "$copy_result" = "0" ]; then
-                copy_success=true
-                echo "   ✓ Directory copied successfully"
-            else
-                echo -e "   ${YELLOW}⚠ Directory copy failed${NC}"
-            fi
+            echo -e "   ${YELLOW}⚠ Selected model copy failed${NC}"
         fi
     else
-        # Single file (GGUF) - use tar+pipe for consistency and speed
+        # Single file (GGUF) - direct copy inside pod
         local file_size=$(ls -lh "$source_path" | awk '{print $5}')
         echo "   📄 Copying file: $(basename "$source_path") ($file_size)"
-        echo "   ⏳ Using tar+pipe method for fast file transfer..."
+        echo "   ⏳ Using direct copy method (no streaming limits)..."
         
-        # Create target directory and copy with progress
-        echo "   ⏳ Creating target directory..."
-        if ! kubectl exec $copy_pod -n $NAMESPACE -- mkdir -p /models 2>/dev/null; then
-            echo -e "   ${YELLOW}⚠ Failed to create target directory${NC}"
-            return 0
-        fi
-        
-        echo "   ⏳ Starting file transfer..."
-        # For large single files, use chunked approach to avoid kubectl streaming limits
-        local file_size_bytes=$(stat -c%s "$source_path")
-        local filename=$(basename "$source_path")
-        
-        if command -v pv >/dev/null 2>&1; then
-            # Method 1: Try tar+pipe (most reliable for large files)
-            echo "   ⏳ Using tar+pipe method..."
-            if tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" | \
-               pv -s $file_size_bytes | \
-               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
-                copy_success=true
-                echo "   ✓ File copied successfully (tar method)"
+        if kubectl exec $copy_pod -n $NAMESPACE -- sh -c "
+            echo '📋 Starting selective file copy...' &&
+            mkdir -p /models &&
+            if [ -f '/source/llamacpp/$target_model' ]; then
+                echo '� Copying selected llamacpp model: $target_model'
+                cp -v '/source/llamacpp/$target_model' /models/ 2>/dev/null
+                echo '✓ Selected model file copied successfully'
             else
-                echo -e "   ${YELLOW}⚠ Tar method failed, trying direct streaming...${NC}"
-                # Method 2: Fallback to direct streaming for smaller files
-                if [ $file_size_bytes -lt 1073741824 ]; then  # Less than 1GB
-                    if cat "$source_path" | pv -s $file_size_bytes | \
-                       kubectl exec -i $copy_pod -n $NAMESPACE -- sh -c "cat > /models/$filename" 2>/dev/null; then
-                        copy_success=true
-                        echo "   ✓ File copied successfully (direct method)"
-                    else
-                        echo -e "   ${YELLOW}⚠ Direct streaming also failed${NC}"
-                    fi
-                else
-                    echo -e "   ${YELLOW}⚠ File too large for direct streaming, both methods failed${NC}"
-                fi
+                echo '❌ Selected model file not found: /source/llamacpp/$target_model'
+                echo 'Available llamacpp models:'
+                ls -la /source/llamacpp/ 2>/dev/null || echo 'No llamacpp models directory found'
+                exit 1
             fi
+        " 2>/dev/null; then
+            copy_success=true
+            echo "   ✓ Selected model file copied successfully"
         else
-            # Fallback: start copy and monitor in background
-            (
-                cat "$source_path" | kubectl exec -i $copy_pod -n $NAMESPACE -- sh -c "cat > /models/$(basename "$source_path")" 2>/dev/null
-                echo $? > /tmp/copy_result_$$
-            ) &
-            local copy_pid=$!
-            
-            # Show progress dots while copying
-            local dots=0
-            while kill -0 $copy_pid 2>/dev/null; do
-                printf "."
-                sleep 5
-                dots=$((dots + 1))
-                if [ $dots -eq 12 ]; then  # Every minute
-                    echo ""
-                    echo "   ⏳ Still copying... ($(($dots * 5))s elapsed)"
-                    dots=0
-                fi
-            done
-            echo ""
-            
-            wait $copy_pid
-            local copy_result=$(cat /tmp/copy_result_$$ 2>/dev/null || echo 1)
-            rm -f /tmp/copy_result_$$
-            
-            if [ "$copy_result" = "0" ]; then
-                copy_success=true
-                echo "   ✓ File copied successfully"
-            else
-                echo -e "   ${YELLOW}⚠ File copy failed${NC}"
-            fi
+            echo -e "   ${YELLOW}⚠ Selected model file copy failed - checking paths...${NC}"
+            # Debug: check what's available
+            kubectl exec $copy_pod -n $NAMESPACE -- sh -c "
+                echo 'Source directory contents:' &&
+                ls -la /source/ 2>/dev/null | head -10 &&
+                echo 'llamacpp directory:' &&
+                ls -la /source/llamacpp/ 2>/dev/null | head -10 &&
+                echo 'Target directory:' &&
+                ls -la /models/ 2>/dev/null || echo 'Target not accessible'
+            " 2>/dev/null || true
         fi
     fi
     

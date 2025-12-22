@@ -871,25 +871,32 @@ COPYPOD
             return 0
         fi
         
-        echo "   ⏳ Starting optimized file transfer..."
-        # For large single files, use direct streaming approach
+        echo "   ⏳ Starting file transfer..."
+        # For large single files, use chunked approach to avoid kubectl streaming limits
+        local file_size_bytes=$(stat -c%s "$source_path")
+        local filename=$(basename "$source_path")
+        
         if command -v pv >/dev/null 2>&1; then
-            # Use cat with pv for single file streaming - more reliable than tar for large files
-            local file_size_bytes=$(stat -c%s "$source_path")
-            if cat "$source_path" | pv -s $file_size_bytes | \
-               kubectl exec -i $copy_pod -n $NAMESPACE -- sh -c "cat > /models/$(basename "$source_path")" 2>/dev/null; then
+            # Method 1: Try tar+pipe (most reliable for large files)
+            echo "   ⏳ Using tar+pipe method..."
+            if tar -cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" | \
+               pv -s $file_size_bytes | \
+               kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
                 copy_success=true
-                echo "   ✓ File copied successfully"
+                echo "   ✓ File copied successfully (tar method)"
             else
-                echo -e "   ${YELLOW}⚠ Direct copy failed, trying tar method...${NC}"
-                # Fallback to tar method with smaller buffer
-                if tar -cf - "$(basename "$source_path")" -C "$(dirname "$source_path")" | \
-                   pv -s $file_size_bytes | \
-                   kubectl exec -i $copy_pod -n $NAMESPACE -- tar -xf - -C /models 2>/dev/null; then
-                    copy_success=true
-                    echo "   ✓ File copied successfully (tar method)"
+                echo -e "   ${YELLOW}⚠ Tar method failed, trying direct streaming...${NC}"
+                # Method 2: Fallback to direct streaming for smaller files
+                if [ $file_size_bytes -lt 1073741824 ]; then  # Less than 1GB
+                    if cat "$source_path" | pv -s $file_size_bytes | \
+                       kubectl exec -i $copy_pod -n $NAMESPACE -- sh -c "cat > /models/$filename" 2>/dev/null; then
+                        copy_success=true
+                        echo "   ✓ File copied successfully (direct method)"
+                    else
+                        echo -e "   ${YELLOW}⚠ Direct streaming also failed${NC}"
+                    fi
                 else
-                    echo -e "   ${YELLOW}⚠ Both methods failed${NC}"
+                    echo -e "   ${YELLOW}⚠ File too large for direct streaming, both methods failed${NC}"
                 fi
             fi
         else

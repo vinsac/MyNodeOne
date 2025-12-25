@@ -22,7 +22,22 @@ sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 
 During installation, you'll be asked:
 - **Subdomain**: Choose a name like `cloud`, `nextcloud`, or `files`
+- **File Storage**: How much space for your files (default: 100Gi)
+- **Database Storage**: How much space for metadata (default: 10Gi)
 - **Public Access**: Whether to access from anywhere or just your home network
+
+### Storage Selection
+
+**File Storage:**
+- **100Gi** - Good for personal use (~10,000 files)
+- **500Gi** - Good for small family (recommended)
+- **1Ti** - Good for large family or small team
+- **2Ti+** - Good for teams or extensive media libraries
+
+**Database Storage:**
+- **10Gi** - Good for personal use (recommended)
+- **20Gi** - Good for families or small teams
+- **50Gi** - Good for large teams
 
 ## Access
 

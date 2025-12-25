@@ -385,6 +385,81 @@ echo "   • Mobile apps for iOS/Android"
 echo "   • Desktop sync clients"
 echo ""
 
+# Register service in service registry
+if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    echo "📝 Registering service in registry..."
+    
+    # Register with custom subdomain
+    if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
+            "nextcloud" "$APP_SUBDOMAIN" "$NAMESPACE" "nextcloud" "80" "false"; then
+            echo "✓ Service registered in registry"
+            echo ""
+            
+            # Verify registration
+            echo "🔍 Verifying registration..."
+            REGISTERED_SUBDOMAIN=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath='{.data.services\.json}' 2>/dev/null | \
+                jq -r '.nextcloud.subdomain' 2>/dev/null || echo "")
+            
+            if [ "$REGISTERED_SUBDOMAIN" = "$APP_SUBDOMAIN" ]; then
+                echo "✓ Verified: Service registered with subdomain '$APP_SUBDOMAIN'"
+                echo ""
+            else
+                echo -e "${YELLOW}⚠️  Registration verification failed${NC}"
+                echo "   Expected subdomain: $APP_SUBDOMAIN"
+                echo "   Got: $REGISTERED_SUBDOMAIN"
+                echo ""
+            fi
+            
+            # Check if running on control plane
+            IS_CONTROL_PLANE=false
+            if kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q "$(hostname)"; then
+                IS_CONTROL_PLANE=true
+            fi
+            
+            # If on control plane, update local DNS immediately (no SSH overhead)
+            if [ "$IS_CONTROL_PLANE" = "true" ]; then
+                echo "🔄 Updating control plane DNS..."
+                if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                    echo "✓ Control plane DNS updated"
+                fi
+            fi
+            
+            # Trigger sync to all remote nodes (laptops, VPS)
+            echo "🔄 Triggering sync to all nodes..."
+            if [ -f "$PROJECT_ROOT/scripts/lib/sync-controller.sh" ]; then
+                if sudo bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push >/dev/null 2>&1; then
+                    echo "✓ Sync completed successfully"
+                else
+                    echo -e "${YELLOW}⚠️  Manual sync failed - sync-controller daemon will retry${NC}"
+                fi
+            else
+                echo -e "${YELLOW}⚠️  Sync controller not found - DNS will update on next reconciliation${NC}"
+            fi
+            echo ""
+            
+            echo "✓ Access Nextcloud at:"
+            echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+            echo ""
+        else
+            echo "⚠️  Could not register service (will update DNS manually)"
+            echo ""
+            
+            # Fallback to manual DNS update
+            if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                echo "✓ Local DNS updated manually"
+            fi
+        fi
+    else
+        # Fallback to manual DNS update if service-registry.sh not found
+        echo -e "${YELLOW}⚠️  Service registry not found - updating DNS manually${NC}"
+        if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+            echo "✓ Local DNS updated"
+        fi
+    fi
+fi
+
 # Automatically configure routing and ask about public access
 if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
     source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "nextcloud" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "nextcloud"

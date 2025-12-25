@@ -385,84 +385,9 @@ echo "   • Mobile apps for iOS/Android"
 echo "   • Desktop sync clients"
 echo ""
 
-# Update local DNS
-echo "🌐 Updating local DNS entries..."
-if bash "$SCRIPT_DIR/../update-laptop-dns.sh"; then
-    echo ""
-    echo "✓ Local DNS updated! Access Nextcloud at:"
-    echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-    echo ""
-fi
-
-# Configure VPS route (optional)
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}  🌍 Internet Access via VPS Edge Node${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo "Make Nextcloud accessible from the internet?"
-echo ""
-echo "This will configure:"
-echo "  • Public URL: https://${APP_SUBDOMAIN}.yourdomain.com"
-echo "  • Automatic SSL certificate"
-echo "  • VPS routing to your cluster"
-echo ""
-echo "Using subdomain: ${APP_SUBDOMAIN} (same as local)"
-echo ""
-read -p "Configure internet access? [Y/n]: " configure_public
-configure_public="${configure_public:-y}"
-
-if [[ "$configure_public" =~ ^[Yy]$ ]]; then
-    echo ""
-    read -p "Enter your public domain (e.g., curiios.com): " PUBLIC_DOMAIN
-    
-    if [ -n "$PUBLIC_DOMAIN" ]; then
-        echo ""
-        echo "📡 Configuring VPS route..."
-        echo "   Public URL: https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}"
-        echo ""
-        
-        if bash "$SCRIPT_DIR/../configure-vps-route.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$PUBLIC_DOMAIN"; then
-            echo ""
-            echo "✓ VPS route configured!"
-            echo ""
-            echo "📖 For DNS setup instructions, see:"
-            echo "   docs/guides/DNS-SETUP-GUIDE.md"
-            echo ""
-        else
-            echo ""
-            echo -e "${YELLOW}⚠️  VPS configuration failed or was skipped.${NC}"
-            echo "You can configure it later with:"
-            echo "  sudo bash scripts/configure-vps-route.sh $NAMESPACE 80 $APP_SUBDOMAIN $PUBLIC_DOMAIN"
-            echo ""
-        fi
-        
-        # Update trusted domains for public access using occ commands
-        echo "📝 Configuring Nextcloud for public access..."
-        echo "   Waiting for Nextcloud to be ready..."
-        kubectl wait --for=condition=ready pod -l app=nextcloud -n "$NAMESPACE" --timeout=60s > /dev/null 2>&1
-        
-        # Add public domain to trusted domains
-        kubectl exec -n "$NAMESPACE" deployment/nextcloud -- su -s /bin/bash www-data -c \
-            "php occ config:system:set trusted_domains 2 --value='${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}'" > /dev/null 2>&1
-        
-        # Set CLI URL for command-line operations
-        kubectl exec -n "$NAMESPACE" deployment/nextcloud -- su -s /bin/bash www-data -c \
-            "php occ config:system:set overwrite.cli.url --value='https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}'" > /dev/null 2>&1
-        
-        echo "✓ Trusted domains configured"
-        echo ""
-        echo -e "${YELLOW}⚠️  SSL Certificate Timing:${NC}"
-        echo "   • Let's Encrypt certificate takes 1-3 minutes to issue"
-        echo "   • You may see 'TRAEFIK DEFAULT CERT' initially"
-        echo "   • This is normal! Just wait 2-3 minutes and refresh"
-        echo ""
-        echo "   To verify certificate:"
-        echo "   echo | openssl s_client -servername ${APP_SUBDOMAIN}.${PUBLIC_DOMAIN} \\"
-        echo "     -connect ${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}:443 2>/dev/null | \\"
-        echo "     openssl x509 -noout -subject -issuer"
-        echo ""
-    fi
+# Automatically configure routing and ask about public access
+if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "nextcloud" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "nextcloud"
 fi
 
 echo ""

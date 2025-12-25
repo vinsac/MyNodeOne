@@ -57,6 +57,25 @@ kubectl get secret nextcloud-admin -n nextcloud -o jsonpath='{.data.admin-passwo
 2. Enter server URL and log in
 3. Enable auto-upload for photos
 
+## Storage Management
+
+### Need More Storage?
+
+Run the storage expansion script:
+```bash
+sudo ./scripts/apps/nextcloud/expand-storage.sh
+```
+
+You can expand:
+- **File storage** - For more photos, documents, videos
+- **Database storage** - For more users, apps, metadata
+
+The script will:
+1. Show current storage usage
+2. Recommend new sizes
+3. Safely expand without downtime
+4. No pod restart required
+
 ## Desktop Sync
 
 Download from: https://nextcloud.com/install/#install-clients

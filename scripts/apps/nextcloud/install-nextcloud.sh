@@ -64,16 +64,45 @@ echo "  Local: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo ""
 
 NAMESPACE="nextcloud"
-warn_if_namespace_exists "$NAMESPACE"
 
-# Generate secure passwords
+# Prompt for storage allocation
+echo ""
+echo "💾 Storage Configuration"
+echo ""
+echo "Nextcloud requires storage for files and database."
+echo ""
+echo "Recommended file storage sizes:"
+echo "  • 100Gi  - Good for personal use (~10,000 files)"
+echo "  • 500Gi  - Good for small family (recommended)"
+echo "  • 1Ti    - Good for large family or small team"
+echo "  • 2Ti+   - Good for teams or extensive media libraries"
+echo ""
+read -p "Enter file storage size [default: 100Gi]: " FILE_STORAGE
+FILE_STORAGE="${FILE_STORAGE:-100Gi}"
+
+echo ""
+echo "Database storage (for metadata, user data, app data):"
+echo "  • 10Gi   - Good for personal use (recommended)"
+echo "  • 20Gi   - Good for families or small teams"
+echo "  • 50Gi   - Good for large teams"
+echo ""
+read -p "Enter database storage size [default: 10Gi]: " DB_STORAGE
+DB_STORAGE="${DB_STORAGE:-10Gi}"
+
+echo ""
+echo "✓ Storage allocation:"
+echo "  Files: $FILE_STORAGE"
+echo "  Database: $DB_STORAGE"
+echo ""
+
+echo "🔐 Generating secure credentials..."
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
 ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '/+=' | head -c 16)
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-echo "🔐 Creating secrets..."
+echo "� Creating secrets..."
 kubectl create secret generic nextcloud-db \
     --from-literal=db-password="$POSTGRES_PASSWORD" \
     --namespace="$NAMESPACE" \
@@ -98,7 +127,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 100Gi
+      storage: $FILE_STORAGE
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -111,7 +140,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 10Gi
+      storage: $DB_STORAGE
 EOF
 
 echo "🗄️ Deploying PostgreSQL..."

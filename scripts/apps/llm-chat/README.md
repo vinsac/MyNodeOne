@@ -20,9 +20,18 @@ sudo ./scripts/apps/llm-chat/install-llm-chat.sh
 
 During installation, you'll be asked:
 - **Subdomain**: Choose a name like `chat`, `ai`, or `llm`
+- **GPU Mode**: Use GPU acceleration or CPU-only (if GPU detected)
 - **Storage Size**: How much space to allocate for models and chat history
 - **Public Access**: Whether to access from anywhere or just your home network
 - **Model Selection**: Which AI models to download
+
+### GPU Acceleration
+
+If you have an NVIDIA GPU, you'll be asked:
+- **Option 1**: Use GPU for Ollama (faster, recommended for most users)
+- **Option 2**: Use CPU only (reserve GPU for other apps like LLMAPI)
+
+**Advanced users**: Choose CPU-only mode if you plan to run LLMAPI (which also uses GPU). This prevents GPU conflicts between applications.
 
 ## Access
 

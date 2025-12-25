@@ -49,13 +49,32 @@ NAMESPACE="llm-chat"
 # Detect GPU availability in cluster
 GPU_AVAILABLE=false
 GPU_COUNT=0
+USE_GPU=false
+
 if kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | grep -q "[0-9]"; then
     GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' | paste -sd+ | bc 2>/dev/null || echo "1")
     if [ "$GPU_COUNT" -gt 0 ] 2>/dev/null; then
         GPU_AVAILABLE=true
         echo -e "${GREEN}🎮 GPU Detected: ${GPU_COUNT} NVIDIA GPU(s) available in cluster${NC}"
-        echo "   Ollama will use GPU acceleration for faster inference"
         echo ""
+        echo "GPU Acceleration Options:"
+        echo "  1) Use GPU for Ollama (faster inference, recommended for most users)"
+        echo "  2) Use CPU only (reserve GPU for other apps like LLMAPI)"
+        echo ""
+        read -p "Choose GPU mode [1-2, default: 1]: " GPU_CHOICE
+        GPU_CHOICE="${GPU_CHOICE:-1}"
+        
+        if [ "$GPU_CHOICE" = "1" ]; then
+            USE_GPU=true
+            echo ""
+            echo -e "${GREEN}✓ Ollama will use GPU acceleration${NC}"
+            echo ""
+        else
+            USE_GPU=false
+            echo ""
+            echo -e "${YELLOW}✓ Ollama will use CPU only (GPU reserved for other apps)${NC}"
+            echo ""
+        fi
     fi
 fi
 
@@ -86,7 +105,7 @@ if check_namespace_exists "$NAMESPACE"; then
     echo "  4. Custom resources (choose your own RAM and CPU)"
     echo "  5. Expand storage (increase model storage capacity)"
     if [ "$GPU_AVAILABLE" = true ]; then
-        echo "  6. Enable GPU acceleration (use NVIDIA GPU for inference)"
+        echo "  6. Enable/disable GPU acceleration"
     else
         echo "  6. [GPU not available] Enable GPU acceleration"
     fi
@@ -129,9 +148,20 @@ if check_namespace_exists "$NAMESPACE"; then
         6)
             echo ""
             if [ "$GPU_AVAILABLE" = true ]; then
-                echo -e "${GREEN}Will enable GPU acceleration...${NC}"
-                ALREADY_INSTALLED=true
-                ENABLE_GPU=true
+                echo "GPU Acceleration Options:"
+                echo "  1) Enable GPU for Ollama"
+                echo "  2) Disable GPU (use CPU only)"
+                echo ""
+                read -p "Choose [1-2]: " GPU_TOGGLE
+                if [ "$GPU_TOGGLE" = "1" ]; then
+                    echo -e "${GREEN}Will enable GPU acceleration...${NC}"
+                    ALREADY_INSTALLED=true
+                    ENABLE_GPU=true
+                else
+                    echo -e "${YELLOW}Will disable GPU acceleration...${NC}"
+                    ALREADY_INSTALLED=true
+                    DISABLE_GPU=true
+                fi
             else
                 echo -e "${RED}GPU not available in cluster.${NC}"
                 echo "To enable GPU support:"
@@ -241,8 +271,8 @@ EOF
 
     echo "🤖 Deploying Ollama (LLM Backend)..."
     
-    # Build resource limits and env vars based on GPU availability
-    if [ "$GPU_AVAILABLE" = true ]; then
+    # Build resource limits and env vars based on GPU usage choice
+    if [ "$USE_GPU" = true ]; then
         echo "   → Configuring with GPU + RAM sharing"
         # CRITICAL: runtimeClassName: nvidia required for GPU access in container
         OLLAMA_RUNTIME_CLASS="runtimeClassName: nvidia"
@@ -953,6 +983,46 @@ if [ "${ENABLE_GPU:-false}" = true ]; then
     
     echo "🎉 Ollama now uses your NVIDIA GPU for inference!"
     echo "   Large models (21GB+) will load into GPU VRAM"
+    echo ""
+    sleep 3
+fi
+
+# Disable GPU (if option 6 was chosen to disable)
+if [ "${DISABLE_GPU:-false}" = true ]; then
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}  💻 Disabling GPU Acceleration (CPU-only mode)${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    echo "📊 Current Ollama deployment:"
+    kubectl get deployment ollama -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].resources}' 2>/dev/null | jq . || echo "  (checking...)"
+    echo ""
+    
+    echo "🚀 Patching Ollama deployment to CPU-only mode..."
+    
+    # Patch the deployment to remove GPU resources
+    kubectl patch deployment ollama -n "$NAMESPACE" --type='json' -p='[
+        {"op": "replace", "path": "/spec/template/spec/containers/0/resources", "value": {
+            "requests": {
+                "memory": "8Gi",
+                "cpu": "2000m"
+            },
+            "limits": {
+                "memory": "64Gi",
+                "cpu": "8000m"
+            }
+        }}
+    ]'
+    
+    echo ""
+    echo "⏳ Waiting for pod to restart in CPU-only mode..."
+    kubectl rollout status deployment/ollama -n "$NAMESPACE" --timeout=120s 2>/dev/null || sleep 30
+    
+    echo ""
+    echo "✅ GPU acceleration disabled!"
+    echo ""
+    echo "🎉 Ollama now uses CPU only - GPU is available for other apps (e.g., LLMAPI)"
     echo ""
     sleep 3
 fi

@@ -83,7 +83,7 @@ sudo ./scripts/apps/install-jellyfin.sh
 sudo ./scripts/apps/immich/install-immich.sh
 
 # Cloud storage
-sudo ./scripts/apps/install-nextcloud.sh
+sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 
 # Password manager
 sudo ./scripts/apps/install-vaultwarden.sh

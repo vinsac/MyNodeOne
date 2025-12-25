@@ -38,7 +38,7 @@ cd /path/to/MyNodeOne
 # Run any installation script
 sudo ./scripts/apps/install-plex.sh
 sudo ./scripts/apps/immich/install-immich.sh
-sudo ./scripts/apps/install-nextcloud.sh
+sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 ```
 
 ## What Each Script Does

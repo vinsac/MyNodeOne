@@ -139,7 +139,7 @@ Step 7: Open the app in your browser - it's ready to use!
 - Calendar and contacts sync
 
 **How to use:**
-1. Install with: `sudo ./scripts/apps/install-nextcloud.sh`
+1. Install with: `sudo ./scripts/apps/nextcloud/install-nextcloud.sh`
 2. Open URL and create account
 3. Download Nextcloud app on phone/computer
 4. Files automatically sync like Dropbox

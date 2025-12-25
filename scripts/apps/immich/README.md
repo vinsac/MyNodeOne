@@ -218,6 +218,63 @@ kubectl exec -i deployment/immich-postgres -n immich -- \
   psql -U immich immich < immich-backup-20241224.sql
 ```
 
+## Performance Optimization
+
+### Video Playback Issues
+
+If you experience buffering or stuttering during video playback:
+
+**Quick Fix - Use the Performance Tuning Script:**
+```bash
+sudo ./scripts/apps/immich/tune-performance.sh
+```
+
+This script will help you:
+- Increase CPU/memory allocation for transcoding
+- Enable GPU acceleration (if available)
+- Optimize transcoding settings
+
+### Why Videos Buffer (Unlike Google Photos)
+
+**Root Cause:** Real-time transcoding requires significant CPU power.
+
+Google Photos pre-transcodes all videos at multiple quality levels using massive server infrastructure. Immich transcodes on-demand, which requires:
+- **CPU Power**: 4K video transcoding needs 6-8+ CPU cores
+- **Memory**: 12-16GB for smooth transcoding
+- **Time**: First playback may be slow while transcoding
+
+**Solutions:**
+
+1. **Pre-transcode videos** (recommended):
+   - Go to Admin Panel > Jobs
+   - Run "Transcode Videos" job
+   - This creates optimized versions for instant playback
+
+2. **Increase resources** (if videos still buffer):
+   ```bash
+   sudo ./scripts/apps/immich/tune-performance.sh
+   ```
+
+3. **Use GPU acceleration** (best performance):
+   - Requires NVIDIA GPU on control plane
+   - Dramatically speeds up transcoding
+   - Configure via tune-performance.sh script
+
+4. **Record videos in H.264** (prevention):
+   - Change phone camera settings to H.264 instead of HEVC
+   - H.264 plays directly without transcoding
+   - Better browser compatibility
+
+### Resource Requirements by Use Case
+
+| Use Case | CPU | Memory | Notes |
+|----------|-----|--------|-------|
+| Photos only | 2-4 cores | 4-8GB | Minimal transcoding |
+| Photos + occasional video | 4-6 cores | 8-12GB | Default config |
+| Regular video viewing | 6-8 cores | 12-16GB | Recommended |
+| Multiple users + 4K | 8-12 cores | 16-24GB | Heavy use |
+| With GPU acceleration | 2-4 cores | 8-12GB | GPU does transcoding |
+
 ## Troubleshooting
 
 ### Photos Not Uploading

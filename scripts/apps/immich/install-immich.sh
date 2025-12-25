@@ -301,11 +301,11 @@ spec:
           mountPath: /usr/src/app/upload
         resources:
           requests:
-            memory: "2Gi"
-            cpu: "1000m"
+            memory: "4Gi"
+            cpu: "2000m"
           limits:
-            memory: "8Gi"
-            cpu: "4000m"
+            memory: "16Gi"
+            cpu: "8000m"
       volumes:
       - name: photos
         persistentVolumeClaim:

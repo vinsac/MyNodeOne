@@ -529,3 +529,34 @@ fi
 if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
     source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
 fi
+
+# Offer to set up automated video transcoding
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Automated Video Transcoding${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "Would you like to set up automatic nightly video transcoding?"
+echo ""
+echo "Benefits:"
+echo "  • Videos are pre-transcoded for instant playback"
+echo "  • No buffering during video viewing"
+echo "  • Transcoding happens during off-peak hours (2 AM)"
+echo ""
+read -p "Set up automated transcoding? [Y/n]: " SETUP_AUTO_TRANSCODE
+
+if [[ "${SETUP_AUTO_TRANSCODE,,}" != "n" ]]; then
+    echo ""
+    if [[ -f "$SCRIPT_DIR/setup-auto-transcode.sh" ]]; then
+        bash "$SCRIPT_DIR/setup-auto-transcode.sh"
+    else
+        echo -e "${YELLOW}⚠️  setup-auto-transcode.sh not found${NC}"
+        echo "You can set it up later by running:"
+        echo "  sudo ./scripts/apps/immich/setup-auto-transcode.sh"
+    fi
+else
+    echo ""
+    echo "ℹ️  You can set up automated transcoding later by running:"
+    echo "   sudo ./scripts/apps/immich/setup-auto-transcode.sh"
+fi
+echo ""

@@ -149,6 +149,92 @@ kubectl rollout restart deployment/immich-postgres -n immich
 
 **Note:** Longhorn automatically handles volume expansion. The pods may restart during the expansion process.
 
+## Automated Video Transcoding
+
+### Setup Automated Nightly Transcoding
+
+To ensure videos are always ready for smooth playback:
+
+```bash
+sudo ./scripts/apps/immich/setup-auto-transcode.sh
+```
+
+**What it does:**
+- Creates a Kubernetes CronJob that runs every night (default: 2 AM)
+- Automatically transcodes new videos uploaded during the day
+- Converts videos to H.264 for optimal browser compatibility
+- Eliminates buffering during video playback
+
+**Requirements:**
+1. Create an API key in Immich:
+   - Go to Account Settings → API Keys
+   - Click "New API Key"
+   - Name it "Auto Transcode"
+   - Copy the key when prompted during setup
+
+**Schedule Options:**
+- Every night at 2 AM (recommended)
+- Every night at 3 AM
+- Every night at 4 AM
+- Custom cron schedule
+
+### Manual Transcoding
+
+After setup, you can manually trigger transcoding anytime:
+
+```bash
+sudo immich-transcode
+```
+
+This is useful for:
+- Transcoding existing videos immediately
+- Processing videos after bulk uploads
+- Testing the transcoding setup
+
+### Managing Automated Transcoding
+
+**View scheduled jobs:**
+```bash
+kubectl get cronjobs -n immich
+```
+
+**View job history:**
+```bash
+kubectl get jobs -n immich
+```
+
+**View last run logs:**
+```bash
+kubectl logs -n immich -l job-name=immich-auto-transcode --tail=50
+```
+
+**Disable auto-transcoding:**
+```bash
+kubectl delete cronjob immich-auto-transcode -n immich
+```
+
+**Change schedule:**
+```bash
+kubectl edit cronjob immich-auto-transcode -n immich
+# Edit the schedule field (cron format)
+```
+
+### How It Works
+
+1. **Upload Phase** (during the day):
+   - You upload photos/videos from your phone
+   - Videos are stored in original format
+
+2. **Transcoding Phase** (at night):
+   - CronJob triggers at scheduled time
+   - Immich transcodes all new videos to H.264
+   - Creates optimized versions for streaming
+
+3. **Playback Phase** (anytime):
+   - Videos play instantly without buffering
+   - No real-time transcoding needed
+   - Smooth playback on all devices
+
 ## Management
 
 ### View Logs
@@ -245,12 +331,28 @@ Google Photos pre-transcodes all videos at multiple quality levels using massive
 
 **Solutions:**
 
-1. **Pre-transcode videos** (recommended):
+1. **Set up automated nightly transcoding** (best solution):
+   ```bash
+   sudo ./scripts/apps/immich/setup-auto-transcode.sh
+   ```
+   
+   This will:
+   - Create a Kubernetes CronJob that runs every night at 2 AM
+   - Automatically transcode new videos uploaded during the day
+   - Ensure all videos play smoothly without buffering
+   - Require a one-time API key setup from Immich settings
+4  
+   **Manual trigger anytime:**
+   ```bash
+   sudo immich-transcode
+   ```
+5
+2. **Pre-transcode videos manually** (one-time):
    - Go to Admin Panel > Jobs
    - Run "Transcode Videos" job
    - This creates optimized versions for instant playback
 
-2. **Increase resources** (if videos still buffer):
+3. **Increase resources** (if videos still buffer):
    ```bash
    sudo ./scripts/apps/immich/tune-performance.sh
    ```

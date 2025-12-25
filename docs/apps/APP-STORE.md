@@ -74,7 +74,7 @@ Install any app directly:
 
 ```bash
 # AI Chat Assistant
-sudo ./scripts/apps/install-llm-chat.sh
+sudo ./scripts/apps/llm-chat/install-llm-chat.sh
 
 # Media server
 sudo ./scripts/apps/install-jellyfin.sh

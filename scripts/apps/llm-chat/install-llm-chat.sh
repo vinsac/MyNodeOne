@@ -11,9 +11,10 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Load shared validation library
-source "$SCRIPT_DIR/lib/validation.sh"
+source "$SCRIPT_DIR/../lib/validation.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

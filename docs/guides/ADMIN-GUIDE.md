@@ -169,10 +169,8 @@ crontab -e
 **For LLM Chat:**
 
 ```bash
-sudo ./scripts/apps/install-llm-chat.sh
+sudo ./scripts/apps/llm-chat/expand-storage.sh
 ```
-
-Choose option 4 (Expand storage), then:
 - View current storage usage
 - Enter new size (e.g., 500Gi, 1Ti)
 - Script automatically resizes
@@ -386,8 +384,7 @@ kubectl logs -n <namespace> <pod-name>
 **Solution:**
 ```bash
 # For LLM Chat
-sudo ./scripts/apps/install-llm-chat.sh
-# Choose option 4 (Expand storage)
+sudo ./scripts/apps/llm-chat/expand-storage.sh
 
 # For other apps, see Storage Management section
 ```
@@ -520,7 +517,7 @@ kubectl top nodes
 kubectl top pods --all-namespaces
 
 # Storage expansion (LLM Chat)
-sudo ./scripts/apps/install-llm-chat.sh  # Option 4
+sudo ./scripts/apps/llm-chat/expand-storage.sh
 
 # Install app
 sudo ./scripts/app-store.sh

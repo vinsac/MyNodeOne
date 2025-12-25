@@ -2329,20 +2329,20 @@ offer_llm_chat() {
         log_info "Deploying LLM chat application..."
         # Use the new app store installation script (auto-skips prompts for subdomain/VPS during bootstrap)
         export AUTO_INSTALL_MODE=true
-        if bash "$SCRIPT_DIR/apps/install-llm-chat.sh"; then
+        if bash "$SCRIPT_DIR/apps/llm-chat/install-llm-chat.sh"; then
             log_success "LLM chat deployment complete!"
             echo
             log_info "LLM Chat installed locally. To add public internet access later:"
-            echo "  sudo bash scripts/apps/install-llm-chat.sh"
+            echo "  sudo bash scripts/apps/llm-chat/install-llm-chat.sh"
         else
             log_warn "LLM chat deployment had issues. You can deploy it later with:"
-            echo "  sudo bash scripts/apps/install-llm-chat.sh"
+            echo "  sudo bash scripts/apps/llm-chat/install-llm-chat.sh"
         fi
         unset AUTO_INSTALL_MODE
     else
         echo
         log_info "Skipping LLM chat. You can deploy it anytime with:"
-        echo "  sudo bash scripts/apps/install-llm-chat.sh"
+        echo "  sudo bash scripts/apps/llm-chat/install-llm-chat.sh"
     fi
 }
 

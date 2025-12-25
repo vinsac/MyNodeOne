@@ -115,9 +115,8 @@ if [ "$USAGE_PERCENT" -ge "$USAGE_THRESHOLD" ]; then
         echo "To expand storage automatically, run:"
         echo "  AUTO_EXPAND=true $0"
         echo ""
-        echo "Or run the installation script:"
-        echo "  sudo ./scripts/apps/install-llm-chat.sh"
-        echo "  → Choose option 4 (Expand storage)"
+        echo "Or run the storage expansion script:"
+        echo "  sudo ./scripts/apps/llm-chat/expand-storage.sh"
         echo ""
     fi
 else

@@ -156,8 +156,8 @@ manage_storage() {
             read -p "Press Enter to continue..."
             ;;
         2)
-            if [ -f "$SCRIPT_DIR/apps/install-llm-chat.sh" ]; then
-                bash "$SCRIPT_DIR/apps/install-llm-chat.sh"
+            if [ -f "$SCRIPT_DIR/apps/llm-chat/install-llm-chat.sh" ]; then
+                bash "$SCRIPT_DIR/apps/llm-chat/install-llm-chat.sh"
             else
                 echo "LLM Chat script not found"
                 read -p "Press Enter to continue..."

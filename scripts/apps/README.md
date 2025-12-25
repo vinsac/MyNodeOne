@@ -37,7 +37,7 @@ cd /path/to/MyNodeOne
 
 # Run any installation script
 sudo ./scripts/apps/install-plex.sh
-sudo ./scripts/apps/install-immich.sh
+sudo ./scripts/apps/immich/install-immich.sh
 sudo ./scripts/apps/install-nextcloud.sh
 ```
 
@@ -103,7 +103,7 @@ Each script has a corresponding uninstall script:
 
 ```bash
 sudo ./scripts/apps/uninstall-plex.sh
-sudo ./scripts/apps/uninstall-immich.sh
+sudo ./scripts/apps/immich/uninstall-immich.sh
 ```
 
 Or manually remove:

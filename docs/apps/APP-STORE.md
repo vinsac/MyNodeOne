@@ -80,7 +80,7 @@ sudo ./scripts/apps/install-llm-chat.sh
 sudo ./scripts/apps/install-jellyfin.sh
 
 # Photo backup
-sudo ./scripts/apps/install-immich.sh
+sudo ./scripts/apps/immich/install-immich.sh
 
 # Cloud storage
 sudo ./scripts/apps/install-nextcloud.sh

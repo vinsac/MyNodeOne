@@ -170,7 +170,7 @@ echo "   sudo ./scripts/lib/multi-domain-registry.sh show"
 echo ""
 
 echo "4. Install apps - they'll auto-register and sync everywhere:"
-echo "   sudo ./scripts/apps/install-immich.sh"
+echo "   sudo ./scripts/apps/immich/install-immich.sh"
 echo ""
 
 log_info "View sync controller logs:"

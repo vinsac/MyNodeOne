@@ -115,7 +115,7 @@ Step 7: Open the app in your browser - it's ready to use!
 - Keep your private photos PRIVATE
 
 **How to use:**
-1. Install with: `sudo ./scripts/apps/install-immich.sh`
+1. Install with: `sudo ./scripts/apps/immich/install-immich.sh`
 2. Open the URL (like http://immich.mynodeone.local)
 3. Create your account
 4. Download Immich app from App Store or Play Store

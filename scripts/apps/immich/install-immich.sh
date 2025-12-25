@@ -51,6 +51,22 @@ echo -e "${BLUE}  Installing Immich (Google Photos Alternative)${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+# Check for latest Immich version
+echo "🔍 Checking for latest Immich version..."
+LATEST_VERSION=""
+if command -v curl &> /dev/null; then
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/immich-app/immich/releases/latest | grep -o '"tag_name": *"[^"]*"' | grep -o 'v[0-9.]*' || echo "")
+fi
+
+if [ -n "$LATEST_VERSION" ]; then
+    echo "✓ Latest Immich version: $LATEST_VERSION"
+    IMMICH_IMAGE="ghcr.io/immich-app/immich-server:${LATEST_VERSION}"
+else
+    echo -e "${YELLOW}⚠️  Could not fetch latest version, using 'release' tag${NC}"
+    IMMICH_IMAGE="ghcr.io/immich-app/immich-server:release"
+fi
+echo ""
+
 # Validate prerequisites
 if ! command -v kubectl &> /dev/null; then
     echo -e "${YELLOW}Error: kubectl not found. Please install Kubernetes first.${NC}"
@@ -110,6 +126,35 @@ echo "✓ Subdomain: ${APP_SUBDOMAIN}"
 echo "  Local: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo ""
 
+# Prompt for storage allocation
+echo "💾 Storage Configuration"
+echo ""
+echo "Immich requires storage for photos/videos and database."
+echo ""
+echo "Recommended photo storage sizes:"
+echo "  • 500Gi  - Good for ~50,000 photos (average 10MB each)"
+echo "  • 1Ti    - Good for ~100,000 photos (recommended)"
+echo "  • 2Ti    - Good for ~200,000 photos"
+echo "  • 5Ti    - Good for large families or multiple users"
+echo ""
+read -p "Enter photo storage size [default: 1Ti]: " PHOTO_STORAGE
+PHOTO_STORAGE="${PHOTO_STORAGE:-1Ti}"
+
+echo ""
+echo "Database storage (for metadata, thumbnails, face recognition data):"
+echo "  • 20Gi   - Good for ~50,000 photos (recommended)"
+echo "  • 50Gi   - Good for ~100,000+ photos"
+echo "  • 100Gi  - Good for very large libraries"
+echo ""
+read -p "Enter database storage size [default: 20Gi]: " DB_STORAGE
+DB_STORAGE="${DB_STORAGE:-20Gi}"
+
+echo ""
+echo "✓ Storage allocation:"
+echo "  Photos/Videos: $PHOTO_STORAGE"
+echo "  Database: $DB_STORAGE"
+echo ""
+
 NAMESPACE="immich"
 DB_PASSWORD=$(openssl rand -base64 32)
 
@@ -136,7 +181,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 1Ti
+      storage: $PHOTO_STORAGE
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -149,7 +194,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 20Gi
+      storage: $DB_STORAGE
 EOF
 
 echo "🗄️ Deploying PostgreSQL..."
@@ -214,7 +259,7 @@ spec:
     app: immich-postgres
 EOF
 
-echo "📸 Deploying Immich Server..."
+echo "📸 Deploying Immich Server (${IMMICH_IMAGE})..."
 kubectl apply -f - <<EOF
 ---
 apiVersion: apps/v1
@@ -234,7 +279,7 @@ spec:
     spec:
       containers:
       - name: immich-server
-        image: ghcr.io/immich-app/immich-server:release
+        image: $IMMICH_IMAGE
         env:
         - name: DB_HOSTNAME
           value: immich-postgres
@@ -374,7 +419,7 @@ echo ""
 
 # Configure local DNS automatically (if kubectl is available)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then
@@ -402,8 +447,8 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
     echo "📝 Registering service in registry..."
     
     # Register with custom subdomain
-    if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
-        if bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
+    if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
             "immich-server" "$APP_SUBDOMAIN" "$NAMESPACE" "immich-server" "80" "false"; then
             echo "✓ Service registered in registry"
             echo ""
@@ -433,15 +478,15 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             # If on control plane, update local DNS immediately (no SSH overhead)
             if [ "$IS_CONTROL_PLANE" = "true" ]; then
                 echo "🔄 Updating control plane DNS..."
-                if sudo bash "$SCRIPT_DIR/../sync-dns.sh" --quiet 2>/dev/null; then
+                if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
                     echo "✓ Control plane DNS updated"
                 fi
             fi
             
             # Trigger sync to all remote nodes (laptops, VPS)
             echo "🔄 Triggering sync to all nodes..."
-            if [ -f "$SCRIPT_DIR/../lib/sync-controller.sh" ]; then
-                if sudo bash "$SCRIPT_DIR/../lib/sync-controller.sh" push >/dev/null 2>&1; then
+            if [ -f "$PROJECT_ROOT/scripts/lib/sync-controller.sh" ]; then
+                if sudo bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push >/dev/null 2>&1; then
                     echo "✓ Sync completed successfully"
                 else
                     echo -e "${YELLOW}⚠️  Manual sync failed - sync-controller daemon will retry${NC}"
@@ -461,14 +506,14 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             echo ""
             
             # Fallback to manual DNS update
-            if sudo bash "$SCRIPT_DIR/../sync-dns.sh" --quiet 2>/dev/null; then
+            if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
                 echo "✓ Local DNS updated manually"
             fi
         fi
     else
         # Fallback to manual DNS update if service-registry.sh not found
         echo "🌐 Updating local DNS entries..."
-        if sudo bash "$SCRIPT_DIR/../sync-dns.sh" --quiet 2>/dev/null; then
+        if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
             echo "✓ Local DNS updated"
         fi
     fi
@@ -481,6 +526,6 @@ else
 fi
 
 # Automatically configure routing and ask about public access
-if [[ -f "$SCRIPT_DIR/lib/post-install-routing.sh" ]]; then
-    source "$SCRIPT_DIR/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
+if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
 fi

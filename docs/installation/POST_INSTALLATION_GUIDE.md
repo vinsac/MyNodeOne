@@ -75,9 +75,9 @@ sudo ./scripts/app-store.sh
 
 Or install directly:
 ```bash
-sudo ./scripts/apps/install-jellyfin.sh    # Media server
-sudo ./scripts/apps/install-immich.sh      # Photo backup
-sudo ./scripts/apps/install-vaultwarden.sh # Password manager
+sudo ./scripts/apps/install-jellyfin.sh       # Media server
+sudo ./scripts/apps/immich/install-immich.sh # Photo backup
+sudo ./scripts/apps/install-vaultwarden.sh   # Password manager
 ```
 
 See [APP-STORE.md](../reference/APP-STORE.md) for the full catalog.

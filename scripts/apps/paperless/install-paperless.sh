@@ -318,6 +318,8 @@ spec:
       - name: paperless
         image: ghcr.io/paperless-ngx/paperless-ngx:latest
         env:
+        - name: PAPERLESS_PORT
+          value: "8000"
         - name: PAPERLESS_REDIS
           value: "redis://paperless-redis:6379"
         - name: PAPERLESS_DBHOST

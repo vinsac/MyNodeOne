@@ -36,7 +36,7 @@ ssh user@control-plane
 cd /path/to/MyNodeOne
 
 # Run any installation script
-sudo ./scripts/apps/install-plex.sh
+sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 sudo ./scripts/apps/immich/install-immich.sh
 sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 ```

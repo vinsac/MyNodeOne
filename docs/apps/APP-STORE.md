@@ -15,7 +15,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | Application | Description | Status |
 |-------------|-------------|--------|
 | Jellyfin | Open source media server | Available |
-| Plex | Premium media server | Coming soon |
 | Audiobookshelf | Audiobook and podcast server | Coming soon |
 | Minecraft Server | Host your own game server | Available |
 

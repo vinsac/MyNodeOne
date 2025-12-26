@@ -148,9 +148,6 @@ while true; do
             install_app "jellyfin"
             ;;
         2)
-            install_app "plex"
-            ;;
-        3)
             install_app "audiobookshelf"
             ;;
         4)

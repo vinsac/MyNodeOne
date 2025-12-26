@@ -102,7 +102,6 @@ APP_NAMESPACES=(
     "vaultwarden"
     "minecraft"
     "homepage"
-    "plex"
     "nextcloud"
     "mattermost"
     "gitea"

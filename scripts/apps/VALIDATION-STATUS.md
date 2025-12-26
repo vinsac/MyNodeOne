@@ -37,7 +37,6 @@ This document tracks which installation scripts have comprehensive pre-flight va
 | `install-gitea.sh` | Shared Library | Ready (commented until implemented) |
 | `install-mattermost.sh` | Shared Library | Ready (commented until implemented) |
 | `install-paperless.sh` | Shared Library | Ready (commented until implemented) |
-| `install-plex.sh` | Shared Library | Ready (commented until implemented) |
 | `install-uptime-kuma.sh` | Shared Library | Ready (commented until implemented) |
 
 ---

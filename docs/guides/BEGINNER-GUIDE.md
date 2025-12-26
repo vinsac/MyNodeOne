@@ -71,7 +71,7 @@ Step 7: Open the app in your browser - it's ready to use!
 - Automatic artwork and descriptions for all your movies
 
 **How to use:**
-1. Install with: `sudo ./scripts/apps/install-jellyfin.sh`
+1. Install with: `sudo ./scripts/apps/jellyfin/install-jellyfin.sh`
 2. Open the URL shown (like http://jellyfin.mynodeone.local)
 3. Create your account (first user becomes admin)
 4. Add your movie folders (like /media/Movies)
@@ -430,7 +430,7 @@ Each app is isolated. If Jellyfin breaks, your photos in Immich are fine. You ca
 kubectl delete namespace jellyfin
 
 # Reinstall fresh
-sudo ./scripts/apps/install-jellyfin.sh
+sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 ```
 
 ### "Can I access from outside my home?"

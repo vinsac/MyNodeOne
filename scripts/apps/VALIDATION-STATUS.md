@@ -24,7 +24,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 | Script | Validation Type | Checks |
 |--------|----------------|---------|
 | `immich/install-immich.sh` | Inline | kubectl cluster storage subdomain |
-| `install-jellyfin.sh` | Inline | kubectl cluster storage subdomain |
+| `jellyfin/install-jellyfin.sh` | Shared Library | kubectl cluster storage subdomain |
 | `install-vaultwarden.sh` | Shared Library | kubectl cluster storage namespace |
 | `nextcloud/install-nextcloud.sh` | Shared Library | kubectl cluster storage namespace |
 | `install-minecraft.sh` | Shared Library | kubectl cluster storage namespace |

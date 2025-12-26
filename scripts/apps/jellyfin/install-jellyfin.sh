@@ -235,91 +235,88 @@ echo "   • Restart: kubectl rollout restart deployment/jellyfin -n $NAMESPACE"
 echo "   • Uninstall: kubectl delete namespace $NAMESPACE"
 echo ""
 
-# Configure local DNS automatically (if kubectl is available)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Register service in service registry
 if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
-    echo "🌐 Updating local DNS entries..."
-    if sudo bash "$SCRIPT_DIR/../update-laptop-dns.sh" --quiet 2>/dev/null; then
-        echo ""
-        echo "✓ Local DNS updated! Access Jellyfin at:"
-        echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-        echo ""
-    fi
-else
-    # Not on a machine with kubectl configured
-    echo ""
-    echo "💡 To access via .local domain on any Tailscale-connected machine:"
-    echo "   Run: sudo ./scripts/update-laptop-dns.sh"
-    echo "   Then access: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-    echo ""
-fi
-
-# Check if VPS edge node is configured
-if [[ -f ~/.mynodeone/config.env ]]; then
-    source ~/.mynodeone/config.env
+    echo "📝 Registering service in registry..."
     
-    if [[ -n "${VPS_EDGE_IP:-}" ]] || [[ "${NODE_TYPE:-}" == "vps-edge" ]]; then
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  🌍 Internet Access via VPS Edge Node"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        echo "Make Jellyfin accessible from the internet?"
-        echo ""
-        echo "This will configure:"
-        echo "  • Public URL: https://${APP_SUBDOMAIN}.yourdomain.com"
-        echo "  • Automatic SSL certificate"
-        echo "  • VPS routing to your cluster"
-        echo ""
-        echo "Using subdomain: ${APP_SUBDOMAIN} (same as local)"
-        echo ""
-        read -p "Configure internet access? [Y/n]: " configure_internet
-        
-        if [[ "$configure_internet" != "n" ]] && [[ "$configure_internet" != "N" ]]; then
+    # Register with custom subdomain
+    if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
+            "jellyfin" "$APP_SUBDOMAIN" "$NAMESPACE" "jellyfin" "80" "false"; then
+            echo "✓ Service registered in registry"
             echo ""
-            read -p "Enter your public domain (e.g., curiios.com): " user_domain
             
-            if [[ -n "$user_domain" ]]; then
+            # Verify registration
+            echo "🔍 Verifying registration..."
+            REGISTERED_SUBDOMAIN=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath='{.data.services\.json}' 2>/dev/null | \
+                jq -r '.jellyfin.subdomain' 2>/dev/null || echo "")
+            
+            if [ "$REGISTERED_SUBDOMAIN" = "$APP_SUBDOMAIN" ]; then
+                echo "✓ Verified: Service registered with subdomain '$APP_SUBDOMAIN'"
                 echo ""
-                echo "📡 Configuring VPS route..."
-                echo "   Public URL: https://${APP_SUBDOMAIN}.${user_domain}"
-                echo ""
-                
-                # Run VPS route configuration (auto-detects NodePort)
-                if [[ -x "$SCRIPT_DIR/../configure-vps-route.sh" ]]; then
-                    bash "$SCRIPT_DIR/../configure-vps-route.sh" jellyfin 80 "$APP_SUBDOMAIN" "$user_domain" || {
-                        echo ""
-                        echo "⚠️  VPS route configuration incomplete"
-                        echo ""
-                        echo "To configure manually later, run:"
-                        echo "  sudo ./scripts/configure-vps-route.sh jellyfin 80 $APP_SUBDOMAIN $user_domain"
-                    }
-                else
-                    echo "⚠️  VPS route script not found"
-                    echo ""
-                    echo "To configure manually:"
-                    echo "  sudo ./scripts/configure-vps-route.sh jellyfin 80 $APP_SUBDOMAIN $user_domain"
-                fi
             else
-                echo ""
-                echo "⚠️  Domain required. Skipped."
-                echo ""
-                echo "To configure later, run:"
-                echo "  sudo ./scripts/configure-vps-route.sh jellyfin 80 $APP_SUBDOMAIN <domain>"
+                echo -e "${YELLOW}⚠️  Registration verification failed${NC}"
+                echo "   Expected subdomain: $APP_SUBDOMAIN"
+                echo "   Got: $REGISTERED_SUBDOMAIN"
                 echo ""
             fi
             
+            # Check if running on control plane
+            IS_CONTROL_PLANE=false
+            if kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q "$(hostname)"; then
+                IS_CONTROL_PLANE=true
+            fi
+            
+            # If on control plane, update local DNS immediately (no SSH overhead)
+            if [ "$IS_CONTROL_PLANE" = "true" ]; then
+                echo "🔄 Updating control plane DNS..."
+                if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                    echo "✓ Control plane DNS updated"
+                fi
+            fi
+            
+            # Trigger sync to all remote nodes (laptops, VPS)
+            echo "🔄 Triggering sync to all nodes..."
+            if [ -f "$PROJECT_ROOT/scripts/lib/sync-controller.sh" ]; then
+                if sudo bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push >/dev/null 2>&1; then
+                    echo "✓ Sync completed successfully"
+                else
+                    echo -e "${YELLOW}⚠️  Manual sync failed - sync-controller daemon will retry${NC}"
+                fi
+            else
+                echo -e "${YELLOW}⚠️  Sync controller not found - DNS will update on next reconciliation${NC}"
+            fi
             echo ""
-            echo "📖 For DNS setup instructions, see:"
-            echo "   docs/guides/DNS-SETUP-GUIDE.md"
+            
+            echo "✓ Access Jellyfin at:"
+            echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
             echo ""
         else
+            echo "⚠️  Could not register service (will update DNS manually)"
             echo ""
-            echo "⚠️  VPS configuration skipped"
-            echo ""
-            echo "To configure later, run:"
-            echo "  sudo ./scripts/configure-vps-route.sh jellyfin 80 $APP_SUBDOMAIN <domain>"
-            echo ""
+            
+            # Fallback to manual DNS update
+            if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                echo "✓ Local DNS updated manually"
+            fi
+        fi
+    else
+        # Fallback to manual DNS update if service-registry.sh not found
+        echo -e "${YELLOW}⚠️  Service registry not found - updating DNS manually${NC}"
+        if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+            echo "✓ Local DNS updated"
         fi
     fi
 fi
+
+# Automatically configure routing and ask about public access
+if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "jellyfin" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "jellyfin"
+fi
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  Installation Complete!${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""

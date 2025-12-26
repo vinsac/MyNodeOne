@@ -77,7 +77,7 @@ Install any app directly:
 sudo ./scripts/apps/llm-chat/install-llm-chat.sh
 
 # Media server
-sudo ./scripts/apps/install-jellyfin.sh
+sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 
 # Photo backup
 sudo ./scripts/apps/immich/install-immich.sh

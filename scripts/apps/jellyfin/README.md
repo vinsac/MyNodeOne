@@ -13,7 +13,7 @@
 
 ### **Install Command**
 ```bash
-sudo ./scripts/apps/install-jellyfin.sh
+sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 ```
 
 **Installation time:** ~2 minutes
@@ -84,7 +84,7 @@ kubectl get svc -n jellyfin
 
 #### **✅ New Way (Automated)**
 ```bash
-sudo ./scripts/apps/install-jellyfin.sh
+sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 # Answer 2 questions:
 #   1. Subdomain? (e.g., "media")
 #   2. Public domain? (e.g., "curiios.com")
@@ -324,7 +324,7 @@ kubectl delete namespace jellyfin
 
 ### **Family Media Server**
 ```
-1. Install Jellyfin: sudo ./scripts/apps/install-jellyfin.sh
+1. Install Jellyfin: sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 2. Subdomain: "movies"
 3. Public domain: "smith-family.com"
 4. Result: https://movies.smith-family.com
@@ -333,7 +333,7 @@ kubectl delete namespace jellyfin
 
 ### **Home Media Library**
 ```
-1. Install Jellyfin: sudo ./scripts/apps/install-jellyfin.sh
+1. Install Jellyfin: sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 2. Subdomain: "media"
 3. Skip VPS setup (local only)
 4. Result: http://media.mynodeone.local
@@ -342,7 +342,7 @@ kubectl delete namespace jellyfin
 
 ### **Personal Netflix**
 ```
-1. Install Jellyfin: sudo ./scripts/apps/install-jellyfin.sh
+1. Install Jellyfin: sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 2. Subdomain: "flix"
 3. Public domain: "mydomain.com"
 4. Result: https://flix.mydomain.com

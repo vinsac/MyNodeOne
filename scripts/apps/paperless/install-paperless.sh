@@ -340,6 +340,10 @@ spec:
               key: secret-key
         - name: PAPERLESS_URL
           value: "http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+        - name: PAPERLESS_ALLOWED_HOSTS
+          value: "${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local,*"
+        - name: PAPERLESS_CSRF_TRUSTED_ORIGINS
+          value: "http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local,https://${APP_SUBDOMAIN}.*"
         - name: PAPERLESS_TIME_ZONE
           value: "UTC"
         - name: PAPERLESS_OCR_LANGUAGE

@@ -151,7 +151,9 @@ https://media.curiios.com
 1. Open the URL in your browser
 2. Follow the setup wizard
 3. Create admin account
-4. **Skip adding libraries for now** (add media first)5. Upload your media (see Upload Media section below)6. Add media libraries pointing to `/media/Movies`, `/media/TV`, etc.
+4. **Skip adding libraries for now** (add media first)
+5. Upload your media (see "Getting Your Media Into Jellyfin" below)
+6. Add media libraries pointing to `/media/Movies`, `/media/TV`, etc.
 7. (Optional) Configure hardware transcoding
 
 ### **Mobile Apps**
@@ -162,24 +164,34 @@ https://media.curiios.com
 
 ---
 
-## 📁 Storage
+## 📁 Getting Your Media Into Jellyfin
 
-### **Default Allocation**
-- **Config:** 50GB (Longhorn PVC)
-- **Media:** 500GB (Longhorn PVC)
+**Important:** Jellyfin doesn't have a web upload feature like Google Photos or Dropbox. Instead, you need to tell Jellyfin where your media files are located.
 
-### **Adjust Storage**
-Edit the script before running:
-```bash
-STORAGE_CONFIG="50Gi"   # Change as needed
-STORAGE_MEDIA="500Gi"   # Adjust for your library size
-```
+### **Understanding Your Options**
 
-### **Upload Media to Jellyfin**
+You have **3 main scenarios** for getting media into Jellyfin:
 
-Jellyfin doesn't have a web upload feature - you need to copy files to the server. We provide a helper script:
+1. **Small collection on your laptop** (a few movies/shows)
+   → Use our upload script to copy files to Jellyfin
 
-#### **Method 1: Upload Script (Recommended)**
+2. **Large collection on external hard drive** (hundreds of GB)
+   → Mount the drive and point Jellyfin to it
+
+3. **Media already on a NAS** (network storage)
+   → Connect Jellyfin directly to your NAS
+
+Let's walk through each scenario:
+
+---
+
+### **Scenario 1: Upload Files from Your Laptop** 📤
+
+**Best for:** Small to medium collections (under 100GB), files scattered across your laptop
+
+**How it works:** Copy files from your laptop into Jellyfin's storage
+
+#### **Step-by-Step Guide**
 ```bash
 # Can be run from your laptop OR control plane
 ./scripts/apps/jellyfin/upload-media.sh
@@ -239,7 +251,258 @@ ssh user@control-plane
 - **Tab completion**: Type `~/Down` and press TAB to autocomplete to `~/Downloads/`
 - **Tilde expansion**: `~/Movies` works (expands to `/home/user/Movies`)
 
-#### **Method 2: Direct kubectl cp**
+**After uploading:**
+1. Go to Jellyfin web interface
+2. Dashboard → Libraries → Add Library
+3. Choose content type (Movies, TV Shows, etc.)
+4. Add folder: `/media/Movies` (or `/media/TV`, etc.)
+5. Jellyfin will scan and organize your media automatically
+
+---
+
+### **Scenario 2: Use External Hard Drive** 💾
+
+**Best for:** Large collections (500GB+), media already organized on external drive
+
+**How it works:** Plug external drive into control plane, mount it, point Jellyfin to it
+
+#### **Step-by-Step Guide**
+
+**Step 1: Plug in your external hard drive**
+```bash
+# SSH into control plane
+ssh user@control-plane
+
+# Find your drive
+lsblk
+# Look for your drive (e.g., sdb1, sdc1)
+# Example output:
+# sdb           8:16   0   2T  0 disk
+# └─sdb1        8:17   0   2T  0 part
+```
+
+**Step 2: Mount the drive**
+```bash
+# Create mount point
+sudo mkdir -p /mnt/media-drive
+
+# Mount the drive (replace sdb1 with your drive)
+sudo mount /dev/sdb1 /mnt/media-drive
+
+# Verify it's mounted
+ls /mnt/media-drive
+# You should see your media files
+```
+
+**Step 3: Make mount permanent (optional)**
+```bash
+# Get drive UUID
+sudo blkid /dev/sdb1
+# Copy the UUID value
+
+# Add to /etc/fstab
+sudo nano /etc/fstab
+# Add this line (replace UUID with yours):
+UUID=your-uuid-here /mnt/media-drive ext4 defaults 0 2
+```
+
+**Step 4: Update Jellyfin to use the drive**
+
+Edit the Jellyfin deployment to mount your external drive:
+
+```bash
+kubectl edit deployment jellyfin -n jellyfin
+```
+
+Add a hostPath volume:
+```yaml
+spec:
+  template:
+    spec:
+      volumes:
+      - name: external-media
+        hostPath:
+          path: /mnt/media-drive  # Your mount point
+          type: Directory
+      containers:
+      - name: jellyfin
+        volumeMounts:
+        - name: external-media
+          mountPath: /external-media  # Path inside container
+          readOnly: true  # Jellyfin only reads, doesn't modify
+```
+
+**Step 5: Add library in Jellyfin**
+1. Go to Jellyfin → Dashboard → Libraries → Add Library
+2. Choose content type (Movies, TV Shows, etc.)
+3. Add folder: `/external-media/Movies` (or wherever your media is)
+4. Jellyfin will scan your external drive
+
+**Pros:**
+- No copying needed (saves time and space)
+- Can unplug drive when not in use
+- Easy to swap drives
+
+**Cons:**
+- Drive must stay plugged into control plane
+- If drive disconnected, media unavailable
+
+---
+
+### **Scenario 3: Connect to NAS (Network Storage)** 🌐
+
+**Best for:** Media already on Synology/QNAP/TrueNAS, want to keep it there
+
+**How it works:** Jellyfin accesses your NAS over the network (NFS or SMB)
+
+#### **Step-by-Step Guide (NFS)**
+
+**Step 1: Enable NFS on your NAS**
+
+*For Synology:*
+1. Control Panel → File Services → NFS → Enable NFS
+2. Shared Folder → Edit → NFS Permissions
+3. Add rule: `192.168.1.0/24` (your network), Read/Write, Squash: Map all users to admin
+
+*For QNAP:*
+1. Control Panel → Network & File Services → NFS Service → Enable
+2. Shared Folders → Edit Share → NFS Host Access
+3. Add: `192.168.1.0/24`, Read/Write
+
+**Step 2: Test NFS from control plane**
+```bash
+# SSH into control plane
+ssh user@control-plane
+
+# Install NFS client (if not already installed)
+sudo apt install nfs-common
+
+# Test mount
+sudo mkdir -p /mnt/nas-test
+sudo mount -t nfs 192.168.1.100:/volume1/Media /mnt/nas-test
+# Replace 192.168.1.100 with your NAS IP
+# Replace /volume1/Media with your NAS share path
+
+# Verify
+ls /mnt/nas-test
+# You should see your media
+
+# Unmount test
+sudo umount /mnt/nas-test
+```
+
+**Step 3: Create Kubernetes NFS PersistentVolume**
+
+Create a file `jellyfin-nas-pv.yaml`:
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jellyfin-nas-media
+spec:
+  capacity:
+    storage: 5Ti  # Adjust to your NAS size
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: 192.168.1.100  # Your NAS IP
+    path: /volume1/Media   # Your NAS share path
+  mountOptions:
+    - nfsvers=4.1
+    - hard
+    - timeo=600
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyfin-nas-media
+  namespace: jellyfin
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""  # Empty for static binding
+  volumeName: jellyfin-nas-media
+  resources:
+    requests:
+      storage: 5Ti
+```
+
+Apply it:
+```bash
+kubectl apply -f jellyfin-nas-pv.yaml
+```
+
+**Step 4: Update Jellyfin deployment**
+```bash
+kubectl edit deployment jellyfin -n jellyfin
+```
+
+Add the NAS volume:
+```yaml
+spec:
+  template:
+    spec:
+      volumes:
+      - name: nas-media
+        persistentVolumeClaim:
+          claimName: jellyfin-nas-media
+      containers:
+      - name: jellyfin
+        volumeMounts:
+        - name: nas-media
+          mountPath: /nas-media
+          readOnly: true
+```
+
+**Step 5: Add library in Jellyfin**
+1. Go to Jellyfin → Dashboard → Libraries → Add Library
+2. Choose content type
+3. Add folder: `/nas-media/Movies` (or wherever your media is on NAS)
+4. Jellyfin will scan your NAS
+
+**Pros:**
+- No copying needed
+- Media stays on NAS (your source of truth)
+- Multiple apps can access same media
+- NAS handles backups/RAID
+
+**Cons:**
+- Requires NAS with NFS/SMB
+- Network speed affects streaming quality
+- More complex setup
+
+---
+
+### **Which Scenario Should I Choose?**
+
+| Scenario | When to Use | Complexity |
+|----------|-------------|------------|
+| **Upload Script** | Small collection, files on laptop | ⭐ Easy |
+| **External Drive** | Large collection, dedicated drive | ⭐⭐ Medium |
+| **NAS** | Already have NAS, want centralized storage | ⭐⭐⭐ Advanced |
+
+**Recommendation for beginners:** Start with the upload script. You can always switch to external drive or NAS later.
+
+---
+
+### **Storage Configuration**
+
+**Default Allocation:**
+- **Config:** 50GB (Longhorn PVC) - for Jellyfin settings
+- **Media:** 500GB (Longhorn PVC) - for uploaded media
+
+**Adjust Storage:**
+Edit the script before running:
+```bash
+STORAGE_CONFIG="50Gi"   # Change as needed
+STORAGE_MEDIA="500Gi"   # Adjust for your library size
+```
+
+**Note:** If using external drive or NAS, you don't need large media PVC.
+
+---
+
+### **Advanced: Direct kubectl cp**
 ```bash
 # Upload a single movie
 kubectl cp /path/to/movie.mp4 jellyfin/jellyfin-pod:/media/Movies/movie.mp4
@@ -251,28 +514,7 @@ kubectl cp /path/to/TV-Show/ jellyfin/jellyfin-pod:/media/TV/TV-Show/
 kubectl get pods -n jellyfin
 ```
 
-#### **Method 3: Mount from NAS/Network Share**
-If you have a NAS with existing media:
-
-1. **Create NFS PV pointing to your NAS:**
-```yaml
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: jellyfin-nas-media
-spec:
-  capacity:
-    storage: 5Ti
-  accessModes:
-    - ReadWriteMany
-  nfs:
-    server: 192.168.1.100  # Your NAS IP
-    path: /volume1/Media   # Your NAS media path
-```
-
-2. **Update Jellyfin deployment to use NAS volume**
-
-#### **Method 4: SSH + rsync (For large libraries)**
+### **Advanced: SSH + rsync (For large libraries)**
 ```bash
 # From your laptop with media
 rsync -avz --progress /path/to/media/ user@control-plane:/tmp/media/

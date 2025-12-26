@@ -20,12 +20,13 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ### **COMPLETE VALIDATION** (12/12 scripts - 100%!)
 
-#### **Fully Implemented Scripts (5)**
+#### **Fully Implemented Scripts (6)**
 | Script | Validation Type | Checks |
 |--------|----------------|---------|
 | `immich/install-immich.sh` | Inline | kubectl cluster storage subdomain |
 | `jellyfin/install-jellyfin.sh` | Shared Library | kubectl cluster storage subdomain |
 | `nextcloud/install-nextcloud.sh` | Shared Library | kubectl cluster storage namespace |
+| `paperless/install-paperless.sh` | Shared Library | kubectl cluster storage subdomain |
 | `install-minecraft.sh` | Shared Library | kubectl cluster storage namespace |
 | `install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
 

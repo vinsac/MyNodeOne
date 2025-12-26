@@ -91,6 +91,31 @@ The script will:
 3. Safely expand without downtime
 4. No pod restart required
 
+## Performance Tuning
+
+### Need Better Performance?
+
+Run the performance tuning script:
+```bash
+sudo ./scripts/apps/nextcloud/tune-performance.sh
+```
+
+Tune resources for:
+- **Nextcloud server** - CPU and memory for file operations
+- **PostgreSQL** - Database performance
+- **PHP settings** - Upload limits and execution time
+
+**Default resources:**
+- Nextcloud: 1 CPU core, 2Gi RAM
+- PostgreSQL: 0.5 CPU cores, 1Gi RAM
+- Redis: 0.2 CPU cores, 512Mi RAM
+
+**When to tune:**
+- Multiple concurrent users
+- Large file uploads/downloads
+- Slow web interface
+- Team usage (10+ users)
+
 ## Desktop Sync
 
 Download from: https://nextcloud.com/install/#install-clients
@@ -196,9 +221,42 @@ kubectl set env deployment/nextcloud -n nextcloud \
 
 ### Slow Performance
 
-Check resources:
+**Automatic tuning (recommended):**
+```bash
+sudo ./scripts/apps/nextcloud/tune-performance.sh
+```
+
+This interactive script helps you:
+- Adjust CPU and memory for Nextcloud server
+- Tune PostgreSQL database resources
+- Configure PHP upload/memory limits
+- Get recommendations based on usage (personal, family, team)
+
+**Manual resource adjustment:**
+
+Check current usage:
 ```bash
 kubectl top pods -n nextcloud
+```
+
+Increase Nextcloud resources:
+```bash
+kubectl patch deployment nextcloud -n nextcloud --type='json' -p='[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": "2000m"},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "4Gi"}
+]'
+```
+
+Increase PostgreSQL resources:
+```bash
+kubectl patch deployment nextcloud-postgres -n nextcloud --type='json' -p='[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": "1000m"},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "2Gi"}
+]'
+```
+
+View logs:
+```bash
 kubectl logs -f deployment/nextcloud -n nextcloud
 ```
 

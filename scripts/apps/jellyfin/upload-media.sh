@@ -18,8 +18,15 @@ NC='\033[0m'
 NAMESPACE="jellyfin"
 
 # Detect if running on management laptop or control plane
+# Check if we're actually ON a node (not just accessing remotely)
 if kubectl get nodes 2>/dev/null | grep -q "control-plane\|master"; then
-    RUNNING_ON="control-plane"
+    # We can see nodes, but are we ON the control plane?
+    CURRENT_HOSTNAME=$(hostname)
+    if kubectl get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | grep -q "$CURRENT_HOSTNAME"; then
+        RUNNING_ON="control-plane"
+    else
+        RUNNING_ON="laptop"
+    fi
 else
     RUNNING_ON="laptop"
 fi
@@ -98,6 +105,12 @@ case $choice in
         
         read -e -p "Enter path to file: " file_path
         
+        # Strip surrounding quotes (from drag-and-drop)
+        file_path="${file_path%\'}"
+        file_path="${file_path#\'}"
+        file_path="${file_path%\"}"
+        file_path="${file_path#\"}"
+        
         # Expand tilde
         file_path="${file_path/#\~/$HOME}"
         
@@ -159,6 +172,12 @@ case $choice in
         echo ""
         
         read -e -p "Enter path to folder: " folder_path
+        
+        # Strip surrounding quotes (from drag-and-drop)
+        folder_path="${folder_path%\'}"
+        folder_path="${folder_path#\'}"
+        folder_path="${folder_path%\"}"
+        folder_path="${folder_path#\"}"
         
         # Expand tilde
         folder_path="${folder_path/#\~/$HOME}"

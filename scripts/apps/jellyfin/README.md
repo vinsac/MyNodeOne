@@ -181,22 +181,63 @@ Jellyfin doesn't have a web upload feature - you need to copy files to the serve
 
 #### **Method 1: Upload Script (Recommended)**
 ```bash
-sudo ./scripts/apps/jellyfin/upload-media.sh
+# Can be run from your laptop OR control plane
+./scripts/apps/jellyfin/upload-media.sh
 ```
 
 **Features:**
+- **Works from management laptop** - no need to SSH!
 - Upload single files or entire folders
 - Organized directory structure (Movies, TV, Music, Photos)
-- Interactive menu
+- Interactive menu with helpful tips
+- Drag-and-drop support (drag file into terminal)
+- Tab completion for browsing files
+- Shows common file locations
 - Shows current media
 
-**Example workflow:**
-1. Run the upload script
-2. Choose "Upload a folder"
-3. Enter path: `/home/user/Downloads/MyMovie`
-4. Select destination: Movies
-5. Script uploads to `/media/Movies/MyMovie`
-6. Go to Jellyfin → Dashboard → Libraries → Scan Library
+**Example workflow from laptop:**
+```bash
+# On your laptop (no SSH needed!)
+cd ~/MyNodeOne
+./scripts/apps/jellyfin/upload-media.sh
+
+# Script detects you're on laptop
+✓ Running from management laptop
+  Files will be uploaded from your laptop to Jellyfin
+
+# Choose "Upload a folder"
+💡 Tip: You can drag and drop a folder into the terminal
+   Or use tab completion to browse: /home/[TAB]
+
+Common locations:
+  ~/Downloads/
+  ~/Videos/
+  ~/Movies/
+
+Enter path to folder: ~/Downloads/Inception  # or drag-drop here
+Select destination: 1 (Movies)
+
+📤 Uploading folder...
+✓ Folder uploaded successfully!
+```
+
+**Example workflow from control plane:**
+```bash
+# SSH into control plane
+ssh user@control-plane
+
+# Run script
+./scripts/apps/jellyfin/upload-media.sh
+
+# Script detects you're on control plane
+✓ Running on control plane
+  Files will be uploaded from control plane to Jellyfin
+```
+
+**Tips:**
+- **Drag and drop**: Drag a file/folder from your file manager into the terminal to get its path
+- **Tab completion**: Type `~/Down` and press TAB to autocomplete to `~/Downloads/`
+- **Tilde expansion**: `~/Movies` works (expands to `/home/user/Movies`)
 
 #### **Method 2: Direct kubectl cp**
 ```bash

@@ -4,6 +4,7 @@
 # Jellyfin - Media Upload Helper
 # 
 # Upload movies, TV shows, and music to Jellyfin media storage
+# Can be run from management laptop or control plane
 ###############################################################################
 
 set -euo pipefail
@@ -15,6 +16,13 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 NAMESPACE="jellyfin"
+
+# Detect if running on management laptop or control plane
+if kubectl get nodes 2>/dev/null | grep -q "control-plane\|master"; then
+    RUNNING_ON="control-plane"
+else
+    RUNNING_ON="laptop"
+fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  Upload Media to Jellyfin${NC}"
@@ -41,6 +49,15 @@ if [ -z "$POD" ]; then
     exit 1
 fi
 
+if [ "$RUNNING_ON" = "laptop" ]; then
+    echo -e "${GREEN}✓ Running from management laptop${NC}"
+    echo "  Files will be uploaded from your laptop to Jellyfin"
+else
+    echo -e "${GREEN}✓ Running on control plane${NC}"
+    echo "  Files will be uploaded from control plane to Jellyfin"
+fi
+echo ""
+
 echo "📁 Jellyfin Media Storage Structure:"
 echo ""
 echo "The media directory is organized as:"
@@ -63,10 +80,30 @@ read -p "Choice [1-5]: " choice
 case $choice in
     1)
         echo ""
-        read -p "Enter path to file: " file_path
+        echo "💡 Tip: You can drag and drop a file into the terminal to get its path"
+        echo "   Or use tab completion to browse: /home/[TAB]"
+        echo ""
+        
+        # Show common locations
+        echo "Common locations:"
+        if [ "$RUNNING_ON" = "laptop" ]; then
+            echo "  ~/Downloads/"
+            echo "  ~/Videos/"
+            echo "  ~/Movies/"
+        else
+            echo "  /tmp/"
+            echo "  /home/$USER/"
+        fi
+        echo ""
+        
+        read -e -p "Enter path to file: " file_path
+        
+        # Expand tilde
+        file_path="${file_path/#\~/$HOME}"
         
         if [ ! -f "$file_path" ]; then
             echo -e "${RED}Error: File not found: $file_path${NC}"
+            echo "Please check the path and try again"
             exit 1
         fi
         
@@ -105,10 +142,30 @@ case $choice in
         
     2)
         echo ""
-        read -p "Enter path to folder: " folder_path
+        echo "💡 Tip: You can drag and drop a folder into the terminal to get its path"
+        echo "   Or use tab completion to browse: /home/[TAB]"
+        echo ""
+        
+        # Show common locations
+        echo "Common locations:"
+        if [ "$RUNNING_ON" = "laptop" ]; then
+            echo "  ~/Downloads/"
+            echo "  ~/Videos/"
+            echo "  ~/Movies/"
+        else
+            echo "  /tmp/"
+            echo "  /home/$USER/"
+        fi
+        echo ""
+        
+        read -e -p "Enter path to folder: " folder_path
+        
+        # Expand tilde
+        folder_path="${folder_path/#\~/$HOME}"
         
         if [ ! -d "$folder_path" ]; then
             echo -e "${RED}Error: Folder not found: $folder_path${NC}"
+            echo "Please check the path and try again"
             exit 1
         fi
         

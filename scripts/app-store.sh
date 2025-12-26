@@ -66,9 +66,8 @@ show_menu() {
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Security & Monitoring${NC}                                         ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}10.${NC} Vaultwarden    - Password manager                         ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}11.${NC} Uptime Kuma    - Monitoring tool ${CYAN}[Coming Soon]${NC}          ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}12.${NC} Homepage       - Application dashboard                    ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}10.${NC} Uptime Kuma    - Monitoring tool ${CYAN}[Coming Soon]${NC}          ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}11.${NC} Homepage       - Application dashboard                    ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
@@ -168,6 +167,9 @@ while true; do
             install_app "gitea"
             ;;
         10)
+            install_app "vaultwarden"
+            ;;
+        11)
             install_app "uptime-kuma"
             ;;
         12)

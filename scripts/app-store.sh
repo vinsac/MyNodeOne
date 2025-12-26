@@ -47,9 +47,8 @@ show_menu() {
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Media & Entertainment${NC}                                          ${BLUE}│${NC}"
     echo -e "${BLUE}│${NC}    ${YELLOW}1.${NC} Jellyfin        - Media server (Netflix-like)              ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}2.${NC} Plex            - Premium media server                     ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}3.${NC} Audiobookshelf  - Audiobooks & podcasts ${CYAN}[Coming Soon]${NC}     ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}4.${NC} Minecraft       - Game server                              ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}2.${NC} Audiobookshelf  - Audiobooks & podcasts ${CYAN}[Coming Soon]${NC}     ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}3.${NC} Minecraft       - Game server                              ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
@@ -148,6 +147,9 @@ while true; do
             install_app "jellyfin"
             ;;
         2)
+            install_app "plex"
+            ;;
+        3)
             install_app "audiobookshelf"
             ;;
         4)

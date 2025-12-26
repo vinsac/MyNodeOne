@@ -64,7 +64,6 @@ Each app includes sensible defaults but can be customized:
 
 | Application | RAM | CPU | Storage |
 |------------|-----|-----|---------|
-| Plex | 2GB | 1 core | 10GB + media |
 | Jellyfin | 2GB | 1 core | 10GB + media |
 | Immich | 4GB | 2 cores | 50GB + photos |
 | Nextcloud | 2GB | 1 core | 20GB + files |

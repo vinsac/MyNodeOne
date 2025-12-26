@@ -164,8 +164,8 @@ manage_storage() {
             fi
             ;;
         3)
-            if [ -f "$SCRIPT_DIR/apps/monitor-llm-storage.sh" ]; then
-                bash "$SCRIPT_DIR/apps/monitor-llm-storage.sh"
+            if [ -f "$SCRIPT_DIR/apps/llm-chat/monitor-storage.sh" ]; then
+                bash "$SCRIPT_DIR/apps/llm-chat/monitor-storage.sh"
                 read -p "Press Enter to continue..."
             else
                 echo "Storage monitor script not found"

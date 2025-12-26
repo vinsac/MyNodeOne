@@ -148,10 +148,10 @@ cat ~/.mynodeone/dashboard-token.txt
 
 ```bash
 # Check storage and suggest expansion if needed
-sudo ./scripts/apps/monitor-llm-storage.sh
+sudo ./scripts/apps/llm-chat/monitor-storage.sh
 
 # Automatically expand when usage > 80%
-sudo AUTO_EXPAND=true ./scripts/apps/monitor-llm-storage.sh
+sudo AUTO_EXPAND=true ./scripts/apps/llm-chat/monitor-storage.sh
 ```
 
 **Set up as cron job (runs daily):**
@@ -161,7 +161,7 @@ sudo AUTO_EXPAND=true ./scripts/apps/monitor-llm-storage.sh
 crontab -e
 
 # Add this line (checks daily at 2 AM):
-0 2 * * * AUTO_EXPAND=true /path/to/MyNodeOne/scripts/apps/monitor-llm-storage.sh >> /var/log/llm-storage-monitor.log 2>&1
+0 2 * * * AUTO_EXPAND=true /path/to/MyNodeOne/scripts/apps/llm-chat/monitor-storage.sh >> /var/log/llm-storage-monitor.log 2>&1
 ```
 
 ### Manual Storage Expansion

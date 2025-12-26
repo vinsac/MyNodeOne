@@ -410,10 +410,22 @@ if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
         if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" get "paperless" &>/dev/null; then
             echo "✓ Service registration verified"
             
-            # Trigger DNS sync
-            if [ -f "$PROJECT_ROOT/scripts/configure-app-dns.sh" ]; then
-                echo "🔄 Syncing DNS to all nodes..."
-                bash "$PROJECT_ROOT/scripts/configure-app-dns.sh" || echo "⚠️  DNS sync completed with warnings"
+            # Update local DNS immediately
+            if [ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]; then
+                echo "🔄 Updating DNS..."
+                if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                    echo "✓ DNS updated"
+                fi
+            fi
+            
+            # Trigger sync to all remote nodes
+            if [ -f "$PROJECT_ROOT/scripts/lib/sync-controller.sh" ]; then
+                echo "🔄 Syncing to all nodes..."
+                if sudo bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push >/dev/null 2>&1; then
+                    echo "✓ Sync completed"
+                else
+                    echo "⚠️  Sync will retry automatically"
+                fi
             fi
         else
             echo "⚠️  Could not verify service registration"

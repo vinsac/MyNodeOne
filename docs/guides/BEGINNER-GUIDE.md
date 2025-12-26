@@ -315,7 +315,7 @@ For services you want to share with people NOT on your Tailscale:
 ssh user@mynodeone
 
 # Run the installation command
-sudo ./scripts/apps/install-jellyfin.sh
+sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 ```
 
 **What happens:**

@@ -5,8 +5,7 @@ This directory contains one-click installation scripts for popular self-hosted a
 ## Available Applications
 
 ### Media & Entertainment
-- **Plex** - Premium media server (Netflix-like experience)
-- **Jellyfin** - Open source media server (Plex alternative)
+- **Jellyfin** - Open source media server (Netflix-like experience)
 - **Audiobookshelf** - Audiobook and podcast server
 - **Minecraft Server** - Host your own Minecraft server
 
@@ -91,7 +90,7 @@ Each app includes sensible defaults but can be customized:
 5. **Minecraft** - Fun testing workload
 
 **For Media Server:**
-1. **Plex** or **Jellyfin** - Main media server
+1. **Jellyfin** - Main media server
 2. **Audiobookshelf** - Audiobooks/podcasts
 3. **Homepage** - Organize access to media
 4. **Nextcloud** - Share files with family
@@ -101,7 +100,7 @@ Each app includes sensible defaults but can be customized:
 Each script has a corresponding uninstall script:
 
 ```bash
-sudo ./scripts/apps/uninstall-plex.sh
+sudo ./scripts/apps/jellyfin/uninstall-jellyfin.sh
 sudo ./scripts/apps/immich/uninstall-immich.sh
 ```
 
@@ -129,7 +128,6 @@ Each script can be customized by editing these variables:
 ## Documentation
 
 For detailed information about each application, see:
-- [Plex Documentation](https://support.plex.tv/)
 - [Jellyfin Documentation](https://jellyfin.org/docs/)
 - [Immich Documentation](https://immich.app/docs)
 - [Nextcloud Documentation](https://docs.nextcloud.com/)

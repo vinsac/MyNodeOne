@@ -88,7 +88,7 @@ list_installed_apps() {
     # List all namespaces that contain apps
     kubectl get namespaces -o json | \
         jq -r '.items[].metadata.name' | \
-        grep -E "jellyfin|immich|vaultwarden|minecraft|homepage|plex|nextcloud|mattermost|gitea|uptime|paperless|audiobookshelf" || \
+        grep -E "jellyfin|immich|vaultwarden|minecraft|homepage|nextcloud|mattermost|gitea|uptime|paperless|audiobookshelf" || \
         echo "No apps installed yet"
     
     echo ""
@@ -147,9 +147,6 @@ while true; do
             install_app "jellyfin"
             ;;
         2)
-            install_app "plex"
-            ;;
-        3)
             install_app "audiobookshelf"
             ;;
         4)

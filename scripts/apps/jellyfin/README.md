@@ -151,9 +151,7 @@ https://media.curiios.com
 1. Open the URL in your browser
 2. Follow the setup wizard
 3. Create admin account
-4. **Skip adding libraries for now** (add media first)
-5. Upload your media (see Upload Media section below)
-6. Add media libraries pointing to `/media/Movies`, `/media/TV`, etc.
+4. **Skip adding libraries for now** (add media first)5. Upload your media (see Upload Media section below)6. Add media libraries pointing to `/media/Movies`, `/media/TV`, etc.
 7. (Optional) Configure hardware transcoding
 
 ### **Mobile Apps**
@@ -177,14 +175,102 @@ STORAGE_CONFIG="50Gi"   # Change as needed
 STORAGE_MEDIA="500Gi"   # Adjust for your library size
 ```
 
-### **Access Storage**
+### **Upload Media to Jellyfin**
+
+Jellyfin doesn't have a web upload feature - you need to copy files to the server. We provide a helper script:
+
+#### **Method 1: Upload Script (Recommended)**
+```bash
+sudo ./scripts/apps/jellyfin/upload-media.sh
+```
+
+**Features:**
+- Upload single files or entire folders
+- Organized directory structure (Movies, TV, Music, Photos)
+- Interactive menu
+- Shows current media
+
+**Example workflow:**
+1. Run the upload script
+2. Choose "Upload a folder"
+3. Enter path: `/home/user/Downloads/MyMovie`
+4. Select destination: Movies
+5. Script uploads to `/media/Movies/MyMovie`
+6. Go to Jellyfin → Dashboard → Libraries → Scan Library
+
+#### **Method 2: Direct kubectl cp**
+```bash
+# Upload a single movie
+kubectl cp /path/to/movie.mp4 jellyfin/jellyfin-pod:/media/Movies/movie.mp4
+
+# Upload entire folder
+kubectl cp /path/to/TV-Show/ jellyfin/jellyfin-pod:/media/TV/TV-Show/
+
+# Get pod name
+kubectl get pods -n jellyfin
+```
+
+#### **Method 3: Mount from NAS/Network Share**
+If you have a NAS with existing media:
+
+1. **Create NFS PV pointing to your NAS:**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jellyfin-nas-media
+spec:
+  capacity:
+    storage: 5Ti
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: 192.168.1.100  # Your NAS IP
+    path: /volume1/Media   # Your NAS media path
+```
+
+2. **Update Jellyfin deployment to use NAS volume**
+
+#### **Method 4: SSH + rsync (For large libraries)**
+```bash
+# From your laptop with media
+rsync -avz --progress /path/to/media/ user@control-plane:/tmp/media/
+
+# On control plane
+kubectl cp /tmp/media/ jellyfin/jellyfin-pod:/media/
+```
+
+### **Directory Structure**
+```bash
+/media/
+├── Movies/
+│   ├── Movie1 (2020)/
+│   │   └── Movie1.mkv
+│   └── Movie2 (2021)/
+│       └── Movie2.mp4
+├── TV/
+│   └── ShowName/
+│       ├── Season 01/
+│       │   ├── S01E01.mkv
+│       │   └── S01E02.mkv
+│       └── Season 02/
+├── Music/
+│   └── Artist/
+│       └── Album/
+└── Photos/
+```
+
+### **Storage Info**
 ```bash
 # List volumes
 kubectl get pvc -n jellyfin
 
-# Storage path in container
-/config  → Jellyfin configuration
-/media   → Your media files (movies, TV, music)
+# Check storage usage
+kubectl exec -n jellyfin deployment/jellyfin -- df -h /media
+
+# Storage paths in container
+/config  → Jellyfin configuration (50Gi)
+/media   → Your media files (500Gi default)
 ```
 
 ---

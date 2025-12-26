@@ -126,28 +126,27 @@ Now that Tailscale is set up, you can install and use mobile apps for your servi
 
 ---
 
-### Example: Vaultwarden (Password Manager)
+### Example: Nextcloud (File Sync)
 
 **What you'll do:**
-- Install official Bitwarden app
-- Point it to your Vaultwarden server
-- Access passwords anywhere!
+- Install official Nextcloud app
+- Point it to your Nextcloud server
+- Sync files anywhere!
 
 **Step-by-Step:**
 
-1. **Download Bitwarden App** (NOT Vaultwarden!)
-   - iPhone: App Store → "Bitwarden"
-   - Android: Play Store → "Bitwarden"
+1. **Download Nextcloud App**
+   - iPhone: App Store → "Nextcloud"
+   - Android: Play Store → "Nextcloud"
 
-2. **Open Bitwarden App**
-   - Before logging in, tap Settings (top left)
+2. **Open App**
+   - Tap "Log in"
 
-3. **Configure Self-Hosted**
-   - Tap "Self-hosted"
-   - Server URL: `http://vaultwarden.mynodeone.local`
-   - Tap "Save"
+3. **Configure Server**
+   - Server URL: `http://nextcloud.mynodeone.local`
+   - Tap "Next"
 
-4. **Create Account or Login**
+4. **Login**
    - If first time: Create account
    - If already created: Login with master password
 
@@ -419,10 +418,10 @@ Data used: 510MB (2% overhead)
 Data used: 4.1GB (2.5% overhead)
 ```
 
-**Password Sync (Vaultwarden):**
+**File Sync (Nextcloud):**
 ```
-Syncing 500 passwords:
-Data used: <1MB
+Syncing 100 documents:
+Data used: ~50MB
 ```
 
 **The overhead is negligible for normal use!**

@@ -23,7 +23,6 @@ Think of MyNodeOne as **your personal app store** - like the App Store on iPhone
 |--------------------------|---------------------|--------------|
 | Netflix ($240/year) | **Jellyfin** | $240 |
 | Google Photos ($100/year) | **Immich** | $100 |
-| 1Password ($36/year) | **Vaultwarden** | $36 |
 | Dropbox ($120/year) | **Nextcloud** | $120 |
 | Slack ($96/year) | **Mattermost** | $96 |
 | Minecraft Realm ($80/year) | **Minecraft Server** | $80 |
@@ -150,33 +149,6 @@ Step 7: Open the app in your browser - it's ready to use!
 
 ---
 
-### Security & Privacy
-
-#### **Vaultwarden** - Your Personal Password Manager
-**What it does:** Securely store all your passwords
-**Why you want it:**
-- One strong password to remember instead of 100
-- Generate strong passwords automatically
-- Auto-fill passwords on websites
-- Access on all devices (phone, laptop, tablet)
-- Cheaper than 1Password/Dashlane
-
-**How to use:**
-1. Install with: `sudo ./scripts/apps/install-vaultwarden.sh`
-2. **SAVE THE ADMIN TOKEN** shown (very important!)
-3. Open URL (like http://vaultwarden.mynodeone.local)
-4. Create your account with a STRONG master password
-5. Install Bitwarden extension in Chrome/Firefox
-6. Install Bitwarden app on phone
-7. Configure extension/app to use your server URL
-8. Start saving passwords!
-
-**Perfect for:** Everyone (seriously, everyone needs this)
-
-**Access:** http://vaultwarden.mynodeone.local
-
----
-
 ### Communication
 
 #### **Mattermost** - Your Personal Slack
@@ -233,7 +205,6 @@ App Name          →  Web Address
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Jellyfin          →  http://jellyfin.mynodeone.local
 Immich            →  http://immich.mynodeone.local
-Vaultwarden       →  http://vaultwarden.mynodeone.local
 Nextcloud         →  http://nextcloud.mynodeone.local
 Mattermost        →  http://mattermost.mynodeone.local
 Minecraft Server  →  minecraft.mynodeone.local:25565
@@ -408,7 +379,6 @@ Jellyfin automatically scans and adds them!
 |---------|---------|-------------|-----------|
 | Immich |  Excellent |  Excellent | Better than Google Photos! |
 | Jellyfin |  Great |  Great | Smooth streaming |
-| Vaultwarden |  Perfect |  Perfect | Use official Bitwarden app |
 | Nextcloud |  Great |  Great | Auto file upload |
 | Mattermost |  Excellent |  Excellent | Like native Slack |
 | Minecraft |  Perfect |  Perfect | Official Minecraft app |
@@ -528,7 +498,7 @@ Might need to:
 ### Week 1: Get Comfortable
 - [ ] Install Jellyfin and watch a movie
 - [ ] Install Immich and backup your photos
-- [ ] Install Vaultwarden and save some passwords
+- [ ] Install Nextcloud and sync some files
 
 ### Week 2: Add More
 - [ ] Install Nextcloud and sync files
@@ -567,8 +537,8 @@ Might need to:
 ### Example 3: Student
 **Alex's Dorm Setup:**
 - Old gaming PC (repurposed)
-- Installed: Vaultwarden + Gitea + Minecraft
-- **Result:** Secure passwords, code projects, Minecraft with friends
+- Installed: Gitea + Nextcloud + Minecraft
+- **Result:** Code projects, file sync, Minecraft with friends
 - **Savings: $200/year + priceless learning**
 
 ---

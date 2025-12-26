@@ -35,7 +35,7 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 
 - **One Command Setup** - `sudo ./scripts/mynodeone` does everything
 - **Local Dashboard** - Access at `http://mynodeone.local` after installation
-- **One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Vaultwarden, etc.)
+- **One-Click App Store** - Install 10+ self-hosted apps (Jellyfin, Immich, Nextcloud, etc.)
 - **System Cleanup** - Automatic removal of bloat and unused packages
 - **Disk Auto-Detection** - Finds and configures external drives automatically
 - **Fully Generic** - Works with any hardware, names, IPs

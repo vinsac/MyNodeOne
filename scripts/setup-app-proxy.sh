@@ -58,7 +58,7 @@ Examples:
   sudo ./scripts/setup-app-proxy.sh jellyfin media --proxy-port 8081
 
   # Custom service name:
-  sudo ./scripts/setup-app-proxy.sh vault vault --service-name vaultwarden
+  sudo ./scripts/setup-app-proxy.sh nextcloud files --service-name nextcloud
 
 How it works:
   1. Detects Kubernetes service ClusterIP and port

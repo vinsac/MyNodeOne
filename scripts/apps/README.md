@@ -19,7 +19,6 @@ This directory contains one-click installation scripts for popular self-hosted a
 - **Gitea** - Self-hosted Git service (GitHub alternative)
 
 ### Security & Monitoring
-- **Vaultwarden** - Password manager (Bitwarden server)
 - **Uptime Kuma** - Service monitoring and status page
 - **Homepage** - Application dashboard and homepage
 
@@ -67,7 +66,6 @@ Each app includes sensible defaults but can be customized:
 | Immich | 4GB | 2 cores | 50GB + photos |
 | Nextcloud | 2GB | 1 core | 20GB + files |
 | Mattermost | 2GB | 1 core | 10GB |
-| Vaultwarden | 512MB | 0.5 core | 1GB |
 | Gitea | 1GB | 1 core | 10GB |
 | Minecraft | 2-4GB | 2 cores | 5GB |
 | Uptime Kuma | 512MB | 0.5 core | 2GB |
@@ -76,10 +74,10 @@ Each app includes sensible defaults but can be customized:
 ## Recommended Setup Order
 
 **For Personal/Family Use:**
-1. **Vaultwarden** - Secure your passwords first
-2. **Nextcloud** - File storage and sync
-3. **Immich** - Photo backup and organization
-4. **Jellyfin** - Media streaming
+1. **Nextcloud** - File storage and sync
+2. **Immich** - Photo backup and organization
+3. **Jellyfin** - Media streaming
+4. **Homepage** - Dashboard for all services
 5. **Uptime Kuma** - Monitor your services
 
 **For Home Lab/Learning:**

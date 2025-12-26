@@ -99,7 +99,6 @@ fi
 APP_NAMESPACES=(
     "jellyfin"
     "immich"
-    "vaultwarden"
     "minecraft"
     "homepage"
     "nextcloud"

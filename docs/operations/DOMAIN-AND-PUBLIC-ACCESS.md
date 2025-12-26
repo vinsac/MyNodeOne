@@ -187,7 +187,6 @@ Organize your apps with meaningful subdomains:
 | App | Subdomain | URL |
 |-----|-----------|-----|
 | Immich | photos | `https://photos.yourdomain.com` |
-| Vaultwarden | vault | `https://vault.yourdomain.com` |
 | Nextcloud | files | `https://files.yourdomain.com` |
 | Jellyfin | media | `https://media.yourdomain.com` |
 | Gitea | git | `https://git.yourdomain.com` |
@@ -200,7 +199,6 @@ Organize your apps with meaningful subdomains:
 
 Recommended for public access:
 - Photo sharing (Immich)
-- Password manager (Vaultwarden) - has built-in auth
 - File sharing (Nextcloud) - has built-in auth
 - Media server (Jellyfin) - has built-in auth
 

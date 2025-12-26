@@ -34,7 +34,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 ### Security & Monitoring
 | Application | Description | Status |
 |-------------|-------------|--------|
-| Vaultwarden | Password manager (Bitwarden-compatible) | Available |
 | Uptime Kuma | Service monitoring and status pages | Coming soon |
 | Homepage | Dashboard for all your services | Available |
 
@@ -45,7 +44,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | LLM Chat | 4GB+ | 2 cores | 50GB+ | Depends on model size |
 | Jellyfin | 2GB | 1 core | 10GB + media | Hardware transcoding available |
 | Immich | 4GB | 2 cores | 50GB + photos | Includes PostgreSQL + Redis |
-| Vaultwarden | 512MB | 0.5 core | 1GB | Lightweight |
 | Minecraft | 2-4GB | 2 cores | 5GB | Adjustable memory |
 | Homepage | 256MB | 0.2 core | 500MB | Dashboard only |
 
@@ -84,9 +82,6 @@ sudo ./scripts/apps/immich/install-immich.sh
 # Cloud storage
 sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 
-# Password manager
-sudo ./scripts/apps/install-vaultwarden.sh
-
 # Game server
 sudo ./scripts/apps/install-minecraft.sh
 
@@ -119,7 +114,7 @@ Each script automatically:
 ### View Installed Apps
 
 ```bash
-kubectl get namespaces | grep -E "jellyfin|immich|vaultwarden|minecraft|homepage|llm-chat"
+kubectl get namespaces | grep -E "jellyfin|immich|minecraft|homepage|llm-chat"
 ```
 
 ### Check App Status
@@ -155,7 +150,6 @@ Every app gets an easy-to-remember address:
 |-------------|-----|
 | Jellyfin | `http://jellyfin.mynodeone.local` |
 | Immich | `http://immich.mynodeone.local` |
-| Vaultwarden | `http://vaultwarden.mynodeone.local` |
 | Nextcloud | `http://nextcloud.mynodeone.local` |
 | Homepage | `http://homepage.mynodeone.local` |
 
@@ -169,7 +163,6 @@ Every app gets an easy-to-remember address:
 |-------------|-----|---------|
 | Immich | Immich app | Immich app |
 | Jellyfin | Jellyfin app | Jellyfin app |
-| Vaultwarden | Bitwarden app | Bitwarden app |
 | Nextcloud | Nextcloud app | Nextcloud app |
 | Mattermost | Mattermost app | Mattermost app |
 

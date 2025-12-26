@@ -168,9 +168,6 @@ while true; do
             install_app "gitea"
             ;;
         10)
-            install_app "vaultwarden"
-            ;;
-        11)
             install_app "uptime-kuma"
             ;;
         12)

@@ -181,6 +181,33 @@ make_public() {
             log_error "Failed to configure routing"
             return 1
         fi
+        
+        # Special handling for Nextcloud: Update trusted_domains
+        if [ "$service_name" = "nextcloud" ]; then
+            log_info "Updating Nextcloud trusted domains..."
+            
+            # Get service subdomain
+            local subdomain=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath="{.data.services\.json}" 2>/dev/null | \
+                jq -r ".[\"$service_name\"].subdomain")
+            
+            # Add each domain to trusted_domains
+            local domain_index=2
+            IFS=',' read -ra DOMAIN_ARRAY <<< "$domains"
+            for domain in "${DOMAIN_ARRAY[@]}"; do
+                domain=$(echo "$domain" | xargs)
+                local fqdn="${subdomain}.${domain}"
+                
+                if kubectl exec -n nextcloud deployment/nextcloud -- \
+                    su -s /bin/bash www-data -c \
+                    "php occ config:system:set trusted_domains $domain_index --value='$fqdn'" &>/dev/null; then
+                    log_success "Added $fqdn to trusted domains"
+                    ((domain_index++))
+                else
+                    log_warn "Could not add $fqdn to trusted domains (may need manual configuration)"
+                fi
+            done
+        fi
     fi
     
     # Verify configuration in ConfigMap

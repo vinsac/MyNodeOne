@@ -99,14 +99,11 @@ fi
 APP_NAMESPACES=(
     "jellyfin"
     "immich"
-    "minecraft"
     "homepage"
     "nextcloud"
     "mattermost"
-    "gitea"
     "uptime-kuma"
     "paperless"
-    "audiobookshelf"
     "demo-apps"
     "llm-chat"
 )

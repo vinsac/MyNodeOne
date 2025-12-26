@@ -47,34 +47,31 @@ show_menu() {
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Media & Entertainment${NC}                                          ${BLUE}│${NC}"
     echo -e "${BLUE}│${NC}    ${YELLOW}1.${NC} Jellyfin        - Media server (Netflix-like)              ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}2.${NC} Audiobookshelf  - Audiobooks & podcasts ${CYAN}[Coming Soon]${NC}     ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}3.${NC} Minecraft       - Game server                              ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Photos & Files${NC}                                                 ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}5.${NC} Immich          - Google Photos alternative                ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}6.${NC} Nextcloud       - Cloud storage platform ${CYAN}[Coming Soon]${NC}    ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}7.${NC} Paperless-ngx   - Document management ${CYAN}[Coming Soon]${NC}       ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}2.${NC} Immich          - Google Photos alternative                ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}3.${NC} Nextcloud       - Cloud storage platform                   ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}4.${NC} Paperless-ngx   - Document management                      ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Communication & Productivity${NC}                                  ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}8.${NC} Mattermost      - Team chat (Slack) ${CYAN}[Coming Soon]${NC}        ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}9.${NC} Gitea           - Git server (GitHub) ${CYAN}[Coming Soon]${NC}      ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}5.${NC} Mattermost      - Team chat (Slack) ${CYAN}[Coming Soon]${NC}        ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Security & Monitoring${NC}                                         ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}10.${NC} Uptime Kuma    - Monitoring tool ${CYAN}[Coming Soon]${NC}          ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}11.${NC} Homepage       - Application dashboard                    ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}6.${NC} Uptime Kuma    - Monitoring tool ${CYAN}[Coming Soon]${NC}          ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}7.${NC} Homepage       - Application dashboard                    ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Utilities${NC}                                                      ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}13.${NC} List Installed Apps                                      ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}14.${NC} View App Access Info                                     ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}0.${NC}  Exit                                                     ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}8.${NC} List Installed Apps                                       ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}9.${NC} View App Access Info                                      ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}0.${NC} Exit                                                      ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
 }
@@ -87,7 +84,7 @@ list_installed_apps() {
     # List all namespaces that contain apps
     kubectl get namespaces -o json | \
         jq -r '.items[].metadata.name' | \
-        grep -E "jellyfin|immich|vaultwarden|minecraft|homepage|nextcloud|mattermost|gitea|uptime|paperless|audiobookshelf" || \
+        grep -E "jellyfin|immich|homepage|nextcloud|mattermost|uptime|paperless" || \
         echo "No apps installed yet"
     
     echo ""
@@ -99,7 +96,7 @@ view_app_info() {
     echo ""
     
     # Get LoadBalancer IPs for all app services
-    for ns in $(kubectl get namespaces -o json | jq -r '.items[].metadata.name' | grep -E "jellyfin|immich|vaultwarden|minecraft|homepage"); do
+    for ns in $(kubectl get namespaces -o json | jq -r '.items[].metadata.name' | grep -E "jellyfin|immich|homepage|nextcloud|paperless"); do
         echo -e "${YELLOW}$ns:${NC}"
         kubectl get svc -n "$ns" -o wide 2>/dev/null | grep LoadBalancer || echo "  No LoadBalancer service found"
         echo ""
@@ -138,7 +135,7 @@ while true; do
     
     show_menu
     
-    echo -ne "${CYAN}Select an option [0-14]: ${NC}"
+    echo -ne "${CYAN}Select an option [0-9]: ${NC}"
     read choice
     
     case $choice in
@@ -146,18 +143,12 @@ while true; do
             install_app "jellyfin"
             ;;
         2)
-            install_app "audiobookshelf"
-            ;;
-        4)
-            install_app "minecraft"
-            ;;
-        5)
             install_app "immich"
             ;;
-        6)
+        3)
             install_app "nextcloud"
             ;;
-        7)
+        4)
             if [ -f "$APPS_DIR/paperless/install-paperless.sh" ]; then
                 bash "$APPS_DIR/paperless/install-paperless.sh"
                 echo -e "${GREEN}Press Enter to continue...${NC}"
@@ -168,24 +159,21 @@ while true; do
                 read
             fi
             ;;
-        8)
+        5)
             install_app "mattermost"
             ;;
-        9)
-            install_app "gitea"
-            ;;
-        10)
+        6)
             install_app "uptime-kuma"
             ;;
-        11)
+        7)
             install_app "homepage"
             ;;
-        13)
+        8)
             list_installed_apps
             echo -e "${GREEN}Press Enter to continue...${NC}"
             read
             ;;
-        14)
+        9)
             view_app_info
             echo -e "${GREEN}Press Enter to continue...${NC}"
             read

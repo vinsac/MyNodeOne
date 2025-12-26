@@ -18,25 +18,21 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ## 📊 Validation Coverage Status
 
-### **COMPLETE VALIDATION** (12/12 scripts - 100%!)
+### **COMPLETE VALIDATION** (7/7 scripts - 100%!)
 
-#### **Fully Implemented Scripts (6)**
+#### **Fully Implemented Scripts (5)**
 | Script | Validation Type | Checks |
 |--------|----------------|---------|
 | `immich/install-immich.sh` | Inline | kubectl cluster storage subdomain |
 | `jellyfin/install-jellyfin.sh` | Shared Library | kubectl cluster storage subdomain |
 | `nextcloud/install-nextcloud.sh` | Shared Library | kubectl cluster storage namespace |
 | `paperless/install-paperless.sh` | Shared Library | kubectl cluster storage subdomain |
-| `install-minecraft.sh` | Shared Library | kubectl cluster storage namespace |
 | `install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
 
-#### **Placeholder Scripts with Validation Ready (6)**
+#### **Placeholder Scripts with Validation Ready (2)**
 | Script | Validation Type | Status |
 |--------|----------------|---------|
-| `install-audiobookshelf.sh` | Shared Library | Ready (commented until implemented) |
-| `install-gitea.sh` | Shared Library | Ready (commented until implemented) |
 | `install-mattermost.sh` | Shared Library | Ready (commented until implemented) |
-| `install-paperless.sh` | Shared Library | Ready (commented until implemented) |
 | `install-uptime-kuma.sh` | Shared Library | Ready (commented until implemented) |
 
 ---
@@ -76,7 +72,7 @@ warn_if_namespace_exists "$NAMESPACE"
 
 ### **Estimated Time:**
 - ~2 minutes per script
-- ~14 minutes total for remaining 7 scripts
+- ~4 minutes total for remaining 2 scripts
 
 ---
 
@@ -130,10 +126,10 @@ Continue anyway? [y/N]:
 
 ## 📈 Progress Tracking
 
-- **Total Scripts:** 12
-- **With Validation:** 12 (100%) 
-- **Fully Implemented:** 6 (50%)
-- **Placeholder (Ready):** 6 (50%)
+- **Total Scripts:** 5
+- **With Validation:** 5 (100%) 
+- **Fully Implemented:** 5 (100%)
+- **Placeholder (Ready):** 0 (0%)
 
 **Goal:** 100% coverage with standardized validation **ACHIEVED!**
 

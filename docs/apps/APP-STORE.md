@@ -15,8 +15,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | Application | Description | Status |
 |-------------|-------------|--------|
 | Jellyfin | Open source media server | Available |
-| Audiobookshelf | Audiobook and podcast server | Coming soon |
-| Minecraft Server | Host your own game server | Available |
 
 ### Photos & Files
 | Application | Description | Status |
@@ -29,7 +27,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | Application | Description | Status |
 |-------------|-------------|--------|
 | Mattermost | Team chat (Slack alternative) | Coming soon |
-| Gitea | Self-hosted Git service | Coming soon |
 
 ### Security & Monitoring
 | Application | Description | Status |
@@ -44,7 +41,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | LLM Chat | 4GB+ | 2 cores | 50GB+ | Depends on model size |
 | Jellyfin | 2GB | 1 core | 10GB + media | Hardware transcoding available |
 | Immich | 4GB | 2 cores | 50GB + photos | Includes PostgreSQL + Redis |
-| Minecraft | 2-4GB | 2 cores | 5GB | Adjustable memory |
 | Homepage | 256MB | 0.2 core | 500MB | Dashboard only |
 
 ---
@@ -82,9 +78,6 @@ sudo ./scripts/apps/immich/install-immich.sh
 # Cloud storage
 sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 
-# Game server
-sudo ./scripts/apps/install-minecraft.sh
-
 # Application dashboard
 sudo ./scripts/apps/install-homepage.sh
 ```
@@ -114,7 +107,7 @@ Each script automatically:
 ### View Installed Apps
 
 ```bash
-kubectl get namespaces | grep -E "jellyfin|immich|minecraft|homepage|llm-chat"
+kubectl get namespaces | grep -E "jellyfin|immich|homepage|llm-chat|nextcloud|paperless"
 ```
 
 ### Check App Status

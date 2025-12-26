@@ -504,8 +504,6 @@ spec:
 
 **Security Note:** This does not reduce security. All services remain accessible only via Tailscale VPN. The port number (80 vs 3001) has no security impact—what matters is network isolation (Tailscale) and authentication (each app's login).
 
-**Exception:** Game servers (e.g., Minecraft on port 25565) that require specific ports for protocol compatibility
-
 ### Why ArgoCD instead of Flux?
 - Better UI
 - Easier for beginners

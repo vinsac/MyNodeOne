@@ -189,7 +189,7 @@ Organize your apps with meaningful subdomains:
 | Immich | photos | `https://photos.yourdomain.com` |
 | Nextcloud | files | `https://files.yourdomain.com` |
 | Jellyfin | media | `https://media.yourdomain.com` |
-| Gitea | git | `https://git.yourdomain.com` |
+| Paperless | docs | `https://docs.yourdomain.com` |
 
 ---
 

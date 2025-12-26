@@ -25,8 +25,7 @@ Think of MyNodeOne as **your personal app store** - like the App Store on iPhone
 | Google Photos ($100/year) | **Immich** | $100 |
 | Dropbox ($120/year) | **Nextcloud** | $120 |
 | Slack ($96/year) | **Mattermost** | $96 |
-| Minecraft Realm ($80/year) | **Minecraft Server** | $80 |
-| **TOTAL SAVINGS** | | **$672/year** |
+| **TOTAL SAVINGS** | | **$592/year** |
 
 **Your Cost:** Old laptop/mini PC you already own + $5/month electricity = **$60/year**
 
@@ -81,26 +80,7 @@ Step 7: Open the app in your browser - it's ready to use!
 
 **Access:** http://jellyfin.mynodeone.local
 
----
-
-#### **Minecraft Server** - Host Your Own Game
-**What it does:** Run a Minecraft server for you and your friends
-**Why you want it:**
-- Play with friends without paying for Realms ($8/month)
-- Full control over mods, settings, world
-- Always online, even when your computer is off
-
-**How to use:**
-1. Install with: `sudo ./scripts/apps/install-minecraft.sh`
-2. Note the server address (like mynodeone.local:25565)
-3. Open Minecraft → Multiplayer → Add Server
-4. Enter the address → Play!
-
-**Perfect for:** Kids, gamers, friend groups
-
-**Access:** minecraft.mynodeone.local:25565
-
----
+----
 
 ### Photos & Files
 
@@ -207,7 +187,6 @@ Jellyfin          →  http://jellyfin.mynodeone.local
 Immich            →  http://immich.mynodeone.local
 Nextcloud         →  http://nextcloud.mynodeone.local
 Mattermost        →  http://mattermost.mynodeone.local
-Minecraft Server  →  minecraft.mynodeone.local:25565
 ```
 
 **No IP addresses to remember!** Just type the app name + `.mynodeone.local`
@@ -381,7 +360,6 @@ Jellyfin automatically scans and adds them!
 | Jellyfin |  Great |  Great | Smooth streaming |
 | Nextcloud |  Great |  Great | Auto file upload |
 | Mattermost |  Excellent |  Excellent | Like native Slack |
-| Minecraft |  Perfect |  Perfect | Official Minecraft app |
 
 ---
 
@@ -537,8 +515,8 @@ Might need to:
 ### Example 3: Student
 **Alex's Dorm Setup:**
 - Old gaming PC (repurposed)
-- Installed: Gitea + Nextcloud + Minecraft
-- **Result:** Code projects, file sync, Minecraft with friends
+- Installed: Nextcloud + Paperless + Homepage
+- **Result:** File sync, document management, organized dashboard
 - **Savings: $200/year + priceless learning**
 
 ---

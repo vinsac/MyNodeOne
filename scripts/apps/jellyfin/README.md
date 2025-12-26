@@ -151,8 +151,10 @@ https://media.curiios.com
 1. Open the URL in your browser
 2. Follow the setup wizard
 3. Create admin account
-4. Add media libraries
-5. (Optional) Configure hardware transcoding
+4. **Skip adding libraries for now** (add media first)
+5. Upload your media (see Upload Media section below)
+6. Add media libraries pointing to `/media/Movies`, `/media/TV`, etc.
+7. (Optional) Configure hardware transcoding
 
 ### **Mobile Apps**
 - **iOS:** Search "Jellyfin" in App Store

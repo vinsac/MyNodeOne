@@ -182,31 +182,22 @@ make_public() {
             return 1
         fi
         
-        # Special handling for Nextcloud: Update trusted_domains
-        if [ "$service_name" = "nextcloud" ]; then
-            log_info "Updating Nextcloud trusted domains..."
-            
-            # Get service subdomain
-            local subdomain=$(kubectl get configmap -n kube-system service-registry \
-                -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-                jq -r ".[\"$service_name\"].subdomain")
-            
-            # Add each domain to trusted_domains
-            local domain_index=2
-            IFS=',' read -ra DOMAIN_ARRAY <<< "$domains"
-            for domain in "${DOMAIN_ARRAY[@]}"; do
-                domain=$(echo "$domain" | xargs)
-                local fqdn="${subdomain}.${domain}"
-                
-                if kubectl exec -n nextcloud deployment/nextcloud -- \
-                    su -s /bin/bash www-data -c \
-                    "php occ config:system:set trusted_domains $domain_index --value='$fqdn'" &>/dev/null; then
-                    log_success "Added $fqdn to trusted domains"
-                    ((domain_index++))
-                else
-                    log_warn "Could not add $fqdn to trusted domains (may need manual configuration)"
-                fi
-            done
+        # Call app-specific post-public hook if it exists
+        local service_info=$(kubectl get configmap -n kube-system service-registry \
+            -o jsonpath="{.data.services\.json}" 2>/dev/null | \
+            jq -r ".[\"$service_name\"]")
+        local subdomain=$(echo "$service_info" | jq -r '.subdomain')
+        local namespace=$(echo "$service_info" | jq -r '.namespace')
+        
+        # Look for post-public-hook.sh in app directory
+        local hook_path="$SCRIPT_DIR/apps/$service_name/post-public-hook.sh"
+        if [ -f "$hook_path" ]; then
+            log_info "Running app-specific configuration..."
+            if bash "$hook_path" "$service_name" "$subdomain" "$domains"; then
+                log_success "App-specific configuration completed"
+            else
+                log_warn "App-specific configuration had issues (check above)"
+            fi
         fi
     fi
     

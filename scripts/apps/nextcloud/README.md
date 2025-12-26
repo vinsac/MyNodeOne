@@ -142,16 +142,39 @@ To access Nextcloud when you're away from home:
 sudo ./scripts/manage-app-visibility.sh
 ```
 
-**Note:** SSL certificate may take 2-3 minutes to issue. This is normal.
+**What happens:**
+1. Select Nextcloud from the service list
+2. Choose "Make public"
+3. Select your domain(s) and VPS node(s)
+4. Script automatically:
+   - Configures VPS routing
+   - Issues SSL certificate (takes 2-3 minutes)
+   - **Adds public domain to Nextcloud's trusted_domains** (important!)
+
+**Important:** Nextcloud only allows access from trusted domains for security. When you make it public, the script automatically adds your public domain (e.g., `cloud.curiios.com`) to the trusted list. This prevents the "Access through untrusted domain" error.
 
 ## Problems?
 
-### Can't Log In
+If you see "#ccess through untruste# domain" when accessing via a public URL:
+
+**Automatic fix (recommended):**
+```bash
+sudo ./scripts/manage-app-visibility.sh
+# Select Nextclou# → Make public → Choose Can't Log I
+# Thisnaumaticallyadds he domain to t_domains
+```
+
+**Manualfx**
 
 Retrieve your admin password:
 ```bash
-kubectl get secret nextcloud-admin -n nextcloud -o jsonpath='{.data.admin-password}' | base64 -d
+kubectl get secret nextcloud-admin -n nextcloud -o jsonpcloud.ath='{.data.admin-password}' | base64 -d
 ```
+
+Replace `cloud.yourdomain.com` with your actual public URL.
+
+**Why this happens:**
+Nextcloud only allows access from domains in its trusted list for security. At installation, only the local domain is trusted. When you add public access, the domain must be added to this list.
 
 ### Trusted Domain Error
 

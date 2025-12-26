@@ -158,7 +158,15 @@ while true; do
             install_app "nextcloud"
             ;;
         7)
-            install_app "paperless"
+            if [ -f "$APPS_DIR/paperless/install-paperless.sh" ]; then
+                bash "$APPS_DIR/paperless/install-paperless.sh"
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read
+            else
+                echo "Paperless installation script not found"
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read
+            fi
             ;;
         8)
             install_app "mattermost"

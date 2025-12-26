@@ -653,6 +653,59 @@ fix_coredns_upstream_dns() {
     else
         log_info "CoreDNS already configured with upstream DNS"
     fi
+    
+    # Install DNS Guardian for persistent protection
+    install_dns_guardian
+}
+
+# Install CoreDNS DNS Guardian for persistent DNS fix protection
+install_dns_guardian() {
+    log_info "Installing CoreDNS DNS Guardian for persistent protection..."
+    
+    # Copy the guardian script to system location
+    local guardian_script="/usr/local/bin/coredns-dns-guardian.sh"
+    cp "$SCRIPT_DIR/coredns-dns-guardian.sh" "$guardian_script"
+    chmod +x "$guardian_script"
+    
+    # Create systemd service
+    cat > /etc/systemd/system/coredns-dns-guardian.service << 'EOF'
+[Unit]
+Description=CoreDNS DNS Guardian
+After=k3s.service
+Wants=k3s.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/coredns-dns-guardian.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Create systemd timer for periodic checks
+    cat > /etc/systemd/system/coredns-dns-guardian.timer << 'EOF'
+[Unit]
+Description=Run CoreDNS DNS Guardian every 5 minutes
+Requires=coredns-dns-guardian.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # Enable and start the service
+    systemctl daemon-reload
+    systemctl enable coredns-dns-guardian.timer
+    systemctl start coredns-dns-guardian.timer
+    
+    log_success "DNS Guardian installed - will check DNS configuration every 5 minutes"
 }
 
 # GPU Setup for Kubernetes (after K3s is installed)

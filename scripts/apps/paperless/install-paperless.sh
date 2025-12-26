@@ -208,6 +208,8 @@ spec:
             secretKeyRef:
               name: paperless-db
               key: postgres-password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         ports:
         - containerPort: 5432
         volumeMounts:
@@ -259,16 +261,6 @@ spec:
       containers:
       - name: redis
         image: redis:7
-        command:
-        - redis-server
-        - --requirepass
-        - \$(REDIS_PASSWORD)
-        env:
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: paperless-redis
-              key: redis-password
         ports:
         - containerPort: 6379
         volumeMounts:
@@ -327,7 +319,7 @@ spec:
         image: ghcr.io/paperless-ngx/paperless-ngx:latest
         env:
         - name: PAPERLESS_REDIS
-          value: "redis://:$(kubectl get secret paperless-redis -n $NAMESPACE -o jsonpath='{.data.redis-password}' | base64 -d)@paperless-redis:6379"
+          value: "redis://paperless-redis:6379"
         - name: PAPERLESS_DBHOST
           value: paperless-postgres
         - name: PAPERLESS_DBNAME

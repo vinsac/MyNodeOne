@@ -264,6 +264,129 @@ interactive_setup() {
     echo ""
 }
 
+# Generate manifests from docker-compose extracted data
+generate_manifests_from_compose() {
+    local output_dir="/tmp/mynodeone-deploy-$$"
+    mkdir -p "$output_dir"
+    
+    log "Generating Kubernetes manifests..."
+    
+    # Namespace
+    cat > "$output_dir/00-namespace.yaml" << EOF
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $APP_NAME
+  labels:
+    app.kubernetes.io/name: $APP_NAME
+    app.kubernetes.io/managed-by: mynodeone-deploy
+EOF
+    
+    # Storage (if requested)
+    if [[ "$STORAGE_SIZE" != "none" ]]; then
+        cat > "$output_dir/10-storage.yaml" << EOF
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${APP_NAME}-data
+  namespace: $APP_NAME
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: $STORAGE_SIZE
+EOF
+    fi
+    
+    # Services and deployments
+    for idx in "${!SERVICE_ARRAY[@]}"; do
+        local svc_name="${SERVICE_ARRAY[$idx]}"
+        local svc_image="${SERVICE_IMAGES[$idx]}"
+        local svc_port="${SERVICE_PORTS[$idx]}"
+        local svc_type="${SERVICE_TYPES[$svc_name]:-service}"
+        local is_primary=$([[ $idx -eq 0 ]] && echo "true" || echo "false")
+        
+        # Skip internal services for LoadBalancer
+        local service_type="ClusterIP"
+        if [[ "$svc_type" == "frontend" || "$svc_type" == "backend" ]]; then
+            service_type="LoadBalancer"
+        fi
+        
+        cat > "$output_dir/20-${svc_name}.yaml" << EOF
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}-${svc_name}
+  namespace: $APP_NAME
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ${APP_NAME}
+      component: ${svc_name}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME}
+        component: ${svc_name}
+    spec:
+      containers:
+      - name: ${svc_name}
+        image: ${svc_image}
+        ports:
+        - containerPort: ${svc_port}
+          name: http
+        resources:
+          requests:
+            memory: "${MEMORY_REQ}"
+            cpu: "${CPU_REQ}"
+          limits:
+            memory: "$(echo $MEMORY_REQ | sed 's/Mi$/*2Mi/;s/Gi$/*2Gi/' | bc 2>/dev/null || echo ${MEMORY_REQ})"
+            cpu: "$(echo $CPU_REQ | sed 's/m$/*2m/' | bc 2>/dev/null || echo ${CPU_REQ})"
+        livenessProbe:
+          tcpSocket:
+            port: ${svc_port}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: ${svc_port}
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}-${svc_name}
+  namespace: $APP_NAME
+$([[ "$is_primary" == "true" ]] && cat << ANNOTATIONS
+  annotations:
+    mynodeone.io/subdomain: "${LOCAL_SUBDOMAIN}"
+    mynodeone.io/auto-register: "true"
+ANNOTATIONS
+)
+spec:
+  type: ${service_type}
+  ports:
+  - port: 80
+    targetPort: ${svc_port}
+  selector:
+    app: ${APP_NAME}
+    component: ${svc_name}
+EOF
+    done
+    
+    success "Manifests generated in: $output_dir"
+    MANIFEST_DIR="$output_dir"
+    echo ""
+}
+
 # Generate Kubernetes manifests from interactive input
 generate_manifests() {
     local output_dir="/tmp/mynodeone-deploy-$$"
@@ -393,6 +516,30 @@ EOF
     echo ""
 }
 
+# Extract service details from docker-compose
+extract_service_details() {
+    local compose_file="$1"
+    local service_name="$2"
+    
+    # Extract image
+    local image=$(grep -A 10 "^  ${service_name}:" "$compose_file" | grep "image:" | head -1 | awk '{print $2}' | tr -d '"')
+    
+    # Extract ports (first exposed port)
+    local port=$(grep -A 20 "^  ${service_name}:" "$compose_file" | grep -E "^    - .*:.*" | head -1 | awk -F: '{print $NF}' | tr -d ' "')
+    
+    # If no port in standard format, try "expose" section
+    if [[ -z "$port" ]]; then
+        port=$(grep -A 20 "^  ${service_name}:" "$compose_file" | grep -A 5 "expose:" | grep "^    -" | head -1 | awk '{print $2}' | tr -d ' "')
+    fi
+    
+    # Default port if not found
+    if [[ -z "$port" ]]; then
+        port="80"
+    fi
+    
+    echo "${image}|${port}"
+}
+
 # Convert docker-compose to Kubernetes
 convert_docker_compose() {
     local compose_file="$1"
@@ -414,8 +561,72 @@ convert_docker_compose() {
         fi
     fi
     
-    warn "kompose not available, using interactive mode"
-    return 1
+    # Without kompose, extract details from docker-compose directly
+    log "Extracting service details from docker-compose.yml..."
+    
+    # We already have SERVICE_ARRAY from parse_docker_compose
+    if [[ ${#SERVICE_ARRAY[@]} -eq 0 ]]; then
+        warn "No services detected"
+        return 1
+    fi
+    
+    # Filter out non-container services (volumes, networks)
+    declare -a REAL_SERVICES
+    declare -a SERVICE_IMAGES
+    declare -a SERVICE_PORTS
+    
+    for svc in "${SERVICE_ARRAY[@]}"; do
+        # Extract service details
+        local details=$(extract_service_details "$compose_file" "$svc")
+        local image=$(echo "$details" | cut -d'|' -f1)
+        local port=$(echo "$details" | cut -d'|' -f2)
+        
+        # Skip if no image (likely a volume or network definition)
+        if [[ -z "$image" ]]; then
+            continue
+        fi
+        
+        REAL_SERVICES+=("$svc")
+        SERVICE_IMAGES+=("$image")
+        SERVICE_PORTS+=("$port")
+        
+        echo "  ✓ $svc: $image (port $port)"
+    done
+    
+    # Update global arrays
+    SERVICE_ARRAY=("${REAL_SERVICES[@]}")
+    SERVICE_NAMES=("${REAL_SERVICES[@]}")
+    
+    echo ""
+    success "Extracted ${#SERVICE_ARRAY[@]} services from docker-compose"
+    
+    # Ask for resource requirements only
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Resource Requirements"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    ask "Memory per service?"
+    echo "  Examples: 256Mi, 512Mi, 1Gi, 2Gi"
+    read -p "Memory [512Mi]: " MEMORY_REQ
+    MEMORY_REQ=${MEMORY_REQ:-512Mi}
+    
+    ask "CPU per service?"
+    echo "  Examples: 100m (0.1 core), 500m (0.5 core), 1000m (1 core)"
+    read -p "CPU [500m]: " CPU_REQ
+    CPU_REQ=${CPU_REQ:-500m}
+    
+    echo ""
+    
+    ask "Need persistent storage?"
+    read -p "Storage size (or 'none') [10Gi]: " STORAGE_SIZE
+    STORAGE_SIZE=${STORAGE_SIZE:-10Gi}
+    
+    # Generate manifests with extracted data
+    generate_manifests_from_compose
+    
+    return 0
 }
 
 # Deploy manifests to cluster

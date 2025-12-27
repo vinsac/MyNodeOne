@@ -290,7 +290,7 @@ metadata:
   name: mattermost
   namespace: $NAMESPACE
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
   - port: 80
     targetPort: 8065

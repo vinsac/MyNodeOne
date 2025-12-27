@@ -226,15 +226,15 @@ spec:
       - name: mattermost
         image: mattermost/mattermost-team-edition:latest
         env:
-        - name: MM_SQLSETTINGS_DRIVERNAME
-          value: postgres
-        - name: MM_SQLSETTINGS_DATASOURCE
-          value: "postgres://mattermost:\$(POSTGRES_PASSWORD)@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mattermost-db
               key: db-password
+        - name: MM_SQLSETTINGS_DRIVERNAME
+          value: postgres
+        - name: MM_SQLSETTINGS_DATASOURCE
+          value: "postgres://mattermost:\$(POSTGRES_PASSWORD)@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
         - name: MM_SERVICESETTINGS_SITEURL
           value: "http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         - name: MM_SERVICESETTINGS_ENABLELOCALMODE

@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: your-registry/myapp-frontend:latest
+    # Replace with your actual image
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: your-registry/myapp-backend:latest
+    # Replace with your actual image
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://myapp:changeme@database:5432/myapp
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - database
+      - redis
+    restart: unless-stopped
+
+  database:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=myapp
+      - POSTGRES_USER=myapp
+      - POSTGRES_PASSWORD=changeme_in_production
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+volumes:
+  db-data:
+
+# To deploy:
+# 1. Update image URLs above to your actual Docker images
+# 2. cd to this directory
+# 3. bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
+# 4. Answer questions:
+#    - Memory: 1Gi per service
+#    - CPU: 1000m per service
+#    - Storage: 50Gi for database
+#    - Domains: app.yourdomain.com,api.yourdomain.com
+# 5. Add DNS records
+# 6. Run: sudo manage-app-visibility.sh
+# 7. Access at https://app.yourdomain.com

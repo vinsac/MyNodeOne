@@ -1,0 +1,852 @@
+#!/bin/bash
+
+###############################################################################
+# MyNodeOne App Deployment Script
+# 
+# Deploy any containerized app to MyNodeOne with one command.
+# Works with docker-compose.yml or provides interactive setup.
+###############################################################################
+
+set -euo pipefail
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MYNODEONE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+log() { echo -e "${BLUE}▶${NC} $1"; }
+success() { echo -e "${GREEN}✓${NC} $1"; }
+warn() { echo -e "${YELLOW}⚠${NC} $1"; }
+error() { echo -e "${RED}✗${NC} $1"; }
+ask() { echo -e "${CYAN}?${NC} $1"; }
+
+clear
+cat << 'EOF'
+╔══════════════════════════════════════════════════════════╗
+║                                                          ║
+║           Deploy Your App on MyNodeOne                   ║
+║                                                          ║
+║   Standard containerized apps work out-of-the-box       ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
+
+EOF
+
+echo ""
+
+# Check prerequisites
+check_prerequisites() {
+    log "Checking prerequisites..."
+    
+    if ! command -v kubectl &> /dev/null; then
+        error "kubectl not found"
+        echo "Please install kubectl or run this from the MyNodeOne control plane"
+        exit 1
+    fi
+    
+    if ! kubectl get nodes &> /dev/null; then
+        error "Cannot connect to Kubernetes cluster"
+        echo "Please ensure:"
+        echo "  • You're on the control plane, or"
+        echo "  • KUBECONFIG is set correctly"
+        exit 1
+    fi
+    
+    success "Connected to cluster"
+    echo ""
+}
+
+# Auto-detect app structure
+detect_app_structure() {
+    local app_dir="${1:-.}"
+    
+    log "Detecting app structure in: $app_dir"
+    echo ""
+    
+    APP_TYPE="unknown"
+    
+    # Check for docker-compose
+    if [[ -f "$app_dir/docker-compose.yml" ]] || [[ -f "$app_dir/docker-compose.yaml" ]]; then
+        APP_TYPE="docker-compose"
+        COMPOSE_FILE=$(find "$app_dir" -maxdepth 1 -name "docker-compose.y*ml" | head -1)
+        success "Found docker-compose.yml"
+        return 0
+    fi
+    
+    # Check for Kubernetes manifests
+    if [[ -d "$app_dir/k8s" ]] || [[ -d "$app_dir/kubernetes" ]] || [[ -d "$app_dir/manifests" ]]; then
+        APP_TYPE="kubernetes"
+        K8S_DIR=$(find "$app_dir" -maxdepth 1 -type d \( -name "k8s" -o -name "kubernetes" -o -name "manifests" \) | head -1)
+        success "Found Kubernetes manifests in: $(basename "$K8S_DIR")"
+        return 0
+    fi
+    
+    # Check for Dockerfile
+    if [[ -f "$app_dir/Dockerfile" ]]; then
+        APP_TYPE="dockerfile"
+        success "Found Dockerfile"
+        return 0
+    fi
+    
+    warn "No app structure detected"
+    echo "Will use interactive mode"
+    APP_TYPE="interactive"
+    return 0
+}
+
+# Parse docker-compose file
+parse_docker_compose() {
+    local compose_file="$1"
+    
+    log "Parsing docker-compose.yml..."
+    
+    # Extract service names (basic grep parsing - works without dependencies)
+    SERVICES=$(grep -E "^  [a-z][a-z0-9_-]*:" "$compose_file" | sed 's/://g' | awk '{print $1}' | xargs)
+    
+    if [[ -n "$SERVICES" ]]; then
+        success "Detected services: $SERVICES"
+        
+        # Store services in array for later use
+        IFS=' ' read -ra SERVICE_ARRAY <<< "$SERVICES"
+        
+        # Detect service types based on common naming patterns
+        detect_service_types
+        
+        echo ""
+        return 0
+    else
+        warn "Could not parse services from docker-compose"
+        return 1
+    fi
+}
+
+# Detect service types based on naming conventions
+detect_service_types() {
+    declare -g -A SERVICE_TYPES
+    
+    for svc in "${SERVICE_ARRAY[@]}"; do
+        local svc_lower=$(echo "$svc" | tr '[:upper:]' '[:lower:]')
+        
+        # Detect common service types
+        if [[ "$svc_lower" =~ (frontend|web|app|ui|client) ]]; then
+            SERVICE_TYPES["$svc"]="frontend"
+        elif [[ "$svc_lower" =~ (backend|api|server) ]]; then
+            SERVICE_TYPES["$svc"]="backend"
+        elif [[ "$svc_lower" =~ (admin|dashboard) ]]; then
+            SERVICE_TYPES["$svc"]="admin"
+        elif [[ "$svc_lower" =~ (db|database|postgres|mysql|mongo) ]]; then
+            SERVICE_TYPES["$svc"]="database"
+        elif [[ "$svc_lower" =~ (redis|cache|memcache) ]]; then
+            SERVICE_TYPES["$svc"]="cache"
+        elif [[ "$svc_lower" =~ (worker|queue|celery) ]]; then
+            SERVICE_TYPES["$svc"]="worker"
+        else
+            SERVICE_TYPES["$svc"]="service"
+        fi
+    done
+}
+
+# Interactive app setup
+interactive_setup() {
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Interactive App Setup"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # App name
+    ask "What's your app name? (lowercase, no spaces)"
+    read -p "App name: " APP_NAME
+    APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+    
+    if [[ -z "$APP_NAME" ]]; then
+        error "App name required"
+        exit 1
+    fi
+    
+    success "App name: $APP_NAME"
+    echo ""
+    
+    # Services/containers
+    ask "How many services/containers does your app have?"
+    echo "  Examples:"
+    echo "  • 1 = Simple web app"
+    echo "  • 2 = Frontend + Backend"
+    echo "  • 3 = Frontend + Backend + Database"
+    read -p "Number of services [1]: " NUM_SERVICES
+    NUM_SERVICES=${NUM_SERVICES:-1}
+    
+    echo ""
+    
+    # Collect service details
+    declare -a SERVICE_NAMES
+    declare -a SERVICE_IMAGES
+    declare -a SERVICE_PORTS
+    
+    for ((i=1; i<=NUM_SERVICES; i++)); do
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  Service $i Configuration"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        ask "Service $i name? (e.g., frontend, backend, api)"
+        read -p "Name: " svc_name
+        svc_name=$(echo "$svc_name" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+        SERVICE_NAMES+=("$svc_name")
+        
+        ask "Docker image for $svc_name?"
+        echo "  Examples:"
+        echo "  • your-registry/myapp:latest"
+        echo "  • ghcr.io/username/myapp:v1.0"
+        echo "  • docker.io/library/nginx:alpine"
+        read -p "Image: " svc_image
+        SERVICE_IMAGES+=("$svc_image")
+        
+        ask "Port that $svc_name listens on?"
+        read -p "Port [80]: " svc_port
+        svc_port=${svc_port:-80}
+        SERVICE_PORTS+=("$svc_port")
+        
+        echo ""
+    done
+    
+    # Resources
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Resource Requirements"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    ask "Memory per service?"
+    echo "  Examples: 256Mi, 512Mi, 1Gi, 2Gi"
+    read -p "Memory [512Mi]: " MEMORY_REQ
+    MEMORY_REQ=${MEMORY_REQ:-512Mi}
+    
+    ask "CPU per service?"
+    echo "  Examples: 100m (0.1 core), 500m (0.5 core), 1000m (1 core)"
+    read -p "CPU [500m]: " CPU_REQ
+    CPU_REQ=${CPU_REQ:-500m}
+    
+    echo ""
+    
+    # Storage
+    ask "Need persistent storage?"
+    read -p "Storage size (or 'none') [10Gi]: " STORAGE_SIZE
+    STORAGE_SIZE=${STORAGE_SIZE:-10Gi}
+    
+    echo ""
+    
+    # Domains
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Domain Configuration"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    ask "Local subdomain for your app?"
+    echo "  This will be: <subdomain>.mynodeone.local"
+    read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
+    LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
+    
+    echo ""
+    
+    ask "Do you want public internet access?"
+    read -p "Make public? [y/N]: " MAKE_PUBLIC
+    
+    if [[ "$MAKE_PUBLIC" =~ ^[Yy] ]]; then
+        configure_public_domains
+    else
+        PUBLIC_DOMAINS=""
+    fi
+    
+    echo ""
+}
+
+# Generate Kubernetes manifests from interactive input
+generate_manifests() {
+    local output_dir="/tmp/mynodeone-deploy-$$"
+    mkdir -p "$output_dir"
+    
+    log "Generating Kubernetes manifests..."
+    
+    # Namespace
+    cat > "$output_dir/00-namespace.yaml" << EOF
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $APP_NAME
+  labels:
+    app.kubernetes.io/name: $APP_NAME
+    app.kubernetes.io/managed-by: mynodeone-deploy
+EOF
+    
+    # Storage (if requested)
+    if [[ "$STORAGE_SIZE" != "none" ]]; then
+        cat > "$output_dir/10-storage.yaml" << EOF
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${APP_NAME}-data
+  namespace: $APP_NAME
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: $STORAGE_SIZE
+EOF
+    fi
+    
+    # Services and deployments
+    for idx in "${!SERVICE_NAMES[@]}"; do
+        local svc_name="${SERVICE_NAMES[$idx]}"
+        local svc_image="${SERVICE_IMAGES[$idx]}"
+        local svc_port="${SERVICE_PORTS[$idx]}"
+        local is_primary=$([[ $idx -eq 0 ]] && echo "true" || echo "false")
+        
+        cat > "$output_dir/20-${svc_name}.yaml" << EOF
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}-${svc_name}
+  namespace: $APP_NAME
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ${APP_NAME}
+      component: ${svc_name}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME}
+        component: ${svc_name}
+    spec:
+      containers:
+      - name: ${svc_name}
+        image: ${svc_image}
+        ports:
+        - containerPort: ${svc_port}
+          name: http
+        resources:
+          requests:
+            memory: "${MEMORY_REQ}"
+            cpu: "${CPU_REQ}"
+          limits:
+            memory: "$(echo $MEMORY_REQ | sed 's/Mi/*2Mi/;s/Gi/*2Gi/' | bc 2>/dev/null || echo $MEMORY_REQ)"
+            cpu: "$(echo $CPU_REQ | sed 's/m/*2m/' | bc 2>/dev/null || echo $CPU_REQ)"
+$(if [[ "$STORAGE_SIZE" != "none" && "$is_primary" == "true" ]]; then
+cat << 'VOLMOUNT'
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: ${APP_NAME}-data
+VOLMOUNT
+else
+echo "        livenessProbe:"
+echo "          httpGet:"
+echo "            path: /"
+echo "            port: ${svc_port}"
+echo "          initialDelaySeconds: 30"
+echo "        readinessProbe:"
+echo "          httpGet:"
+echo "            path: /"
+echo "            port: ${svc_port}"
+echo "          initialDelaySeconds: 10"
+fi)
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}-${svc_name}
+  namespace: $APP_NAME
+$(if [[ "$is_primary" == "true" ]]; then
+cat << ANNOTATIONS
+  annotations:
+    mynodeone.io/subdomain: "${LOCAL_SUBDOMAIN}"
+    mynodeone.io/auto-register: "true"
+ANNOTATIONS
+fi)
+spec:
+  type: $([[ "$is_primary" == "true" ]] && echo "LoadBalancer" || echo "ClusterIP")
+  ports:
+  - port: 80
+    targetPort: ${svc_port}
+  selector:
+    app: ${APP_NAME}
+    component: ${svc_name}
+EOF
+    done
+    
+    success "Manifests generated in: $output_dir"
+    MANIFEST_DIR="$output_dir"
+    echo ""
+}
+
+# Convert docker-compose to Kubernetes
+convert_docker_compose() {
+    local compose_file="$1"
+    
+    log "Converting docker-compose.yml to Kubernetes..."
+    
+    # Use kompose if available
+    if command -v kompose &> /dev/null; then
+        local output_dir="/tmp/mynodeone-deploy-$$"
+        mkdir -p "$output_dir"
+        
+        cd "$(dirname "$compose_file")"
+        kompose convert -f "$compose_file" -o "$output_dir" &>/dev/null
+        
+        if [[ $? -eq 0 ]]; then
+            success "Converted with kompose"
+            MANIFEST_DIR="$output_dir"
+            return 0
+        fi
+    fi
+    
+    warn "kompose not available, using interactive mode"
+    return 1
+}
+
+# Deploy manifests to cluster
+deploy_to_cluster() {
+    local manifest_dir="$1"
+    
+    log "Deploying to MyNodeOne cluster..."
+    echo ""
+    
+    # Apply manifests
+    kubectl apply -f "$manifest_dir/" 2>&1 | grep -v "unchanged" || true
+    
+    echo ""
+    log "Waiting for deployment..."
+    
+    # Wait for deployment
+    sleep 5
+    kubectl wait --for=condition=available --timeout=180s \
+        deployment -n "$APP_NAME" --all 2>/dev/null || true
+    
+    echo ""
+    success "Deployment complete!"
+}
+
+# Register with MyNodeOne
+register_app() {
+    log "Registering with MyNodeOne..."
+    
+    # Get the primary service name
+    local primary_service=$(kubectl get svc -n "$APP_NAME" -o name | grep LoadBalancer | head -1 | cut -d'/' -f2 || \
+                           kubectl get svc -n "$APP_NAME" -o name | head -1 | cut -d'/' -f2)
+    
+    if [[ -z "$primary_service" ]]; then
+        warn "No service found to register"
+        return 1
+    fi
+    
+    # Wait for LoadBalancer IP
+    log "Waiting for LoadBalancer IP..."
+    for i in {1..30}; do
+        LB_IP=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        
+        if [[ -n "$LB_IP" ]]; then
+            break
+        fi
+        sleep 2
+    done
+    
+    if [[ -z "$LB_IP" ]]; then
+        warn "Could not get LoadBalancer IP"
+        return 1
+    fi
+    
+    success "LoadBalancer IP: $LB_IP"
+    
+    # Register with service registry
+    if [[ -f "$MYNODEONE_ROOT/scripts/lib/service-registry.sh" ]]; then
+        bash "$MYNODEONE_ROOT/scripts/lib/service-registry.sh" register \
+            "$APP_NAME" "$LOCAL_SUBDOMAIN" "$APP_NAME" "$primary_service" "80" "false" &>/dev/null || true
+    fi
+    
+    # Update DNS
+    if [[ -f "$MYNODEONE_ROOT/scripts/sync-dns.sh" ]]; then
+        bash "$MYNODEONE_ROOT/scripts/sync-dns.sh" &>/dev/null || true
+    fi
+    
+    success "App registered with MyNodeOne"
+}
+
+# Configure public domains with intelligent mapping
+configure_public_domains() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Public Domain Setup (Simplified)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Choose how you want to configure public domains:"
+    echo ""
+    echo "  1. Auto-detect (Recommended)"
+    echo "     • Just provide your base domain (e.g., myapp.com)"
+    echo "     • Script auto-creates subdomains based on services"
+    echo "     • Example: api.myapp.com, app.myapp.com, admin.myapp.com"
+    echo ""
+    echo "  2. Manual entry"
+    echo "     • You specify exact domains for each service"
+    echo "     • Use when you have custom domain structure"
+    echo ""
+    echo "  3. Single domain"
+    echo "     • All traffic goes to one service (main app)"
+    echo "     • Other services are internal only"
+    echo ""
+    
+    read -p "Choice [1]: " domain_choice
+    domain_choice=${domain_choice:-1}
+    
+    case $domain_choice in
+        1)
+            auto_configure_domains
+            ;;
+        2)
+            manual_configure_domains
+            ;;
+        3)
+            single_domain_configure
+            ;;
+        *)
+            auto_configure_domains
+            ;;
+    esac
+}
+
+# Auto-configure domains based on service types
+auto_configure_domains() {
+    echo ""
+    ask "What's your base domain?"
+    echo "  Example: myapp.com (we'll create api.myapp.com, app.myapp.com, etc.)"
+    read -p "Base domain: " BASE_DOMAIN
+    
+    if [[ -z "$BASE_DOMAIN" ]]; then
+        error "Base domain required"
+        PUBLIC_DOMAINS=""
+        return 1
+    fi
+    
+    echo ""
+    log "Auto-detecting subdomain mapping..."
+    echo ""
+    
+    declare -a AUTO_DOMAINS
+    declare -g -A DOMAIN_SERVICE_MAP
+    
+    # Map services to conventional subdomains
+    for svc in "${SERVICE_ARRAY[@]}"; do
+        local svc_type="${SERVICE_TYPES[$svc]:-service}"
+        local subdomain=""
+        
+        case "$svc_type" in
+            frontend)
+                subdomain="app"
+                ;;
+            backend)
+                subdomain="api"
+                ;;
+            admin)
+                subdomain="admin"
+                ;;
+            database|cache|worker)
+                # Internal services - no public domain
+                continue
+                ;;
+            *)
+                # Use service name as subdomain
+                subdomain="$svc"
+                ;;
+        esac
+        
+        local full_domain="${subdomain}.${BASE_DOMAIN}"
+        AUTO_DOMAINS+=("$full_domain")
+        DOMAIN_SERVICE_MAP["$full_domain"]="$svc"
+        
+        echo "  ✓ ${full_domain} → ${svc} (${svc_type})"
+    done
+    
+    PUBLIC_DOMAINS="${AUTO_DOMAINS[@]}"
+    
+    echo ""
+    success "Auto-configured ${#AUTO_DOMAINS[@]} public domains"
+    echo ""
+    echo "Summary:"
+    for domain in "${AUTO_DOMAINS[@]}"; do
+        echo "  • https://$domain"
+    done
+}
+
+# Manual domain configuration
+manual_configure_domains() {
+    echo ""
+    ask "Enter public domains (comma-separated)"
+    echo "  Example: app.myapp.com,api.myapp.com,admin.myapp.com"
+    read -p "Domains: " PUBLIC_DOMAINS
+    
+    if [[ -z "$PUBLIC_DOMAINS" ]]; then
+        PUBLIC_DOMAINS=""
+        return 1
+    fi
+    
+    # Parse domains
+    IFS=',' read -ra DOMAIN_ARRAY <<< "$PUBLIC_DOMAINS"
+    declare -a CLEAN_DOMAINS
+    for domain in "${DOMAIN_ARRAY[@]}"; do
+        domain=$(echo "$domain" | xargs)
+        CLEAN_DOMAINS+=("$domain")
+    done
+    
+    # If we have services detected, try to map intelligently
+    if [[ -n "${SERVICE_ARRAY:-}" ]]; then
+        echo ""
+        log "Mapping domains to services..."
+        echo ""
+        
+        declare -g -A DOMAIN_SERVICE_MAP
+        
+        for domain in "${CLEAN_DOMAINS[@]}"; do
+            # Try intelligent matching first
+            local matched=false
+            
+            # Check domain for hints (api., app., admin., etc.)
+            if [[ "$domain" =~ api\. ]]; then
+                # Find backend service
+                for svc in "${SERVICE_ARRAY[@]}"; do
+                    if [[ "${SERVICE_TYPES[$svc]:-}" == "backend" ]]; then
+                        DOMAIN_SERVICE_MAP["$domain"]="$svc"
+                        echo "  ✓ $domain → $svc (auto-matched: backend)"
+                        matched=true
+                        break
+                    fi
+                done
+            elif [[ "$domain" =~ (app\.|www\.) ]]; then
+                # Find frontend service
+                for svc in "${SERVICE_ARRAY[@]}"; do
+                    if [[ "${SERVICE_TYPES[$svc]:-}" == "frontend" ]]; then
+                        DOMAIN_SERVICE_MAP["$domain"]="$svc"
+                        echo "  ✓ $domain → $svc (auto-matched: frontend)"
+                        matched=true
+                        break
+                    fi
+                done
+            elif [[ "$domain" =~ admin\. ]]; then
+                # Find admin service
+                for svc in "${SERVICE_ARRAY[@]}"; do
+                    if [[ "${SERVICE_TYPES[$svc]:-}" == "admin" ]]; then
+                        DOMAIN_SERVICE_MAP["$domain"]="$svc"
+                        echo "  ✓ $domain → $svc (auto-matched: admin)"
+                        matched=true
+                        break
+                    fi
+                done
+            fi
+            
+            # If not auto-matched, ask user
+            if [[ "$matched" == "false" ]]; then
+                echo ""
+                echo "Which service should handle: $domain?"
+                for idx in "${!SERVICE_ARRAY[@]}"; do
+                    local svc="${SERVICE_ARRAY[$idx]}"
+                    local svc_type="${SERVICE_TYPES[$svc]:-unknown}"
+                    echo "  $((idx+1)). $svc ($svc_type)"
+                done
+                
+                read -p "Service # [1]: " svc_choice
+                svc_choice=${svc_choice:-1}
+                svc_idx=$((svc_choice-1))
+                
+                DOMAIN_SERVICE_MAP["$domain"]="${SERVICE_ARRAY[$svc_idx]}"
+                echo "  ✓ $domain → ${SERVICE_ARRAY[$svc_idx]}"
+            fi
+        done
+    fi
+    
+    PUBLIC_DOMAINS="${CLEAN_DOMAINS[@]}"
+}
+
+# Single domain configuration
+single_domain_configure() {
+    echo ""
+    ask "What's your public domain?"
+    read -p "Domain: " SINGLE_DOMAIN
+    
+    if [[ -z "$SINGLE_DOMAIN" ]]; then
+        PUBLIC_DOMAINS=""
+        return 1
+    fi
+    
+    PUBLIC_DOMAINS="$SINGLE_DOMAIN"
+    
+    # Map to primary service (frontend or first service)
+    if [[ -n "${SERVICE_ARRAY:-}" ]]; then
+        local primary_svc=""
+        
+        # Try to find frontend
+        for svc in "${SERVICE_ARRAY[@]}"; do
+            if [[ "${SERVICE_TYPES[$svc]:-}" == "frontend" ]]; then
+                primary_svc="$svc"
+                break
+            fi
+        done
+        
+        # Fallback to first service
+        if [[ -z "$primary_svc" ]]; then
+            primary_svc="${SERVICE_ARRAY[0]}"
+        fi
+        
+        declare -g -A DOMAIN_SERVICE_MAP
+        DOMAIN_SERVICE_MAP["$SINGLE_DOMAIN"]="$primary_svc"
+        
+        echo ""
+        success "$SINGLE_DOMAIN → $primary_svc"
+    fi
+}
+
+# Configure public access with improved mapping
+configure_public_access() {
+    if [[ -z "$PUBLIC_DOMAINS" ]]; then
+        return 0
+    fi
+    
+    echo ""
+    log "Finalizing public access configuration..."
+    
+    echo ""
+    success "Public domains configured"
+    echo ""
+    echo "To complete public setup:"
+    echo ""
+    echo "  1. Add DNS A records at your domain registrar:"
+    echo ""
+    for domain in $PUBLIC_DOMAINS; do
+        echo "     $domain    A    <YOUR_VPS_IP>"
+    done
+    echo ""
+    echo "  2. Run the visibility manager:"
+    echo "     sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
+    echo ""
+    echo "  3. Access your app:"
+    for domain in $PUBLIC_DOMAINS; do
+        echo "     https://$domain"
+    done
+}
+
+# Show deployment summary
+show_summary() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║                                                          ║"
+    echo "║              🎉 Deployment Successful!                   ║"
+    echo "║                                                          ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    success "App Name: $APP_NAME"
+    echo ""
+    
+    echo "📍 Access Your App:"
+    echo "   Local:  http://${LOCAL_SUBDOMAIN}.mynodeone.local"
+    if [[ -n "$LB_IP" ]]; then
+        echo "   Direct: http://$LB_IP"
+    fi
+    if [[ -n "$PUBLIC_DOMAINS" ]]; then
+        echo ""
+        echo "   Public (after DNS setup):"
+        for domain in $PUBLIC_DOMAINS; do
+            echo "   • https://$domain"
+        done
+    fi
+    
+    echo ""
+    echo "🔧 Management Commands:"
+    echo "   View pods:      kubectl get pods -n $APP_NAME"
+    echo "   View logs:      kubectl logs -n $APP_NAME -l app=$APP_NAME -f"
+    echo "   Scale:          kubectl scale deployment -n $APP_NAME --replicas=3 --all"
+    echo "   Restart:        kubectl rollout restart deployment -n $APP_NAME --all"
+    echo "   Delete:         kubectl delete namespace $APP_NAME"
+    
+    echo ""
+    echo "📚 Next Steps:"
+    if [[ -n "$PUBLIC_DOMAINS" ]]; then
+        echo "   1. Configure DNS A records for your domains"
+        echo "   2. Run: sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
+        echo "   3. Access your app at: https://$(echo $PUBLIC_DOMAINS | awk '{print $1}')"
+    else
+        echo "   1. Access your app at: http://${LOCAL_SUBDOMAIN}.mynodeone.local"
+        echo "   2. To make it public, run: sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
+    fi
+    
+    echo ""
+    success "All done! 🚀"
+    echo ""
+}
+
+# Main execution
+main() {
+    check_prerequisites
+    
+    # Detect app structure
+    APP_DIR="${1:-.}"
+    detect_app_structure "$APP_DIR"
+    
+    case "$APP_TYPE" in
+        docker-compose)
+            if parse_docker_compose "$COMPOSE_FILE"; then
+                if convert_docker_compose "$COMPOSE_FILE"; then
+                    # Successfully converted
+                    :
+                else
+                    # Fall back to interactive
+                    interactive_setup
+                    generate_manifests
+                fi
+            else
+                interactive_setup
+                generate_manifests
+            fi
+            ;;
+        kubernetes)
+            log "Using existing Kubernetes manifests"
+            MANIFEST_DIR="$K8S_DIR"
+            # Still ask for app name and domains
+            ask "App name?"
+            read -p "Name: " APP_NAME
+            APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+            LOCAL_SUBDOMAIN="$APP_NAME"
+            ;;
+        *)
+            interactive_setup
+            generate_manifests
+            ;;
+    esac
+    
+    # Deploy
+    deploy_to_cluster "$MANIFEST_DIR"
+    
+    # Register
+    register_app
+    
+    # Public access
+    configure_public_access
+    
+    # Summary
+    show_summary
+}
+
+# Run
+main "$@"

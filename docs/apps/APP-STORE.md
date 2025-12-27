@@ -31,7 +31,6 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 ### Security & Monitoring
 | Application | Description | Status |
 |-------------|-------------|--------|
-| Uptime Kuma | Service monitoring and status pages | Coming soon |
 | Homepage | Dashboard for all your services | Available |
 
 ### Resource Requirements

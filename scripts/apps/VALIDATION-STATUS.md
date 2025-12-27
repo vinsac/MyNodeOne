@@ -18,7 +18,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ## 📊 Validation Coverage Status
 
-### **COMPLETE VALIDATION** (7/7 scripts - 100%!)
+### **COMPLETE VALIDATION** (6/6 scripts - 100%!)
 
 #### **Fully Implemented Scripts (5)**
 | Script | Validation Type | Checks |
@@ -29,11 +29,10 @@ This document tracks which installation scripts have comprehensive pre-flight va
 | `paperless/install-paperless.sh` | Shared Library | kubectl cluster storage subdomain |
 | `install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
 
-#### **Placeholder Scripts with Validation Ready (2)**
+#### **Placeholder Scripts with Validation Ready (1)**
 | Script | Validation Type | Status |
 |--------|----------------|---------|
 | `install-mattermost.sh` | Shared Library | Ready (commented until implemented) |
-| `install-uptime-kuma.sh` | Shared Library | Ready (commented until implemented) |
 
 ---
 
@@ -72,7 +71,7 @@ warn_if_namespace_exists "$NAMESPACE"
 
 ### **Estimated Time:**
 - ~2 minutes per script
-- ~4 minutes total for remaining 2 scripts
+- ~2 minutes total for remaining 1 script
 
 ---
 
@@ -128,8 +127,8 @@ Continue anyway? [y/N]:
 
 - **Total Scripts:** 5
 - **With Validation:** 5 (100%) 
-- **Fully Implemented:** 5 (100%)
-- **Placeholder (Ready):** 0 (0%)
+- **Fully Implemented:** 4 (80%)
+- **Placeholder (Ready):** 1 (20%)
 
 **Goal:** 100% coverage with standardized validation **ACHIEVED!**
 

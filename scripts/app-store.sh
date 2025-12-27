@@ -63,14 +63,13 @@ show_menu() {
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Security & Monitoring${NC}                                         ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}6.${NC} Uptime Kuma    - Monitoring tool ${CYAN}[Coming Soon]${NC}          ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}7.${NC} Homepage       - Application dashboard                    ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}6.${NC} Homepage       - Application dashboard                    ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     echo -e "${BLUE}╭─────────────────────────────────────────────────────────────────╮${NC}"
     echo -e "${BLUE}│${NC}  ${GREEN}Utilities${NC}                                                      ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}8.${NC} List Installed Apps                                       ${BLUE}│${NC}"
-    echo -e "${BLUE}│${NC}    ${YELLOW}9.${NC} View App Access Info                                      ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}7.${NC} List Installed Apps                                       ${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC}    ${YELLOW}8.${NC} View App Access Info                                      ${BLUE}│${NC}"
     echo -e "${BLUE}│${NC}    ${YELLOW}0.${NC} Exit                                                      ${BLUE}│${NC}"
     echo -e "${BLUE}╰─────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
@@ -84,7 +83,7 @@ list_installed_apps() {
     # List all namespaces that contain apps
     kubectl get namespaces -o json | \
         jq -r '.items[].metadata.name' | \
-        grep -E "jellyfin|immich|homepage|nextcloud|mattermost|uptime|paperless" || \
+        grep -E "jellyfin|immich|homepage|nextcloud|mattermost|paperless" || \
         echo "No apps installed yet"
     
     echo ""
@@ -135,7 +134,7 @@ while true; do
     
     show_menu
     
-    echo -ne "${CYAN}Select an option [0-9]: ${NC}"
+    echo -ne "${CYAN}Select an option [0-8]: ${NC}"
     read choice
     
     case $choice in
@@ -163,17 +162,14 @@ while true; do
             install_app "mattermost"
             ;;
         6)
-            install_app "uptime-kuma"
-            ;;
-        7)
             install_app "homepage"
             ;;
-        8)
+        7)
             list_installed_apps
             echo -e "${GREEN}Press Enter to continue...${NC}"
             read
             ;;
-        9)
+        8)
             view_app_info
             echo -e "${GREEN}Press Enter to continue...${NC}"
             read

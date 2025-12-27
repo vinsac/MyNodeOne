@@ -102,7 +102,6 @@ APP_NAMESPACES=(
     "homepage"
     "nextcloud"
     "mattermost"
-    "uptime-kuma"
     "paperless"
     "demo-apps"
     "llm-chat"

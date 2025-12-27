@@ -16,7 +16,6 @@ This directory contains one-click installation scripts for popular self-hosted a
 - **Mattermost** - Team chat (Slack alternative)
 
 ### Security & Monitoring
-- **Uptime Kuma** - Service monitoring and status page
 - **Homepage** - Application dashboard and homepage
 
 ## Usage
@@ -63,7 +62,6 @@ Each app includes sensible defaults but can be customized:
 | Immich | 4GB | 2 cores | 50GB + photos |
 | Nextcloud | 2GB | 1 core | 20GB + files |
 | Mattermost | 2GB | 1 core | 10GB |
-| Uptime Kuma | 512MB | 0.5 core | 2GB |
 | Homepage | 256MB | 0.2 core | 500MB |
 
 ## Recommended Setup Order
@@ -77,8 +75,7 @@ Each app includes sensible defaults but can be customized:
 
 **For Home Lab/Learning:**
 1. **Homepage** - Dashboard for everything
-2. **Uptime Kuma** - Monitoring
-3. **Mattermost** - Team communication
+2. **Mattermost** - Team communication
 
 **For Media Server:**
 1. **Jellyfin** - Main media server

@@ -159,7 +159,15 @@ while true; do
             fi
             ;;
         5)
-            install_app "mattermost"
+            if [ -f "$APPS_DIR/mattermost/install-mattermost.sh" ]; then
+                bash "$APPS_DIR/mattermost/install-mattermost.sh"
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read
+            else
+                echo "Mattermost installation script not found"
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read
+            fi
             ;;
         6)
             if [ -f "$APPS_DIR/homepage/install-homepage.sh" ]; then

@@ -13,7 +13,7 @@ This directory contains one-click installation scripts for popular self-hosted a
 - **Paperless-ngx** - Document management and OCR system
 
 ### Communication & Productivity
-- **Mattermost** - Team chat (Slack alternative)
+- **Mattermost** - Team chat and collaboration (Slack alternative)
 
 ### Security & Monitoring
 - **Homepage** - Application dashboard and homepage
@@ -61,7 +61,8 @@ Each app includes sensible defaults but can be customized:
 | Jellyfin | 2GB | 1 core | 10GB + media |
 | Immich | 4GB | 2 cores | 50GB + photos |
 | Nextcloud | 2GB | 1 core | 20GB + files |
-| Mattermost | 2GB | 1 core | 10GB |
+| Paperless | 2GB | 1 core | 20GB + docs |
+| Mattermost | 2GB | 1 core | 50GB + data |
 | Homepage | 256MB | 0.2 core | 500MB |
 
 ## Recommended Setup Order

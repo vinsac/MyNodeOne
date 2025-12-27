@@ -20,7 +20,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 
 ### **COMPLETE VALIDATION** (6/6 scripts - 100%!)
 
-#### **Fully Implemented Scripts (5)**
+#### **Fully Implemented Scripts (6)**
 | Script | Validation Type | Checks |
 |--------|----------------|---------|
 | `immich/install-immich.sh` | Inline | kubectl cluster storage subdomain |
@@ -28,11 +28,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 | `nextcloud/install-nextcloud.sh` | Shared Library | kubectl cluster storage namespace |
 | `paperless/install-paperless.sh` | Shared Library | kubectl cluster storage subdomain |
 | `homepage/install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
-
-#### **Placeholder Scripts with Validation Ready (1)**
-| Script | Validation Type | Status |
-|--------|----------------|---------|
-| `install-mattermost.sh` | Shared Library | Ready (commented until implemented) |
+| `mattermost/install-mattermost.sh` | Shared Library | kubectl cluster storage subdomain |
 
 ---
 
@@ -70,8 +66,7 @@ warn_if_namespace_exists "$NAMESPACE"
 4. Call `warn_if_namespace_exists()` before namespace creation
 
 ### **Estimated Time:**
-- ~2 minutes per script
-- ~2 minutes total for remaining 1 script
+- All scripts now have validation!
 
 ---
 
@@ -127,8 +122,8 @@ Continue anyway? [y/N]:
 
 - **Total Scripts:** 6
 - **With Validation:** 6 (100%) 
-- **Fully Implemented:** 5 (83%)
-- **Placeholder (Ready):** 1 (17%)
+- **Fully Implemented:** 6 (100%)
+- **Placeholder (Ready):** 0 (0%)
 
 **Goal:** 100% coverage with standardized validation **ACHIEVED!**
 

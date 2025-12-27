@@ -26,7 +26,7 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 ### Communication & Productivity
 | Application | Description | Status |
 |-------------|-------------|--------|
-| Mattermost | Team chat (Slack alternative) | Coming soon |
+| Mattermost | Team chat and collaboration (Slack alternative) | Available |
 
 ### Security & Monitoring
 | Application | Description | Status |

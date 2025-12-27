@@ -96,7 +96,7 @@ echo "  Database: $DB_STORAGE"
 echo ""
 
 echo "🔐 Generating secure credentials..."
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -226,25 +226,19 @@ spec:
       - name: mattermost
         image: mattermost/mattermost-team-edition:latest
         env:
+        - name: DB_HOST
+          value: mattermost-postgres
+        - name: DB_PORT_NUMBER
+          value: "5432"
         - name: MM_SQLSETTINGS_DRIVERNAME
           value: postgres
         - name: MM_SQLSETTINGS_DATASOURCE
-          value: "postgres://mattermost@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
-        - name: DB_PASSWORD
+          value: postgres://mattermost:\${MM_PASSWORD}@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+        - name: MM_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mattermost-db
               key: db-password
-        - name: MM_CONFIG
-          value: |
-            {
-              "SqlSettings": {
-                "DataSourceReplicas": [],
-                "DataSourceSearchReplicas": [],
-                "DriverName": "postgres",
-                "DataSource": "postgres://mattermost:$(DB_PASSWORD)@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
-              }
-            }
         - name: MM_SERVICESETTINGS_SITEURL
           value: "http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         - name: MM_SERVICESETTINGS_ENABLELOCALMODE

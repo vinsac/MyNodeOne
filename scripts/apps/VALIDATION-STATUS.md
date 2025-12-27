@@ -27,7 +27,7 @@ This document tracks which installation scripts have comprehensive pre-flight va
 | `jellyfin/install-jellyfin.sh` | Shared Library | kubectl cluster storage subdomain |
 | `nextcloud/install-nextcloud.sh` | Shared Library | kubectl cluster storage namespace |
 | `paperless/install-paperless.sh` | Shared Library | kubectl cluster storage subdomain |
-| `install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
+| `homepage/install-homepage.sh` | Shared Library | kubectl cluster storage namespace |
 
 #### **Placeholder Scripts with Validation Ready (1)**
 | Script | Validation Type | Status |

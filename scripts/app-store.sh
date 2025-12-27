@@ -162,7 +162,15 @@ while true; do
             install_app "mattermost"
             ;;
         6)
-            install_app "homepage"
+            if [ -f "$APPS_DIR/homepage/install-homepage.sh" ]; then
+                bash "$APPS_DIR/homepage/install-homepage.sh"
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read
+            else
+                echo "Homepage installation script not found"
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read
+            fi
             ;;
         7)
             list_installed_apps

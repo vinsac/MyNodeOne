@@ -71,7 +71,6 @@ Each app includes sensible defaults but can be customized:
 2. **Immich** - Photo backup and organization
 3. **Jellyfin** - Media streaming
 4. **Homepage** - Dashboard for all services
-5. **Uptime Kuma** - Monitor your services
 
 **For Home Lab/Learning:**
 1. **Homepage** - Dashboard for everything

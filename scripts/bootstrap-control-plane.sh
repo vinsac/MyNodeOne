@@ -706,6 +706,24 @@ EOF
     systemctl start coredns-dns-guardian.timer
     
     log_success "DNS Guardian installed - will check DNS configuration every 5 minutes"
+    
+    # Install permanent host-level DNS fix
+    install_permanent_host_dns_fix
+}
+
+# Install permanent fix for Tailscale DNS override on host system
+# This prevents Tailscale from breaking host DNS resolution after restarts
+install_permanent_host_dns_fix() {
+    log_info "Installing permanent host-level DNS fix for Tailscale override..."
+    
+    # Copy the permanent DNS fix script to system location
+    cp "$SCRIPT_DIR/fix-tailscale-dns-permanent.sh" /usr/local/bin/
+    chmod +x /usr/local/bin/fix-tailscale-dns-permanent.sh
+    
+    # Apply the permanent fix
+    /usr/local/bin/fix-tailscale-dns-permanent.sh
+    
+    log_success "Permanent host DNS fix installed - will persist across reboots"
 }
 
 # GPU Setup for Kubernetes (after K3s is installed)

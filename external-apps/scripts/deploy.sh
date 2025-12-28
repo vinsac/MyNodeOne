@@ -9,6 +9,7 @@
 
 set -euo pipefail
 
+# Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -16,8 +17,20 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+# MyNodeOne root (detect from script location)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MYNODEONE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Get cluster domain from cluster-info ConfigMap (authoritative source)
+CLUSTER_DOMAIN=""
+if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+fi
+
+# If not found, use default
+if [ -z "$CLUSTER_DOMAIN" ]; then
+    CLUSTER_DOMAIN="mynodeone"
+fi
 
 log() { echo -e "${BLUE}▶${NC} $1"; }
 success() { echo -e "${GREEN}✓${NC} $1"; }
@@ -265,10 +278,13 @@ interactive_setup() {
     echo ""
     
     ask "Local subdomain for your app?"
-    echo "  This will be: <subdomain>.mynodeone.local"
+    echo "  This will be: <subdomain>.${CLUSTER_DOMAIN}.local"
     read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
     LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
+    LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
     
+    success "Subdomain: $LOCAL_SUBDOMAIN"
+    echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
     echo ""
     
     ask "Do you want public internet access?"
@@ -644,12 +660,14 @@ convert_docker_compose() {
             echo ""
             
             ask "Local subdomain for cluster access?"
-            echo "  (your app will be at: <subdomain>.mynodeone.local)"
-            read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
-            LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
-            LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
-            
-            success "Subdomain: $LOCAL_SUBDOMAIN"
+    echo "  (your app will be at: <subdomain>.${CLUSTER_DOMAIN}.local)"
+    read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
+    LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
+    LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+    
+    success "Subdomain: $LOCAL_SUBDOMAIN"
+    echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
+            echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
             echo ""
             
             # Update namespace in all manifests
@@ -942,7 +960,7 @@ auto_configure_domains() {
     
     if [[ $exposed_count -eq 0 ]]; then
         warn "No public-facing services detected (all services are internal)"
-        warn "Your app will only be accessible locally: http://${LOCAL_SUBDOMAIN}.mynodeone.local"
+        warn "Your app will only be accessible locally: http://${LOCAL_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         PUBLIC_DOMAINS=""
         return 1
     fi
@@ -1145,8 +1163,11 @@ show_summary() {
     echo ""
     
     if [[ "$has_lb_ip" == "true" ]]; then
-        echo "  ✓ Local DNS:  http://$LOCAL_SUBDOMAIN.mynodeone.local"
+        echo "  ✓ Local DNS:  http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
         echo "  ✓ Direct IP:  http://$(kubectl get svc -n "$APP_NAME" -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | .status.loadBalancer.ingress[0].ip' | head -1)"
+        echo ""
+        echo "  ℹ️  Note: '$APP_NAME' is your app name (Kubernetes namespace)"
+        echo "          Individual services: $(kubectl get svc -n "$APP_NAME" -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | .metadata.name' | paste -sd, -)"
         echo "   2. Run: sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
         echo "   3. Access your app at: https://$(echo $PUBLIC_DOMAINS | awk '{print $1}')"
     else

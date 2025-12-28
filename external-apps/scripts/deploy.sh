@@ -596,6 +596,7 @@ patch_kompose_manifests() {
     
     # Convert ClusterIP services to LoadBalancer for frontend/backend services
     # This is critical - kompose creates ClusterIP by default!
+    local patched_count=0
     for svc_file in "$output_dir"/*-service.yaml; do
         if [[ -f "$svc_file" ]]; then
             # Extract service name from filename
@@ -606,13 +607,23 @@ patch_kompose_manifests() {
                 local svc_type="${SERVICE_TYPES[$svc_name]}"
                 
                 if [[ "$svc_type" == "frontend" || "$svc_type" == "backend" ]]; then
-                    # Change to LoadBalancer
-                    sed -i 's/type: ClusterIP/type: LoadBalancer/' "$svc_file"
+                    # Must add type field if missing, or change existing ClusterIP
+                    if grep -q "type: ClusterIP" "$svc_file"; then
+                        sed -i 's/type: ClusterIP/type: LoadBalancer/' "$svc_file"
+                    elif ! grep -q "type:" "$svc_file"; then
+                        # Add type field after spec:
+                        sed -i '/^spec:/a\  type: LoadBalancer' "$svc_file"
+                    fi
                     echo "  ✓ $svc_name: Changed to LoadBalancer (public-facing service)"
+                    patched_count=$((patched_count + 1))
                 fi
             fi
         fi
     done
+    
+    if [[ $patched_count -eq 0 ]]; then
+        warn "No services converted to LoadBalancer (check SERVICE_TYPES array)"
+    fi
     
     success "Manifests patched"
 }
@@ -633,6 +644,9 @@ convert_docker_compose() {
         
         if [[ $? -eq 0 ]]; then
             success "Converted with kompose"
+            
+            # IMPORTANT: Detect service types FIRST (needed for patching)
+            detect_service_types
             
             # Patch manifests for MyNodeOne compatibility
             patch_kompose_manifests "$output_dir"

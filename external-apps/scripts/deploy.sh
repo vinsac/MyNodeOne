@@ -582,10 +582,13 @@ fix_build_images() {
     
     # Detect if this is the Docker voting app example
     local is_voting_app=false
-    # Check for voting app patterns (more robust matching)
-    if grep -qE "dockersamples/examplevotingapp|build:.*[/.]vote|image:.*vote" "$compose_file" 2>/dev/null && \
-       grep -qE "build:.*[/.]result|image:.*result" "$compose_file" 2>/dev/null && \
-       grep -qE "build:.*[/.]worker|image:.*worker" "$compose_file" 2>/dev/null; then
+    # Check for voting app patterns (handles both single-line and multi-line build formats)
+    # Match: "build: ./vote", "build:\n  context: ./vote", "image: vote", etc.
+    if (grep -A3 "^  vote:" "$compose_file" | grep -qE "build:|image:") && \
+       (grep -A3 "^  result:" "$compose_file" | grep -qE "build:|image:") && \
+       (grep -A3 "^  worker:" "$compose_file" | grep -qE "build:|image:") && \
+       (grep -qE "redis.*image:|^  redis:" "$compose_file") && \
+       (grep -qE "db.*image:|postgres|^  db:" "$compose_file"); then
         is_voting_app=true
         log "Detected Docker Example Voting App - using pre-built images"
     fi

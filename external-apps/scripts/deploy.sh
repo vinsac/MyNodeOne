@@ -619,8 +619,15 @@ fix_build_images() {
                             # Already has PGDATA env var
                             :
                         else
-                            # Add PGDATA env var to use subdirectory
-                            sed -i '/env:/a\          - name: PGDATA\n            value: /var/lib/postgresql/data/pgdata' "$manifest"
+                            # Add PGDATA env var to use subdirectory (proper multi-line sed)
+                            if grep -q "env:" "$manifest"; then
+                                # Has env section, append to it
+                                sed -i '/env:/a\          - name: PGDATA' "$manifest"
+                                sed -i '/- name: PGDATA/a\            value: /var/lib/postgresql/data/pgdata' "$manifest"
+                            else
+                                # No env section, add after containers:
+                                sed -i '/containers:/,/image:/ { /image:/a\        env:\n          - name: PGDATA\n            value: /var/lib/postgresql/data/pgdata' "$manifest"
+                            fi
                             echo "  ✓ db: Added PGDATA subdirectory (PostgreSQL mount fix)"
                         fi
                         ;;

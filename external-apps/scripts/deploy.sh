@@ -798,22 +798,23 @@ register_app() {
     
     # Wait for LoadBalancer IP
     log "Waiting for LoadBalancer IP..."
+    local lb_ip=""
     for i in {1..30}; do
-        LB_IP=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
+        lb_ip=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
         
-        if [[ -n "$LB_IP" ]]; then
+        if [[ -n "$lb_ip" ]]; then
             break
         fi
         sleep 2
     done
     
-    if [[ -z "$LB_IP" ]]; then
+    if [[ -z "$lb_ip" ]]; then
         warn "Could not get LoadBalancer IP"
         return 1
     fi
     
-    success "LoadBalancer IP: $LB_IP"
+    success "LoadBalancer IP: $lb_ip"
     
     # Register with service registry
     if [[ -f "$MYNODEONE_ROOT/scripts/lib/service-registry.sh" ]]; then
@@ -1120,50 +1121,32 @@ configure_public_access() {
     echo "  2. Run the visibility manager:"
     echo "     sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
     echo ""
-    echo "  3. Access your app:"
-    for domain in $PUBLIC_DOMAINS; do
-        echo "     https://$domain"
-    done
+    echo "  3. Wait for DNS propagation (~5-30 minutes)"
+    echo ""
 }
 
 # Show deployment summary
 show_summary() {
     echo ""
-    echo "╔══════════════════════════════════════════════════════════╗"
-    echo "║                                                          ║"
-    echo "║              🎉 Deployment Successful!                   ║"
-    echo "║                                                          ║"
-    echo "╚══════════════════════════════════════════════════════════╝"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✅ Deployment Complete!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "📦 App: $APP_NAME"
     echo ""
     
-    success "App Name: $APP_NAME"
-    echo ""
-    
-    echo "📍 Access Your App:"
-    echo "   Local:  http://${LOCAL_SUBDOMAIN}.mynodeone.local"
-    if [[ -n "$LB_IP" ]]; then
-        echo "   Direct: http://$LB_IP"
-    fi
-    if [[ -n "$PUBLIC_DOMAINS" ]]; then
-        echo ""
-        echo "   Public (after DNS setup):"
-        for domain in $PUBLIC_DOMAINS; do
-            echo "   • https://$domain"
-        done
+    # Check if we have LoadBalancer IP
+    local has_lb_ip=false
+    if kubectl get svc -n "$APP_NAME" -o json | jq -e '.items[] | select(.spec.type=="LoadBalancer" and .status.loadBalancer.ingress[0].ip)' &>/dev/null; then
+        has_lb_ip=true
     fi
     
+    echo "🌐 Access your app:"
     echo ""
-    echo "🔧 Management Commands:"
-    echo "   View pods:      kubectl get pods -n $APP_NAME"
-    echo "   View logs:      kubectl logs -n $APP_NAME -l app=$APP_NAME -f"
-    echo "   Scale:          kubectl scale deployment -n $APP_NAME --replicas=3 --all"
-    echo "   Restart:        kubectl rollout restart deployment -n $APP_NAME --all"
-    echo "   Delete:         kubectl delete namespace $APP_NAME"
     
-    echo ""
-    echo "📚 Next Steps:"
-    if [[ -n "$PUBLIC_DOMAINS" ]]; then
-        echo "   1. Configure DNS A records for your domains"
+    if [[ "$has_lb_ip" == "true" ]]; then
+        echo "  ✓ Local DNS:  http://$LOCAL_SUBDOMAIN.mynodeone.local"
+        echo "  ✓ Direct IP:  http://$(kubectl get svc -n "$APP_NAME" -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | .status.loadBalancer.ingress[0].ip' | head -1)"
         echo "   2. Run: sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
         echo "   3. Access your app at: https://$(echo $PUBLIC_DOMAINS | awk '{print $1}')"
     else

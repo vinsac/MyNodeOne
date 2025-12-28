@@ -3,8 +3,8 @@
 ## Branch Information
 
 **Branch**: `feature/external-app-deployment`  
-**Commit**: `2a6ad40`  
-**Status**: Ready for testing on control plane
+**Latest Commit**: `af10162`  
+**Status**: Documentation complete, ready for production use
 
 ## Pull Branch on Control Plane
 

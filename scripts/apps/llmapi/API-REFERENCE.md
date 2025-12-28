@@ -759,6 +759,152 @@ for chunk in response:
 
 ---
 
+## Common cURL Issues
+
+### Issue 1: "Field required" or Body Parsing Errors
+
+**Error:**
+```json
+{"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]}
+```
+
+**Cause:** Newline in Authorization header breaks the header, causing auth failure.
+
+**Bad Example:**
+```bash
+curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+  -H "Authorization: Bearer sk-mynodeone-xxxxxx
+"   # ← Newline before closing quote breaks the header!
+```
+
+**Fix:** Close quote immediately after token (no newline):
+```bash
+curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+  -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen2.5-14b","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+**Why this happens:**
+- Broken Authorization header → API can't authenticate
+- Without auth, request fails validation early
+- Error message mentions "body" but real issue is broken header
+
+---
+
+### Issue 2: "Permanent Redirect" on Public Domain
+
+**Error:**
+```
+Permanent Redirect
+```
+
+**Cause:** Using `http://` instead of `https://` for public domain.
+
+**Bad Example:**
+```bash
+curl -X POST http://llmapi.curiios.com/v1/chat/completions  # ← HTTP
+```
+
+**Fix:** Use `https://` for public domains:
+```bash
+curl -X POST https://llmapi.curiios.com/v1/chat/completions \
+  -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen2.5-14b","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+**Rule:**
+- **Local domain** (`*.minicloud.local`, `*.cluster.local`): Use `http://`
+- **Public domain** (`*.yourdomain.com`): Use `https://`
+
+---
+
+### Issue 3: JSON Parsing Errors
+
+**Error:**
+```json
+{"detail":"Invalid JSON in request body"}
+```
+
+**Cause:** Malformed JSON in `-d` data.
+
+**Common mistakes:**
+- Single quotes inside single-quoted JSON
+- Unescaped quotes
+- Missing commas
+
+**Bad Example:**
+```bash
+curl -d '{"messages":[{"content":"It's working"}]}'  # ← Unescaped '
+```
+
+**Fix:** Escape quotes or use double-quoted JSON:
+```bash
+# Option 1: Escape single quotes
+curl -d '{"messages":[{"content":"It'\''s working"}]}'
+
+# Option 2: Use double quotes (escape them in shell)
+curl -d "{\"messages\":[{\"content\":\"It's working\"}]}"
+
+# Option 3: Use file
+echo '{"messages":[{"content":"It'\''s working"}]}' > request.json
+curl -d @request.json
+```
+
+---
+
+### Issue 4: Empty Response
+
+**Cause:** Missing `-H "Content-Type: application/json"`
+
+**Fix:** Always include Content-Type header:
+```bash
+curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+  -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
+  -H "Content-Type: application/json" \  # ← Required!
+  -d '{"model":"qwen2.5-14b","messages":[...]}'
+```
+
+---
+
+### Working cURL Template
+
+**Copy-paste this and replace the parts in `<...>`:**
+
+```bash
+# Local domain (HTTP)
+curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-14b",
+    "messages": [
+      {"role": "user", "content": "<YOUR_QUESTION>"}
+    ]
+  }'
+
+# Public domain (HTTPS)
+curl -X POST https://llmapi.<yourdomain>.com/v1/chat/completions \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-14b",
+    "messages": [
+      {"role": "user", "content": "<YOUR_QUESTION>"}
+    ]
+  }'
+```
+
+**Tips:**
+- No newlines in header values
+- Use `https://` for public domains
+- Include `Content-Type: application/json`
+- Escape quotes in JSON properly
+- Use `-v` flag to see full request/response for debugging
+
+---
+
 ## Summary
 
 ✅ **OpenAI-compatible** - Drop-in replacement for OpenAI Python SDK  

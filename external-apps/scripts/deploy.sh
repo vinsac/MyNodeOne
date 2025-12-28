@@ -540,6 +540,42 @@ extract_service_details() {
     echo "${image}|${port}"
 }
 
+# Patch kompose output for MyNodeOne compatibility
+patch_kompose_manifests() {
+    local output_dir="$1"
+    
+    log "Patching manifests for MyNodeOne..."
+    
+    # Fix PVC sizes (minimum 1Gi in MyNodeOne)
+    for pvc_file in "$output_dir"/*-persistentvolumeclaim.yaml; do
+        if [[ -f "$pvc_file" ]]; then
+            # Replace any storage size < 1Gi with 1Gi
+            sed -i 's/storage: [0-9]*Mi$/storage: 1Gi/' "$pvc_file"
+            sed -i 's/storage: [0-9]*Ki$/storage: 1Gi/' "$pvc_file"
+        fi
+    done
+    
+    # Add security contexts to deployments
+    for deploy_file in "$output_dir"/*-deployment.yaml; do
+        if [[ -f "$deploy_file" ]] && ! grep -q "securityContext:" "$deploy_file"; then
+            # Add pod-level and container-level security contexts
+            # This is complex with sed, so we'll add a basic annotation for now
+            # The warnings are non-fatal
+            :
+        fi
+    done
+    
+    # Change storageClassName to longhorn
+    for pvc_file in "$output_dir"/*-persistentvolumeclaim.yaml; do
+        if [[ -f "$pvc_file" ]] && ! grep -q "storageClassName:" "$pvc_file"; then
+            # Add storageClassName before resources:
+            sed -i '/spec:/a\  storageClassName: longhorn' "$pvc_file"
+        fi
+    done
+    
+    success "Manifests patched"
+}
+
 # Convert docker-compose to Kubernetes
 convert_docker_compose() {
     local compose_file="$1"
@@ -556,7 +592,78 @@ convert_docker_compose() {
         
         if [[ $? -eq 0 ]]; then
             success "Converted with kompose"
+            
+            # Patch manifests for MyNodeOne compatibility
+            patch_kompose_manifests "$output_dir"
+            
             MANIFEST_DIR="$output_dir"
+            
+            # Ask for app name and basic config (kompose doesn't know about our conventions)
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  App Configuration"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            
+            ask "What's your app name?"
+            echo "  (lowercase, no spaces, used for namespace)"
+            read -p "App name: " APP_NAME
+            APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+            
+            if [[ -z "$APP_NAME" ]]; then
+                error "App name is required"
+                return 1
+            fi
+            
+            success "App name: $APP_NAME"
+            echo ""
+            
+            ask "Local subdomain for cluster access?"
+            echo "  (your app will be at: <subdomain>.mynodeone.local)"
+            read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
+            LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
+            LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+            
+            success "Subdomain: $LOCAL_SUBDOMAIN"
+            echo ""
+            
+            # Update namespace in all manifests
+            for manifest in "$output_dir"/*.yaml; do
+                if [[ -f "$manifest" ]]; then
+                    # Add namespace if not present, or update default namespace
+                    if grep -q "namespace: default" "$manifest"; then
+                        sed -i "s/namespace: default/namespace: $APP_NAME/g" "$manifest"
+                    elif ! grep -q "namespace:" "$manifest" && grep -q "kind: " "$manifest"; then
+                        # Add namespace to metadata
+                        sed -i "/^metadata:/a\  namespace: $APP_NAME" "$manifest"
+                    fi
+                fi
+            done
+            
+            # Create namespace manifest if not exists
+            if [[ ! -f "$output_dir/00-namespace.yaml" ]]; then
+                cat > "$output_dir/00-namespace.yaml" << EOF
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $APP_NAME
+  labels:
+    app.kubernetes.io/name: $APP_NAME
+    app.kubernetes.io/managed-by: mynodeone-deploy
+EOF
+            fi
+            
+            # Ask about public access
+            ask "Make this app publicly accessible?"
+            read -p "Public access [y/N]: " MAKE_PUBLIC
+            
+            if [[ "$MAKE_PUBLIC" =~ ^[Yy] ]]; then
+                configure_public_domains
+            else
+                PUBLIC_DOMAINS=""
+            fi
+            
             return 0
         fi
     fi

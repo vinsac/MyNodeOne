@@ -582,8 +582,10 @@ fix_build_images() {
     
     # Detect if this is the Docker voting app example
     local is_voting_app=false
-    if grep -q "dockersamples/examplevotingapp" "$compose_file" 2>/dev/null || \
-       (grep -q "build: ./vote" "$compose_file" && grep -q "build: ./result" "$compose_file" && grep -q "build: ./worker" "$compose_file"); then
+    # Check for voting app patterns (more robust matching)
+    if grep -qE "dockersamples/examplevotingapp|build:.*[/.]vote|image:.*vote" "$compose_file" 2>/dev/null && \
+       grep -qE "build:.*[/.]result|image:.*result" "$compose_file" 2>/dev/null && \
+       grep -qE "build:.*[/.]worker|image:.*worker" "$compose_file" 2>/dev/null; then
         is_voting_app=true
         log "Detected Docker Example Voting App - using pre-built images"
     fi
@@ -606,6 +608,18 @@ fix_build_images() {
                     worker)
                         sed -i 's|image: worker.*|image: dockersamples/examplevotingapp_worker:latest|g' "$manifest"
                         echo "  ✓ worker: Using dockersamples/examplevotingapp_worker:latest"
+                        ;;
+                    db)
+                        # Fix PostgreSQL mount point issue - use subdirectory
+                        # PostgreSQL complains about lost+found in volume root
+                        if grep -q "PGDATA" "$manifest"; then
+                            # Already has PGDATA env var
+                            :
+                        else
+                            # Add PGDATA env var to use subdirectory
+                            sed -i '/env:/a\          - name: PGDATA\n            value: /var/lib/postgresql/data/pgdata' "$manifest"
+                            echo "  ✓ db: Added PGDATA subdirectory (PostgreSQL mount fix)"
+                        fi
                         ;;
                 esac
             fi

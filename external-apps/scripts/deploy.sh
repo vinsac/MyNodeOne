@@ -575,11 +575,68 @@ extract_service_details() {
     echo "${image}|${port}"
 }
 
+# Fix docker-compose build directives with known pre-built images
+fix_build_images() {
+    local compose_file="$1"
+    local output_dir="$2"
+    
+    # Detect if this is the Docker voting app example
+    local is_voting_app=false
+    if grep -q "dockersamples/examplevotingapp" "$compose_file" 2>/dev/null || \
+       (grep -q "build: ./vote" "$compose_file" && grep -q "build: ./result" "$compose_file" && grep -q "build: ./worker" "$compose_file"); then
+        is_voting_app=true
+        log "Detected Docker Example Voting App - using pre-built images"
+    fi
+    
+    # Map build contexts to actual images for known apps
+    if [[ "$is_voting_app" == "true" ]]; then
+        # Replace build-based images with real Docker Hub images
+        for manifest in "$output_dir"/*-deployment.yaml; do
+            if [[ -f "$manifest" ]]; then
+                local basename=$(basename "$manifest" | sed 's/-deployment.yaml$//')
+                case "$basename" in
+                    vote)
+                        sed -i 's|image: vote.*|image: dockersamples/examplevotingapp_vote:latest|g' "$manifest"
+                        echo "  ✓ vote: Using dockersamples/examplevotingapp_vote:latest"
+                        ;;
+                    result)
+                        sed -i 's|image: result.*|image: dockersamples/examplevotingapp_result:latest|g' "$manifest"
+                        echo "  ✓ result: Using dockersamples/examplevotingapp_result:latest"
+                        ;;
+                    worker)
+                        sed -i 's|image: worker.*|image: dockersamples/examplevotingapp_worker:latest|g' "$manifest"
+                        echo "  ✓ worker: Using dockersamples/examplevotingapp_worker:latest"
+                        ;;
+                esac
+            fi
+        done
+        return 0
+    fi
+    
+    # Check for build directives in other apps
+    if grep -q "build:" "$compose_file"; then
+        warn "Found build directives in docker-compose.yml"
+        echo ""
+        echo "  This app requires building Docker images from source."
+        echo "  Options:"
+        echo "    1. Build images locally and push to a registry"
+        echo "    2. Replace 'build:' with 'image:' pointing to pre-built images"
+        echo "    3. Deployment may fail if images don't exist in registries"
+        echo ""
+    fi
+}
+
 # Patch kompose output for MyNodeOne compatibility
 patch_kompose_manifests() {
     local output_dir="$1"
+    local compose_file="${2:-}"
     
     log "Patching manifests for MyNodeOne..."
+    
+    # Fix known apps with build directives
+    if [[ -n "$compose_file" ]]; then
+        fix_build_images "$compose_file" "$output_dir"
+    fi
     
     # Fix PVC sizes (minimum 1Gi in MyNodeOne)
     for pvc_file in "$output_dir"/*-persistentvolumeclaim.yaml; do
@@ -648,8 +705,8 @@ convert_docker_compose() {
             # IMPORTANT: Detect service types FIRST (needed for patching)
             detect_service_types
             
-            # Patch manifests for MyNodeOne compatibility
-            patch_kompose_manifests "$output_dir"
+            # Patch manifests for MyNodeOne compatibility (pass compose_file for build detection)
+            patch_kompose_manifests "$output_dir" "$compose_file"
             
             MANIFEST_DIR="$output_dir"
             

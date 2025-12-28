@@ -109,10 +109,26 @@ parse_docker_compose() {
     SERVICES=$(grep -E "^  [a-z][a-z0-9_-]*:" "$compose_file" | sed 's/://g' | awk '{print $1}' | xargs)
     
     if [[ -n "$SERVICES" ]]; then
-        success "Detected services: $SERVICES"
-        
-        # Store services in array for later use
+        # Store services in array
         IFS=' ' read -ra SERVICE_ARRAY <<< "$SERVICES"
+        
+        # Filter out networks and volumes (they don't have 'image:' or 'build:' keys)
+        declare -a REAL_SERVICES
+        for svc in "${SERVICE_ARRAY[@]}"; do
+            # Check if this service has an image or build directive
+            if grep -A 5 "^  ${svc}:" "$compose_file" | grep -qE "^    (image|build):"; then
+                REAL_SERVICES+=("$svc")
+            fi
+        done
+        
+        SERVICE_ARRAY=("${REAL_SERVICES[@]}")
+        
+        if [[ ${#SERVICE_ARRAY[@]} -eq 0 ]]; then
+            warn "No container services found in docker-compose"
+            return 1
+        fi
+        
+        success "Detected services: ${SERVICE_ARRAY[*]}"
         
         # Detect service types based on common naming patterns
         detect_service_types
@@ -133,7 +149,10 @@ detect_service_types() {
         local svc_lower=$(echo "$svc" | tr '[:upper:]' '[:lower:]')
         
         # Detect common service types
-        if [[ "$svc_lower" =~ (frontend|web|app|ui|client) ]]; then
+        if [[ "$svc_lower" =~ (vote|result) ]]; then
+            # Voting app specific
+            SERVICE_TYPES["$svc"]="frontend"
+        elif [[ "$svc_lower" =~ (frontend|web|ui|client) ]]; then
             SERVICE_TYPES["$svc"]="frontend"
         elif [[ "$svc_lower" =~ (backend|api|server) ]]; then
             SERVICE_TYPES["$svc"]="backend"
@@ -143,10 +162,10 @@ detect_service_types() {
             SERVICE_TYPES["$svc"]="database"
         elif [[ "$svc_lower" =~ (redis|cache|memcache) ]]; then
             SERVICE_TYPES["$svc"]="cache"
-        elif [[ "$svc_lower" =~ (worker|queue|celery) ]]; then
+        elif [[ "$svc_lower" =~ (worker|queue|celery|seed) ]]; then
             SERVICE_TYPES["$svc"]="worker"
         else
-            SERVICE_TYPES["$svc"]="service"
+            SERVICE_TYPES["$svc"]="internal"
         fi
     done
 }
@@ -552,24 +571,30 @@ patch_kompose_manifests() {
             # Replace any storage size < 1Gi with 1Gi
             sed -i 's/storage: [0-9]*Mi$/storage: 1Gi/' "$pvc_file"
             sed -i 's/storage: [0-9]*Ki$/storage: 1Gi/' "$pvc_file"
+            # Add storageClassName if missing
+            if ! grep -q "storageClassName:" "$pvc_file"; then
+                sed -i '/spec:/a\  storageClassName: longhorn' "$pvc_file"
+            fi
         fi
     done
     
-    # Add security contexts to deployments
-    for deploy_file in "$output_dir"/*-deployment.yaml; do
-        if [[ -f "$deploy_file" ]] && ! grep -q "securityContext:" "$deploy_file"; then
-            # Add pod-level and container-level security contexts
-            # This is complex with sed, so we'll add a basic annotation for now
-            # The warnings are non-fatal
-            :
-        fi
-    done
-    
-    # Change storageClassName to longhorn
-    for pvc_file in "$output_dir"/*-persistentvolumeclaim.yaml; do
-        if [[ -f "$pvc_file" ]] && ! grep -q "storageClassName:" "$pvc_file"; then
-            # Add storageClassName before resources:
-            sed -i '/spec:/a\  storageClassName: longhorn' "$pvc_file"
+    # Convert ClusterIP services to LoadBalancer for frontend/backend services
+    # This is critical - kompose creates ClusterIP by default!
+    for svc_file in "$output_dir"/*-service.yaml; do
+        if [[ -f "$svc_file" ]]; then
+            # Extract service name from filename
+            local svc_name=$(basename "$svc_file" | sed 's/-service.yaml$//')
+            
+            # Check if this is a frontend or backend service
+            if [[ -n "${SERVICE_TYPES[$svc_name]:-}" ]]; then
+                local svc_type="${SERVICE_TYPES[$svc_name]}"
+                
+                if [[ "$svc_type" == "frontend" || "$svc_type" == "backend" ]]; then
+                    # Change to LoadBalancer
+                    sed -i 's/type: ClusterIP/type: LoadBalancer/' "$svc_file"
+                    echo "  ✓ $svc_name: Changed to LoadBalancer (public-facing service)"
+                fi
+            fi
         fi
     done
     
@@ -866,14 +891,22 @@ auto_configure_domains() {
     declare -a AUTO_DOMAINS
     declare -g -A DOMAIN_SERVICE_MAP
     
-    # Map services to conventional subdomains
+    # Map ONLY frontend/backend/admin services to conventional subdomains
+    local exposed_count=0
+    declare -a INTERNAL_SERVICES
+    
     for svc in "${SERVICE_ARRAY[@]}"; do
-        local svc_type="${SERVICE_TYPES[$svc]:-service}"
+        local svc_type="${SERVICE_TYPES[$svc]:-internal}"
         local subdomain=""
         
         case "$svc_type" in
             frontend)
-                subdomain="app"
+                # If service is named "vote" or "result", use that name
+                if [[ "$svc" =~ ^(vote|result|app|web|ui)$ ]]; then
+                    subdomain="$svc"
+                else
+                    subdomain="app"
+                fi
                 ;;
             backend)
                 subdomain="api"
@@ -881,32 +914,61 @@ auto_configure_domains() {
             admin)
                 subdomain="admin"
                 ;;
-            database|cache|worker)
+            database|cache|worker|internal)
                 # Internal services - no public domain
+                INTERNAL_SERVICES+=("$svc")
                 continue
-                ;;
-            *)
-                # Use service name as subdomain
-                subdomain="$svc"
                 ;;
         esac
         
         local full_domain="${subdomain}.${BASE_DOMAIN}"
         AUTO_DOMAINS+=("$full_domain")
         DOMAIN_SERVICE_MAP["$full_domain"]="$svc"
+        exposed_count=$((exposed_count + 1))
         
-        echo "  ✓ ${full_domain} → ${svc} (${svc_type})"
+        echo "  ✓ ${full_domain} → ${svc} (public)"
     done
+    
+    echo ""
+    if [[ ${#INTERNAL_SERVICES[@]} -gt 0 ]]; then
+        echo "  Internal services (not exposed):" 
+        for internal_svc in "${INTERNAL_SERVICES[@]}"; do
+            echo "    • $internal_svc (${SERVICE_TYPES[$internal_svc]:-internal})"
+        done
+    fi
+    
+    echo ""
+    
+    if [[ $exposed_count -eq 0 ]]; then
+        warn "No public-facing services detected (all services are internal)"
+        warn "Your app will only be accessible locally: http://${LOCAL_SUBDOMAIN}.mynodeone.local"
+        PUBLIC_DOMAINS=""
+        return 1
+    fi
+    
+    success "Auto-configured ${#AUTO_DOMAINS[@]} public domain(s)"
     
     PUBLIC_DOMAINS="${AUTO_DOMAINS[@]}"
     
     echo ""
-    success "Auto-configured ${#AUTO_DOMAINS[@]} public domains"
+    echo "📝 Next Steps After Deployment:"
     echo ""
-    echo "Summary:"
+    echo "  1. Configure DNS at your domain registrar (GoDaddy, Cloudflare, etc.):"
+    echo ""
     for domain in "${AUTO_DOMAINS[@]}"; do
-        echo "  • https://$domain"
+        echo "     Add A record: ${domain} → <YOUR_VPS_PUBLIC_IP>"
     done
+    echo ""
+    echo "  2. Run this command to enable public access + SSL:"
+    echo "     sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh"
+    echo ""
+    echo "  3. Access your app (after DNS propagates ~5-30 min):"
+    for domain in "${AUTO_DOMAINS[@]}"; do
+        echo "     https://$domain  (SSL certificate auto-issued by Let's Encrypt)"
+    done
+    echo ""
+    echo "  📖 See external-apps/DOMAIN-SSL-WORKFLOW.md for detailed explanation"
+    echo ""
 }
 
 # Manual domain configuration

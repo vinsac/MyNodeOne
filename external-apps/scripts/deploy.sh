@@ -575,77 +575,19 @@ extract_service_details() {
     echo "${image}|${port}"
 }
 
-# Fix docker-compose build directives with known pre-built images
-fix_build_images() {
+# Warn about common docker-compose limitations
+check_compose_compatibility() {
     local compose_file="$1"
-    local output_dir="$2"
     
-    # Detect if this is the Docker voting app example
-    local is_voting_app=false
-    # Check for voting app patterns (handles both single-line and multi-line build formats)
-    # Match: "build: ./vote", "build:\n  context: ./vote", "image: vote", etc.
-    if (grep -A3 "^  vote:" "$compose_file" | grep -qE "build:|image:") && \
-       (grep -A3 "^  result:" "$compose_file" | grep -qE "build:|image:") && \
-       (grep -A3 "^  worker:" "$compose_file" | grep -qE "build:|image:") && \
-       (grep -qE "redis.*image:|^  redis:" "$compose_file") && \
-       (grep -qE "db.*image:|postgres|^  db:" "$compose_file"); then
-        is_voting_app=true
-        log "Detected Docker Example Voting App - using pre-built images"
-    fi
-    
-    # Map build contexts to actual images for known apps
-    if [[ "$is_voting_app" == "true" ]]; then
-        # Replace build-based images with real Docker Hub images
-        for manifest in "$output_dir"/*-deployment.yaml; do
-            if [[ -f "$manifest" ]]; then
-                local basename=$(basename "$manifest" | sed 's/-deployment.yaml$//')
-                case "$basename" in
-                    vote)
-                        sed -i 's|image: vote.*|image: dockersamples/examplevotingapp_vote:latest|g' "$manifest"
-                        echo "  ✓ vote: Using dockersamples/examplevotingapp_vote:latest"
-                        ;;
-                    result)
-                        sed -i 's|image: result.*|image: dockersamples/examplevotingapp_result:latest|g' "$manifest"
-                        echo "  ✓ result: Using dockersamples/examplevotingapp_result:latest"
-                        ;;
-                    worker)
-                        sed -i 's|image: worker.*|image: dockersamples/examplevotingapp_worker:latest|g' "$manifest"
-                        echo "  ✓ worker: Using dockersamples/examplevotingapp_worker:latest"
-                        ;;
-                    db)
-                        # Fix PostgreSQL mount point issue - use subdirectory
-                        # PostgreSQL complains about lost+found in volume root
-                        if grep -q "PGDATA" "$manifest"; then
-                            # Already has PGDATA env var
-                            :
-                        else
-                            # Add PGDATA env var to use subdirectory (proper multi-line sed)
-                            if grep -q "env:" "$manifest"; then
-                                # Has env section, append to it
-                                sed -i '/env:/a\          - name: PGDATA' "$manifest"
-                                sed -i '/- name: PGDATA/a\            value: /var/lib/postgresql/data/pgdata' "$manifest"
-                            else
-                                # No env section, add after containers:
-                                sed -i '/containers:/,/image:/ { /image:/a\        env:\n          - name: PGDATA\n            value: /var/lib/postgresql/data/pgdata' "$manifest"
-                            fi
-                            echo "  ✓ db: Added PGDATA subdirectory (PostgreSQL mount fix)"
-                        fi
-                        ;;
-                esac
-            fi
-        done
-        return 0
-    fi
-    
-    # Check for build directives in other apps
+    # Check for build directives
     if grep -q "build:" "$compose_file"; then
-        warn "Found build directives in docker-compose.yml"
+        warn "docker-compose.yml contains 'build:' directives"
         echo ""
-        echo "  This app requires building Docker images from source."
-        echo "  Options:"
-        echo "    1. Build images locally and push to a registry"
-        echo "    2. Replace 'build:' with 'image:' pointing to pre-built images"
-        echo "    3. Deployment may fail if images don't exist in registries"
+        echo "  ⚠️  Images need to be pre-built and available in a registry."
+        echo "      Kompose cannot build images - only reference existing ones."
+        echo ""
+        echo "  Fix: Replace 'build:' with 'image:' pointing to registry images."
+        echo "  Example: image: myregistry.com/myapp:latest"
         echo ""
     fi
 }
@@ -653,14 +595,8 @@ fix_build_images() {
 # Patch kompose output for MyNodeOne compatibility
 patch_kompose_manifests() {
     local output_dir="$1"
-    local compose_file="${2:-}"
     
     log "Patching manifests for MyNodeOne..."
-    
-    # Fix known apps with build directives
-    if [[ -n "$compose_file" ]]; then
-        fix_build_images "$compose_file" "$output_dir"
-    fi
     
     # Fix PVC sizes (minimum 1Gi in MyNodeOne)
     for pvc_file in "$output_dir"/*-persistentvolumeclaim.yaml; do
@@ -726,11 +662,14 @@ convert_docker_compose() {
         if [[ $? -eq 0 ]]; then
             success "Converted with kompose"
             
+            # Check for common compatibility issues
+            check_compose_compatibility "$compose_file"
+            
             # IMPORTANT: Detect service types FIRST (needed for patching)
             detect_service_types
             
-            # Patch manifests for MyNodeOne compatibility (pass compose_file for build detection)
-            patch_kompose_manifests "$output_dir" "$compose_file"
+            # Patch manifests for MyNodeOne compatibility
+            patch_kompose_manifests "$output_dir"
             
             MANIFEST_DIR="$output_dir"
             

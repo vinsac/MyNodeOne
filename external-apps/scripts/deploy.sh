@@ -805,47 +805,119 @@ deploy_to_cluster() {
 register_app() {
     log "Registering with MyNodeOne..."
     
-    # Get the primary service name
-    local primary_service=$(kubectl get svc -n "$APP_NAME" -o name | grep LoadBalancer | head -1 | cut -d'/' -f2 || \
-                           kubectl get svc -n "$APP_NAME" -o name | head -1 | cut -d'/' -f2)
+    # Get the primary service name (prefer LoadBalancer type)
+    local primary_service=$(kubectl get svc -n "$APP_NAME" -o json | \
+        jq -r '.items[] | select(.spec.type=="LoadBalancer") | .metadata.name' | head -1)
+    
+    if [[ -z "$primary_service" ]]; then
+        # Fallback to any service
+        primary_service=$(kubectl get svc -n "$APP_NAME" -o name | head -1 | cut -d'/' -f2)
+    fi
     
     if [[ -z "$primary_service" ]]; then
         warn "No service found to register"
         return 1
     fi
     
-    # Wait for LoadBalancer IP
-    log "Waiting for LoadBalancer IP..."
-    local lb_ip=""
-    for i in {1..30}; do
-        lb_ip=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
+    log "Primary service: $primary_service"
+    
+    # Wait for LoadBalancer IP with improved retry and logging
+    local max_wait=60  # Increased to 60 seconds
+    local waited=0
+    local retry_interval=3
+    LB_IP=""
+    
+    log "Waiting for MetalLB to assign LoadBalancer IP (up to ${max_wait}s)..."
+    echo ""
+    
+    while [[ $waited -lt $max_wait ]]; do
+        LB_IP=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
         
-        if [[ -n "$lb_ip" ]]; then
+        if [[ -n "$LB_IP" ]]; then
+            echo ""
+            success "LoadBalancer IP assigned: $LB_IP (after ${waited}s)"
             break
         fi
-        sleep 2
+        
+        # Show progress every 6 seconds
+        if [[ $((waited % 6)) -eq 0 ]]; then
+            echo "  ⏱️  Still waiting... (${waited}/${max_wait}s) - Checking MetalLB IP assignment"
+        fi
+        
+        sleep $retry_interval
+        waited=$((waited + retry_interval))
     done
     
-    if [[ -z "$lb_ip" ]]; then
-        warn "Could not get LoadBalancer IP"
+    echo ""
+    
+    if [[ -z "$LB_IP" ]]; then
+        warn "LoadBalancer IP not assigned after ${max_wait}s"
+        echo ""
+        echo "📊 Debugging Information:"
+        echo ""
+        
+        # Check service status
+        local svc_status=$(kubectl get svc -n "$APP_NAME" "$primary_service" 2>/dev/null)
+        if [[ -n "$svc_status" ]]; then
+            echo "  Service exists but IP is pending. Possible causes:"
+            echo "    1. MetalLB IP pool exhausted"
+            echo "    2. MetalLB controller not running"
+            echo "    3. Network configuration issue"
+        else
+            echo "  Service not found - this is unexpected!"
+        fi
+        
+        echo ""
+        echo "🔍 Check MetalLB status:"
+        echo "   kubectl get pods -n metallb-system"
+        echo "   kubectl get ipaddresspool -n metallb-system"
+        echo "   kubectl describe svc -n $APP_NAME $primary_service"
+        echo ""
+        echo "⏰ Manual registration (run after IP is assigned):"
+        echo "   # Check when IP is ready:"
+        echo "   kubectl get svc -n $APP_NAME $primary_service -w"
+        echo ""
+        echo "   # Then register:"
+        echo "   sudo bash $MYNODEONE_ROOT/scripts/lib/service-registry.sh register \\"
+        echo "       $APP_NAME $LOCAL_SUBDOMAIN $APP_NAME $primary_service 80 false"
+        echo "   sudo bash $MYNODEONE_ROOT/scripts/sync-dns.sh"
+        echo ""
+        echo "🚀 Access your app now (without local DNS):"
+        local nodeport=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
+            -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null)
+        if [[ -n "$nodeport" ]]; then
+            echo "   Via NodePort: http://<node-ip>:$nodeport"
+        fi
+        echo "   Via port-forward: kubectl port-forward -n $APP_NAME svc/$primary_service 8080:80"
+        echo "                     http://localhost:8080"
+        echo ""
         return 1
     fi
     
-    success "LoadBalancer IP: $lb_ip"
-    
     # Register with service registry
     if [[ -f "$MYNODEONE_ROOT/scripts/lib/service-registry.sh" ]]; then
-        bash "$MYNODEONE_ROOT/scripts/lib/service-registry.sh" register \
-            "$APP_NAME" "$LOCAL_SUBDOMAIN" "$APP_NAME" "$primary_service" "80" "false" &>/dev/null || true
+        log "Registering for local DNS ($LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local)..."
+        if bash "$MYNODEONE_ROOT/scripts/lib/service-registry.sh" register \
+            "$APP_NAME" "$LOCAL_SUBDOMAIN" "$APP_NAME" "$primary_service" "80" "false" &>/dev/null; then
+            success "Registered with service registry"
+        else
+            warn "Registration failed (but app is still accessible via IP)"
+        fi
     fi
     
     # Update DNS
     if [[ -f "$MYNODEONE_ROOT/scripts/sync-dns.sh" ]]; then
-        bash "$MYNODEONE_ROOT/scripts/sync-dns.sh" &>/dev/null || true
+        log "Updating local DNS..."
+        if bash "$MYNODEONE_ROOT/scripts/sync-dns.sh" &>/dev/null; then
+            success "DNS updated"
+        else
+            warn "DNS sync failed (run manually: sudo bash ~/MyNodeOne/scripts/sync-dns.sh)"
+        fi
     fi
     
-    success "App registered with MyNodeOne"
+    echo ""
+    success "App registered: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
 }
 
 # Configure public domains with intelligent mapping
@@ -894,7 +966,7 @@ configure_public_domains() {
 auto_configure_domains() {
     echo ""
     ask "What's your base domain?"
-    echo "  Example: myapp.com (we'll create api.myapp.com, app.myapp.com, etc.)"
+    echo "  Example: myapp.com"
     read -p "Base domain: " BASE_DOMAIN
     
     if [[ -z "$BASE_DOMAIN" ]]; then
@@ -904,13 +976,46 @@ auto_configure_domains() {
     fi
     
     echo ""
+    ask "How do you want to expose the main app?"
+    echo "  1. Subdomain (voting.${BASE_DOMAIN})"
+    echo "  2. Apex/Root domain (${BASE_DOMAIN})"
+    echo ""
+    read -p "Choice [1]: " domain_type_choice
+    domain_type_choice=${domain_type_choice:-1}
+    
+    echo ""
     log "Auto-detecting subdomain mapping..."
     echo ""
     
     declare -a AUTO_DOMAINS
     declare -g -A DOMAIN_SERVICE_MAP
     
-    # Map ONLY frontend/backend/admin services to conventional subdomains
+    # First, add main app domain (primary entry point)
+    local main_domain=""
+    if [[ "$domain_type_choice" == "2" ]]; then
+        main_domain="${BASE_DOMAIN}"  # Apex domain
+    else
+        main_domain="${LOCAL_SUBDOMAIN}.${BASE_DOMAIN}"  # Subdomain
+    fi
+    local primary_service=""
+    
+    # Find primary frontend service
+    for svc in "${SERVICE_ARRAY[@]}"; do
+        local svc_type="${SERVICE_TYPES[$svc]:-internal}"
+        if [[ "$svc_type" == "frontend" ]]; then
+            if [[ -z "$primary_service" ]]; then
+                primary_service="$svc"
+            fi
+        fi
+    done
+    
+    if [[ -n "$primary_service" ]]; then
+        AUTO_DOMAINS+=("$main_domain")
+        DOMAIN_SERVICE_MAP["$main_domain"]="$primary_service"
+        echo "  ✓ ${main_domain} → ${primary_service} (main app)"
+    fi
+    
+    # Map additional frontend/backend services to conventional subdomains
     local exposed_count=0
     declare -a INTERNAL_SERVICES
     
@@ -926,12 +1031,15 @@ auto_configure_domains() {
                 else
                     subdomain="app"
                 fi
+                exposed_count=$((exposed_count + 1))
                 ;;
             backend)
                 subdomain="api"
+                exposed_count=$((exposed_count + 1))
                 ;;
             admin)
                 subdomain="admin"
+                exposed_count=$((exposed_count + 1))
                 ;;
             database|cache|worker|internal)
                 # Internal services - no public domain
@@ -943,9 +1051,8 @@ auto_configure_domains() {
         local full_domain="${subdomain}.${BASE_DOMAIN}"
         AUTO_DOMAINS+=("$full_domain")
         DOMAIN_SERVICE_MAP["$full_domain"]="$svc"
-        exposed_count=$((exposed_count + 1))
         
-        echo "  ✓ ${full_domain} → ${svc} (public)"
+        echo "  ✓ ${full_domain} → ${svc} (additional service)"
     done
     
     echo ""
@@ -982,8 +1089,16 @@ auto_configure_domains() {
     echo "     sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh"
     echo ""
     echo "  3. Access your app (after DNS propagates ~5-30 min):"
+    echo ""
+    # Show main app first
+    if [[ -n "$main_domain" ]]; then
+        echo "     🌟 Main app: https://$main_domain"
+    fi
+    # Then show additional services
     for domain in "${AUTO_DOMAINS[@]}"; do
-        echo "     https://$domain  (SSL certificate auto-issued by Let's Encrypt)"
+        if [[ "$domain" != "$main_domain" ]]; then
+            echo "        https://$domain"
+        fi
     done
     echo ""
     echo "  📖 See external-apps/DOMAIN-SSL-WORKFLOW.md for detailed explanation"

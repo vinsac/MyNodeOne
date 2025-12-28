@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My App on MyNodeOne</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        .badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 5px 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Simple Web App</h1>
+        
+        <div style="margin: 20px 0;">
+            <span class="badge">✓ Deployed on MyNodeOne</span>
+            <span class="badge">✓ One Command</span>
+        </div>
+        
+        <p>This is a simple web app deployed with:</p>
+        <pre style="background: #f5f5f5; padding: 15px; border-radius: 8px;">bash deploy.sh</pre>
+        
+        <p><strong>No Kubernetes knowledge needed!</strong></p>
+        
+        <h3>What Just Happened?</h3>
+        <ul>
+            <li>Script read docker-compose.yml</li>
+            <li>Asked for RAM and CPU requirements</li>
+            <li>Converted to Kubernetes automatically</li>
+            <li>Deployed to cluster</li>
+            <li>Configured DNS</li>
+            <li>Set up load balancing</li>
+        </ul>
+        
+        <p style="margin-top: 40px; color: #666; font-size: 14px;">
+            Powered by MyNodeOne Infrastructure
+        </p>
+    </div>
+</body>
+</html>

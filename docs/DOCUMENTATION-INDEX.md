@@ -21,6 +21,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Daily usage
 - **"How do I manage it?"** → [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 - **"Deploy an app"** → Check `manifests/examples/`
+- **"Deploy my own app"** → [external-apps/](../external-apps/) - One command deployment
 - **"Check cluster health"** → Run `./scripts/cluster-status.sh`
 - **"Add more nodes"** → [scaling.md](../operations/scaling.md)
 
@@ -145,6 +146,7 @@ mynodeone/
 - Example apps: `manifests/examples/`
 - Create new app: `scripts/create-app.sh`
 - Deploy guide: [APP-STORE.md](apps/APP-STORE.md)
+- **Deploy your own apps:** [external-apps/](../external-apps/) (All materials consolidated here)
 - LLM support: `manifests/examples/llm-cpu-inference.yaml`
 
 ### Monitoring
@@ -191,6 +193,12 @@ mynodeone/
 
 **"How do I expose apps publicly?"**  
 → [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md)
+
+**"How do I deploy my own apps?"**  
+→ [external-apps/](../external-apps/) - Everything in one place
+
+**"Can I keep my app code separate?"**  
+→ Yes! See [external-apps/README.md](../external-apps/README.md)
 
 ---
 

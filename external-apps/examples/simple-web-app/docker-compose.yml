@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  web:
+    image: nginxinc/nginx-unprivileged:alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+# To deploy:
+# 1. cd to this directory
+# 2. bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
+# 3. Answer questions (RAM: 128Mi, CPU: 100m)
+# 4. Access at http://myapp.mynodeone.local

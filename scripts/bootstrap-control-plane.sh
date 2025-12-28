@@ -397,6 +397,49 @@ install_dependencies() {
     log_success "Dependencies installed"
 }
 
+install_kompose() {
+    log_info "Installing Kompose (docker-compose to Kubernetes converter)..."
+    
+    # Check if already installed
+    if command -v kompose &> /dev/null; then
+        local KOMPOSE_VERSION=$(kompose version 2>/dev/null | grep -oP 'v[0-9.]+' || echo "unknown")
+        log_warn "Kompose already installed ($KOMPOSE_VERSION), skipping..."
+        return 0
+    fi
+    
+    # Detect architecture
+    local ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+        armv7l) ARCH="arm" ;;
+    esac
+    
+    local OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    local KOMPOSE_VERSION="v1.34.0"  # Latest stable
+    local KOMPOSE_URL="https://github.com/kubernetes/kompose/releases/download/${KOMPOSE_VERSION}/kompose-${OS}-${ARCH}"
+    
+    log_info "Downloading Kompose ${KOMPOSE_VERSION} for ${OS}-${ARCH}..."
+    
+    if curl -fsSL "$KOMPOSE_URL" -o /usr/local/bin/kompose; then
+        chmod +x /usr/local/bin/kompose
+        
+        # Verify installation
+        if command -v kompose &> /dev/null; then
+            local INSTALLED_VERSION=$(kompose version 2>/dev/null | head -1 || echo "unknown")
+            log_success "Kompose installed successfully: $INSTALLED_VERSION"
+            return 0
+        else
+            log_error "Kompose binary installed but not executable"
+            return 1
+        fi
+    else
+        log_warn "Kompose installation failed (non-critical)"
+        log_info "External app deployment will use fallback parser"
+        return 0  # Non-critical failure
+    fi
+}
+
 configure_firewall() {
     log_info "Configuring firewall..."
     
@@ -2503,6 +2546,7 @@ main() {
     install_k3s
     setup_gpu_support  # Configure GPU after K3s is installed (if NVIDIA GPU present)
     install_helm
+    install_kompose  # For external app deployment (docker-compose conversion)
     install_cert_manager
     install_metallb
     configure_tailscale_subnet_routes

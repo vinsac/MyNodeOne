@@ -1252,6 +1252,137 @@ async def get_usage(api_key: str = Depends(get_api_key)):
 # Admin UI and Endpoints
 # =============================================================================
 
+ADMIN_LOGIN_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM API Admin - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full mx-4">
+        <div class="bg-gray-800 rounded-lg p-8 border border-gray-700 shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="flex justify-center mb-4">
+                    <i data-lucide="brain" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-white mb-2">LLM API Admin</h1>
+                <p class="text-gray-400">Enter your admin API key to continue</p>
+            </div>
+            
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label for="api-key" class="block text-sm font-medium text-gray-300 mb-2">
+                        Admin API Key
+                    </label>
+                    <input 
+                        type="password" 
+                        id="api-key" 
+                        placeholder="sk-mynodeone-xxxxxxxxxxxxx"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        required
+                    />
+                </div>
+                
+                <div id="error-message" class="hidden bg-red-900 border border-red-700 text-red-200 rounded-lg p-3 text-sm">
+                </div>
+                
+                <button 
+                    type="submit"
+                    class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
+                >
+                    <i data-lucide="log-in" class="w-5 h-5"></i>
+                    Login to Admin Dashboard
+                </button>
+            </form>
+            
+            <div class="mt-6 p-4 bg-gray-700 rounded-lg">
+                <p class="text-xs text-gray-400 mb-2">
+                    <strong class="text-gray-300">Where to find your admin key:</strong>
+                </p>
+                <code class="text-xs text-green-400 block bg-gray-900 p-2 rounded mt-2">
+                    cat ~/.mynodeone/llmapi-admin-key
+                </code>
+                <p class="text-xs text-gray-500 mt-2">Or use:</p>
+                <code class="text-xs text-green-400 block bg-gray-900 p-2 rounded mt-1">
+                    ./scripts/apps/llmapi/manage-keys.sh list
+                </code>
+            </div>
+        </div>
+        
+        <p class="text-center text-gray-500 text-xs mt-6">
+            Your API key is stored locally in your browser and never transmitted to any third party.
+        </p>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const apiKey = document.getElementById('api-key').value.trim();
+            const errorDiv = document.getElementById('error-message');
+            
+            // Validate format
+            if (!apiKey.startsWith('sk-mynodeone-')) {
+                showError('Invalid API key format. Key must start with "sk-mynodeone-"');
+                return;
+            }
+            
+            // Test the API key by calling /admin/models
+            try {
+                const response = await fetch('/admin/models', {
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                if (response.ok) {
+                    // Key is valid, store it and redirect
+                    localStorage.setItem('llmapi_admin_key', apiKey);
+                    window.location.href = '/admin/dashboard';
+                } else if (response.status === 403) {
+                    const data = await response.json();
+                    showError('This API key does not have admin scope. Please use an admin key.');
+                } else if (response.status === 401) {
+                    showError('Invalid API key. Please check your key and try again.');
+                } else {
+                    showError(`Authentication failed: ${response.status}`);
+                }
+            } catch (e) {
+                showError('Failed to connect to API: ' + e.message);
+            }
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+        
+        // Check if already logged in
+        const storedKey = localStorage.getItem('llmapi_admin_key');
+        if (storedKey) {
+            // Verify the key is still valid
+            fetch('/admin/models', {
+                headers: { 'Authorization': `Bearer ${storedKey}` }
+            }).then(resp => {
+                if (resp.ok) {
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    localStorage.removeItem('llmapi_admin_key');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+"""
+
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1264,12 +1395,18 @@ ADMIN_HTML = """
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
     <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-white flex items-center gap-3">
-                <i data-lucide="brain" class="w-8 h-8 text-purple-400"></i>
-                LLM API Admin
-            </h1>
-            <p class="text-gray-400 mt-2">Manage models, API keys, and monitor usage</p>
+        <header class="mb-8 flex items-start justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+                    <i data-lucide="brain" class="w-8 h-8 text-purple-400"></i>
+                    LLM API Admin
+                </h1>
+                <p class="text-gray-400 mt-2">Manage models, API keys, and monitor usage</p>
+            </div>
+            <button onclick="logout()" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                Logout
+            </button>
         </header>
 
         <!-- Status Cards -->
@@ -1708,17 +1845,37 @@ ADMIN_HTML = """
 
         const API_BASE = window.location.origin;
         
-        // Admin API calls use credentials from Basic Auth (browser handles this)
+        // Get API key from localStorage
+        const API_KEY = localStorage.getItem('llmapi_admin_key');
+        
+        // Redirect to login if no key
+        if (!API_KEY) {
+            window.location.href = '/admin';
+        }
+        
+        // Admin API calls with API key authentication
         async function adminFetch(url, options = {}) {
+            const headers = {
+                ...options.headers,
+                'Authorization': `Bearer ${API_KEY}`
+            };
             return fetch(url, { 
-                ...options, 
-                credentials: 'include'  // Include Basic Auth credentials
+                ...options,
+                headers
             });
+        }
+        
+        // Logout function
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('llmapi_admin_key');
+                window.location.href = '/admin';
+            }
         }
 
         async function loadStatus() {
             try {
-                const resp = await fetch(`${API_BASE}/health/backends`);
+                const resp = await adminFetch(`${API_BASE}/health/backends`);
                 const data = await resp.json();
                 
                 // Update backend status
@@ -1738,7 +1895,7 @@ ADMIN_HTML = """
 
         async function loadModels() {
             try {
-                const resp = await fetch(`${API_BASE}/admin/models`);
+                const resp = await adminFetch(`${API_BASE}/admin/models`);
                 const data = await resp.json();
                 
                 const list = document.getElementById('models-list');
@@ -1790,7 +1947,7 @@ ADMIN_HTML = """
             document.getElementById('download-bar').style.width = '0%';
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/models/download`, {
+                const resp = await adminFetch(`${API_BASE}/admin/models/download`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({model: modelName})
@@ -1839,7 +1996,7 @@ ADMIN_HTML = """
             if (!confirm(`Delete model "${modelName}"? This will free up disk space but the model will need to be re-downloaded to use again.`)) return;
             
             try {
-                await fetch(`${API_BASE}/admin/models/${encodeURIComponent(modelName)}`, {method: 'DELETE'});
+                await adminFetch(`${API_BASE}/admin/models/${encodeURIComponent(modelName)}`, {method: 'DELETE'});
                 loadModels();
             } catch (e) {
                 alert('Failed to delete model: ' + e.message);
@@ -1866,7 +2023,7 @@ ADMIN_HTML = """
             if (!confirmed) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/vllm`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/vllm`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({model_id: model})
@@ -1908,7 +2065,7 @@ ADMIN_HTML = """
             if (!confirmed) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/llamacpp`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/llamacpp`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({model_url: modelUrl})
@@ -1928,7 +2085,7 @@ ADMIN_HTML = """
         
         async function loadBackendConfig() {
             try {
-                const resp = await fetch(`${API_BASE}/admin/config`);
+                const resp = await adminFetch(`${API_BASE}/admin/config`);
                 const data = await resp.json();
                 
                 if (data.vllm_model) {
@@ -1982,7 +2139,7 @@ ADMIN_HTML = """
             if (!confirmed) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/embedding`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/embedding`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({model_url: modelUrl})
@@ -2015,7 +2172,7 @@ Continue?`;
             if (!confirm(msg)) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/embedding/config`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/embedding/config`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -2048,7 +2205,7 @@ Continue?`;
             if (!confirm(message)) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/llamacpp/scale`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/llamacpp/scale`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({replicas: isRunning ? 0 : 1})
@@ -2073,7 +2230,7 @@ Continue?`;
             }
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/config`, {
+                const resp = await adminFetch(`${API_BASE}/admin/config`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({hf_token: token})
@@ -2106,7 +2263,7 @@ vLLM will be unavailable for ~5-10 minutes. Continue?`;
             if (!confirm(msg)) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/vllm/config`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/vllm/config`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -2145,7 +2302,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             if (!confirm(msg)) return;
             
             try {
-                const resp = await fetch(`${API_BASE}/admin/backend/llamacpp/config`, {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/llamacpp/config`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -2239,8 +2396,14 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_ui(api_key: str = Depends(get_api_key)):
-    """Admin UI for managing the LLM API - requires \'admin\' scope."""
+async def admin_ui():
+    """Admin UI for managing the LLM API - requires 'admin' scope."""
+    return ADMIN_LOGIN_HTML
+
+
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+async def admin_dashboard(api_key: str = Depends(get_api_key)):
+    """Admin dashboard - requires 'admin' scope."""
     await require_scope("admin", api_key)
     return ADMIN_HTML
 

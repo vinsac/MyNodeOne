@@ -2373,9 +2373,9 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 if (data.keys && data.keys.length > 0) {
                     list.innerHTML = data.keys.map(k => `
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
-                            <div>
-                                <span class="font-medium">${k.name}</span>
-                                <span class="text-xs text-gray-400 ml-2">${k.key_prefix}...</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium">${k.name}</div>
+                                <code class="text-xs text-gray-400 break-all">${k.key}</code>
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
                                 <span>${k.requests_per_minute} rpm</span>
@@ -2402,20 +2402,24 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
                 
-                // Update stats cards
-                document.getElementById('total-requests').textContent = data.total_requests.toLocaleString();
-                document.getElementById('total-tokens').textContent = data.total_tokens.toLocaleString();
-                document.getElementById('active-keys').textContent = data.active_keys;
+                // Update stats cards with null checks
+                document.getElementById('total-requests').textContent = (data.total_requests || 0).toLocaleString();
+                document.getElementById('total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
+                document.getElementById('active-keys').textContent = data.active_keys || 0;
                 
-                // Update hourly chart
+                // Update hourly chart with null checks
                 const hourlyEl = document.getElementById('stats-hourly');
-                const maxReq = Math.max(...data.by_hour.map(h => h.requests), 1);
-                hourlyEl.innerHTML = data.by_hour.map(h => {
-                    const height = Math.max(4, (h.requests / maxReq) * 100);
-                    const title = `${h.hour}: ${h.requests} requests, ${h.tokens.toLocaleString()} tokens`;
-                    return `<div class="flex-1 bg-green-500 rounded-t opacity-70 hover:opacity-100 transition cursor-pointer" 
-                                 style="height: ${height}%" title="${title}"></div>`;
-                }).join('');
+                if (data.by_hour && data.by_hour.length > 0) {
+                    const maxReq = Math.max(...data.by_hour.map(h => h.requests || 0), 1);
+                    hourlyEl.innerHTML = data.by_hour.map(h => {
+                        const height = Math.max(4, ((h.requests || 0) / maxReq) * 100);
+                        const title = `${h.hour}: ${h.requests || 0} requests, ${(h.tokens || 0).toLocaleString()} tokens`;
+                        return `<div class="flex-1 bg-green-500 rounded-t opacity-70 hover:opacity-100 transition cursor-pointer" 
+                                     style="height: ${height}%" title="${title}"></div>`;
+                    }).join('');
+                } else {
+                    hourlyEl.innerHTML = '<div class="text-gray-400 text-center py-4">No data yet</div>';
+                }
                 
             } catch (e) {
                 console.error('Failed to load stats:', e);
@@ -2488,7 +2492,6 @@ async def admin_list_keys(api_key: str = Depends(get_api_key)):
                 if config_data:
                     keys.append({
                         "key": api_key,
-                        "key_prefix": api_key[:20],
                         "name": config_data.get("name", "unknown"),
                         "requests_per_minute": config_data.get("requests_per_minute", 60),
                         "tokens_per_day": config_data.get("tokens_per_day", 100000),

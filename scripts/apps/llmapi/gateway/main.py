@@ -1855,14 +1855,50 @@ ADMIN_HTML = """
         
         // Admin API calls with API key authentication
         async function adminFetch(url, options = {}) {
-            const headers = {
-                ...options.headers,
-                'Authorization': `Bearer ${API_KEY}`
-            };
-            return fetch(url, { 
-                ...options,
-                headers
-            });
+            try {
+                const headers = {
+                    ...options.headers,
+                    'Authorization': `Bearer ${API_KEY}`
+                };
+                const response = await fetch(url, { 
+                    ...options,
+                    headers
+                });
+                
+                // Handle authentication failures
+                if (response.status === 401 || response.status === 403) {
+                    localStorage.removeItem('llmapi_admin_key');
+                    alert('Your API key is invalid or has been revoked. Please login again.');
+                    window.location.href = '/admin';
+                    return null;
+                }
+                
+                return response;
+            } catch (e) {
+                console.error('API call failed:', e);
+                throw e;
+            }
+        }
+        
+        // Validate API key works on page load
+        async function validateApiKey() {
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/models`);
+                if (!resp) return false; // Already redirected
+                if (!resp.ok) {
+                    localStorage.removeItem('llmapi_admin_key');
+                    alert('Failed to validate API key. Please login again.');
+                    window.location.href = '/admin';
+                    return false;
+                }
+                return true;
+            } catch (e) {
+                console.error('API key validation failed:', e);
+                localStorage.removeItem('llmapi_admin_key');
+                alert('Failed to connect to API. Please check your connection and login again.');
+                window.location.href = '/admin';
+                return false;
+            }
         }
         
         // Logout function
@@ -1876,6 +1912,7 @@ ADMIN_HTML = """
         async function loadStatus() {
             try {
                 const resp = await adminFetch(`${API_BASE}/health/backends`);
+                if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
                 
                 // Update backend status
@@ -2375,12 +2412,17 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             }
         }
 
-        // Load everything on page load
-        loadStatus();
-        loadModels();
-        loadKeys();
-        loadBackendConfig();
-        loadStats();
+        // Validate API key and load everything on page load
+        (async function() {
+            const isValid = await validateApiKey();
+            if (!isValid) return; // Validation failed, already redirected
+            
+            loadStatus();
+            loadModels();
+            loadKeys();
+            loadBackendConfig();
+            loadStats();
+        })();
         
         // Refresh status every 30 seconds
         setInterval(loadStatus, 30000);

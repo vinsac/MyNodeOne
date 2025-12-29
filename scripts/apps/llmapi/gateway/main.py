@@ -25,7 +25,7 @@ import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, Form
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
@@ -772,15 +772,12 @@ backend_manager = BackendManager()
 # Authentication
 # =============================================================================
 
-async def get_api_key(authorization: str = Header(None)) -> str:
+# HTTPBearer security scheme for proper OpenAPI/Swagger integration
+security = HTTPBearer()
+
+async def get_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """Extract and validate API key from Authorization header."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-    
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid Authorization format")
-    
-    api_key = authorization[7:]
+    api_key = credentials.credentials
     
     # Check if key exists in Redis
     key_config = await redis_client.get_api_key_config(api_key)

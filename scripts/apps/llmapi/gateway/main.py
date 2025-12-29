@@ -2392,10 +2392,20 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     list.innerHTML = '<p class="text-gray-400">No API keys found.</p>';
                 }
             } catch (e) {
-                            </div>
-                        </div>
-                    `).join('');
-                }
+                console.error('Failed to load keys:', e);
+            }
+        }
+        
+        async function loadStats() {
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/stats`);
+                if (!resp) return; // Auth failure, already redirected
+                const data = await resp.json();
+                
+                // Update stats cards
+                document.getElementById('total-requests').textContent = data.total_requests.toLocaleString();
+                document.getElementById('total-tokens').textContent = data.total_tokens.toLocaleString();
+                document.getElementById('active-keys').textContent = data.active_keys;
                 
                 // Update hourly chart
                 const hourlyEl = document.getElementById('stats-hourly');

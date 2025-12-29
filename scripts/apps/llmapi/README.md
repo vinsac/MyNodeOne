@@ -12,6 +12,8 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 - ✅ **Usage Metering** - Track tokens per API key for quotas
 - ✅ **Backend Transparency** - Response includes `system_fingerprint` showing which backend handled it
 - ✅ **Admin UI** - Web interface at `/admin` for key management and monitoring
+- ✅ **API Key Scopes** - Granular permissions: `inference`, `metrics`, `admin`
+- ✅ **Auto-Generated Keys** - Admin, Prometheus, and default keys created during install
 
 ## Quick Start
 
@@ -39,11 +41,13 @@ sudo ./scripts/apps/llmapi/download-models.sh
 # Install the LLM API service (will use pre-downloaded models if available)
 sudo ./scripts/apps/llmapi/install-llmapi.sh
 
-# Create an API key
-./scripts/apps/llmapi/manage-keys.sh create --name "my-app"
+# Three API keys are automatically generated:
+# - Admin key:      ~/.mynodeone/llmapi-admin-key
+# - Prometheus key: ~/.mynodeone/llmapi-prometheus-key  
+# - Default key:    ~/.mynodeone/llmapi-key
 
 # Test the API
-export LLMAPI_KEY="sk-mynodeone-xxxx"  # from above command
+export LLMAPI_KEY=$(cat ~/.mynodeone/llmapi-key)
 curl -H "Authorization: Bearer $LLMAPI_KEY" \
      http://llmapi.cluster.local/v1/models
 ```
@@ -113,9 +117,61 @@ response = client.chat.completions.create(
 
 If you request a model that isn't loaded, you'll get a 404 with available alternatives.
 
+## API Key Management
+
+**Auto-generated keys** (created during installation):
+```bash
+cat ~/.mynodeone/llmapi-key              # inference scope - for API usage
+cat ~/.mynodeone/llmapi-admin-key        # admin scope - for admin UI
+cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope - for Prometheus
+```
+
+**Create additional keys:**
+```bash
+# Inference key (for applications)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "my-app" \
+  --scopes "inference" \
+  --tokens 1000000 \
+  --rpm 100
+
+# Metrics key (for Prometheus)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "prometheus" \
+  --scopes "metrics"
+
+# Admin key (for management)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "admin-user" \
+  --scopes "admin"
+
+# List all keys with scopes
+./scripts/apps/llmapi/manage-keys.sh list
+```
+
+**API Key Scopes:**
+
+| Scope | Endpoints | Purpose |
+|-------|-----------|----------|
+| `inference` | `/v1/*` | LLM API usage (chat, embeddings, models) |
+| `metrics` | `/metrics`, `/health/backends` | Prometheus monitoring |
+| `admin` | `/admin/*` | Full administrative access |
+
+**Note:** Admin scope grants all permissions (includes inference + metrics).
+
 ## Admin Interface
 
-Access the admin UI at `http://llmapi.cluster.local/admin`:
+**Access:** `http://llmapi.cluster.local/admin`
+
+**Authentication:** API key with `admin` scope
+```bash
+# Use auto-generated admin key
+ADMIN_KEY=$(cat ~/.mynodeone/llmapi-admin-key)
+curl -H "Authorization: Bearer $ADMIN_KEY" \
+     http://llmapi.minicloud.local/admin
+```
+
+**Features:**
 
 | Feature | Description |
 |---------|-------------|

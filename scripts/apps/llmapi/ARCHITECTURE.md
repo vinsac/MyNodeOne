@@ -111,27 +111,38 @@ Responses follow the **OpenAI API format** with an additional `system_fingerprin
 
 **URL:** `http://llmapi.<cluster>.local/admin`
 
-**Authentication:** HTTP Basic Auth
-- **Username:** `admin` (or any username - only password is checked)
-- **Password:** Generated during installation (shown at end of install script)
+**Authentication:** API Key with `admin` scope
+- **Header:** `Authorization: Bearer sk-mynodeone-xxxx`
+- **Admin Key:** Auto-generated during installation (saved to `~/.mynodeone/llmapi-admin-key`)
 
-The password is stored in the gateway ConfigMap (`ADMIN_PASSWORD`). To reset it:
 ```bash
-kubectl edit configmap gateway-config -n llmapi
-# Change ADMIN_PASSWORD value, then restart gateway:
-kubectl rollout restart deployment gateway -n llmapi
+# Access admin UI
+ADMIN_KEY=$(cat ~/.mynodeone/llmapi-admin-key)
+curl -H "Authorization: Bearer $ADMIN_KEY" \
+     http://llmapi.minicloud.local/admin
+```
+
+To create additional admin keys:
+```bash
+./scripts/apps/llmapi/manage-keys.sh create --name "admin-user" --scopes "admin"
 ```
 
 ### Who can change backend settings?
 
-| Endpoint | Access | Description |
-|----------|--------|-------------|
-| `/v1/*` | API key holders | Standard OpenAI-compatible API |
-| `/admin/*` | Admin password only | Model management, config, keys |
-| `/health/*` | Public | Health checks (no auth) |
-| `/metrics` | Public | Prometheus metrics |
+| Endpoint | Required Scope | Description |
+|----------|---------------|-------------|
+| `/v1/*` | `inference` | Standard OpenAI-compatible API |
+| `/admin/*` | `admin` | Model management, config, keys |
+| `/health` | Public | Basic health check (no auth) |
+| `/health/backends` | `metrics` | Detailed backend health status |
+| `/metrics` | `metrics` | Prometheus metrics |
 
-**Regular users** can only use the API with their API key. They **cannot** change models, context length, or other settings.
+**API Key Scopes:**
+- **`inference`**: Access to LLM API (`/v1/*` endpoints) - default for user keys
+- **`metrics`**: Access to monitoring endpoints (`/metrics`, `/health/backends`) - for Prometheus
+- **`admin`**: Full administrative access - grants all permissions
+
+**Regular users** with `inference` scope can only use the API. They **cannot** access admin endpoints or metrics.
 
 ### How do I change models as an admin?
 
@@ -631,11 +642,26 @@ Persistent storage for configuration and usage data.
 
 ### Authentication
 
+All endpoints (except `/health`) require API key authentication:
+
 ```bash
 # Header-based authentication (OpenAI-compatible)
 curl -H "Authorization: Bearer sk-mynodeone-xxxx" \
      https://llmapi.cluster.local/v1/chat/completions
 ```
+
+**API Key Scopes:**
+
+| Scope | Permissions | Use Case |
+|-------|-------------|----------|
+| `inference` | `/v1/*` endpoints only | Application API usage |
+| `metrics` | `/metrics`, `/health/backends` | Prometheus monitoring |
+| `admin` | All endpoints | Administrative access |
+
+**Scope Enforcement:**
+- Keys are restricted to their assigned scopes
+- Admin scope grants all permissions (superuser)
+- Attempting to access unauthorized endpoints returns `403 Forbidden` with scope details
 
 ### Request Priority
 
@@ -785,12 +811,35 @@ GET /health/vllm-1    # Specific backend
 ## Security
 
 ### API Key Management
+
+**Three keys auto-generated during installation:**
+1. **Admin Key** (`admin` scope) - saved to `~/.mynodeone/llmapi-admin-key`
+2. **Prometheus Key** (`metrics` scope) - saved to `~/.mynodeone/llmapi-prometheus-key`
+3. **Default Key** (`inference` scope) - saved to `~/.mynodeone/llmapi-key`
+
+**Create additional keys:**
 ```bash
-# Create API key with quota
+# Create inference key (for applications)
 ./scripts/apps/llmapi/manage-keys.sh create \
   --name "my-app" \
-  --quota-tokens 1000000 \
-  --rate-limit 100/min
+  --scopes "inference" \
+  --tokens 1000000 \
+  --rpm 100
+
+# Create metrics key (for Prometheus)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "prometheus" \
+  --scopes "metrics"
+
+# Create admin key (for management)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "admin-user" \
+  --scopes "admin"
+
+# Create multi-scope key
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "power-user" \
+  --scopes "inference,metrics"
 
 # List keys
 ./scripts/apps/llmapi/manage-keys.sh list
@@ -841,8 +890,13 @@ scripts/apps/llmapi/
 # Install LLM API service
 sudo ./scripts/apps/llmapi/install-llmapi.sh
 
-# Create an API key for your app
-./scripts/apps/llmapi/manage-keys.sh create --name "my-app"
+# API keys are auto-generated during installation
+# Admin key:      ~/.mynodeone/llmapi-admin-key
+# Prometheus key: ~/.mynodeone/llmapi-prometheus-key
+# Default key:    ~/.mynodeone/llmapi-key
+
+# Create additional keys as needed
+./scripts/apps/llmapi/manage-keys.sh create --name "my-app" --scopes "inference"
 
 # Test the API
 curl -H "Authorization: Bearer $API_KEY" \

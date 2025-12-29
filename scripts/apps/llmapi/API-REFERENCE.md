@@ -8,10 +8,35 @@ OpenAI-compatible API endpoints for MyNodeOne self-hosted LLM inference.
 
 ## Authentication
 
-All requests require an API key via Bearer token:
+All endpoints (except `/health`) require an API key via Bearer token:
 
 ```bash
 Authorization: Bearer sk-mynodeone-xxxxxx
+```
+
+### API Key Scopes
+
+API keys have specific scopes that control access:
+
+| Scope | Endpoints | Purpose |
+|-------|-----------|----------|
+| `inference` | `/v1/*` | LLM API usage (chat, embeddings, models) |
+| `metrics` | `/metrics`, `/health/backends` | Prometheus monitoring |
+| `admin` | `/admin/*` | Full administrative access |
+
+**Note:** The `admin` scope grants all permissions (includes `inference` + `metrics`).
+
+**Scope Error Example:**
+```json
+{
+  "detail": {
+    "error": "Insufficient scope",
+    "message": "API key lacks required scope: 'metrics'",
+    "required_scope": "metrics",
+    "available_scopes": ["inference"],
+    "hint": "Request a new API key with appropriate scopes from your administrator"
+  }
+}
 ```
 
 ---
@@ -323,6 +348,47 @@ curl http://llmapi.cluster.local/v1/chat/completions
 ```
 
 **Fix:** Include valid API key in `Authorization: Bearer` header
+
+---
+
+#### **401 Unauthorized - Missing or invalid API key**
+
+```bash
+curl http://llmapi.cluster.local/v1/chat/completions
+# Missing Authorization header
+```
+
+```json
+{
+  "detail": "Missing Authorization header"
+}
+```
+
+**Fix:** Include valid API key in `Authorization: Bearer` header
+
+---
+
+#### **403 Forbidden - Insufficient scope**
+
+```bash
+# Trying to access /metrics with inference-only key
+curl -H "Authorization: Bearer sk-mynodeone-xxxx" \
+     http://llmapi.cluster.local/metrics
+```
+
+```json
+{
+  "detail": {
+    "error": "Insufficient scope",
+    "message": "API key lacks required scope: 'metrics'",
+    "required_scope": "metrics",
+    "available_scopes": ["inference"],
+    "hint": "Request a new API key with appropriate scopes from your administrator"
+  }
+}
+```
+
+**Fix:** Use an API key with the required scope, or request admin to create one
 
 ---
 
@@ -746,15 +812,40 @@ for chunk in response:
 
 ## Getting an API Key
 
+**Auto-generated keys** (available after installation):
 ```bash
-# Create a new API key
-./scripts/apps/llmapi/manage-keys.sh create --name "my-app"
+# Three keys are created automatically:
+cat ~/.mynodeone/llmapi-key              # inference scope
+cat ~/.mynodeone/llmapi-admin-key        # admin scope
+cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope
+```
 
-# Output:
-# Created API key: sk-mynodeone-abc123xyz...
-# Name: my-app
-# Quota: 1M tokens/month
-# Rate limit: 100 req/min
+**Create additional keys:**
+```bash
+# Inference key (for applications)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "my-app" \
+  --scopes "inference" \
+  --tokens 1000000 \
+  --rpm 100
+
+# Metrics key (for Prometheus)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "prometheus" \
+  --scopes "metrics"
+
+# Admin key (for management)
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "admin-user" \
+  --scopes "admin"
+
+# Multi-scope key
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "power-user" \
+  --scopes "inference,metrics"
+
+# List all keys
+./scripts/apps/llmapi/manage-keys.sh list
 ```
 
 ---

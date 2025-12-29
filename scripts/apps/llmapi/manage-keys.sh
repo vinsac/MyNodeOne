@@ -25,12 +25,12 @@ usage() {
     echo "Usage: $0 <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  create    Create a new API key"
-    echo "  list      List all API keys"
-    echo "  show      Show details for an API key"
-    echo "  update    Update quotas for an API key"
-    echo "  revoke    Revoke an API key"
-    echo "  usage     Show usage statistics for an API key"
+    echo "  create         Create a new API key"
+    echo "  list [--full]  List all API keys (use --full to show complete keys)"
+    echo "  show           Show details for an API key"
+    echo "  update         Update quotas for an API key"
+    echo "  revoke         Revoke an API key"
+    echo "  usage          Show usage statistics for an API key"
     echo ""
     echo "Options for 'create':"
     echo "  --name <name>           Name/description for the key"
@@ -397,6 +397,26 @@ case "$command" in
         cmd_list
         ;;
     show)
+        cmd_show "$@"
+        ;;
+    update)
+        cmd_update "$@"
+        ;;
+    revoke)
+        cmd_revoke "$@"
+        ;;
+    usage)
+        cmd_usage "$@"
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $command${NC}"
+        usage
+        exit 1
+        ;;
+esac
         cmd_show "$@"
         ;;
     update)

@@ -1400,8 +1400,10 @@ if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
     echo "$ADMIN_KEY" > ~/.mynodeone/llmapi-admin-key
     echo "$PROMETHEUS_KEY" > ~/.mynodeone/llmapi-prometheus-key
     echo "$API_KEY" > ~/.mynodeone/llmapi-key
-    chmod 600 ~/.mynodeone/llmapi-*-key
-    echo "   (saved to ~/.mynodeone/llmapi-*-key)"
+    chmod 600 ~/.mynodeone/llmapi-admin-key
+    chmod 600 ~/.mynodeone/llmapi-prometheus-key
+    chmod 600 ~/.mynodeone/llmapi-key
+    echo "   (saved to ~/.mynodeone/llmapi-admin-key, llmapi-prometheus-key, llmapi-key)"
 else
     echo -e "${YELLOW}⚠ Failed to create some API keys in Redis${NC}"
     echo "   You can create them manually:"

@@ -785,9 +785,35 @@ async def get_api_key(authorization: str = Header(None)) -> str:
     # Check if key exists in Redis
     key_config = await redis_client.get_api_key_config(api_key)
     if not key_config:
-        # For development, allow any key starting with sk-mynodeone-
-        if not api_key.startswith("sk-mynodeone-"):
-            raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    return api_key
+
+
+
+async def require_scope(required_scope: str, api_key: str) -> str:
+    """Verify API key has required scope."""
+    key_config = await redis_client.get_api_key_config(api_key)
+    if not key_config:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    scopes = key_config.get("scopes", ["inference"])  # Default: inference only
+    
+    # Admin scope grants all permissions
+    if "admin" in scopes:
+        return api_key
+    
+    if required_scope not in scopes:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Insufficient scope",
+                "message": f"API key lacks required scope: '{required_scope}'",
+                "required_scope": required_scope,
+                "available_scopes": scopes,
+                "hint": "Request a new API key with appropriate scopes from your administrator"
+            }
+        )
     
     return api_key
 
@@ -857,13 +883,16 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
+    """Health check endpoint - basic liveness check (public)."""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
 @app.get("/health/backends")
-async def health_backends():
-    """Backend health status."""
+async def health_backends(
+    api_key: str = Depends(get_api_key)
+):
+    """Backend health status - requires \'metrics\' scope."""
+    await require_scope("metrics", api_key)
     return {
         "backends": backend_manager.backend_health,
         "inflight": backend_manager.backend_inflight,
@@ -871,14 +900,18 @@ async def health_backends():
 
 
 @app.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint."""
+async def metrics(
+    api_key: str = Depends(get_api_key)
+):
+    """Prometheus metrics endpoint - requires \'metrics\' scope."""
+    await require_scope("metrics", api_key)
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/v1/models")
 async def list_models(api_key: str = Depends(get_api_key)):
-    """List available models. Call this first to see what models are loaded."""
+    """List available models - requires \'inference\' scope."""
+    await require_scope("inference", api_key)
     models = model_registry.get_available_models()
     return {
         "object": "list",
@@ -896,7 +929,8 @@ async def chat_completions(
     api_key: str = Depends(get_api_key),
     priority: str = Depends(get_priority),
 ):
-    """OpenAI-compatible chat completions endpoint."""
+    """OpenAI-compatible chat completions endpoint - requires \'inference\' scope."""
+    await require_scope("inference", api_key)
     start_time = time.time()
     
     # Resolve model - check if it exists
@@ -1098,7 +1132,8 @@ async def embeddings(
     api_key: str = Depends(get_api_key),
     priority: str = Depends(get_priority),
 ):
-    """OpenAI-compatible embeddings endpoint."""
+    """OpenAI-compatible embeddings endpoint - requires \'inference\' scope."""
+    await require_scope("inference", api_key)
     start_time = time.time()
     
     # Resolve model - check if it exists
@@ -1581,18 +1616,36 @@ ADMIN_HTML = """
             <!-- Create Key Form -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4">
                 <h3 class="font-medium mb-3">Create New Key</h3>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                     <input type="text" id="key-name" placeholder="Key name" 
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                     <input type="number" id="key-rpm" placeholder="Requests/min" value="60"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                     <input type="number" id="key-tokens" placeholder="Tokens/day" value="100000"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                    <button onclick="createKey()" 
-                            class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition">
-                        Create Key
-                    </button>
                 </div>
+                <div class="mb-3">
+                    <label class="text-sm text-gray-400 mb-2 block">Scopes (permissions):</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="scope-inference" checked class="w-4 h-4 rounded">
+                            <span class="text-sm">🤖 Inference (LLM API)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="scope-metrics" class="w-4 h-4 rounded">
+                            <span class="text-sm">📊 Metrics (Monitoring)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="scope-admin" class="w-4 h-4 rounded">
+                            <span class="text-sm">🔑 Admin (Full Access)</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Admin scope grants all permissions</p>
+                </div>
+                <button onclick="createKey()" 
+                        class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition">
+                    Create Key
+                </button>
                 <div id="new-key-result" class="mt-3 hidden">
                     <p class="text-sm text-gray-400">New API Key (save this!):</p>
                     <code id="new-key-value" class="block bg-gray-900 rounded p-2 mt-1 text-green-400 text-sm font-mono break-all"></code>
@@ -2142,81 +2195,6 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     list.innerHTML = '<p class="text-gray-400">No API keys found.</p>';
                 }
             } catch (e) {
-                console.error('Failed to load keys:', e);
-            }
-        }
-
-        async function createKey() {
-            const name = document.getElementById('key-name').value;
-            const rpm = document.getElementById('key-rpm').value;
-            const tokens = document.getElementById('key-tokens').value;
-            
-            if (!name) {
-                alert('Please enter a key name');
-                return;
-            }
-            
-            try {
-                const resp = await fetch(`${API_BASE}/admin/keys`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, requests_per_minute: parseInt(rpm), tokens_per_day: parseInt(tokens)})
-                });
-                const data = await resp.json();
-                
-                document.getElementById('new-key-value').textContent = data.api_key;
-                document.getElementById('new-key-result').classList.remove('hidden');
-                document.getElementById('key-name').value = '';
-                
-                loadKeys();
-            } catch (e) {
-                alert('Failed to create key: ' + e.message);
-            }
-        }
-
-        async function revokeKey(key) {
-            if (!confirm('Are you sure you want to revoke this key?')) return;
-            
-            try {
-                await fetch(`${API_BASE}/admin/keys/${encodeURIComponent(key)}`, {method: 'DELETE'});
-                loadKeys();
-            } catch (e) {
-                alert('Failed to revoke key: ' + e.message);
-            }
-        }
-        
-        async function loadStats() {
-            try {
-                const resp = await adminFetch(`${API_BASE}/admin/stats`);
-                const data = await resp.json();
-                
-                // Update summary cards
-                document.getElementById('stats-total-requests').textContent = 
-                    data.summary.total_requests_today.toLocaleString();
-                document.getElementById('stats-total-tokens').textContent = 
-                    data.summary.total_tokens_today.toLocaleString();
-                document.getElementById('stats-active-keys').textContent = 
-                    data.summary.active_keys;
-                
-                // Update usage by key
-                const keysList = document.getElementById('stats-by-key');
-                if (data.by_key.length === 0) {
-                    keysList.innerHTML = '<p class="text-gray-500 text-sm">No usage data yet</p>';
-                } else {
-                    keysList.innerHTML = data.by_key.map(k => `
-                        <div class="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
-                            <div>
-                                <p class="font-medium">${k.name}</p>
-                                <p class="text-xs text-gray-400">${k.api_key_preview}</p>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-sm">
-                                    <span class="text-purple-400">${k.tokens_today.toLocaleString()}</span>
-                                    <span class="text-gray-500">/ ${k.tokens_limit.toLocaleString()} tokens</span>
-                                </p>
-                                <p class="text-xs text-gray-400">
-                                    ${k.requests_today} requests today
-                                </p>
                             </div>
                         </div>
                     `).join('');
@@ -2256,39 +2234,21 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
 
 
 # =============================================================================
-# Admin Authentication
+# Admin Endpoints (require 'admin' scope)
 # =============================================================================
-
-def verify_admin_auth(credentials: HTTPBasicCredentials = Depends(HTTPBasic(auto_error=False)),
-                      x_admin_token: str = Header(None, alias="X-Admin-Token")):
-    """Verify admin credentials via Basic Auth or X-Admin-Token header."""
-    admin_password = config.ADMIN_PASSWORD
-    
-    # Check X-Admin-Token header first (for API calls from JS)
-    if x_admin_token and x_admin_token == admin_password:
-        return True
-    
-    # Check Basic Auth
-    if credentials:
-        if credentials.password == admin_password:
-            return True
-    
-    raise HTTPException(
-        status_code=401,
-        detail="Invalid admin credentials",
-        headers={"WWW-Authenticate": "Basic realm='Admin'"}
-    )
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_ui(auth: bool = Depends(verify_admin_auth)):
-    """Admin UI for managing the LLM API. Requires authentication."""
+async def admin_ui(api_key: str = Depends(get_api_key)):
+    """Admin UI for managing the LLM API - requires \'admin\' scope."""
+    await require_scope("admin", api_key)
     return ADMIN_HTML
 
 
 @app.get("/admin/models")
-async def admin_list_models(auth: bool = Depends(verify_admin_auth)):
+async def admin_list_models(api_key: str = Depends(get_api_key)):
     """List all models (admin endpoint)."""
+    await require_scope("admin", api_key)
     return {
         "models": model_registry.get_available_models(),
         "backends": model_registry.backends,
@@ -2296,8 +2256,9 @@ async def admin_list_models(auth: bool = Depends(verify_admin_auth)):
 
 
 @app.get("/admin/keys")
-async def admin_list_keys(auth: bool = Depends(verify_admin_auth)):
+async def admin_list_keys(api_key: str = Depends(get_api_key)):
     """List all API keys (admin endpoint)."""
+    await require_scope("admin", api_key)
     keys = []
     # Scan for all API keys in Redis
     if redis_client.client:
@@ -2322,12 +2283,23 @@ async def admin_list_keys(auth: bool = Depends(verify_admin_auth)):
 
 
 @app.post("/admin/keys")
-async def admin_create_key(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)):
     """Create a new API key (admin endpoint)."""
+    await require_scope("admin", api_key)
     import secrets
     
     body = await request.json()
     name = body.get("name", "unnamed")
+    scopes = body.get("scopes", ["inference"])  # Default to inference only
+    
+    # Validate scopes
+    valid_scopes = ["inference", "metrics", "admin"]
+    if not isinstance(scopes, list) or not all(s in valid_scopes for s in scopes):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid scopes. Must be a list containing: {valid_scopes}"
+        )
+    
     requests_per_minute = body.get("requests_per_minute", 60)
     tokens_per_day = body.get("tokens_per_day", 100000)
     
@@ -2336,6 +2308,7 @@ async def admin_create_key(request: Request, auth: bool = Depends(verify_admin_a
     
     key_config = {
         "name": name,
+        "scopes": scopes,
         "requests_per_minute": requests_per_minute,
         "tokens_per_day": tokens_per_day,
         "created_at": datetime.utcnow().isoformat(),
@@ -2347,15 +2320,17 @@ async def admin_create_key(request: Request, auth: bool = Depends(verify_admin_a
 
 
 @app.delete("/admin/keys/{api_key}")
-async def admin_revoke_key(api_key: str, auth: bool = Depends(verify_admin_auth)):
+async def admin_revoke_key(api_key: str, api_key: str = Depends(get_api_key)):
     """Revoke an API key (admin endpoint)."""
+    await require_scope("admin", api_key)
     await redis_client.client.delete(f"apikey:{api_key}")
     return {"status": "revoked", "api_key": api_key}
 
 
 @app.get("/admin/usage/{api_key}")
-async def admin_get_usage(api_key: str, auth: bool = Depends(verify_admin_auth)):
+async def admin_get_usage(api_key: str, api_key: str = Depends(get_api_key)):
     """Get usage for a specific API key."""
+    await require_scope("admin", api_key)
     key_config = await redis_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=404, detail="API key not found")
@@ -2374,8 +2349,9 @@ async def admin_get_usage(api_key: str, auth: bool = Depends(verify_admin_auth))
 
 
 @app.get("/admin/stats")
-async def admin_get_stats(auth: bool = Depends(verify_admin_auth)):
+async def admin_get_stats(api_key: str = Depends(get_api_key)):
     """Get comprehensive usage statistics for all API keys."""
+    await require_scope("admin", api_key)
     from datetime import datetime
     
     stats = {
@@ -2480,8 +2456,9 @@ async def admin_get_stats(auth: bool = Depends(verify_admin_auth)):
 # =============================================================================
 
 @app.post("/admin/models/download")
-async def admin_download_model(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_download_model(request: Request, api_key: str = Depends(get_api_key)):
     """Download a model from Ollama/HuggingFace. Returns streaming progress."""
+    await require_scope("admin", api_key)
     body = await request.json()
     model_name = body.get("model")
     
@@ -2498,8 +2475,9 @@ async def admin_download_model(request: Request, auth: bool = Depends(verify_adm
 
 
 @app.delete("/admin/models/{model_name}")
-async def admin_delete_model(model_name: str, auth: bool = Depends(verify_admin_auth)):
+async def admin_delete_model(model_name: str, api_key: str = Depends(get_api_key)):
     """Delete a cached model from Ollama."""
+    await require_scope("admin", api_key)
     try:
         resp = await backend_manager.http_client.delete(
             f"{config.OLLAMA_URL}/api/delete",
@@ -2517,8 +2495,9 @@ async def admin_delete_model(model_name: str, auth: bool = Depends(verify_admin_
 
 
 @app.post("/admin/models/load")
-async def admin_load_model(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_load_model(request: Request, api_key: str = Depends(get_api_key)):
     """Manually load a cached model into memory."""
+    await require_scope("admin", api_key)
     body = await request.json()
     model_name = body.get("model")
     
@@ -2533,8 +2512,9 @@ async def admin_load_model(request: Request, auth: bool = Depends(verify_admin_a
 
 
 @app.post("/admin/config")
-async def admin_update_config(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_update_config(request: Request, api_key: str = Depends(get_api_key)):
     """Update configuration (e.g., HF token)."""
+    await require_scope("admin", api_key)
     body = await request.json()
     
     # Store HF token in Redis for persistence
@@ -2549,8 +2529,9 @@ async def admin_update_config(request: Request, auth: bool = Depends(verify_admi
 
 
 @app.get("/admin/config")
-async def admin_get_config(auth: bool = Depends(verify_admin_auth)):
+async def admin_get_config(api_key: str = Depends(get_api_key)):
     """Get current configuration including current models."""
+    await require_scope("admin", api_key)
     hf_token_set = False
     vllm_model = None
     llamacpp_model_url = None
@@ -2644,8 +2625,9 @@ async def admin_get_config(auth: bool = Depends(verify_admin_auth)):
 # =============================================================================
 
 @app.post("/admin/backend/vllm")
-async def admin_change_vllm_model(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_api_key)):
     """Change the vLLM model. This triggers a pod restart with new model."""
+    await require_scope("admin", api_key)
     body = await request.json()
     model_id = body.get("model_id")
     
@@ -2703,8 +2685,9 @@ async def admin_change_vllm_model(request: Request, auth: bool = Depends(verify_
 
 
 @app.post("/admin/backend/llamacpp")
-async def admin_change_llamacpp_model(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(get_api_key)):
     """Change the llama.cpp model. This triggers a pod restart with new model."""
+    await require_scope("admin", api_key)
     body = await request.json()
     model_url = body.get("model_url")
     
@@ -2759,8 +2742,9 @@ async def admin_change_llamacpp_model(request: Request, auth: bool = Depends(ver
 
 
 @app.post("/admin/backend/vllm/config")
-async def admin_update_vllm_config(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_update_vllm_config(request: Request, api_key: str = Depends(get_api_key)):
     """Update vLLM configuration (context length, GPU memory, etc.). Triggers pod restart."""
+    await require_scope("admin", api_key)
     body = await request.json()
     
     try:
@@ -2809,8 +2793,9 @@ async def admin_update_vllm_config(request: Request, auth: bool = Depends(verify
 
 
 @app.post("/admin/backend/llamacpp/config")
-async def admin_update_llamacpp_config(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(get_api_key)):
     """Update llama.cpp configuration (context size, threads, etc.). Triggers pod restart."""
+    await require_scope("admin", api_key)
     body = await request.json()
     
     try:
@@ -2859,8 +2844,9 @@ async def admin_update_llamacpp_config(request: Request, auth: bool = Depends(ve
 
 
 @app.post("/admin/backend/llamacpp/scale")
-async def admin_scale_llamacpp(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_key)):
     """Scale llama.cpp deployment (start/stop). Use replicas=0 to stop, replicas=1 to start."""
+    await require_scope("admin", api_key)
     body = await request.json()
     replicas = body.get("replicas", 1)
     
@@ -2901,8 +2887,9 @@ async def admin_scale_llamacpp(request: Request, auth: bool = Depends(verify_adm
 
 
 @app.post("/admin/backend/embedding")
-async def admin_change_embedding_model(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_change_embedding_model(request: Request, api_key: str = Depends(get_api_key)):
     """Change the embedding model. This triggers a pod restart with new model."""
+    await require_scope("admin", api_key)
     body = await request.json()
     model_url = body.get("model_url")
     
@@ -2951,8 +2938,9 @@ async def admin_change_embedding_model(request: Request, auth: bool = Depends(ve
 
 
 @app.post("/admin/backend/embedding/config")
-async def admin_update_embedding_config(request: Request, auth: bool = Depends(verify_admin_auth)):
+async def admin_update_embedding_config(request: Request, api_key: str = Depends(get_api_key)):
     """Update embedding configuration (context size, batch size, threads). Triggers pod restart."""
+    await require_scope("admin", api_key)
     body = await request.json()
     
     try:

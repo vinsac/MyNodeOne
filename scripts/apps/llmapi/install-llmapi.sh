@@ -1353,37 +1353,62 @@ if [ -z "$SERVICE_IP" ]; then
 fi
 
 # =============================================================================
-# Create initial API key (with retries)
+# Create initial API keys (with retries)
 # =============================================================================
 
 echo ""
-echo "🔑 Creating initial API key..."
+echo "🔑 Creating API keys..."
 
-# Generate API key
-API_KEY_ID=$(openssl rand -hex 16)
-API_KEY="sk-mynodeone-${API_KEY_ID}"
+# Helper function to create API key
+create_api_key() {
+    local name="$1"
+    local scopes="$2"
+    local rpm="$3"
+    local tokens="$4"
+    
+    local key_id=$(openssl rand -hex 16)
+    local api_key="sk-mynodeone-${key_id}"
+    local created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    
+    # Convert comma-separated scopes to JSON array
+    local scopes_json=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+    
+    # Store in Redis with retries
+    for i in {1..5}; do
+        if kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli SET "apikey:${api_key}" \
+            "{\"name\":\"$name\",\"scopes\":$scopes_json,\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created_at\"}" \
+            &>/dev/null; then
+            echo "$api_key"
+            return 0
+        fi
+        sleep 2
+    done
+    
+    return 1
+}
 
-# Store in Redis via kubectl exec (with retries)
-API_KEY_CREATED=false
-for attempt in {1..5}; do
-    if kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli SET "apikey:${API_KEY}" \
-        "{\"name\":\"default\",\"requests_per_minute\":${DEFAULT_RPM},\"tokens_per_day\":${DEFAULT_TOKENS},\"created_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-        2>/dev/null; then
-        API_KEY_CREATED=true
-        break
-    fi
-    echo "   Waiting for Redis... (attempt $attempt/5)"
-    sleep 3
-done
+# Generate 3 API keys with different scopes
+ADMIN_KEY=$(create_api_key "admin-ui" "admin" 1000 10000000)
+PROMETHEUS_KEY=$(create_api_key "prometheus" "metrics" 100 1000000)
+API_KEY=$(create_api_key "default" "inference" 100 1000000)
 
-if [ "$API_KEY_CREATED" = false ]; then
-    echo -e "${YELLOW}   Could not create API key in Redis. You can create one later via Admin UI.${NC}"
+if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
+    echo -e "${GREEN}✓ API keys created${NC}"
+    
+    # Save keys to files
+    mkdir -p ~/.mynodeone
+    echo "$ADMIN_KEY" > ~/.mynodeone/llmapi-admin-key
+    echo "$PROMETHEUS_KEY" > ~/.mynodeone/llmapi-prometheus-key
+    echo "$API_KEY" > ~/.mynodeone/llmapi-key
+    chmod 600 ~/.mynodeone/llmapi-*-key
+    echo "   (saved to ~/.mynodeone/llmapi-*-key)"
+else
+    echo -e "${YELLOW}⚠ Failed to create some API keys in Redis${NC}"
+    echo "   You can create them manually:"
+    echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'admin' --scopes 'admin'"
+    echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'prometheus' --scopes 'metrics'"
+    echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'default' --scopes 'inference'"
 fi
-
-# Save API key to file
-mkdir -p "$ACTUAL_HOME/.mynodeone"
-echo "$API_KEY" > "$ACTUAL_HOME/.mynodeone/llmapi-key"
-chmod 600 "$ACTUAL_HOME/.mynodeone/llmapi-key"
 
 # =============================================================================
 # DNS Registration
@@ -1451,42 +1476,58 @@ echo "📍 Access the API at:"
 echo "   • Direct: http://$SERVICE_IP"
 echo "   • Local:  http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo ""
-echo "🔑 Your API Key:"
-echo "   $API_KEY"
-echo "   (saved to ~/.mynodeone/llmapi-key)"
+echo "🔑 API Keys Generated:"
+echo ""
+echo "   1. Admin Key (admin scope - for Admin UI):"
+echo "      $ADMIN_KEY"
+echo "      Access: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/admin"
+echo ""
+echo "   2. Prometheus Key (metrics scope - for monitoring):"
+echo "      $PROMETHEUS_KEY"
+echo "      Endpoints: /metrics, /health/backends"
+echo ""
+echo "   3. Default Key (inference scope - for LLM API):"
+echo "      $API_KEY"
+echo "      Endpoints: /v1/chat/completions, /v1/embeddings, /v1/models"
+echo ""
+echo "   Keys saved to: ~/.mynodeone/llmapi-*-key"
 echo ""
 echo "🧪 Test the API:"
 echo ""
 echo "   # List models"
-echo "   curl -H \"Authorization: Bearer \$API_KEY\" \\"
+echo "   curl -H \"Authorization: Bearer $API_KEY\" \\"
 echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1/models"
 echo ""
 echo "   # Chat completion"
-echo "   curl -H \"Authorization: Bearer \$API_KEY\" \\"
+echo "   curl -H \"Authorization: Bearer $API_KEY\" \\"
 echo "        -H \"Content-Type: application/json\" \\"
 echo "        -d '{\"model\":\"$VLLM_MODEL_NAME\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}' \\"
 echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1/chat/completions"
+echo ""
+echo "   # Check metrics (requires prometheus key)"
+echo "   curl -H \"Authorization: Bearer $PROMETHEUS_KEY\" \\"
+echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/metrics"
 echo ""
 echo "📚 Python/OpenAI SDK:"
 echo ""
 echo "   from openai import OpenAI"
 echo "   client = OpenAI("
 echo "       base_url=\"http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1\","
-echo "       api_key=\"$API_KEY\""
+echo "       api_key=\"$API_KEY\"  # inference key"
 echo "   )"
 echo ""
 echo "🎛️  Admin UI:"
 echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/admin"
 echo ""
-echo "   Login Credentials (HTTP Basic Auth):"
-echo "   • Username: admin (or any username)"
-echo "   • Password: $ADMIN_PASSWORD"
+echo "   Authentication: Add header \"Authorization: Bearer $ADMIN_KEY\""
+echo "   (Old HTTP Basic Auth removed - use admin API key instead)"
 echo ""
 echo "   Features:"
 echo "   • Download/manage Ollama models"
 echo "   • Change vLLM/llama.cpp models + context/memory settings"
 echo "   • Start/stop llama.cpp (free RAM when not needed)"
 echo "   • Manage API keys and view usage"
+echo "   • View key scopes and permissions"
 echo ""
 echo "🔧 Management:"
 echo "   • Status:  ./scripts/apps/llmapi/monitor-llmapi.sh"

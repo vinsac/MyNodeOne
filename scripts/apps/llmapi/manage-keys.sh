@@ -19,6 +19,7 @@ NAMESPACE="llmapi"
 # Default quotas
 DEFAULT_TOKENS_PER_DAY=100000
 DEFAULT_REQUESTS_PER_MINUTE=60
+DEFAULT_SCOPES="inference"
 
 usage() {
     echo "Usage: $0 <command> [options]"
@@ -33,11 +34,15 @@ usage() {
     echo ""
     echo "Options for 'create':"
     echo "  --name <name>           Name/description for the key"
+    echo "  --scopes <scopes>       Comma-separated scopes: inference,metrics,admin (default: inference)"
     echo "  --tokens <number>       Daily token quota (default: $DEFAULT_TOKENS_PER_DAY)"
     echo "  --rpm <number>          Requests per minute limit (default: $DEFAULT_REQUESTS_PER_MINUTE)"
     echo ""
     echo "Examples:"
-    echo "  $0 create --name \"my-app\" --tokens 500000"
+    echo "  $0 create --name \"my-app\" --scopes \"inference\""
+    echo "  $0 create --name \"prometheus\" --scopes \"metrics\""
+    echo "  $0 create --name \"admin-ui\" --scopes \"admin\""
+    echo "  $0 create --name \"power-user\" --scopes \"inference,metrics\""
     echo "  $0 list"
     echo "  $0 show sk-mynodeone-xxxx"
     echo "  $0 update sk-mynodeone-xxxx --tokens 1000000"
@@ -66,6 +71,7 @@ redis_cmd() {
 # Create API key
 cmd_create() {
     local name=""
+    local scopes=$DEFAULT_SCOPES
     local tokens=$DEFAULT_TOKENS_PER_DAY
     local rpm=$DEFAULT_REQUESTS_PER_MINUTE
     
@@ -73,6 +79,10 @@ cmd_create() {
         case "$1" in
             --name)
                 name="$2"
+                shift 2
+                ;;
+            --scopes)
+                scopes="$2"
                 shift 2
                 ;;
             --tokens)
@@ -100,16 +110,20 @@ cmd_create() {
     local api_key="sk-mynodeone-${key_id}"
     local created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     
+    # Convert comma-separated scopes to JSON array
+    local scopes_json=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+    
     # Store in Redis
-    local config="{\"name\":\"$name\",\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created_at\"}"
+    local config="{\"name\":\"$name\",\"scopes\":$scopes_json,\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created_at\"}"
     redis_cmd SET "apikey:${api_key}" "$config"
     
     echo ""
     echo -e "${GREEN}✓ API Key Created${NC}"
     echo ""
-    echo "   Key:    $api_key"
-    echo "   Name:   $name"
-    echo "   Quota:  $tokens tokens/day, $rpm requests/min"
+    echo "   Key:     $api_key"
+    echo "   Name:    $name"
+    echo "   Scopes:  $scopes"
+    echo "   Quota:   $tokens tokens/day, $rpm requests/min"
     echo ""
     echo "   Save this key securely - it cannot be retrieved later!"
     echo ""
@@ -129,8 +143,8 @@ cmd_list() {
         return
     fi
     
-    printf "%-45s %-20s %-15s %-10s\n" "API KEY" "NAME" "TOKENS/DAY" "RPM"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    printf "%-30s %-20s %-25s %-12s %-8s\n" "API KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     echo "$keys" | while read key; do
         local api_key="${key#apikey:}"
@@ -138,13 +152,15 @@ cmd_list() {
         
         if [ -n "$config" ]; then
             local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+            local scopes=$(echo "$config" | grep -o '"scopes":\[[^]]*\]' | sed 's/"scopes"://;s/\["//;s/"\]//;s/","/,/g')
+            [ -z "$scopes" ] && scopes="inference"  # Default for old keys
             local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
             local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
             
             # Mask the key
-            local masked_key="${api_key:0:15}...${api_key: -4}"
+            local masked_key="${api_key:0:20}...${api_key: -4}"
             
-            printf "%-45s %-20s %-15s %-10s\n" "$masked_key" "${name:0:20}" "$tokens" "$rpm"
+            printf "%-30s %-20s %-25s %-12s %-8s\n" "$masked_key" "${name:0:20}" "${scopes:0:25}" "$tokens" "$rpm"
         fi
     done
     
@@ -174,12 +190,15 @@ cmd_show() {
     echo ""
     
     local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+    local scopes=$(echo "$config" | grep -o '"scopes":\[[^]]*\]' | sed 's/"scopes"://;s/\["//;s/"\]//;s/","/,/g')
+    [ -z "$scopes" ] && scopes="inference"  # Default for old keys
     local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
     local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
     local created=$(echo "$config" | grep -o '"created_at":"[^"]*"' | cut -d'"' -f4)
     
-    echo "   Key:         ${api_key:0:15}...${api_key: -4}"
+    echo "   Key:         ${api_key:0:20}...${api_key: -4}"
     echo "   Name:        $name"
+    echo "   Scopes:      $scopes"
     echo "   Tokens/Day:  $tokens"
     echo "   RPM Limit:   $rpm"
     echo "   Created:     $created"
@@ -206,6 +225,8 @@ cmd_update() {
     
     # Parse existing values
     local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+    local scopes=$(echo "$config" | grep -o '"scopes":\[[^]]*\]' | sed 's/"scopes"://;s/\["//;s/"\]//;s/","/,/g')
+    [ -z "$scopes" ] && scopes="inference"  # Default for old keys
     local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
     local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
     local created=$(echo "$config" | grep -o '"created_at":"[^"]*"' | cut -d'"' -f4)
@@ -215,6 +236,10 @@ cmd_update() {
         case "$1" in
             --name)
                 name="$2"
+                shift 2
+                ;;
+            --scopes)
+                scopes="$2"
                 shift 2
                 ;;
             --tokens)
@@ -233,14 +258,18 @@ cmd_update() {
         esac
     done
     
+    # Convert comma-separated scopes to JSON array
+    local scopes_json=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+    
     # Update in Redis
-    local new_config="{\"name\":\"$name\",\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created\"}"
+    local new_config="{\"name\":\"$name\",\"scopes\":$scopes_json,\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created\"}"
     redis_cmd SET "apikey:${api_key}" "$new_config"
     
     echo ""
     echo -e "${GREEN}✓ API Key Updated${NC}"
     echo ""
     echo "   Name:        $name"
+    echo "   Scopes:      $scopes"
     echo "   Tokens/Day:  $tokens"
     echo "   RPM Limit:   $rpm"
     echo ""

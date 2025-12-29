@@ -1896,6 +1896,7 @@ ADMIN_HTML = """
         async function loadModels() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/models`);
+                if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
                 
                 const list = document.getElementById('models-list');

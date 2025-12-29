@@ -2402,9 +2402,8 @@ async def admin_ui():
 
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
-async def admin_dashboard(api_key: str = Depends(get_api_key)):
-    """Admin dashboard - requires 'admin' scope."""
-    await require_scope("admin", api_key)
+async def admin_dashboard():
+    """Admin dashboard - authentication handled by JavaScript with localStorage API key."""
     return ADMIN_HTML
 
 

@@ -394,29 +394,9 @@ case "$command" in
         cmd_create "$@"
         ;;
     list)
-        cmd_list
+        cmd_list "$@"
         ;;
     show)
-        cmd_show "$@"
-        ;;
-    update)
-        cmd_update "$@"
-        ;;
-    revoke)
-        cmd_revoke "$@"
-        ;;
-    usage)
-        cmd_usage "$@"
-        ;;
-    -h|--help|help)
-        usage
-        ;;
-    *)
-        echo -e "${RED}Unknown command: $command${NC}"
-        usage
-        exit 1
-        ;;
-esac
         cmd_show "$@"
         ;;
     update)

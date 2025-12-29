@@ -2403,9 +2403,9 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 const data = await resp.json();
                 
                 // Update stats cards with null checks
-                document.getElementById('total-requests').textContent = (data.total_requests || 0).toLocaleString();
-                document.getElementById('total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
-                document.getElementById('active-keys').textContent = data.active_keys || 0;
+                document.getElementById('stats-total-requests').textContent = (data.total_requests || 0).toLocaleString();
+                document.getElementById('stats-total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
+                document.getElementById('stats-active-keys').textContent = data.active_keys || 0;
                 
                 // Update hourly chart with null checks
                 const hourlyEl = document.getElementById('stats-hourly');

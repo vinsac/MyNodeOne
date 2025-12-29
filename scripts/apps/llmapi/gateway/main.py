@@ -2086,6 +2086,7 @@ ADMIN_HTML = """
         async function loadBackendConfig() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/config`);
+                if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
                 
                 if (data.vllm_model) {
@@ -2327,6 +2328,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
         async function loadKeys() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/keys`);
+                if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
                 
                 const list = document.getElementById('keys-list');

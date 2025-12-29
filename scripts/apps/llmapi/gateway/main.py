@@ -2320,17 +2320,17 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
 
 
 @app.delete("/admin/keys/{api_key}")
-async def admin_revoke_key(api_key: str, api_key: str = Depends(get_api_key)):
+async def admin_revoke_key(api_key: str, admin_key: str = Depends(get_api_key)):
     """Revoke an API key (admin endpoint)."""
-    await require_scope("admin", api_key)
+    await require_scope("admin", admin_key)
     await redis_client.client.delete(f"apikey:{api_key}")
     return {"status": "revoked", "api_key": api_key}
 
 
 @app.get("/admin/usage/{api_key}")
-async def admin_get_usage(api_key: str, api_key: str = Depends(get_api_key)):
+async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
     """Get usage for a specific API key."""
-    await require_scope("admin", api_key)
+    await require_scope("admin", admin_key)
     key_config = await redis_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=404, detail="API key not found")

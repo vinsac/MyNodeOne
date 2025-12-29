@@ -2407,6 +2407,25 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 document.getElementById('stats-total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
                 document.getElementById('stats-active-keys').textContent = data.active_keys || 0;
                 
+                // Update usage by API key
+                const byKeyEl = document.getElementById('stats-by-key');
+                if (data.by_key && data.by_key.length > 0) {
+                    byKeyEl.innerHTML = data.by_key.map(k => `
+                        <div class="flex items-center justify-between bg-gray-700 rounded p-3">
+                            <div class="flex-1">
+                                <div class="font-medium text-sm">${k.name}</div>
+                                <code class="text-xs text-gray-500">${k.api_key_preview}</code>
+                            </div>
+                            <div class="flex items-center gap-4 text-sm text-gray-400">
+                                <span>${k.requests_today || 0} requests</span>
+                                <span>${(k.tokens_today || 0).toLocaleString()} tokens</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    byKeyEl.innerHTML = '<p class="text-gray-400 text-sm">No usage data yet</p>';
+                }
+                
                 // Update hourly chart with null checks
                 const hourlyEl = document.getElementById('stats-hourly');
                 if (data.by_hour && data.by_hour.length > 0) {

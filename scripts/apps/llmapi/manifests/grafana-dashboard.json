@@ -1,0 +1,152 @@
+{
+  "dashboard": {
+    "title": "LLM API Gateway Metrics",
+    "tags": ["llm", "api", "gateway"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "Total Requests",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+        "targets": [{
+          "expr": "sum(rate(llmapi_requests_total[5m]))",
+          "legendFormat": "Requests/sec"
+        }],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      },
+      {
+        "title": "Total Tokens Processed",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+        "targets": [{
+          "expr": "sum(rate(llmapi_tokens_total[5m]))",
+          "legendFormat": "Tokens/sec"
+        }],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      },
+      {
+        "title": "Queue Depth",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+        "targets": [{
+          "expr": "sum(llmapi_queue_depth)",
+          "legendFormat": "Queued Requests"
+        }],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      },
+      {
+        "title": "Backend Health",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+        "targets": [{
+          "expr": "sum(llmapi_backend_status)",
+          "legendFormat": "Healthy Backends"
+        }],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value"
+        }
+      },
+      {
+        "title": "Requests by Model",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+        "targets": [{
+          "expr": "sum(rate(llmapi_requests_total[5m])) by (model)",
+          "legendFormat": "{{model}}"
+        }],
+        "yaxes": [{
+          "format": "reqps",
+          "label": "Requests/sec"
+        }]
+      },
+      {
+        "title": "Requests by Priority",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+        "targets": [{
+          "expr": "sum(rate(llmapi_requests_total[5m])) by (priority)",
+          "legendFormat": "{{priority}}"
+        }],
+        "yaxes": [{
+          "format": "reqps",
+          "label": "Requests/sec"
+        }]
+      },
+      {
+        "title": "Request Duration (p50, p95, p99)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, sum(rate(llmapi_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(llmapi_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(llmapi_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99"
+          }
+        ],
+        "yaxes": [{
+          "format": "s",
+          "label": "Duration"
+        }]
+      },
+      {
+        "title": "Tokens by Model",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+        "targets": [{
+          "expr": "sum(rate(llmapi_tokens_total[5m])) by (model)",
+          "legendFormat": "{{model}}"
+        }],
+        "yaxes": [{
+          "format": "short",
+          "label": "Tokens/sec"
+        }]
+      },
+      {
+        "title": "Backend In-Flight Requests",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+        "targets": [{
+          "expr": "llmapi_backend_requests_inflight",
+          "legendFormat": "{{backend}}"
+        }],
+        "yaxes": [{
+          "format": "short",
+          "label": "Requests"
+        }]
+      },
+      {
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+        "targets": [{
+          "expr": "sum(rate(llmapi_requests_total{status!=\"success\"}[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }],
+        "yaxes": [{
+          "format": "reqps",
+          "label": "Errors/sec"
+        }]
+      }
+    ]
+  }
+}

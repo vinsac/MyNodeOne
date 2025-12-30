@@ -1404,6 +1404,17 @@ if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
     chmod 600 ~/.mynodeone/llmapi-prometheus-key
     chmod 600 ~/.mynodeone/llmapi-key
     echo "   (saved to ~/.mynodeone/llmapi-admin-key, llmapi-prometheus-key, llmapi-key)"
+    
+    # Create Kubernetes secret for Prometheus scraping
+    if kubectl get namespace monitoring &>/dev/null; then
+        echo "   Creating Prometheus bearer token secret..."
+        kubectl create secret generic llmapi-prometheus-token -n $NAMESPACE \
+            --from-literal=token="$PROMETHEUS_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Now deploy/update ServiceMonitor with the secret
+        kubectl apply -f "$SCRIPT_DIR/manifests/servicemonitor.yaml"
+    fi
 else
     echo -e "${YELLOW}⚠ Failed to create some API keys in Redis${NC}"
     echo "   You can create them manually:"

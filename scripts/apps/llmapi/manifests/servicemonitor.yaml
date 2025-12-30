@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: llmapi-gateway
+  namespace: llmapi
+  labels:
+    app: llmapi-gateway
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: llmapi-gateway
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    scheme: http
+    bearerTokenSecret:
+      name: llmapi-prometheus-token
+      key: token

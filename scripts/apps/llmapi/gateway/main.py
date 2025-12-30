@@ -1748,10 +1748,17 @@ ADMIN_HTML = """
 
         <!-- API Keys Management -->
         <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
-            <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
-                <i data-lucide="key" class="w-5 h-5 text-yellow-400"></i>
-                API Keys
-            </h2>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold flex items-center gap-2">
+                    <i data-lucide="key" class="w-5 h-5 text-yellow-400"></i>
+                    API Keys
+                </h2>
+                <button onclick="toggleKeyVisibility()" id="toggle-keys-btn" 
+                        class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs flex items-center gap-2 transition">
+                    <i data-lucide="eye-off" class="w-4 h-4" id="toggle-icon"></i>
+                    <span id="toggle-text">Show Keys</span>
+                </button>
+            </div>
             
             <!-- Create Key Form -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4">
@@ -2378,7 +2385,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
                             <div class="flex-1 min-w-0">
                                 <div class="font-medium">${k.name}</div>
-                                <code class="text-xs text-gray-400 break-all">${k.key}</code>
+                                <code class="text-xs text-gray-400 break-all api-key-display" data-key="${k.key}">${maskKey(k.key)}</code>
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
                                 <span>${k.requests_per_minute} rpm</span>

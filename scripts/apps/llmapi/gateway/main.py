@@ -575,7 +575,13 @@ class BackendManager:
         try:
             resp = await self.http_client.get(f"{config.EMBEDDING_URL}/health", timeout=5.0)
             if resp.status_code == 200:
-                model_name = os.getenv("EMBEDDING_MODEL_NAME", "embedding")
+                # Try to get actual model name from MODEL_FILE env var
+                model_file = os.getenv("EMBEDDING_MODEL_FILE", "")
+                if model_file:
+                    # Extract model name from filename (e.g., "nomic-embed-text-v1.5.Q8_0.gguf" -> "nomic-embed-text-v1.5")
+                    model_name = model_file.rsplit('.', 2)[0] if '.' in model_file else model_file
+                else:
+                    model_name = os.getenv("EMBEDDING_MODEL_NAME", "embedding")
                 model_registry.register_model(model_name, "embedding", "ready")
                 logger.info(f"Discovered embedding model: {model_name}")
         except Exception as e:

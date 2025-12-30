@@ -1245,6 +1245,39 @@ echo "🦙 Deploying Ollama (dynamic model loading)..."
 kubectl apply -f "$SCRIPT_DIR/manifests/ollama.yaml"
 
 # =============================================================================
+# Prometheus + Grafana Monitoring Integration
+# =============================================================================
+
+echo ""
+echo "📊 Setting up Prometheus + Grafana monitoring..."
+
+# Check if monitoring namespace exists
+if kubectl get namespace monitoring &>/dev/null; then
+    echo "   ✓ Monitoring namespace found"
+    
+    # Wait for gateway service to be created first
+    sleep 5
+    
+    # Create secret with Prometheus API key for metrics scraping (created later in script)
+    # This will be created after API keys are generated
+    
+    # Deploy ServiceMonitor for Prometheus scraping
+    echo "   Deploying ServiceMonitor for Prometheus..."
+    kubectl apply -f "$SCRIPT_DIR/manifests/servicemonitor.yaml" 2>/dev/null || \
+        echo "   ⚠ ServiceMonitor deployment will be retried after API keys are created"
+    
+    # Deploy Grafana dashboard
+    echo "   Deploying Grafana dashboard..."
+    kubectl apply -f "$SCRIPT_DIR/manifests/grafana-dashboard-configmap.yaml"
+    
+    echo "   ✓ Monitoring integration configured"
+    echo "   Access Grafana dashboard: 'LLM API Gateway'"
+else
+    echo "   ⚠ Monitoring namespace not found - skipping Prometheus/Grafana integration"
+    echo "   Install kube-prometheus-stack to enable monitoring"
+fi
+
+# =============================================================================
 # Wait for deployments with retries and diagnostics
 # =============================================================================
 
@@ -1404,17 +1437,6 @@ if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
     chmod 600 ~/.mynodeone/llmapi-prometheus-key
     chmod 600 ~/.mynodeone/llmapi-key
     echo "   (saved to ~/.mynodeone/llmapi-admin-key, llmapi-prometheus-key, llmapi-key)"
-    
-    # Create Kubernetes secret for Prometheus scraping
-    if kubectl get namespace monitoring &>/dev/null; then
-        echo "   Creating Prometheus bearer token secret..."
-        kubectl create secret generic llmapi-prometheus-token -n $NAMESPACE \
-            --from-literal=token="$PROMETHEUS_KEY" \
-            --dry-run=client -o yaml | kubectl apply -f -
-        
-        # Now deploy/update ServiceMonitor with the secret
-        kubectl apply -f "$SCRIPT_DIR/manifests/servicemonitor.yaml"
-    fi
 else
     echo -e "${YELLOW}⚠ Failed to create some API keys in Redis${NC}"
     echo "   You can create them manually:"

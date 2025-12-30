@@ -1863,6 +1863,36 @@ ADMIN_HTML = """
             window.location.href = '/admin';
         }
         
+        // API Key visibility state
+        let keysVisible = false;
+        
+        function maskKey(key) {
+            if (!key) return '';
+            return key.substring(0, 12) + '...' + key.substring(key.length - 4);
+        }
+        
+        function toggleKeyVisibility() {
+            keysVisible = !keysVisible;
+            const toggleIcon = document.getElementById('toggle-icon');
+            const toggleText = document.getElementById('toggle-text');
+            const keyElements = document.querySelectorAll('.api-key-display');
+            
+            if (keysVisible) {
+                toggleIcon.setAttribute('data-lucide', 'eye');
+                toggleText.textContent = 'Hide Keys';
+                keyElements.forEach(el => {
+                    el.textContent = el.getAttribute('data-key');
+                });
+            } else {
+                toggleIcon.setAttribute('data-lucide', 'eye-off');
+                toggleText.textContent = 'Show Keys';
+                keyElements.forEach(el => {
+                    el.textContent = maskKey(el.getAttribute('data-key'));
+                });
+            }
+            lucide.createIcons();
+        }
+        
         // Admin API calls with API key authentication
         async function adminFetch(url, options = {}) {
             try {

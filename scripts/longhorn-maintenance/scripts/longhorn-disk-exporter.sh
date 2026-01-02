@@ -77,7 +77,7 @@ for NODE_NAME in $NODES; do
         continue
     fi
     
-    # Get disk status
+    # Get disk status and spec
     DISK_STATUS=$(echo "$NODE_SPEC" | jq -r '.status.diskStatus // {}')
     DISK_SPEC=$(echo "$NODE_SPEC" | jq -r '.spec.disks // {}')
     
@@ -91,7 +91,8 @@ for NODE_NAME in $NODES; do
     # Process each disk
     echo "$DISK_STATUS" | jq -r 'to_entries[] | @json' | while read -r disk_json; do
         DISK_ID=$(echo "$disk_json" | jq -r '.key')
-        DISK_PATH=$(echo "$disk_json" | jq -r '.value.diskPath')
+        # Get path from spec, not status
+        DISK_PATH=$(echo "$DISK_SPEC" | jq -r ".\"$DISK_ID\".path // \"unknown\"")
         STORAGE_MAX=$(echo "$disk_json" | jq -r '.value.storageMaximum')
         STORAGE_SCHEDULED=$(echo "$disk_json" | jq -r '.value.storageScheduled')
         STORAGE_AVAILABLE=$(echo "$disk_json" | jq -r '.value.storageAvailable')

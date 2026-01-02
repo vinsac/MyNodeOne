@@ -68,8 +68,9 @@ for NODE_NAME in $NODES; do
     log_info "Node: $NODE_NAME"
     echo
     
-    # Get disk status
+    # Get disk status and spec
     DISK_STATUS=$(kubectl get nodes.longhorn.io "$NODE_NAME" -n longhorn-system -o json | jq -r '.status.diskStatus // {}')
+    DISK_SPEC=$(kubectl get nodes.longhorn.io "$NODE_NAME" -n longhorn-system -o json | jq -r '.spec.disks // {}')
     
     if [ "$DISK_STATUS" = "{}" ]; then
         log_warn "  No disk status available"
@@ -84,7 +85,8 @@ for NODE_NAME in $NODES; do
     # Get disk info
     echo "$DISK_STATUS" | jq -r 'to_entries[] | @json' | while read -r disk_json; do
         DISK_ID=$(echo "$disk_json" | jq -r '.key')
-        DISK_PATH=$(echo "$disk_json" | jq -r '.value.diskPath')
+        # Get path from spec, not status
+        DISK_PATH=$(echo "$DISK_SPEC" | jq -r ".\"$DISK_ID\".path // \"unknown\"")
         STORAGE_MAX=$(echo "$disk_json" | jq -r '.value.storageMaximum')
         STORAGE_SCHEDULED=$(echo "$disk_json" | jq -r '.value.storageScheduled')
         

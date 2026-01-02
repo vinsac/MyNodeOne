@@ -177,8 +177,10 @@ MAX_IMBALANCE=0
 for NODE_NAME in $NODES; do
     log_info "Checking node: $NODE_NAME" | tee -a "$LOG_FILE"
     
-    # Get disk status
-    DISK_STATUS=$(kubectl get nodes.longhorn.io "$NODE_NAME" -n longhorn-system -o json 2>/dev/null | jq -r '.status.diskStatus // {}')
+    # Get disk status and spec
+    NODE_JSON=$(kubectl get nodes.longhorn.io "$NODE_NAME" -n longhorn-system -o json 2>/dev/null || echo "{}")
+    DISK_STATUS=$(echo "$NODE_JSON" | jq -r '.status.diskStatus // {}')
+    DISK_SPEC=$(echo "$NODE_JSON" | jq -r '.spec.disks // {}')
     
     if [ "$DISK_STATUS" = "{}" ]; then
         continue

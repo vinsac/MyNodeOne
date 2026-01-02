@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: longhorn-disk-alerts
+  namespace: monitoring
+data:
+  longhorn-disk-alerts.yaml: |
+    groups:
+    - name: longhorn_disk_health
+      interval: 5m
+      rules:
+      
+      # Alert when disk imbalance exceeds 20%
+      - alert: LonghornDiskImbalance
+        expr: longhorn_node_disk_imbalance_ratio > 0.20
+        for: 30m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Longhorn disk imbalance detected on {{ $labels.node }}"
+          description: |
+            Node {{ $labels.node }} has unbalanced disk utilization.
+            Imbalance ratio: {{ $value | humanizePercentage }}
+            
+            This means replicas are not evenly distributed across disks.
+            
+            Actions:
+            1. Check disk reservations: kubectl get nodes.longhorn.io {{ $labels.node }} -n longhorn-system -o json | jq '.spec.disks'
+            2. Run balance check: ~/MyNodeOne/scripts/balance-longhorn-replicas.sh
+            3. Fix reservations: ~/MyNodeOne/scripts/fix-longhorn-disk-reservation.sh
+      
+      # Alert when disk usage exceeds 85%
+      - alert: LonghornDiskHighUsage
+        expr: longhorn_disk_usage_ratio > 0.85
+        for: 15m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Longhorn disk {{ $labels.path }} on {{ $labels.node }} is {{ $value | humanizePercentage }} full"
+          description: |
+            Disk {{ $labels.path }} on node {{ $labels.node }} is running out of space.
+            Current usage: {{ $value | humanizePercentage }}
+            
+            Actions:
+            1. Check disk usage: df -h {{ $labels.path }}
+            2. Review large volumes: kubectl get volumes -n longhorn-system -o json | jq '.items[] | select(.status.actualSize > 10737418240)'
+            3. Consider adding more storage or cleaning up unused volumes
+      
+      # Alert when disk usage exceeds 95% (critical)
+      - alert: LonghornDiskCriticalUsage
+        expr: longhorn_disk_usage_ratio > 0.95
+        for: 5m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "CRITICAL: Longhorn disk {{ $labels.path }} on {{ $labels.node }} is {{ $value | humanizePercentage }} full"
+          description: |
+            Disk {{ $labels.path }} on node {{ $labels.node }} is critically full!
+            Current usage: {{ $value | humanizePercentage }}
+            
+            IMMEDIATE ACTIONS REQUIRED:
+            1. Stop creating new volumes
+            2. Delete unused volumes: kubectl get pvc --all-namespaces
+            3. Add more storage capacity urgently
+            4. Check for volume snapshots: kubectl get volumesnapshots -n longhorn-system
+      
+      # Alert when disk has excessive reservation
+      - alert: LonghornDiskExcessiveReservation
+        expr: (longhorn_disk_reserved_bytes / longhorn_disk_capacity_bytes) > 0.15
+        for: 1h
+        labels:
+          severity: info
+          component: storage
+        annotations:
+          summary: "Longhorn disk {{ $labels.path }} has excessive reservation ({{ $value | humanizePercentage }})"
+          description: |
+            Disk {{ $labels.path }} on node {{ $labels.node }} has high reserved space.
+            Reserved: {{ $value | humanizePercentage }} of total capacity
+            
+            This reduces available storage. Recommended reservation is 5-10%.
+            
+            Fix: ~/MyNodeOne/scripts/fix-longhorn-disk-reservation.sh
+      
+      # Alert when disk is not schedulable
+      - alert: LonghornDiskNotSchedulable
+        expr: longhorn_disk_schedulable == 0
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Longhorn disk {{ $labels.path }} on {{ $labels.node }} is not schedulable"
+          description: |
+            Disk {{ $labels.path }} is not accepting new replicas.
+            
+            This may be intentional (maintenance) or a configuration issue.
+            
+            Check: kubectl get nodes.longhorn.io {{ $labels.node }} -n longhorn-system -o json | jq '.spec.disks.{{ $labels.disk }}'
+      
+      # Alert when replica count is very imbalanced
+      - alert: LonghornReplicaImbalance
+        expr: |
+          (
+            max(longhorn_disk_replica_count{node=~".+"}) by (node) - 
+            min(longhorn_disk_replica_count{node=~".+"}) by (node)
+          ) > 10
+        for: 1h
+        labels:
+          severity: info
+          component: storage
+        annotations:
+          summary: "Longhorn replicas are imbalanced on {{ $labels.node }}"
+          description: |
+            Node {{ $labels.node }} has uneven replica distribution across disks.
+            Difference: {{ $value }} replicas
+            
+            New volumes will auto-balance, but existing volumes remain on current disks.
+            
+            To rebalance: ~/MyNodeOne/scripts/balance-longhorn-replicas.sh

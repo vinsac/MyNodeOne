@@ -1231,6 +1231,20 @@ install_longhorn() {
         log_success "All disks configured!"
         log_info "Total storage: $(df -h "${MOUNTED_DISKS[@]}" | tail -${#MOUNTED_DISKS[@]} | awk '{sum+=$2} END {print sum"G"}')"
     fi
+    
+    # Fix disk reservations (reduce excessive default 30% to optimal 5-10%)
+    log_info "Optimizing disk reservations..."
+    sleep 5  # Wait for Longhorn to initialize disks
+    
+    if [ -f "$SCRIPT_DIR/longhorn-maintenance/scripts/fix-longhorn-disk-reservation.sh" ]; then
+        bash "$SCRIPT_DIR/longhorn-maintenance/scripts/fix-longhorn-disk-reservation.sh" || log_warn "Could not optimize disk reservations automatically"
+    fi
+    
+    # Setup disk monitoring
+    log_info "Setting up Longhorn disk monitoring..."
+    if [ -f "$SCRIPT_DIR/longhorn-maintenance/scripts/setup-longhorn-monitoring.sh" ]; then
+        bash "$SCRIPT_DIR/longhorn-maintenance/scripts/setup-longhorn-monitoring.sh" || log_warn "Could not setup monitoring automatically"
+    fi
 }
 
 install_metallb() {

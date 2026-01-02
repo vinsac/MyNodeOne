@@ -1785,24 +1785,19 @@ ADMIN_HTML = """
                     Scale vLLM replicas to use multiple GPUs for higher throughput. Each replica uses 1 GPU.
                 </p>
                 
-                <!-- Replica Buttons -->
+                <!-- Replica Buttons (dynamically generated based on available GPUs) -->
                 <div class="flex items-center gap-3 mb-3">
                     <span class="text-sm text-gray-400">Replicas:</span>
-                    <div class="flex gap-2">
-                        <button onclick="scaleVllm(0)" id="vllm-btn-0" 
-                                class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                    <div id="vllm-replica-buttons" class="flex gap-2 flex-wrap">
+                        <!-- Buttons will be dynamically generated -->
+                        <button onclick="scaleVllm(0)" class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
                             0 (Off)
-                        </button>
-                        <button onclick="scaleVllm(1)" id="vllm-btn-1"
-                                class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
-                            1 GPU
-                        </button>
-                        <button onclick="scaleVllm(2)" id="vllm-btn-2"
-                                class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
-                            2 GPUs
                         </button>
                     </div>
                 </div>
+                <p class="text-xs text-gray-500 mb-2">
+                    Buttons adjust automatically based on available GPUs in cluster
+                </p>
                 
                 <!-- Pod Status -->
                 <div id="vllm-pods" class="mt-3 space-y-1 text-xs">
@@ -2466,8 +2461,12 @@ Continue?`;
                             </div>
                         `).join('')}
                     `;
+                    
+                    // Dynamically generate vLLM replica buttons based on total GPUs
+                    updateVllmReplicaButtons(gpuData.total_gpus);
                 } else {
                     gpuContainer.innerHTML = '<p class="text-sm text-gray-400">No GPUs detected in cluster</p>';
+                    updateVllmReplicaButtons(0);
                 }
                 
                 lucide.createIcons();
@@ -2479,6 +2478,35 @@ Continue?`;
             
             // Also refresh vLLM replica status
             await refreshVllmStatus();
+        }
+        
+        function updateVllmReplicaButtons(totalGpus) {
+            const container = document.getElementById('vllm-replica-buttons');
+            if (!container) return;
+            
+            // Generate buttons from 0 to totalGpus (max 10 for sanity)
+            const maxButtons = Math.min(totalGpus, 10);
+            let buttonsHtml = '';
+            
+            // Button 0 (Off)
+            buttonsHtml += `
+                <button onclick="scaleVllm(0)" id="vllm-btn-0" 
+                        class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                    0 (Off)
+                </button>
+            `;
+            
+            // Buttons 1 to maxButtons
+            for (let i = 1; i <= maxButtons; i++) {
+                buttonsHtml += `
+                    <button onclick="scaleVllm(${i})" id="vllm-btn-${i}"
+                            class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                        ${i} GPU${i > 1 ? 's' : ''}
+                    </button>
+                `;
+            }
+            
+            container.innerHTML = buttonsHtml;
         }
         
         async function refreshVllmStatus() {
@@ -2610,40 +2638,54 @@ Continue?`;
         }
         
         async function quickAction(action) {
-            let message = '';
-            let actions = [];
-            
-            switch (action) {
-                case 'max-gpu':
-                    message = 'Max GPU Mode: Scale vLLM to use all available GPUs and stop llamacpp to free RAM. Continue?';
-                    actions = [
-                        {type: 'llamacpp', replicas: 0},
-                        {type: 'vllm', replicas: 2}
-                    ];
-                    break;
-                case 'save-ram':
-                    message = 'Save RAM Mode: Stop llamacpp to free ~64GB RAM. vLLM will continue running. Continue?';
-                    actions = [{type: 'llamacpp', replicas: 0}];
-                    break;
-                case 'balanced':
-                    message = 'Balanced Mode: 1 vLLM replica on GPU + llamacpp on CPU for large models. Continue?';
-                    actions = [
-                        {type: 'vllm', replicas: 1},
-                        {type: 'llamacpp', replicas: 1}
-                    ];
-                    break;
-                case 'stop-all':
-                    message = 'Stop All: Turn off vLLM and llamacpp to free all resources. Continue?';
-                    actions = [
-                        {type: 'vllm', replicas: 0},
-                        {type: 'llamacpp', replicas: 0}
-                    ];
-                    break;
-            }
-            
-            if (!confirm(message)) return;
-            
             try {
+                // Get current GPU count
+                const gpuResp = await adminFetch(`${API_BASE}/admin/cluster/gpus`);
+                if (!gpuResp) return;
+                const gpuData = await gpuResp.json();
+                const totalGpus = gpuData.total_gpus || 0;
+                
+                let message = '';
+                let actions = [];
+                
+                switch (action) {
+                    case 'max-gpu':
+                        if (totalGpus === 0) {
+                            alert('No GPUs detected in cluster. Cannot enable Max GPU Mode.');
+                            return;
+                        }
+                        message = `Max GPU Mode: Scale vLLM to use all ${totalGpus} available GPU${totalGpus > 1 ? 's' : ''} and stop llamacpp to free RAM. Continue?`;
+                        actions = [
+                            {type: 'llamacpp', replicas: 0},
+                            {type: 'vllm', replicas: totalGpus}
+                        ];
+                        break;
+                    case 'save-ram':
+                        message = 'Save RAM Mode: Stop llamacpp to free ~64GB RAM. vLLM will continue running. Continue?';
+                        actions = [{type: 'llamacpp', replicas: 0}];
+                        break;
+                    case 'balanced':
+                        if (totalGpus === 0) {
+                            alert('No GPUs detected in cluster. Cannot enable Balanced Mode.');
+                            return;
+                        }
+                        message = 'Balanced Mode: 1 vLLM replica on GPU + llamacpp on CPU for large models. Continue?';
+                        actions = [
+                            {type: 'vllm', replicas: 1},
+                            {type: 'llamacpp', replicas: 1}
+                        ];
+                        break;
+                    case 'stop-all':
+                        message = 'Stop All: Turn off vLLM and llamacpp to free all resources. Continue?';
+                        actions = [
+                            {type: 'vllm', replicas: 0},
+                            {type: 'llamacpp', replicas: 0}
+                        ];
+                        break;
+                }
+                
+                if (!confirm(message)) return;
+                
                 for (const act of actions) {
                     const endpoint = act.type === 'vllm' 
                         ? `${API_BASE}/admin/backend/vllm/scale`

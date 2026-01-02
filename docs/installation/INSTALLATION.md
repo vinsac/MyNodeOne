@@ -902,20 +902,120 @@ sudo systemctl restart mynodeone-node-agent
 - **Additional compute node** - Runs workloads alongside control plane
 - **Joins existing cluster** - Managed by control plane
 - **Optional** - Only add if you need more resources; for example, you can join a friend's gaming PC to your cluster to borrow extra compute, or repurpose your old gaming PC as a worker node.
+- **Recommended hardware:** 4GB+ RAM, 2+ CPU cores, 30GB+ disk space
 
 ---
 
 ## Prerequisites
 
-- Control plane installed and running
-- Another machine (PC or server) with **Ubuntu 24.04 LTS** (or 22.04/20.04) installed
-- Network connectivity to control plane
+### Hardware:
+- Another machine (PC or server) with **Ubuntu 24.04 LTS** (or 22.04/20.04)
+- At least **4GB RAM** (8GB+ recommended)
+- At least **30GB disk space**
+- Network connection (wired or WiFi)
+- Ability to connect to control plane via Tailscale
 
-### NVIDIA GPU Support (optional)
+### On Your Control Plane:
 
-**Skip this if your worker node doesn't have an NVIDIA GPU.**
+Before starting worker node setup, verify your control plane is ready:
 
-If your worker node has an NVIDIA GPU and you want it available for AI/ML workloads:
+```bash
+# ON CONTROL PLANE:
+# Verify cluster is running
+sudo kubectl get nodes
+# Expected: Control plane node showing "Ready"
+
+# Get the join token (you'll need this!)
+cat ~/mynodeone-join-token.txt
+# Copy and save this token
+
+# Get control plane Tailscale IP (you'll need this!)
+tailscale ip -4
+# Example: 100.116.16.117
+```
+
+### Software to Install on Worker Node Machine:
+
+All commands in this section must be run on the worker node machine. Open a terminal on the worker machine (Ctrl + Alt + T on Ubuntu Desktop).
+
+#### 1. Git (for downloading MyNodeOne)
+
+```bash
+# Update package list and upgrade packages
+sudo apt update && sudo apt upgrade -y
+
+# Install git
+sudo apt install -y git
+
+# Verify installation
+git --version
+# Expected output: git version 2.x.x
+```
+
+#### 2. SSH Server (for remote management)
+
+```bash
+# Install OpenSSH server
+sudo apt install -y openssh-server
+
+# Enable and start SSH
+sudo systemctl enable ssh
+sudo systemctl start ssh
+
+# Verify it's running
+sudo systemctl status ssh
+# Expected: "active (running)"
+```
+
+If the SSH service is not `active (running)` or you see errors, re-run the `sudo systemctl enable ssh`, `sudo systemctl start ssh`, and `sudo systemctl status ssh` commands and resolve any reported issues before continuing.
+
+**Note:** SSH access is optional for worker nodes. Worker nodes use HTTP pull-based sync (Node Agent) to get configuration from the control plane. SSH is only used as a fallback mechanism if the Node Agent fails.
+
+#### 3. Passwordless Sudo (for automation)
+
+**Required for automated cluster management and configuration sync. Run these commands on the worker node machine to configure passwordless sudo for your user.**
+
+**Important:** Before running the commands below, replace `yourusername` with your own Linux username in both the sudoers line and the filename.
+
+```bash
+# Create sudoers file (replace 'yourusername' with your actual username)
+echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/yourusername
+sudo chmod 0440 /etc/sudoers.d/yourusername
+
+# Verify it works (should not prompt for a password)
+sudo -n echo "Success!"
+```
+
+#### 4. Tailscale (secure VPN networking)
+
+**Before you start:** Make sure you're using the same Tailscale account as your control plane. During installation you will be asked to authenticate with this account.
+
+```bash
+# Install curl (if not already installed)
+sudo apt install -y curl
+
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Connect to your Tailscale network
+# Note: --accept-dns=false prevents Tailscale from managing DNS
+# This avoids DNS resolution issues if Tailscale's DNS fails
+sudo tailscale up --accept-dns=false
+# Open the URL shown in your browser to authenticate
+
+# Verify connection
+tailscale status
+tailscale ip -4
+# Note this IP - you'll use it during installation!
+```
+
+> **Why `--accept-dns=false`?** Tailscale can take over DNS resolution, but if its internal DNS server fails, your system loses the ability to resolve any domain names (like github.com). This flag keeps your system's DNS working normally while still allowing all Tailscale networking features (VPN, mesh connectivity, etc.).
+
+#### 5. NVIDIA GPU Support (optional)
+
+**Skip this section if you don't have an NVIDIA GPU.**
+
+If your worker node has an NVIDIA GPU (e.g., RTX 3090, RTX 4090, A100) and you want to run AI/ML workloads, install the GPU driver **before** running the MyNodeOne installer.
 
 ```bash
 # Check if you have an NVIDIA GPU
@@ -927,14 +1027,22 @@ sudo apt update
 sudo apt install -y ubuntu-drivers-common
 sudo ubuntu-drivers autoinstall
 
-# REBOOT REQUIRED
+# REBOOT REQUIRED after driver installation
 sudo reboot
-
-# After reboot, verify
-nvidia-smi
 ```
 
-The MyNodeOne installer will automatically configure the container toolkit. GPUs from all nodes are available to the Kubernetes scheduler - pods requesting `nvidia.com/gpu` can be scheduled on any GPU node.
+After reboot, verify the driver is working:
+
+```bash
+# Verify driver installation
+nvidia-smi
+# Should show your GPU model and driver version
+```
+
+**Note:** The MyNodeOne installer will automatically:
+- Detect your GPU and install the NVIDIA Container Toolkit
+- Make GPUs available to the Kubernetes scheduler
+- Pods requesting `nvidia.com/gpu` can be scheduled on any GPU-enabled node (control plane or worker)
 
 For more details, see [GPU-SUPPORT.md](../architecture/GPU-SUPPORT.md).
 
@@ -942,52 +1050,138 @@ For more details, see [GPU-SUPPORT.md](../architecture/GPU-SUPPORT.md).
 
 ## Installation Steps
 
-### Step 1: Get Join Token from Control Plane
-
-```bash
-# ON CONTROL PLANE:
-cat ~/mynodeone-join-token.txt
-# Copy this token and keep it handy
-```
-
-### Step 2: Prepare Worker Machine
-
-```bash
-# ON WORKER MACHINE: install prerequisites (same as control plane)
-sudo apt update
-sudo apt install -y git openssh-server
-
-# Install Tailscale (and curl if needed):
-sudo apt install -y curl
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-```
-
-### Step 3: Install Worker Node
+### Step 1: Download MyNodeOne on Worker Machine
 
 ```bash
 # ON WORKER MACHINE:
+# Clone the repository
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
-sudo ./scripts/mynodeone
-# Select Option 2: Worker Node
-# Paste join token when prompted
+# Verify you're in the right directory
+ls
+# Should show: scripts/ docs/ README.md etc.
 ```
 
-### Step 4: Verify from Control Plane
+### Step 2: Run Interactive Installation Wizard
+
+```bash
+# Run the installer
+sudo ./scripts/mynodeone
+```
+
+**Interactive prompts:**
+
+1. **Ready to start?** → `y`
+2. **Select node type (1-4):** → `2` (Worker Node)
+3. **Control plane Tailscale IP:** → Enter the IP you noted earlier (e.g., `100.116.16.117`)
+4. **K3s join token:** → Paste the token from `~/mynodeone-join-token.txt` on control plane
+5. **Worker node name:** → Enter a name (e.g., `worker-01`, `gaming-pc`, `node-002`)
+6. **Location:** → Optional label (e.g., `home`, `garage`, `office`)
+
+**Installation takes 10-15 minutes.**
+
+**What the installer does automatically:**
+- Installs required dependencies (storage drivers, networking tools, security packages)
+- Configures firewall (UFW) and fail2ban
+- Joins the Kubernetes cluster
+- Installs Node Agent for automatic config sync
+- Configures passwordless sudo (if not already done)
+
+**Success looks like:**
+```
+Worker node successfully added to MyNodeOne!
+
+Node Information:
+  Name: worker-01
+  IP: 100.x.x.x
+  Control Plane: 100.116.16.117
+
+Next Steps:
+  1. Apply node labels on control plane (see instructions)
+  2. Verify node status: kubectl get nodes
+```
+
+### Step 3: Apply Node Labels (on Control Plane)
+
+The installer creates a file with commands to label your worker node. Run these on the control plane:
 
 ```bash
 # ON CONTROL PLANE:
+# The worker machine will show you these commands, or run:
+kubectl label node worker-01 node-role.kubernetes.io/worker=true --overwrite
+kubectl label node worker-01 mynodeone.io/storage=true --overwrite
+
+# Replace 'worker-01' with your actual node name
+```
+
+### Step 4: Verify Worker Node is Ready
+
+```bash
+# ON CONTROL PLANE:
+# Check all nodes
 sudo kubectl get nodes
-# Should show worker node as "Ready"
+# Expected: Both control plane and worker showing "Ready"
+
+# Check node details
+sudo kubectl get nodes -o wide
+# Shows IPs, roles, versions
+
+# Verify Node Agent is running
+sudo ./scripts/nodes-status.sh
+# Should show worker node as "online"
 ```
 
 ---
 
 ## Worker Node Installation Complete!
 
-Your cluster now has additional compute resources!
+**What you have now:**
+- Worker node joined to your cluster
+- Automatic config sync via Node Agent (HTTP pull-based)
+- Workloads can be scheduled on worker node
+- Storage and GPU resources (if available) accessible to cluster
+
+**How Configuration Sync Works:**
+
+Worker nodes use a **pull-based sync** mechanism:
+- Worker runs Node Agent service that polls control plane every 60 seconds
+- Node Agent fetches configuration updates via HTTP
+- No SSH access required from control plane to worker (SSH only used as fallback)
+- Worker automatically catches up when it comes back online after being offline
+
+**Check Node Agent Status:**
+```bash
+# ON WORKER MACHINE:
+sudo systemctl status mynodeone-node-agent
+
+# View agent logs:
+sudo journalctl -u mynodeone-node-agent -f
+```
+
+**Workload Distribution:**
+
+Your cluster scheduler will now automatically distribute workloads across all nodes:
+```bash
+# ON CONTROL PLANE:
+# View pods across all nodes
+sudo kubectl get pods -A -o wide
+# The NODE column shows where each pod is running
+```
+
+**Next Steps - Choose What You Need:**
+
+- **Want public internet access for your apps?**
+  → Go to [Section 2: VPS Edge Node](#section-2-vps-edge-node-installation)
+
+- **Want to control your cluster from your laptop?**
+  → Go to [Section 3: Management Laptop](#section-3-management-laptop-setup)
+
+- **Add another worker node?**
+  → Repeat this section on another machine
+
+- **Done for now?**
+  → Your cluster is ready! Deploy apps using kubectl.
 
 ---
 

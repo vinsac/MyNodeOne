@@ -36,6 +36,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  # Read and update StatefulSet scale (for vLLM scaling)
+  - apiGroups: ["apps"]
+    resources: ["statefulsets/scale"]
+    verbs: ["get", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -49,4 +53,28 @@ subjects:
 roleRef:
   kind: Role
   name: gateway-backend-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole for reading node information (GPU status)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gateway-node-reader
+rules:
+  # Read nodes to get GPU availability
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gateway-node-reader
+subjects:
+  - kind: ServiceAccount
+    name: gateway
+    namespace: llmapi
+roleRef:
+  kind: ClusterRole
+  name: gateway-node-reader
   apiGroup: rbac.authorization.k8s.io

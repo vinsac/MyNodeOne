@@ -34,6 +34,11 @@ spec:
       # CRITICAL: Required for GPU access in K3s
       runtimeClassName: nvidia
       terminationGracePeriodSeconds: 60
+      # Set fsGroup to ensure vLLM can write to /models volume
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
       # Init container to pre-download model before vLLM starts
       # This ensures model is cached and vLLM startup is fast
       initContainers:

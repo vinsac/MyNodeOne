@@ -394,7 +394,9 @@ Run these commands in a terminal on your control plane machine:
     curl -fsSL https://tailscale.com/install.sh | sh
 
     # Start Tailscale and authenticate
-    sudo tailscale up
+    # Note: --accept-dns=false prevents Tailscale from managing DNS
+    # This avoids DNS resolution issues if Tailscale's DNS fails
+    sudo tailscale up --accept-dns=false
 
     # Follow the URL to authenticate in browser
     # Verify it's connected

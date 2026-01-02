@@ -259,7 +259,7 @@ configure_containerd() {
     log_info "Configuring containerd for GPU support..."
     
     # Check if K3s is installed (uses its own bundled containerd)
-    if [ -d "/var/lib/rancher/k3s" ] || systemctl is-active --quiet k3s; then
+    if [ -d "/var/lib/rancher/k3s" ] || systemctl is-active --quiet k3s || systemctl is-active --quiet k3s-agent; then
         log_info "K3s detected - configuring K3s containerd for GPU..."
         
         # K3s bundles its own runc, but nvidia-container-runtime can't find it
@@ -301,9 +301,9 @@ EOF
         
         log_success "K3s containerd config template created (extends base config)"
         
-        # Restart K3s to pick up the new config
+        # Restart K3s (server or agent) to pick up the new config
         if systemctl is-active --quiet k3s; then
-            log_info "Restarting K3s to apply GPU configuration..."
+            log_info "Restarting K3s server to apply GPU configuration..."
             systemctl restart k3s
             
             # Wait for K3s to be ready
@@ -311,13 +311,18 @@ EOF
             local attempts=0
             while [ $attempts -lt 30 ]; do
                 if kubectl get nodes &>/dev/null; then
-                    log_success "K3s restarted with GPU support"
+                    log_success "K3s server restarted with GPU support"
                     return 0
                 fi
                 sleep 2
                 attempts=$((attempts + 1))
             done
             log_warn "K3s taking longer to restart - check with: kubectl get nodes"
+        elif systemctl is-active --quiet k3s-agent; then
+            log_info "Restarting K3s agent to apply GPU configuration..."
+            systemctl restart k3s-agent
+            sleep 5
+            log_success "K3s agent restarted with GPU support"
         fi
     else
         # Standard containerd (not K3s)

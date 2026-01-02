@@ -359,7 +359,7 @@ check_requirements() {
     fi
     
     if [ -z "$TAILSCALE_IP" ]; then
-        log_error "Tailscale is not connected. Please run: sudo tailscale up"
+        log_error "Tailscale is not connected. Please run: sudo tailscale up --accept-dns=false"
         exit 1
     fi
     

@@ -126,7 +126,7 @@ configure_tailscale_routes() {
         echo
         echo "Please install Tailscale first:"
         echo "  curl -fsSL https://tailscale.com/install.sh | sh"
-        echo "  sudo tailscale up"
+        echo "  sudo tailscale up --accept-dns=false"
         echo
         echo "Then re-run this script."
         exit 1
@@ -137,7 +137,7 @@ configure_tailscale_routes() {
         log_error "Tailscale is not running or not connected"
         echo
         echo "Please connect to Tailscale:"
-        echo "  sudo tailscale up"
+        echo "  sudo tailscale up --accept-dns=false"
         echo
         echo "Then re-run this script."
         exit 1
@@ -161,14 +161,15 @@ configure_tailscale_routes() {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo
         
-        sudo tailscale up --accept-routes
+        # Use --accept-dns=false to prevent DNS takeover issues
+        sudo tailscale up --accept-routes --accept-dns=false
         
         if tailscale status --self 2>&1 | grep -q "accept-routes is false"; then
             log_error "Failed to configure Tailscale route acceptance"
             exit 1
         fi
         
-        log_success "Tailscale configured to accept subnet routes"
+        log_success "Tailscale configured to accept subnet routes (DNS managed by system)"
         echo
         echo "✅ Your laptop can now access LoadBalancer services!"
     else

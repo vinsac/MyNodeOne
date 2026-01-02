@@ -192,13 +192,16 @@ install_tailscale_prompt() {
         echo
         
         if prompt_confirm "Ready to authenticate?"; then
-            sudo tailscale up
+            # Use --accept-dns=false to prevent DNS takeover issues
+            # This avoids DNS resolution failures if Tailscale's internal DNS (100.100.100.100) fails
+            sudo tailscale up --accept-dns=false
             
             if check_tailscale; then
                 print_success "Tailscale connected! Your IP: $TAILSCALE_IP"
+                print_info "DNS managed by system (Tailscale DNS disabled for reliability)"
                 return 0
             else
-                print_error "Tailscale connection failed. Please run: sudo tailscale up"
+                print_error "Tailscale connection failed. Please run: sudo tailscale up --accept-dns=false"
                 return 1
             fi
         fi

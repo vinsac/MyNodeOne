@@ -130,6 +130,7 @@ install_dependencies() {
         wget \
         git \
         jq \
+        pciutils \
         open-iscsi \
         nfs-common \
         util-linux \

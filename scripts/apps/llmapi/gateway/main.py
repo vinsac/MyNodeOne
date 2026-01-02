@@ -1746,6 +1746,144 @@ ADMIN_HTML = """
             </p>
         </div>
 
+        <!-- GPU Scaling & Resource Management -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+            <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="w-5 h-5 text-orange-400"></i>
+                GPU Scaling & Resource Management
+            </h2>
+            
+            <!-- Cluster GPU Overview -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="server" class="w-4 h-4 text-cyan-400"></i>
+                        Cluster GPU Status
+                    </h3>
+                    <button onclick="refreshGpuStatus()" class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                        Refresh
+                    </button>
+                </div>
+                <div id="cluster-gpus" class="space-y-2">
+                    <p class="text-sm text-gray-400">Loading GPU information...</p>
+                </div>
+            </div>
+            
+            <!-- vLLM Scaling Control -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-green-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-4 h-4 text-green-400"></i>
+                        vLLM (GPU Inference)
+                    </h3>
+                    <span id="vllm-replica-status" class="text-xs bg-gray-600 px-2 py-1 rounded">
+                        Loading...
+                    </span>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">
+                    Scale vLLM replicas to use multiple GPUs for higher throughput. Each replica uses 1 GPU.
+                </p>
+                
+                <!-- Replica Buttons -->
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-sm text-gray-400">Replicas:</span>
+                    <div class="flex gap-2">
+                        <button onclick="scaleVllm(0)" id="vllm-btn-0" 
+                                class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                            0 (Off)
+                        </button>
+                        <button onclick="scaleVllm(1)" id="vllm-btn-1"
+                                class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                            1 GPU
+                        </button>
+                        <button onclick="scaleVllm(2)" id="vllm-btn-2"
+                                class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                            2 GPUs
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Pod Status -->
+                <div id="vllm-pods" class="mt-3 space-y-1 text-xs">
+                    <!-- Dynamic pod status will be inserted here -->
+                </div>
+                
+                <div class="mt-3 p-3 bg-gray-800 rounded text-xs text-gray-400">
+                    <p><strong class="text-gray-300">💡 Tip:</strong> Each vLLM replica:</p>
+                    <ul class="list-disc list-inside mt-1 ml-2 space-y-1">
+                        <li>Uses 1 GPU and ~16-32 GB RAM</li>
+                        <li>Takes 5-10 minutes to initialize</li>
+                        <li>Automatically load balanced by gateway</li>
+                        <li>Requires GPU available on cluster</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- llamacpp Control -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-blue-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-medium flex items-center gap-2">
+                        <i data-lucide="hard-drive" class="w-4 h-4 text-blue-400"></i>
+                        llama.cpp (CPU - Large Models)
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span id="llamacpp-status-badge" class="text-xs px-2 py-1 rounded bg-gray-600">
+                            Checking...
+                        </span>
+                        <button onclick="toggleLlamacppNew()" id="llamacpp-toggle-btn"
+                                class="text-xs bg-blue-700 hover:bg-blue-600 rounded px-3 py-1.5 transition font-medium">
+                            Toggle
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">
+                    llama.cpp uses CPU and RAM for 70B+ models. Stop when not needed to free up ~64 GB RAM.
+                </p>
+                
+                <div class="mt-3 p-3 bg-yellow-900 bg-opacity-30 rounded text-xs border border-yellow-600">
+                    <p class="text-yellow-200"><strong>⚠️ RAM Management:</strong></p>
+                    <p class="text-yellow-300 mt-1">
+                        Stopping llamacpp frees ~64 GB RAM on control plane, allowing vLLM to schedule if RAM was insufficient.
+                        Use this to free resources for additional GPU replicas.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h3 class="font-medium mb-3 flex items-center gap-2">
+                    <i data-lucide="play-circle" class="w-4 h-4 text-purple-400"></i>
+                    Quick Actions
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button onclick="quickAction('max-gpu')" 
+                            class="bg-green-700 hover:bg-green-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        Max GPU Mode (Use All GPUs)
+                    </button>
+                    <button onclick="quickAction('save-ram')" 
+                            class="bg-blue-700 hover:bg-blue-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        Save RAM (Stop llamacpp)
+                    </button>
+                    <button onclick="quickAction('balanced')" 
+                            class="bg-purple-700 hover:bg-purple-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
+                        <i data-lucide="scale" class="w-4 h-4"></i>
+                        Balanced Mode (1 GPU + CPU)
+                    </button>
+                    <button onclick="quickAction('stop-all')" 
+                            class="bg-red-700 hover:bg-red-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
+                        <i data-lucide="power" class="w-4 h-4"></i>
+                        Stop All (Free Resources)
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-3">
+                    Quick actions automatically configure backends for common usage patterns.
+                </p>
+            </div>
+        </div>
+
         <!-- API Keys Management -->
         <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
             <div class="flex items-center justify-between mb-4">
@@ -2301,6 +2439,233 @@ Continue?`;
             }
         }
         
+        // GPU Scaling Functions
+        async function refreshGpuStatus() {
+            try {
+                const gpuResp = await adminFetch(`${API_BASE}/admin/cluster/gpus`);
+                if (!gpuResp) return;
+                const gpuData = await gpuResp.json();
+                
+                const gpuContainer = document.getElementById('cluster-gpus');
+                if (gpuData.gpus && gpuData.gpus.length > 0) {
+                    gpuContainer.innerHTML = `
+                        <div class="text-sm mb-2">
+                            <strong class="text-cyan-300">Total: ${gpuData.total_gpus} GPUs</strong>
+                            <span class="text-gray-400"> | Available: ${gpuData.available_gpus}</span>
+                        </div>
+                        ${gpuData.gpus.map(gpu => `
+                            <div class="flex items-center justify-between p-2 bg-gray-800 rounded text-sm">
+                                <span class="text-gray-300">${gpu.node}</span>
+                                <div class="flex gap-2 items-center">
+                                    <span class="text-xs text-gray-400">${gpu.total} total</span>
+                                    <span class="text-xs ${gpu.available > 0 ? 'text-green-400' : 'text-yellow-400'}">
+                                        ${gpu.available} available
+                                    </span>
+                                    ${gpu.allocated > 0 ? `<span class="text-xs text-orange-400">${gpu.allocated} in use</span>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    `;
+                } else {
+                    gpuContainer.innerHTML = '<p class="text-sm text-gray-400">No GPUs detected in cluster</p>';
+                }
+                
+                lucide.createIcons();
+            } catch (e) {
+                console.error('Failed to load GPU status:', e);
+                document.getElementById('cluster-gpus').innerHTML = 
+                    '<p class="text-sm text-red-400">Failed to load GPU info</p>';
+            }
+            
+            // Also refresh vLLM replica status
+            await refreshVllmStatus();
+        }
+        
+        async function refreshVllmStatus() {
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/vllm/replicas`);
+                if (!resp) return;
+                const data = await resp.json();
+                
+                // Update status badge
+                const badge = document.getElementById('vllm-replica-status');
+                badge.textContent = `${data.ready}/${data.desired} Ready`;
+                badge.className = `text-xs px-2 py-1 rounded ${
+                    data.ready === data.desired && data.desired > 0 
+                        ? 'bg-green-900 text-green-300' 
+                        : 'bg-yellow-900 text-yellow-300'
+                }`;
+                
+                // Update button states
+                for (let i = 0; i <= 2; i++) {
+                    const btn = document.getElementById(`vllm-btn-${i}`);
+                    if (btn) {
+                        if (i === data.desired) {
+                            btn.className = 'px-4 py-2 rounded text-sm font-medium transition bg-green-700 text-white';
+                        } else {
+                            btn.className = 'px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500';
+                        }
+                    }
+                }
+                
+                // Update pod status
+                const podContainer = document.getElementById('vllm-pods');
+                if (data.pods && data.pods.length > 0) {
+                    podContainer.innerHTML = data.pods.map(pod => `
+                        <div class="flex items-center justify-between p-2 bg-gray-800 rounded">
+                            <span class="text-gray-300">${pod.name}</span>
+                            <div class="flex gap-2 items-center">
+                                <span class="text-gray-400">${pod.node || 'scheduling...'}</span>
+                                <span class="${pod.ready ? 'text-green-400' : 'text-yellow-400'}">
+                                    ${pod.phase}
+                                </span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else if (data.desired === 0) {
+                    podContainer.innerHTML = '<p class="text-gray-500">vLLM is scaled down to 0 replicas</p>';
+                } else {
+                    podContainer.innerHTML = '<p class="text-gray-500">No pods found</p>';
+                }
+            } catch (e) {
+                console.error('Failed to load vLLM status:', e);
+            }
+        }
+        
+        async function scaleVllm(replicas) {
+            const message = replicas === 0 
+                ? 'Scale vLLM down to 0 replicas? This will stop GPU inference and free all GPUs.'
+                : `Scale vLLM to ${replicas} replica${replicas > 1 ? 's' : ''}? This requires ${replicas} available GPU${replicas > 1 ? 's' : ''} and takes 5-10 minutes to initialize.`;
+            
+            if (!confirm(message)) return;
+            
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/backend/vllm/scale`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({replicas: replicas})
+                });
+                
+                if (resp.ok) {
+                    const data = await resp.json();
+                    alert(data.message || `vLLM scaling to ${replicas} replicas`);
+                    await refreshGpuStatus();
+                } else {
+                    const data = await resp.json();
+                    alert('Failed to scale vLLM: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to scale vLLM: ' + e.message);
+            }
+        }
+        
+        async function toggleLlamacppNew() {
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/config`);
+                if (!resp) return;
+                const data = await resp.json();
+                const isRunning = data.llamacpp_replicas > 0;
+                
+                const message = isRunning
+                    ? 'Stop llama.cpp? This will free ~64GB RAM, allowing vLLM to schedule if RAM was insufficient.'
+                    : 'Start llama.cpp? This uses ~64GB RAM for 70B models. Takes 2-5 minutes to load.';
+                
+                if (!confirm(message)) return;
+                
+                const scaleResp = await adminFetch(`${API_BASE}/admin/backend/llamacpp/scale`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({replicas: isRunning ? 0 : 1})
+                });
+                
+                if (scaleResp.ok) {
+                    alert(isRunning ? 'llamacpp stopping - RAM will be freed' : 'llamacpp starting - takes 2-5 min');
+                    await refreshLlamacppStatus();
+                } else {
+                    const errData = await scaleResp.json();
+                    alert('Failed: ' + (errData.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed: ' + e.message);
+            }
+        }
+        
+        async function refreshLlamacppStatus() {
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/config`);
+                if (!resp) return;
+                const data = await resp.json();
+                
+                const badge = document.getElementById('llamacpp-status-badge');
+                if (data.llamacpp_replicas > 0) {
+                    badge.textContent = 'Running';
+                    badge.className = 'text-xs px-2 py-1 rounded bg-green-900 text-green-300';
+                } else {
+                    badge.textContent = 'Stopped';
+                    badge.className = 'text-xs px-2 py-1 rounded bg-gray-600 text-gray-400';
+                }
+            } catch (e) {
+                console.error('Failed to refresh llamacpp status:', e);
+            }
+        }
+        
+        async function quickAction(action) {
+            let message = '';
+            let actions = [];
+            
+            switch (action) {
+                case 'max-gpu':
+                    message = 'Max GPU Mode: Scale vLLM to use all available GPUs and stop llamacpp to free RAM. Continue?';
+                    actions = [
+                        {type: 'llamacpp', replicas: 0},
+                        {type: 'vllm', replicas: 2}
+                    ];
+                    break;
+                case 'save-ram':
+                    message = 'Save RAM Mode: Stop llamacpp to free ~64GB RAM. vLLM will continue running. Continue?';
+                    actions = [{type: 'llamacpp', replicas: 0}];
+                    break;
+                case 'balanced':
+                    message = 'Balanced Mode: 1 vLLM replica on GPU + llamacpp on CPU for large models. Continue?';
+                    actions = [
+                        {type: 'vllm', replicas: 1},
+                        {type: 'llamacpp', replicas: 1}
+                    ];
+                    break;
+                case 'stop-all':
+                    message = 'Stop All: Turn off vLLM and llamacpp to free all resources. Continue?';
+                    actions = [
+                        {type: 'vllm', replicas: 0},
+                        {type: 'llamacpp', replicas: 0}
+                    ];
+                    break;
+            }
+            
+            if (!confirm(message)) return;
+            
+            try {
+                for (const act of actions) {
+                    const endpoint = act.type === 'vllm' 
+                        ? `${API_BASE}/admin/backend/vllm/scale`
+                        : `${API_BASE}/admin/backend/llamacpp/scale`;
+                    
+                    await adminFetch(endpoint, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({replicas: act.replicas})
+                    });
+                }
+                
+                alert('Quick action applied! Services are scaling...');
+                setTimeout(() => {
+                    refreshGpuStatus();
+                    refreshLlamacppStatus();
+                }, 2000);
+            } catch (e) {
+                alert('Failed to apply quick action: ' + e.message);
+            }
+        }
+        
         async function setHfToken() {
             const token = document.getElementById('hf-token').value.trim();
             if (!token) {
@@ -2495,6 +2860,8 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             loadKeys();
             loadBackendConfig();
             loadStats();
+            refreshGpuStatus();
+            refreshLlamacppStatus();
         })();
         
         // Refresh status every 30 seconds
@@ -2502,6 +2869,8 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
         setInterval(loadBackendConfig, 60000);
         setInterval(loadModels, 30000);
         setInterval(loadStats, 60000);  // Refresh stats every minute
+        setInterval(refreshGpuStatus, 30000);  // Refresh GPU status every 30 seconds
+        setInterval(refreshLlamacppStatus, 30000);  // Refresh llamacpp status every 30 seconds
     </script>
 </body>
 </html>
@@ -3119,6 +3488,178 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
         logger.error(f"Failed to update llama.cpp config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/admin/cluster/gpus")
+async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
+    """Get GPU availability across cluster nodes."""
+    await require_scope("admin", api_key)
+    
+    try:
+        from kubernetes import client, config as k8s_config
+        
+        try:
+            k8s_config.load_incluster_config()
+        except:
+            k8s_config.load_kube_config()
+        
+        core_v1 = client.CoreV1Api()
+        
+        # Get all nodes
+        nodes = core_v1.list_node()
+        
+        gpu_info = []
+        for node in nodes.items:
+            node_name = node.metadata.name
+            allocatable = node.status.allocatable or {}
+            capacity = node.status.capacity or {}
+            
+            # Check for NVIDIA GPUs
+            gpu_allocatable = int(allocatable.get("nvidia.com/gpu", 0))
+            gpu_capacity = int(capacity.get("nvidia.com/gpu", 0))
+            
+            if gpu_capacity > 0:
+                gpu_info.append({
+                    "node": node_name,
+                    "total": gpu_capacity,
+                    "available": gpu_allocatable,
+                    "allocated": gpu_capacity - gpu_allocatable
+                })
+        
+        return {
+            "gpus": gpu_info,
+            "total_gpus": sum(g["total"] for g in gpu_info),
+            "available_gpus": sum(g["available"] for g in gpu_info)
+        }
+        
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Kubernetes client not available")
+    except Exception as e:
+        logger.error(f"Failed to get GPU info: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/admin/backend/vllm/replicas")
+async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
+    """Get current vLLM replica count and status."""
+    await require_scope("admin", api_key)
+    
+    try:
+        from kubernetes import client, config as k8s_config
+        
+        try:
+            k8s_config.load_incluster_config()
+        except:
+            k8s_config.load_kube_config()
+        
+        apps_v1 = client.AppsV1Api()
+        core_v1 = client.CoreV1Api()
+        namespace = os.getenv("NAMESPACE", "llmapi")
+        
+        # Get StatefulSet
+        sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
+        desired = sts.spec.replicas or 0
+        ready = sts.status.ready_replicas or 0
+        
+        # Get pod statuses
+        pods = core_v1.list_namespaced_pod(
+            namespace,
+            label_selector="app=vllm"
+        )
+        
+        pod_status = []
+        for pod in pods.items:
+            pod_status.append({
+                "name": pod.metadata.name,
+                "node": pod.spec.node_name,
+                "phase": pod.status.phase,
+                "ready": all(cs.ready for cs in pod.status.container_statuses or [])
+            })
+        
+        return {
+            "desired": desired,
+            "ready": ready,
+            "pods": pod_status
+        }
+        
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Kubernetes client not available")
+    except Exception as e:
+        logger.error(f"Failed to get vLLM replicas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admin/backend/vllm/scale")
+async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)):
+    """Scale vLLM StatefulSet. Requires available GPUs."""
+    await require_scope("admin", api_key)
+    body = await request.json()
+    replicas = body.get("replicas", 1)
+    
+    if replicas < 0 or replicas > 10:
+        raise HTTPException(status_code=400, detail="replicas must be between 0 and 10")
+    
+    try:
+        from kubernetes import client, config as k8s_config
+        
+        try:
+            k8s_config.load_incluster_config()
+        except:
+            k8s_config.load_kube_config()
+        
+        apps_v1 = client.AppsV1Api()
+        core_v1 = client.CoreV1Api()
+        namespace = os.getenv("NAMESPACE", "llmapi")
+        
+        # Check GPU availability
+        nodes = core_v1.list_node()
+        total_gpus = 0
+        for node in nodes.items:
+            allocatable = node.status.allocatable or {}
+            total_gpus += int(allocatable.get("nvidia.com/gpu", 0))
+        
+        if replicas > total_gpus:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Requested {replicas} replicas but only {total_gpus} GPUs available in cluster"
+            )
+        
+        # Scale the StatefulSet
+        apps_v1.patch_namespaced_stateful_set_scale(
+            "vllm",
+            namespace,
+            {"spec": {"replicas": replicas}}
+        )
+        
+        # Update gateway config with new vLLM URLs
+        if replicas > 0:
+            vllm_urls = ",".join([f"http://vllm-{i}.vllm:8000" for i in range(replicas)])
+            try:
+                cm = core_v1.read_namespaced_config_map("gateway-config", namespace)
+                cm.data["VLLM_URLS"] = vllm_urls
+                core_v1.patch_namespaced_config_map("gateway-config", namespace, cm)
+                
+                # Restart gateway to pick up new URLs
+                deploy = apps_v1.read_namespaced_deployment("gateway", namespace)
+                if deploy.spec.template.metadata.annotations is None:
+                    deploy.spec.template.metadata.annotations = {}
+                deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
+                apps_v1.patch_namespaced_deployment("gateway", namespace, deploy)
+            except:
+                pass  # Config update is optional
+        
+        logger.info(f"vLLM scaled to {replicas} replicas")
+        return {
+            "status": "scaled",
+            "replicas": replicas,
+            "message": f"vLLM {'scaling up - pods will initialize in 5-10 minutes' if replicas > 0 else 'scaling down - GPUs will be freed'}"
+        }
+        
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Kubernetes client not available")
+    except Exception as e:
+        logger.error(f"Failed to scale vLLM: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

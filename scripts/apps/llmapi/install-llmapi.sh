@@ -1204,8 +1204,12 @@ EOF
             model_name=$(basename "$PRE_DOWNLOADED_VLLM")
             destination="$vllm_predownload/$model_name"
             
+            # Normalize paths by removing trailing slashes for comparison
+            source_normalized="${PRE_DOWNLOADED_VLLM%/}"
+            dest_normalized="${destination%/}"
+            
             # Check if model is already in the correct location
-            if [ "$PRE_DOWNLOADED_VLLM" = "$destination" ]; then
+            if [ "$source_normalized" = "$dest_normalized" ]; then
                 # Model is already in hostPath, just verify it
                 model_size=$(du -sh "$PRE_DOWNLOADED_VLLM" 2>/dev/null | cut -f1)
                 echo -e "   ${GREEN}✓ Model already in hostPath: $model_name ($model_size)${NC}"

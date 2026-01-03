@@ -1187,11 +1187,17 @@ EOF
     # Init container will check /predownload first before downloading
     if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
         echo ""
-        echo "   � Setting up pre-downloaded vLLM models..."
+        echo "   📦 Setting up pre-downloaded vLLM models..."
         
         # Create predownload directory (mounted as hostPath in init container)
         vllm_predownload="/var/lib/llmapi/models/vllm"
         sudo mkdir -p "$vllm_predownload"
+        
+        # Fix permissions on existing models (in case they were downloaded by user)
+        if [ -d "/var/lib/llmapi/models" ]; then
+            echo "   🔧 Ensuring correct permissions on model directory..."
+            sudo chown -R root:root /var/lib/llmapi/models 2>/dev/null || true
+        fi
         
         # Copy model to predownload location if provided
         if [ -d "$PRE_DOWNLOADED_VLLM" ]; then

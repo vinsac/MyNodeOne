@@ -538,6 +538,9 @@ source=$best_source
 downloaded=$(date -Iseconds)
 EOF
     
+    # Fix permissions (ensure root ownership for kubernetes hostPath)
+    chown -R root:root "$output_dir" 2>/dev/null || true
+    
     log_success "vLLM model ready at: $output_dir"
 }
 
@@ -605,6 +608,8 @@ download_llamacpp_model() {
         if download_file "$url" "$output_file"; then
             # Verify downloaded file
             if [[ -f "$output_file" ]] && [[ $(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo 0) -gt 1000000 ]]; then
+                # Fix permissions (ensure root ownership for kubernetes hostPath)
+                chown -R root:root "$output_dir" 2>/dev/null || true
                 log_success "llama.cpp model ready at: $output_file"
                 return 0
             else
@@ -666,6 +671,9 @@ download_embedding_model() {
     
     # Create symlink
     ln -sf "$filename" "$DOWNLOAD_DIR/embedding/$model_key.gguf" 2>/dev/null || true
+    
+    # Fix permissions (ensure root ownership for kubernetes hostPath)
+    chown -R root:root "$DOWNLOAD_DIR/embedding" 2>/dev/null || true
     
     log_success "Embedding model ready at: $output_path"
 }

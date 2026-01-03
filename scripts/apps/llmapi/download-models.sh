@@ -329,6 +329,8 @@ download_file() {
     if [[ -f "$output" ]]; then
         local existing_size=$(stat -c%s "$output" 2>/dev/null || echo 0)
         if [[ -n "$expected_size" ]] && [[ "$existing_size" -ge "$expected_size" ]]; then
+            # Fix permissions on existing file (defensive programming)
+            chown -R root:root "$(dirname "$output")" 2>/dev/null || true
             log_success "File already downloaded: $output ($(human_size $existing_size))"
             return 0
         else
@@ -509,6 +511,19 @@ download_vllm_model() {
     fi
     
     IFS='|' read -r repo_id size desc <<< "${VLLM_MODELS[$model_key]}"
+    local output_dir="$DOWNLOAD_DIR/vllm/$model_key"
+    
+    # Check if model already exists (defensive programming)
+    if [[ -d "$output_dir" ]] && [[ -f "$output_dir/config.json" ]]; then
+        local model_size=$(du -sh "$output_dir" 2>/dev/null | cut -f1)
+        echo ""
+        echo -e "${CYAN}=== vLLM Model ===${NC}"
+        echo "Model: $model_key"
+        # Fix permissions on existing model (defensive programming)
+        chown -R root:root "$output_dir" 2>/dev/null || true
+        log_success "Model already downloaded: $model_key ($model_size)"
+        return 0
+    fi
     
     echo ""
     echo -e "${CYAN}=== Downloading vLLM Model ===${NC}"
@@ -526,8 +541,6 @@ download_vllm_model() {
     echo ""
     log_info "Selected source: $best_source ($(human_size $best_speed)/s)"
     echo ""
-    
-    local output_dir="$DOWNLOAD_DIR/vllm/$model_key"
     download_hf_model "$repo_id" "$output_dir" "$best_source"
     
     # Create a marker file with metadata
@@ -577,6 +590,8 @@ download_llamacpp_model() {
     if [[ -f "$output_file" ]]; then
         local current_size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo 0)
         if [[ $current_size -gt 1000000 ]]; then  # > 1MB, likely valid
+            # Fix permissions on existing file (defensive programming)
+            chown -R root:root "$output_dir" 2>/dev/null || true
             log_success "Model already downloaded: $filename ($(human_size $current_size))"
             return 0
         fi

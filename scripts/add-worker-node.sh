@@ -205,6 +205,7 @@ label_node() {
 kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true --overwrite
 kubectl label node $NODE_NAME mynodeone.io/location=${NODE_LOCATION} --overwrite
 kubectl label node $NODE_NAME mynodeone.io/storage=true --overwrite
+kubectl label node $NODE_NAME mynodeone.io/worker-ip=${TAILSCALE_IP} --overwrite
 EOF
     
     # Fix ownership (script runs as root via sudo)
@@ -234,11 +235,16 @@ print_summary() {
     echo "  1. On the control plane node, apply node labels:"
     echo "     See: $ACTUAL_HOME/mynodeone-node-labels.txt on this machine"
     echo
-    echo "  2. Verify node status on control plane:"
+    echo "  2. Set up SSH for model syncing (one-time, 2 minutes):"
+    echo "     On control plane: ssh-copy-id $ACTUAL_USER@$TAILSCALE_IP"
+    echo "     Then sync models: ./scripts/apps/llmapi/sync-models-to-workers.sh"
+    echo
+    echo "  3. Verify node status on control plane:"
     echo "     kubectl get nodes"
     echo "     ./scripts/nodes-status.sh"
     echo
-    echo "  3. This node will now receive workloads automatically!"
+    echo "  4. This node will now receive workloads automatically!"
+    echo "     vLLM pods will use pre-synced models for instant startup."
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }

@@ -52,8 +52,9 @@ warn() {
 # =============================================================================
 
 get_worker_nodes() {
+    # Get worker nodes with their Tailscale IPs from labels
     kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' \
-        -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true
+        -o json 2>/dev/null | jq -r '.items[] | .metadata.name + " " + (.metadata.labels["mynodeone.io/worker-ip"] // "")' || true
 }
 
 # =============================================================================
@@ -186,33 +187,52 @@ main() {
     fi
     
     # Get worker nodes
-    local worker_nodes
+    local worker_data
     if [[ $# -gt 0 ]]; then
-        # Use specified worker node
-        worker_nodes="$1"
+        # Use specified worker node (hostname or IP)
+        # Try to get IP from label if hostname provided
+        local node_ip=$(kubectl get node "$1" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
+        if [[ -n "$node_ip" ]]; then
+            worker_data="$1 $node_ip"
+        else
+            # Assume it's an IP
+            worker_data="$1 $1"
+        fi
     else
         # Auto-detect all worker nodes
-        worker_nodes=$(get_worker_nodes)
-        if [[ -z "$worker_nodes" ]]; then
+        worker_data=$(get_worker_nodes)
+        if [[ -z "$worker_data" ]]; then
             warn "No worker nodes found in cluster."
+            warn "Make sure worker nodes have the mynodeone.io/worker-ip label."
             exit 0
         fi
     fi
     
-    info "Found worker node(s): $worker_nodes"
+    info "Found worker node(s):"
+    echo "$worker_data" | while read -r node_name node_ip; do
+        [[ -n "$node_name" ]] && info "  - $node_name (IP: ${node_ip:-'no label'})"
+    done
     echo ""
     
     # Sync to each worker
     local success_count=0
     local fail_count=0
     
-    for node in $worker_nodes; do
-        if sync_to_worker "$node"; then
+    while read -r node_name node_ip; do
+        [[ -z "$node_name" ]] && continue
+        
+        # Use IP if available, otherwise fall back to hostname
+        local target="${node_ip:-$node_name}"
+        if [[ -z "$node_ip" ]]; then
+            warn "No mynodeone.io/worker-ip label for $node_name, trying hostname..."
+        fi
+        
+        if sync_to_worker "$target"; then
             ((success_count++))
         else
             ((fail_count++))
         fi
-    done
+    done <<< "$worker_data"
     
     # Summary
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

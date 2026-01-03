@@ -250,10 +250,6 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 60
       volumes:
-      - name: models
-        hostPath:
-          path: /var/lib/vllm-models
-          type: DirectoryOrCreate
       - name: predownload
         hostPath:
           path: /var/lib/llmapi/models
@@ -262,6 +258,22 @@ spec:
         emptyDir:
           medium: Memory
           sizeLimit: 8Gi
+  # StatefulSet volumeClaimTemplates - creates one PVC per pod
+  # This is the industry standard for multi-node stateful workloads
+  volumeClaimTemplates:
+  - metadata:
+      name: models
+      annotations:
+        # Longhorn-specific: number of replicas for the volume
+        # Set to 1 for single-node or when nodes have local storage
+        longhorn.io/replica-count: "1"
+    spec:
+      accessModes:
+      - ReadWriteOnce  # Each pod gets its own RWO PVC
+      storageClassName: longhorn
+      resources:
+        requests:
+          storage: 30Gi  # Enough for one model + cache
 ---
 apiVersion: v1
 kind: Service

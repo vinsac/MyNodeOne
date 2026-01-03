@@ -65,7 +65,11 @@ spec:
           for HOST_DIR in /predownload/vllm/*; do
             if [ -d "$HOST_DIR" ]; then
               HOST_MODEL=$(basename "$HOST_DIR" | tr '[:upper:]' '[:lower:]')
-              if echo "$MODEL_SHORT" | grep -qi "$HOST_MODEL" || echo "$HOST_MODEL" | grep -qi "$MODEL_SHORT"; then
+              # Fuzzy match: extract base model name (e.g., qwen2.5-14b from qwen2.5-14b-instruct-awq)
+              MODEL_BASE=$(echo "$MODEL_SHORT" | sed -E 's/-(instruct|chat|code|base).*$//')
+              HOST_BASE=$(echo "$HOST_MODEL" | sed -E 's/-(instruct|chat|code|base).*$//')
+              
+              if echo "$MODEL_BASE" | grep -qi "$HOST_BASE" || echo "$HOST_BASE" | grep -qi "$MODEL_BASE"; then
                 HOST_SIZE=$(du -sh "$HOST_DIR" 2>/dev/null | cut -f1)
                 echo "Found pre-downloaded model: $HOST_DIR ($HOST_SIZE)"
                 # Verify it has actual model files

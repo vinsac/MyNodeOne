@@ -1013,7 +1013,56 @@ tailscale ip -4
 
 > **Why `--accept-dns=false`?** Tailscale can take over DNS resolution, but if its internal DNS server fails, your system loses the ability to resolve any domain names (like github.com). This flag keeps your system's DNS working normally while still allowing all Tailscale networking features (VPN, mesh connectivity, etc.).
 
-#### 5. NVIDIA GPU Support (optional)
+#### 5. SSH Key Authentication from Control Plane (Required for Model Sync)
+
+**This step enables the control plane to sync pre-downloaded AI models to worker nodes, significantly speeding up deployments.**
+
+**On the CONTROL PLANE**, generate an SSH key and copy it to the worker node:
+
+```bash
+# ON CONTROL PLANE:
+# Generate SSH key if you don't have one
+if [ ! -f ~/.ssh/id_rsa ]; then
+    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+    echo "✓ SSH key generated"
+else
+    echo "✓ SSH key already exists"
+fi
+
+# Get worker's Tailscale IP (you noted this earlier)
+# Replace WORKER_TAILSCALE_IP with actual IP like 100.116.16.118
+WORKER_IP="WORKER_TAILSCALE_IP"
+
+# Get worker's username (replace with actual username)
+WORKER_USER="yourusername"
+
+# Copy SSH key to worker node
+ssh-copy-id ${WORKER_USER}@${WORKER_IP}
+# Enter worker's password when prompted
+# This is the ONLY time you'll need the password!
+
+# Test passwordless SSH
+ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
+# Should connect without password prompt
+```
+
+**Example with real values:**
+```bash
+# If worker IP is 100.116.16.118 and username is vinaysachdeva:
+WORKER_IP="100.116.16.118"
+WORKER_USER="vinaysachdeva"
+ssh-copy-id ${WORKER_USER}@${WORKER_IP}
+ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
+```
+
+**Why is this needed?**
+- **Model sync:** Pre-downloaded AI models (8-30GB) on control plane can be synced to workers
+- **Faster deployments:** Avoids re-downloading large models on each node
+- **Automated management:** Enables scripts to manage multi-node configurations
+
+**Security Note:** SSH keys only work within your Tailscale VPN network. External access is blocked by Tailscale's firewall.
+
+#### 6. NVIDIA GPU Support (optional)
 
 **Skip this section if you don't have an NVIDIA GPU.**
 

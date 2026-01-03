@@ -22,9 +22,6 @@ spec:
     spec:
       # CRITICAL: Required for GPU access in K3s
       runtimeClassName: nvidia
-      # Run on control plane where pre-downloaded models exist (hostPath)
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
       terminationGracePeriodSeconds: 60
       # Set fsGroup to ensure both containers can write to /models volume
       # Init container runs as root to install packages, fsGroup gives it write access
@@ -92,6 +89,13 @@ spec:
           # 3. Download from HuggingFace
           echo ""
           echo "No cached model found. Downloading from HuggingFace..."
+          
+          # Prepare /models directory with correct permissions BEFORE download
+          # This prevents "Read-only file system" errors when creating lock files
+          echo "Preparing model directory..."
+          mkdir -p /models/.locks
+          chown -R 1000:1000 /models
+          chmod -R 755 /models
           
           # Install huggingface_hub with hf_transfer for faster downloads
           echo "Installing huggingface_hub..."

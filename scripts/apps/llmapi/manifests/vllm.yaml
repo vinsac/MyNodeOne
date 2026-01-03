@@ -34,11 +34,10 @@ spec:
       # CRITICAL: Required for GPU access in K3s
       runtimeClassName: nvidia
       terminationGracePeriodSeconds: 60
-      # Set fsGroup to ensure vLLM can write to /models volume
+      # Set fsGroup to ensure both containers can write to /models volume
+      # Init container runs as root to install packages, fsGroup gives it write access
       securityContext:
         fsGroup: 1000
-        runAsUser: 1000
-        runAsGroup: 1000
       # Init container to pre-download model before vLLM starts
       # This ensures model is cached and vLLM startup is fast
       initContainers:
@@ -130,6 +129,13 @@ spec:
             FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
             echo ""
             echo "Total cache size: $FINAL_SIZE"
+            
+            # CRITICAL: Fix permissions for vLLM container to write lock files
+            # Set ownership to 1000:1000 (vLLM user) and make writable
+            echo "Fixing permissions for vLLM container..."
+            chown -R 1000:1000 /models
+            chmod -R 755 /models
+            echo "✓ Permissions fixed"
           else
             echo "ERROR: Model download may have failed."
             exit 1

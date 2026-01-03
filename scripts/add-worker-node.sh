@@ -269,6 +269,22 @@ install_node_agent() {
     fi
 }
 
+setup_model_directories() {
+    log_info "Setting up model storage directories..."
+    
+    # Create directories for hostPath volumes used by LLM API
+    mkdir -p /var/lib/llmapi/models/{vllm,llamacpp,embedding}
+    mkdir -p /var/lib/vllm-models
+    
+    # Set proper ownership (pods run as root, but make accessible)
+    chown -R root:root /var/lib/llmapi
+    chmod -R 755 /var/lib/llmapi
+    
+    log_success "Model storage directories created"
+    log_info "Models can be synced from control plane using:"
+    log_info "  ./scripts/apps/llmapi/sync-models-to-workers.sh $NODE_NAME"
+}
+
 setup_gpu() {
     # Check for NVIDIA GPU
     if ! lspci 2>/dev/null | grep -qi nvidia; then
@@ -327,6 +343,7 @@ main() {
     install_dependencies
     configure_firewall
     join_cluster
+    setup_model_directories  # Create model storage for LLM API
     label_node
     install_node_agent
     

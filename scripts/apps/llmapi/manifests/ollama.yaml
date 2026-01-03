@@ -22,7 +22,9 @@ metadata:
   labels:
     app: llmapi-ollama
 spec:
-  replicas: 1
+  # Start with 0 replicas (offline) to avoid reserving RAM
+  # Scale up via Admin UI when needed: POST /admin/backend/ollama/scale with replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: llmapi-ollama

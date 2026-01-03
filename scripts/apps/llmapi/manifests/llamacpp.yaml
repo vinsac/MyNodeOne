@@ -60,7 +60,9 @@ metadata:
   labels:
     app: llamacpp
 spec:
-  replicas: 1
+  # Start with 0 replicas (offline) to avoid reserving RAM
+  # Scale up via Admin UI when needed: POST /admin/backend/llamacpp/scale with replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: llamacpp

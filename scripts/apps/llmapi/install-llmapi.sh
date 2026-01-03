@@ -1280,16 +1280,47 @@ EOF
                 fi
             done
             
-            echo "   🚀 Syncing models to workers (this ensures fast startup)..."
+            echo "   ✅ Worker nodes labeled."
             
-            # Run sync script, but don't fail installation if sync fails
-            if "$SCRIPT_DIR/sync-models-to-workers.sh" 2>&1 | grep -q "✓"; then
-                echo -e "   ${GREEN}✓ Models synced to worker nodes${NC}"
-                echo "   💡 Workers will use local models (~2 min startup)"
+            # Prompt for model sync strategy
+            echo ""
+            echo "   ❓ Model Provisioning Strategy for Workers:"
+            echo "      1) Sync from Control Plane (Faster if cached, requires SSH)"
+            echo "      2) Download from HuggingFace (Simpler, no SSH dependency)"
+            read -p "      Select option [1/2] (default: 2): " SYNC_OPT
+            SYNC_OPT=${SYNC_OPT:-2}
+            
+            if [[ "$SYNC_OPT" == "1" ]]; then
+                echo "   🚀 Syncing models to workers..."
+                
+                # Defensive: Fix SSH permissions on workers before syncing
+                echo "      🛡️  Verifying worker SSH permissions..."
+                for node in $worker_nodes; do
+                    # Get info from labels
+                    node_ip=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
+                    node_user=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
+                    
+                    if [[ -n "$node_ip" && -n "$node_user" ]]; then
+                        echo "         • Fixing permissions on $node ($node_user@$node_ip)..."
+                        # Run the fix command
+                        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$node_user@$node_ip" \
+                            "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys && sudo chown -R $node_user:$node_user ~/.ssh" || \
+                            echo "         ⚠️  Could not auto-fix permissions for $node (SSH failed)"
+                    fi
+                done
+
+                # Run sync script, but don't fail installation if sync fails
+                if "$SCRIPT_DIR/sync-models-to-workers.sh" 2>&1 | grep -q "✓"; then
+                    echo -e "   ${GREEN}✓ Models synced to worker nodes${NC}"
+                    echo "   💡 Workers will use local models (~2 min startup)"
+                else
+                    echo -e "   ${YELLOW}⚠ Model sync failed or incomplete${NC}"
+                    echo "   💡 Workers will download from HuggingFace if needed (~5-10 min)"
+                    echo "   💡 To retry sync: ./scripts/apps/llmapi/sync-models-to-workers.sh"
+                fi
             else
-                echo -e "   ${YELLOW}⚠ Model sync failed or incomplete${NC}"
-                echo "   💡 Workers will download from HuggingFace if needed (~5-10 min)"
-                echo "   💡 To retry sync: ./scripts/apps/llmapi/sync-models-to-workers.sh"
+                echo "   ⬇️  Workers will download models from HuggingFace on startup."
+                echo "   💡 This may take 5-10 minutes per node depending on internet speed."
             fi
         else
             echo "   💡 No worker nodes found - single node deployment"

@@ -163,6 +163,16 @@ configure_firewall() {
     # Enable fail2ban for SSH protection
     systemctl enable --now fail2ban
     
+    # Defensive programming: Fix SSH permissions
+    if [ -d "$ACTUAL_HOME/.ssh" ]; then
+        log_info "Ensuring strict SSH permissions..."
+        chmod 700 "$ACTUAL_HOME/.ssh"
+        if [ -f "$ACTUAL_HOME/.ssh/authorized_keys" ]; then
+            chmod 600 "$ACTUAL_HOME/.ssh/authorized_keys"
+        fi
+        chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.ssh"
+    fi
+    
     log_success "Firewall configured (UFW enabled)"
 }
 

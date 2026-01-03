@@ -64,21 +64,29 @@ get_worker_nodes() {
 check_ssh_access() {
     local node="$1"
     
+    info "Testing SSH access to $node..."
+    
     # Try to detect the username
     local ssh_user=""
     
     # Try common usernames
     for user in vinaysachdeva vinay ubuntu; do
+        info "  Trying user: $user"
         if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
-           "${user}@${node}" "echo connected" &>/dev/null; then
+           "${user}@${node}" "echo connected" 2>&1 | tee /tmp/ssh-test-$user.log | grep -q "connected"; then
             ssh_user="$user"
+            success "  ✓ SSH works with user: $user"
             break
+        else
+            warn "  ✗ SSH failed for user: $user"
+            info "  Error details: $(cat /tmp/ssh-test-$user.log 2>/dev/null | head -3)"
         fi
     done
     
     if [[ -z "$ssh_user" ]]; then
-        warn "Could not determine SSH user for $node. Skipping."
+        warn "Could not determine SSH user for $node."
         warn "Ensure SSH key-based auth is set up for the worker node."
+        warn "Run: ssh-copy-id <username>@${node}"
         return 1
     fi
     
@@ -93,15 +101,18 @@ sync_to_worker() {
     local node="$1"
     
     info "Syncing models to worker node: $node"
+    echo ""
     
     # Check SSH access
     local ssh_user
     ssh_user=$(check_ssh_access "$node")
     if [[ $? -ne 0 ]]; then
+        error "SSH access check failed for $node"
         return 1
     fi
     
     info "Using SSH user: $ssh_user"
+    echo ""
     
     # Check if source directory exists
     if [[ ! -d "$SOURCE_DIR" ]]; then
@@ -109,63 +120,114 @@ sync_to_worker() {
         return 1
     fi
     
+    info "Source directory: $SOURCE_DIR"
+    info "Contents:"
+    ls -lh "$SOURCE_DIR" 2>/dev/null || warn "Cannot list source directory"
+    echo ""
+    
     # Create destination directory on worker
     info "Creating destination directory on $node..."
-    ssh "${ssh_user}@${node}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" || {
+    info "Command: ssh ${ssh_user}@${node} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
+    
+    if ssh "${ssh_user}@${node}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
+        success "Destination directory created: $DEST_DIR"
+    else
         error "Failed to create destination directory on $node"
-    }
+        info "Error details: $(cat /tmp/ssh-mkdir.log 2>/dev/null)"
+        return 1
+    fi
+    echo ""
     
     # Sync vLLM models
     if [[ -d "$SOURCE_DIR/vllm" ]]; then
         local vllm_size=$(du -sh "$SOURCE_DIR/vllm" 2>/dev/null | cut -f1)
-        info "Syncing vLLM models ($vllm_size) to $node..."
+        local vllm_files=$(find "$SOURCE_DIR/vllm" -type f | wc -l)
+        info "Syncing vLLM models:"
+        info "  Size: $vllm_size"
+        info "  Files: $vllm_files"
+        info "  Source: $SOURCE_DIR/vllm/"
+        info "  Destination: ${ssh_user}@${node}:${DEST_DIR}/vllm/"
         info "This may take several minutes depending on model size and network speed..."
+        echo ""
         
-        rsync -avz --progress \
+        info "Running: rsync -avz --progress -e \"ssh -o StrictHostKeyChecking=no\" ..."
+        if rsync -avz --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/vllm/" \
-            "${ssh_user}@${node}:${DEST_DIR}/vllm/" || {
+            "${ssh_user}@${node}:${DEST_DIR}/vllm/" 2>&1 | tee /tmp/rsync-vllm.log; then
+            success "vLLM models synced to $node"
+        else
             warn "Failed to sync vLLM models to $node"
+            info "Rsync error details:"
+            tail -20 /tmp/rsync-vllm.log
             return 1
-        }
-        success "vLLM models synced to $node"
+        fi
+        echo ""
+    else
+        info "No vLLM models found at $SOURCE_DIR/vllm"
     fi
     
     # Sync llamacpp models
     if [[ -d "$SOURCE_DIR/llamacpp" ]]; then
         local llamacpp_size=$(du -sh "$SOURCE_DIR/llamacpp" 2>/dev/null | cut -f1)
-        info "Syncing llamacpp models ($llamacpp_size) to $node..."
+        local llamacpp_files=$(find "$SOURCE_DIR/llamacpp" -type f | wc -l)
+        info "Syncing llamacpp models:"
+        info "  Size: $llamacpp_size"
+        info "  Files: $llamacpp_files"
+        echo ""
         
-        rsync -avz --progress \
+        if rsync -avz --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/llamacpp/" \
-            "${ssh_user}@${node}:${DEST_DIR}/llamacpp/" || {
+            "${ssh_user}@${node}:${DEST_DIR}/llamacpp/" 2>&1 | tee /tmp/rsync-llamacpp.log; then
+            success "llamacpp models synced to $node"
+        else
             warn "Failed to sync llamacpp models to $node"
+            info "Rsync error details:"
+            tail -20 /tmp/rsync-llamacpp.log
             return 1
-        }
-        success "llamacpp models synced to $node"
+        fi
+        echo ""
+    else
+        info "No llamacpp models found at $SOURCE_DIR/llamacpp"
     fi
     
     # Sync embedding models
     if [[ -d "$SOURCE_DIR/embedding" ]]; then
         local embedding_size=$(du -sh "$SOURCE_DIR/embedding" 2>/dev/null | cut -f1)
-        info "Syncing embedding models ($embedding_size) to $node..."
+        local embedding_files=$(find "$SOURCE_DIR/embedding" -type f | wc -l)
+        info "Syncing embedding models:"
+        info "  Size: $embedding_size"
+        info "  Files: $embedding_files"
+        echo ""
         
-        rsync -avz --progress \
+        if rsync -avz --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/embedding/" \
-            "${ssh_user}@${node}:${DEST_DIR}/embedding/" || {
+            "${ssh_user}@${node}:${DEST_DIR}/embedding/" 2>&1 | tee /tmp/rsync-embedding.log; then
+            success "embedding models synced to $node"
+        else
             warn "Failed to sync embedding models to $node"
+            info "Rsync error details:"
+            tail -20 /tmp/rsync-embedding.log
             return 1
-        }
-        success "embedding models synced to $node"
+        fi
+        echo ""
+    else
+        info "No embedding models found at $SOURCE_DIR/embedding"
     fi
     
     # Fix permissions on worker
     info "Fixing permissions on $node..."
-    ssh "${ssh_user}@${node}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" || {
+    info "Command: ssh ${ssh_user}@${node} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
+    
+    if ssh "${ssh_user}@${node}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
+        success "Permissions fixed on $node"
+    else
         warn "Failed to fix permissions on $node"
-    }
+        info "Error details: $(cat /tmp/ssh-chown.log 2>/dev/null)"
+    fi
+    echo ""
     
     success "All models synced to $node successfully!"
     echo ""

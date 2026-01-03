@@ -236,7 +236,7 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
                 echo ""
                 echo "🚀 Launching model download manager..."
                 echo ""
-                "$SCRIPT_DIR/download-models.sh"
+                sudo "$SCRIPT_DIR/download-models.sh"
                 # Re-check for downloaded models
                 if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
                     for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
@@ -284,7 +284,7 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
             echo ""
             # Create the directory first
             sudo mkdir -p "$PRE_DOWNLOAD_DIR"
-            "$SCRIPT_DIR/download-models.sh"
+            sudo "$SCRIPT_DIR/download-models.sh"
             # Re-check for downloaded models
             if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
                 for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do

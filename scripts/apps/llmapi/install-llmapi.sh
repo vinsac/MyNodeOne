@@ -1183,11 +1183,31 @@ EOF
     # Deploy vLLM StatefulSet
     kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
     
-    # Copy pre-downloaded models after PVC creation
+    # Copy pre-downloaded models to hostPath (vLLM now uses hostPath, not PVC)
     if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
         echo ""
-        echo "   📦 Copying pre-downloaded vLLM model to PVC..."
-        copy_predownloaded_models "vllm" "$PRE_DOWNLOADED_VLLM" "vllm-models"
+        echo "   📦 Copying pre-downloaded vLLM model to hostPath..."
+        
+        # vLLM uses /var/lib/llmapi/models/vllm as hostPath mount
+        local vllm_hostpath="/var/lib/llmapi/models/vllm"
+        
+        # Create directory if it doesn't exist
+        sudo mkdir -p "$vllm_hostpath"
+        
+        # Copy model to hostPath location
+        if [ -d "$PRE_DOWNLOADED_VLLM" ]; then
+            local model_name=$(basename "$PRE_DOWNLOADED_VLLM")
+            echo "   📁 Copying $model_name to $vllm_hostpath..."
+            
+            if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_hostpath/"; then
+                local copied_size=$(du -sh "$vllm_hostpath/$model_name" 2>/dev/null | cut -f1)
+                echo -e "   ${GREEN}✓ Model copied successfully ($copied_size)${NC}"
+                echo "   💡 vLLM init container will detect and use this model"
+            else
+                echo -e "   ${YELLOW}⚠ Failed to copy model${NC}"
+                echo "   💡 vLLM will download the model on first start"
+            fi
+        fi
     fi
 else
     echo "⏭️  Skipping vLLM (no GPU or not selected)"

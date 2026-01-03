@@ -22,6 +22,9 @@ spec:
     spec:
       # CRITICAL: Required for GPU access in K3s
       runtimeClassName: nvidia
+      # Run on control plane where pre-downloaded models exist (hostPath)
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       terminationGracePeriodSeconds: 60
       # Set fsGroup to ensure both containers can write to /models volume
       # Init container runs as root to install packages, fsGroup gives it write access

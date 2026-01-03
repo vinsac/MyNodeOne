@@ -1227,12 +1227,34 @@ EOF
                 fi
             fi
         fi
+        
+        # Automatically sync models to worker nodes if any exist
+        echo ""
+        echo "   🔄 Checking for worker nodes to sync models..."
+        worker_nodes=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+        
+        if [[ -n "$worker_nodes" ]]; then
+            echo "   📡 Found worker nodes: $worker_nodes"
+            echo "   🚀 Syncing models to workers (this ensures fast startup)..."
+            
+            # Run sync script, but don't fail installation if sync fails
+            if "$SCRIPT_DIR/sync-models-to-workers.sh" 2>&1 | grep -q "✓"; then
+                echo -e "   ${GREEN}✓ Models synced to worker nodes${NC}"
+                echo "   💡 Workers will use local models (~2 min startup)"
+            else
+                echo -e "   ${YELLOW}⚠ Model sync failed or incomplete${NC}"
+                echo "   💡 Workers will download from HuggingFace if needed (~5-10 min)"
+                echo "   💡 To retry sync: ./scripts/apps/llmapi/sync-models-to-workers.sh"
+            fi
+        else
+            echo "   💡 No worker nodes found - single node deployment"
+        fi
     else
         # Create empty predownload directory for future model placement
         sudo mkdir -p /var/lib/llmapi/models/vllm 2>/dev/null || true
         echo ""
         echo "   💡 No pre-downloaded models provided"
-        echo "   💡 vLLM will download from HuggingFace on first start (~5 min)"
+        echo "   💡 vLLM will download from HuggingFace on first start (~5-10 min)"
         echo "   💡 To use pre-download: ./scripts/apps/llmapi/download-models.sh"
     fi
 else

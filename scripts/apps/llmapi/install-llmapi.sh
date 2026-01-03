@@ -1191,16 +1191,16 @@ EOF
         echo "   📦 Setting up pre-downloaded vLLM models..."
         
         # Create predownload directory (mounted as hostPath in init container)
-        local vllm_predownload="/var/lib/llmapi/models/vllm"
+        vllm_predownload="/var/lib/llmapi/models/vllm"
         sudo mkdir -p "$vllm_predownload"
         
         # Copy model to predownload location if provided
         if [ -d "$PRE_DOWNLOADED_VLLM" ]; then
-            local model_name=$(basename "$PRE_DOWNLOADED_VLLM")
+            model_name=$(basename "$PRE_DOWNLOADED_VLLM")
             echo "   📁 Copying $model_name to $vllm_predownload..."
             
             if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_predownload/" 2>/dev/null; then
-                local copied_size=$(du -sh "$vllm_predownload/$model_name" 2>/dev/null | cut -f1)
+                copied_size=$(du -sh "$vllm_predownload/$model_name" 2>/dev/null | cut -f1)
                 echo -e "   ${GREEN}✓ Model staged for init container ($copied_size)${NC}"
                 echo "   💡 Each vLLM pod will copy this to its own PVC on first start"
             else

@@ -69,8 +69,20 @@ check_ssh_access() {
     # Try to detect the username
     local ssh_user=""
     
-    # Try common usernames
-    for user in vinaysachdeva vinay ubuntu; do
+    # First, try to get username from node label (set during worker node setup)
+    local labeled_user=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
+    
+    local users_to_try=()
+    if [[ -n "$labeled_user" ]]; then
+        info "  Found labeled SSH user: $labeled_user"
+        users_to_try=("$labeled_user")
+    else
+        info "  No mynodeone.io/ssh-user label found, trying common usernames..."
+        users_to_try=(vinaysachdeva vinaysachdeva2 vinay ubuntu)
+    fi
+    
+    # Try each username
+    for user in "${users_to_try[@]}"; do
         info "  Trying user: $user"
         if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
            "${user}@${node}" "echo connected" 2>&1 | tee /tmp/ssh-test-$user.log | grep -q "connected"; then
@@ -87,6 +99,7 @@ check_ssh_access() {
         warn "Could not determine SSH user for $node."
         warn "Ensure SSH key-based auth is set up for the worker node."
         warn "Run: ssh-copy-id <username>@${node}"
+        warn "Or add label: kubectl label node $node mynodeone.io/ssh-user=<username>"
         return 1
     fi
     

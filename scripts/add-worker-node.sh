@@ -201,7 +201,7 @@ label_node() {
     # We'll save the labels in a file for the admin to apply
     
     # Generate one-liner label command
-    LABEL_CMD="kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true mynodeone.io/location=${NODE_LOCATION} mynodeone.io/storage=true mynodeone.io/worker-ip=${TAILSCALE_IP} --overwrite"
+    LABEL_CMD="kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true mynodeone.io/location=${NODE_LOCATION} mynodeone.io/storage=true mynodeone.io/worker-ip=${TAILSCALE_IP} mynodeone.io/ssh-user=${ACTUAL_USER} --overwrite"
     
     cat > "$ACTUAL_HOME/mynodeone-node-labels.txt" <<EOF
 # Apply node labels on the control plane:

@@ -1183,37 +1183,10 @@ EOF
     # Deploy vLLM StatefulSet
     kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
     
-    # Setup predownload directory for SSH-synced models (optional optimization)
-    # volumeClaimTemplates creates per-pod PVCs automatically
-    # Init container copies from /predownload to per-pod PVC on first start
-    if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
-        echo ""
-        echo "   📦 Setting up pre-downloaded vLLM models..."
-        
-        # Create predownload directory (mounted as hostPath in init container)
-        vllm_predownload="/var/lib/llmapi/models/vllm"
-        sudo mkdir -p "$vllm_predownload"
-        
-        # Copy model to predownload location if provided
-        if [ -d "$PRE_DOWNLOADED_VLLM" ]; then
-            model_name=$(basename "$PRE_DOWNLOADED_VLLM")
-            echo "   📁 Copying $model_name to $vllm_predownload..."
-            
-            if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_predownload/" 2>/dev/null; then
-                copied_size=$(du -sh "$vllm_predownload/$model_name" 2>/dev/null | cut -f1)
-                echo -e "   ${GREEN}✓ Model staged for init container ($copied_size)${NC}"
-                echo "   💡 Each vLLM pod will copy this to its own PVC on first start"
-            else
-                echo -e "   ${YELLOW}⚠ Failed to copy model to predownload${NC}"
-                echo "   💡 vLLM pods will download directly from HuggingFace"
-            fi
-        fi
-    else
-        # Create empty predownload directory for future SSH syncs
-        sudo mkdir -p /var/lib/llmapi/models/vllm 2>/dev/null || true
-        echo "   💡 No pre-downloaded models. vLLM will download on first start."
-        echo "   💡 To speed up: ./scripts/apps/llmapi/sync-models-to-workers.sh"
-    fi
+    echo ""
+    echo "   💡 vLLM uses per-pod PVCs for model storage"
+    echo "   💡 First startup: model downloads from HuggingFace (~5 min)"
+    echo "   💡 Subsequent restarts: uses cached PVC model (instant)"
 else
     echo "⏭️  Skipping vLLM (no GPU or not selected)"
 fi

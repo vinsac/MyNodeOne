@@ -59,34 +59,7 @@ spec:
             fi
           done
           
-          # 2. Check for pre-downloaded model on host (mounted at /predownload)
-          echo ""
-          echo "Checking for pre-downloaded model on host..."
-          for HOST_DIR in /predownload/vllm/*; do
-            if [ -d "$HOST_DIR" ]; then
-              HOST_MODEL=$(basename "$HOST_DIR" | tr '[:upper:]' '[:lower:]')
-              # Fuzzy match: extract base model name (e.g., qwen2.5-14b from qwen2.5-14b-instruct-awq)
-              MODEL_BASE=$(echo "$MODEL_SHORT" | sed -E 's/-(instruct|chat|code|base).*$//')
-              HOST_BASE=$(echo "$HOST_MODEL" | sed -E 's/-(instruct|chat|code|base).*$//')
-              
-              if echo "$MODEL_BASE" | grep -qi "$HOST_BASE" || echo "$HOST_BASE" | grep -qi "$MODEL_BASE"; then
-                HOST_SIZE=$(du -sh "$HOST_DIR" 2>/dev/null | cut -f1)
-                echo "Found pre-downloaded model: $HOST_DIR ($HOST_SIZE)"
-                # Verify it has actual model files
-                if find "$HOST_DIR" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
-                  echo "✓ Model weights found. Copying to PVC..."
-                  # Copy to PVC maintaining HuggingFace cache structure
-                  mkdir -p /models/hub
-                  cp -r "$HOST_DIR" "/models/hub/$(basename "$HOST_DIR")"
-                  FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
-                  echo "✓ Copy complete. PVC cache size: $FINAL_SIZE"
-                  exit 0
-                fi
-              fi
-            fi
-          done
-          
-          # 3. Download from HuggingFace
+          # 2. Download from HuggingFace
           echo ""
           echo "No cached model found. Downloading from HuggingFace..."
           
@@ -150,9 +123,6 @@ spec:
         volumeMounts:
         - name: models
           mountPath: /models
-        - name: predownload
-          mountPath: /predownload
-          readOnly: true
         resources:
           requests:
             memory: "1Gi"
@@ -250,10 +220,6 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 60
       volumes:
-      - name: predownload
-        hostPath:
-          path: /var/lib/llmapi/models
-          type: DirectoryOrCreate
       - name: shm
         emptyDir:
           medium: Memory

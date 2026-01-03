@@ -638,6 +638,243 @@ Persistent storage for configuration and usage data.
 
 ---
 
+## Model Storage & Caching
+
+### Overview
+
+LLMAPI uses a multi-tier storage strategy optimized for different deployment scenarios:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Model Storage Architecture                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Development / Small Deployments (Current):                    │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Pre-download (hostPath)                               │  │
+│  │    /var/lib/llmapi/models/vllm/                          │  │
+│  │    └─ qwen2.5-14b-awq/  (~9GB)                           │  │
+│  │                                                           │  │
+│  │ 2. Init Container Detection                              │  │
+│  │    ├─ Check PVC cache (previous runs)                    │  │
+│  │    ├─ Check /predownload hostPath                        │  │
+│  │    └─ Download from HuggingFace (fallback)               │  │
+│  │                                                           │  │
+│  │ 3. Per-Pod PVC Storage (Longhorn)                        │  │
+│  │    models-vllm-0: 30Gi (RWO)                             │  │
+│  │    models-vllm-1: 30Gi (RWO)                             │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Production / Multi-Cluster (Recommended):                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. S3-Compatible Object Storage (MinIO/S3/R2)            │  │
+│  │    s3://llmapi-models/                                    │  │
+│  │    ├─ vllm/qwen2.5-14b-awq/                              │  │
+│  │    ├─ vllm/mistral-7b-instruct/                          │  │
+│  │    └─ llamacpp/llama-3.1-70b-q4/                         │  │
+│  │                                                           │  │
+│  │ 2. Pre-download Job (CronJob)                            │  │
+│  │    Runs daily to sync new models from HuggingFace        │  │
+│  │    Downloads → S3 bucket → Available cluster-wide        │  │
+│  │                                                           │  │
+│  │ 3. Init Container (S3 → PVC)                             │  │
+│  │    Downloads from S3 to pod-local PVC on first start     │  │
+│  │    Much faster than HuggingFace (internal network)       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Current Implementation: hostPath Pre-download
+
+**How It Works:**
+
+```bash
+# 1. Pre-download models using parallel downloader
+./scripts/apps/llmapi/download-models.sh
+
+# Downloads to: /var/lib/llmapi/models/vllm/qwen2.5-14b-awq
+#   - Uses parallel connections (up to 500 MB/s with hf_transfer)
+#   - Downloads once, used by all pods on that node
+
+# 2. Install LLMAPI
+./scripts/apps/llmapi/install-llmapi.sh
+
+# 3. vLLM init container runs:
+#   a. Checks PVC cache: /models/hub/* (from previous pod)
+#   b. Checks hostPath: /predownload/vllm/* (pre-downloaded)
+#   c. If found → copies to PVC (~2 min startup)
+#   d. If not found → downloads from HuggingFace (~5 min)
+```
+
+**Storage Flow:**
+
+```
+Host OS: /var/lib/llmapi/models/vllm/qwen2.5-14b-awq
+            ↓ (mounted as hostPath)
+Pod Init:  /predownload/vllm/qwen2.5-14b-awq
+            ↓ (cp -r to PVC)
+Pod Main:  /models/hub/qwen2.5-14b-awq (PVC)
+            ↓ (vLLM loads from here)
+GPU VRAM:  Model loaded and running
+```
+
+**Why hostPath?**
+
+| Benefit | Explanation |
+|---------|-------------|
+| **Fast First Startup** | Copy from local disk (2 min) vs download from HuggingFace (5-10 min) |
+| **Bandwidth Savings** | Download once per node, not once per pod |
+| **Multi-Node Sync** | Can rsync models from control plane to workers via SSH |
+| **Simple Setup** | No external dependencies (S3, NFS, etc.) |
+
+**Security Considerations:**
+
+The namespace uses `pod-security.kubernetes.io/enforce: privileged` to allow hostPath volumes. This is acceptable for development/small deployments because:
+
+1. **Models are public data** - HuggingFace models, not private/sensitive
+2. **Read-only mount** - Init container has read-only access to /predownload
+3. **Cluster admin control** - Only admins have OS-level access
+4. **Optimization tradeoff** - 3x faster startup (2 min vs 5 min) worth the relaxed policy
+5. **Per-pod isolation** - Each vLLM pod still has its own isolated PVC for runtime
+
+**Limitations:**
+
+- ❌ Not suitable for multi-cluster deployments
+- ❌ Requires manual model sync between nodes (via rsync/SSH)
+- ❌ No central model registry
+- ❌ hostPath bypasses Kubernetes storage abstractions
+
+---
+
+### Production Recommendation: S3 Object Storage
+
+For production deployments, **use S3-compatible object storage** instead of hostPath:
+
+**Architecture:**
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-predownload-job
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: downloader
+            image: python:3.11-slim
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              # Install dependencies
+              pip install huggingface_hub hf_transfer boto3
+              
+              # Download models from HuggingFace
+              export HF_HUB_ENABLE_HF_TRANSFER=1
+              python -c "
+              from huggingface_hub import snapshot_download
+              snapshot_download('Qwen/Qwen2.5-14B-Instruct-AWQ', 
+                                cache_dir='/tmp/models')
+              "
+              
+              # Upload to S3
+              aws s3 sync /tmp/models/ s3://llmapi-models/vllm/qwen2.5-14b-awq/
+            env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: s3-credentials
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-credentials
+                  key: secret-access-key
+```
+
+**vLLM Init Container (S3 Version):**
+
+```yaml
+initContainers:
+- name: model-downloader
+  image: amazon/aws-cli:latest
+  command: ["/bin/bash", "-c"]
+  args:
+  - |
+    # Check PVC cache first
+    if [ -d "/models/hub/qwen2.5-14b-awq" ]; then
+      echo "✓ Model cached in PVC"
+      exit 0
+    fi
+    
+    # Download from S3 (much faster than HuggingFace)
+    echo "Downloading from S3..."
+    aws s3 sync s3://llmapi-models/vllm/qwen2.5-14b-awq/ \
+                /models/hub/qwen2.5-14b-awq/ \
+                --only-show-errors
+    
+    echo "✓ Model ready"
+  volumeMounts:
+  - name: models
+    mountPath: /models
+  env:
+  - name: AWS_ACCESS_KEY_ID
+    valueFrom:
+      secretKeyRef:
+        name: s3-credentials
+        key: access-key-id
+```
+
+**Benefits of S3 Approach:**
+
+| Benefit | Description |
+|---------|-------------|
+| **Centralized Storage** | Single source of truth for all models across clusters |
+| **No hostPath Required** | PodSecurity baseline/restricted compliant |
+| **Fast Internal Network** | S3 downloads over private network (~100-500 MB/s) |
+| **Version Control** | S3 versioning for model rollbacks |
+| **Cross-Cluster Sharing** | Same S3 bucket used by dev/staging/prod |
+| **Automated Updates** | CronJob downloads new models automatically |
+| **CDN Integration** | CloudFront/CDN for geo-distributed clusters |
+
+**Recommended S3 Providers:**
+
+| Provider | Use Case | Cost | Notes |
+|----------|----------|------|-------|
+| **MinIO (self-hosted)** | On-premise, full control | Hardware only | S3-compatible, runs in K8s |
+| **Cloudflare R2** | Public cloud, no egress fees | $0.015/GB storage | Free egress, fast |
+| **AWS S3** | Enterprise, full AWS integration | $0.023/GB + egress | Pay for bandwidth |
+| **Backblaze B2** | Budget option | $0.005/GB storage | Cheap storage |
+
+**Migration Path (hostPath → S3):**
+
+```bash
+# 1. Deploy MinIO in cluster
+helm install minio minio/minio --set replicas=1,persistence.size=500Gi
+
+# 2. Upload existing models to S3
+aws s3 sync /var/lib/llmapi/models/vllm/ \
+            s3://llmapi-models/vllm/ \
+            --endpoint-url http://minio.default:9000
+
+# 3. Update vllm.yaml to use S3 init container
+# 4. Remove hostPath volume and PodSecurity privileged label
+# 5. Deploy predownload CronJob for automated model updates
+```
+
+**Future Enhancement:**
+
+For large-scale production, consider a **model registry service**:
+- REST API for model discovery and versioning
+- Automatic model pruning (delete unused models)
+- Usage tracking (which models are accessed)
+- A/B testing support (route % of traffic to different model versions)
+
+---
+
 ## API Design
 
 ### Authentication

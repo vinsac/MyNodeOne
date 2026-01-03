@@ -30,10 +30,21 @@ sudo ./scripts/apps/llmapi/download-models.sh
 ```
 
 **Why pre-download?**
-- Downloads use aria2c with 16 parallel connections (5-10x faster)
+- Downloads use `hf_transfer` with parallel connections (up to 500 MB/s)
 - Models are persisted in `/var/lib/llmapi/models/` and survive reinstalls
-- Avoids Kubernetes pod timeouts during slow downloads
+- vLLM startup time: ~2 min (with pre-download) vs ~5-10 min (download from HuggingFace)
+- Downloads once per node, shared by all pods via hostPath mount
 - Can resume interrupted downloads
+
+**How it works:**
+```
+1. Pre-download script → /var/lib/llmapi/models/vllm/qwen2.5-14b-awq
+2. Install creates pods with hostPath mount → /predownload/vllm/
+3. Init container detects pre-downloaded model → copies to pod PVC (~2 min)
+4. vLLM loads from PVC and starts serving
+```
+
+**For production deployments**, see [Model Storage Architecture](./ARCHITECTURE.md#model-storage--caching) for S3-based model distribution using MinIO/Cloudflare R2.
 
 ### Step 2: Install the Service
 

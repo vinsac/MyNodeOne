@@ -1013,9 +1013,16 @@ tailscale ip -4
 
 > **Why `--accept-dns=false`?** Tailscale can take over DNS resolution, but if its internal DNS server fails, your system loses the ability to resolve any domain names (like github.com). This flag keeps your system's DNS working normally while still allowing all Tailscale networking features (VPN, mesh connectivity, etc.).
 
-#### 5. SSH Key Authentication from Control Plane (Required for Model Sync)
+#### 5. SSH Key Authentication from Control Plane (Optional - For Faster Model Loading)
 
-**This step enables the control plane to sync pre-downloaded AI models to worker nodes, significantly speeding up deployments.**
+**This step is OPTIONAL.** Worker nodes will work without it - they'll just download models independently from HuggingFace.
+
+**Why set up SSH?**
+- **Faster first launch:** Copy 9GB model in 2 minutes instead of downloading in 5 minutes
+- **Bandwidth savings:** Avoid re-downloading same models on each worker
+- **Not required:** Pods will download directly if SSH not set up
+
+**If you want faster model loading**, set up SSH key authentication:
 
 **On the CONTROL PLANE**, generate an SSH key and copy it to the worker node:
 
@@ -1055,12 +1062,20 @@ ssh-copy-id ${WORKER_USER}@${WORKER_IP}
 ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
 ```
 
-**Why is this needed?**
-- **Model sync:** Pre-downloaded AI models (8-30GB) on control plane can be synced to workers
-- **Faster deployments:** Avoids re-downloading large models on each node
-- **Automated management:** Enables scripts to manage multi-node configurations
+**What happens without SSH?**
+- ✅ Worker nodes still work perfectly
+- ✅ vLLM pods download models directly from HuggingFace (5 min startup)
+- ✅ All nodes use the HuggingFace token (no rate limiting)
+- ✅ Model changes from Admin UI work on all nodes
+
+**What happens with SSH?**
+- ✅ First vLLM pod on worker: copies model from control plane (2 min startup)
+- ✅ Subsequent pods: use cached model (instant startup)
+- ✅ Saves bandwidth when adding many workers
 
 **Security Note:** SSH keys only work within your Tailscale VPN network. External access is blocked by Tailscale's firewall.
+
+**To skip this step:** Just proceed to the next step. Worker nodes will download models as needed.
 
 #### 6. NVIDIA GPU Support (optional)
 

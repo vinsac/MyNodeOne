@@ -62,15 +62,19 @@ get_worker_nodes() {
 # =============================================================================
 
 check_ssh_access() {
-    local node="$1"
+    local node_ip="$1"
+    local node_name="$2"  # Hostname for label lookup
     
-    info "Testing SSH access to $node..."
+    info "Testing SSH access to $node_ip..."
     
     # Try to detect the username
     local ssh_user=""
     
     # First, try to get username from node label (set during worker node setup)
-    local labeled_user=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
+    local labeled_user=""
+    if [[ -n "$node_name" ]]; then
+        labeled_user=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
+    fi
     
     local users_to_try=()
     if [[ -n "$labeled_user" ]]; then
@@ -85,7 +89,7 @@ check_ssh_access() {
     for user in "${users_to_try[@]}"; do
         info "  Trying user: $user"
         if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
-           "${user}@${node}" "echo connected" 2>&1 | tee /tmp/ssh-test-$user.log | grep -q "connected"; then
+           "${user}@${node_ip}" "echo connected" 2>&1 | tee /tmp/ssh-test-$user.log | grep -q "connected"; then
             ssh_user="$user"
             success "  ✓ SSH works with user: $user"
             break
@@ -96,10 +100,12 @@ check_ssh_access() {
     done
     
     if [[ -z "$ssh_user" ]]; then
-        warn "Could not determine SSH user for $node."
+        warn "Could not determine SSH user for $node_ip."
         warn "Ensure SSH key-based auth is set up for the worker node."
-        warn "Run: ssh-copy-id <username>@${node}"
-        warn "Or add label: kubectl label node $node mynodeone.io/ssh-user=<username>"
+        warn "Run: ssh-copy-id <username>@${node_ip}"
+        if [[ -n "$node_name" ]]; then
+            warn "Or add label: kubectl label node $node_name mynodeone.io/ssh-user=<username>"
+        fi
         return 1
     fi
     
@@ -111,16 +117,17 @@ check_ssh_access() {
 # =============================================================================
 
 sync_to_worker() {
-    local node="$1"
+    local node_ip="$1"
+    local node_name="$2"  # Optional: hostname for label lookup
     
-    info "Syncing models to worker node: $node"
+    info "Syncing models to worker node: $node_ip"
     echo ""
     
-    # Check SSH access
+    # Check SSH access (only once, cache the result)
     local ssh_user
-    ssh_user=$(check_ssh_access "$node")
+    ssh_user=$(check_ssh_access "$node_ip" "$node_name")
     if [[ $? -ne 0 ]]; then
-        error "SSH access check failed for $node"
+        error "SSH access check failed for $node_ip"
         return 1
     fi
     
@@ -139,13 +146,13 @@ sync_to_worker() {
     echo ""
     
     # Create destination directory on worker
-    info "Creating destination directory on $node..."
-    info "Command: ssh ${ssh_user}@${node} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
+    info "Creating destination directory on $node_ip..."
+    info "Command: ssh ${ssh_user}@${node_ip} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
     
-    if ssh "${ssh_user}@${node}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
+    if ssh "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
         success "Destination directory created: $DEST_DIR"
     else
-        error "Failed to create destination directory on $node"
+        error "Failed to create destination directory on $node_ip"
         info "Error details: $(cat /tmp/ssh-mkdir.log 2>/dev/null)"
         return 1
     fi
@@ -159,7 +166,7 @@ sync_to_worker() {
         info "  Size: $vllm_size"
         info "  Files: $vllm_files"
         info "  Source: $SOURCE_DIR/vllm/"
-        info "  Destination: ${ssh_user}@${node}:${DEST_DIR}/vllm/"
+        info "  Destination: ${ssh_user}@${node_ip}:${DEST_DIR}/vllm/"
         info "This may take several minutes depending on model size and network speed..."
         echo ""
         
@@ -167,10 +174,10 @@ sync_to_worker() {
         if rsync -avz --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/vllm/" \
-            "${ssh_user}@${node}:${DEST_DIR}/vllm/" 2>&1 | tee /tmp/rsync-vllm.log; then
-            success "vLLM models synced to $node"
+            "${ssh_user}@${node_ip}:${DEST_DIR}/vllm/" 2>&1 | tee /tmp/rsync-vllm.log; then
+            success "vLLM models synced to $node_ip"
         else
-            warn "Failed to sync vLLM models to $node"
+            warn "Failed to sync vLLM models to $node_ip"
             info "Rsync error details:"
             tail -20 /tmp/rsync-vllm.log
             return 1
@@ -192,10 +199,10 @@ sync_to_worker() {
         if rsync -avz --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/llamacpp/" \
-            "${ssh_user}@${node}:${DEST_DIR}/llamacpp/" 2>&1 | tee /tmp/rsync-llamacpp.log; then
-            success "llamacpp models synced to $node"
+            "${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/" 2>&1 | tee /tmp/rsync-llamacpp.log; then
+            success "llamacpp models synced to $node_ip"
         else
-            warn "Failed to sync llamacpp models to $node"
+            warn "Failed to sync llamacpp models to $node_ip"
             info "Rsync error details:"
             tail -20 /tmp/rsync-llamacpp.log
             return 1
@@ -217,10 +224,10 @@ sync_to_worker() {
         if rsync -avz --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/embedding/" \
-            "${ssh_user}@${node}:${DEST_DIR}/embedding/" 2>&1 | tee /tmp/rsync-embedding.log; then
-            success "embedding models synced to $node"
+            "${ssh_user}@${node_ip}:${DEST_DIR}/embedding/" 2>&1 | tee /tmp/rsync-embedding.log; then
+            success "embedding models synced to $node_ip"
         else
-            warn "Failed to sync embedding models to $node"
+            warn "Failed to sync embedding models to $node_ip"
             info "Rsync error details:"
             tail -20 /tmp/rsync-embedding.log
             return 1
@@ -231,18 +238,18 @@ sync_to_worker() {
     fi
     
     # Fix permissions on worker
-    info "Fixing permissions on $node..."
-    info "Command: ssh ${ssh_user}@${node} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
+    info "Fixing permissions on $node_ip..."
+    info "Command: ssh ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
     
-    if ssh "${ssh_user}@${node}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
-        success "Permissions fixed on $node"
+    if ssh "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
+        success "Permissions fixed on $node_ip"
     else
-        warn "Failed to fix permissions on $node"
+        warn "Failed to fix permissions on $node_ip"
         info "Error details: $(cat /tmp/ssh-chown.log 2>/dev/null)"
     fi
     echo ""
     
-    success "All models synced to $node successfully!"
+    success "All models synced to $node_ip successfully!"
     echo ""
 }
 
@@ -302,7 +309,8 @@ main() {
             warn "No mynodeone.io/worker-ip label for $node_name, trying hostname..."
         fi
         
-        if sync_to_worker "$target"; then
+        # Pass both IP and hostname to sync_to_worker
+        if sync_to_worker "$target" "$node_name"; then
             ((success_count++))
         else
             ((fail_count++))

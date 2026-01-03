@@ -1229,24 +1229,53 @@ EOF
         if [[ -n "$worker_nodes" ]]; then
             echo "   📡 Found worker nodes: $worker_nodes"
             
-            # Auto-label worker nodes with Tailscale IPs (required for SSH sync)
-            echo "   🏷️  Labeling worker nodes with Tailscale IPs..."
+            # Auto-label worker nodes with Tailscale IPs and SSH usernames (required for SSH sync)
+            echo "   🏷️  Labeling worker nodes with Tailscale IPs and SSH usernames..."
             for node in $worker_nodes; do
                 # Check if node already has worker-ip label
                 existing_ip=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
+                existing_user=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
                 
-                if [[ -n "$existing_ip" ]]; then
-                    echo "      ✓ $node already labeled: $existing_ip"
+                if [[ -n "$existing_ip" && -n "$existing_user" ]]; then
+                    echo "      ✓ $node already labeled: $existing_ip (user: $existing_user)"
                 else
                     # Get Tailscale IP for this node
                     ts_ip=$(tailscale status --json 2>/dev/null | jq -r ".Peer[] | select(.HostName == \"$node\") | .TailscaleIPs[0]" 2>/dev/null)
                     
                     if [[ -n "$ts_ip" && "$ts_ip" != "null" ]]; then
-                        kubectl label node "$node" mynodeone.io/worker-ip="$ts_ip" --overwrite 2>/dev/null
-                        echo "      ✓ $node labeled: $ts_ip"
+                        # Label with IP if not already set
+                        if [[ -z "$existing_ip" ]]; then
+                            kubectl label node "$node" mynodeone.io/worker-ip="$ts_ip" --overwrite 2>/dev/null
+                        fi
+                        
+                        # Try to detect SSH username if not already set
+                        if [[ -z "$existing_user" ]]; then
+                            echo "      🔍 Detecting SSH username for $node ($ts_ip)..."
+                            detected_user=""
+                            for test_user in $(whoami) vinaysachdeva vinaysachdeva2 vinay ubuntu root; do
+                                if timeout 3 ssh -o ConnectTimeout=2 -o BatchMode=yes -o StrictHostKeyChecking=no \
+                                   "${test_user}@${ts_ip}" "echo ok" &>/dev/null; then
+                                    detected_user="$test_user"
+                                    break
+                                fi
+                            done
+                            
+                            if [[ -n "$detected_user" ]]; then
+                                kubectl label node "$node" mynodeone.io/ssh-user="$detected_user" --overwrite 2>/dev/null
+                                echo "      ✓ $node labeled: $ts_ip (user: $detected_user)"
+                            else
+                                kubectl label node "$node" mynodeone.io/worker-ip="$ts_ip" --overwrite 2>/dev/null
+                                echo -e "      ${YELLOW}⚠ $node labeled with IP: $ts_ip${NC}"
+                                echo -e "      ${YELLOW}⚠ Could not detect SSH username - model sync may fail${NC}"
+                                echo "      💡 Add SSH user label: kubectl label node $node mynodeone.io/ssh-user=<USERNAME>"
+                                echo "      💡 Or set up SSH keys: ssh-copy-id <username>@$ts_ip"
+                            fi
+                        else
+                            echo "      ✓ $node labeled: $ts_ip (user: $existing_user)"
+                        fi
                     else
                         echo -e "      ${YELLOW}⚠ Could not detect Tailscale IP for $node${NC}"
-                        echo "      💡 Manual label: kubectl label node $node mynodeone.io/worker-ip=<TAILSCALE_IP>"
+                        echo "      💡 Manual label: kubectl label node $node mynodeone.io/worker-ip=<TAILSCALE_IP> mynodeone.io/ssh-user=<USERNAME>"
                     fi
                 fi
             done

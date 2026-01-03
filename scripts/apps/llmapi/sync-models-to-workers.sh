@@ -65,7 +65,8 @@ check_ssh_access() {
     local node_ip="$1"
     local node_name="$2"  # Hostname for label lookup
     
-    info "Testing SSH access to $node_ip..."
+    # All logging goes to stderr so only the username is returned to stdout
+    info "Testing SSH access to $node_ip..." >&2
     
     # Try to detect the username
     local ssh_user=""
@@ -78,37 +79,38 @@ check_ssh_access() {
     
     local users_to_try=()
     if [[ -n "$labeled_user" ]]; then
-        info "  Found labeled SSH user: $labeled_user"
+        info "  Found labeled SSH user: $labeled_user" >&2
         users_to_try=("$labeled_user")
     else
-        info "  No mynodeone.io/ssh-user label found, trying common usernames..."
+        info "  No mynodeone.io/ssh-user label found, trying common usernames..." >&2
         users_to_try=(vinaysachdeva vinaysachdeva2 vinay ubuntu)
     fi
     
     # Try each username
     for user in "${users_to_try[@]}"; do
-        info "  Trying user: $user"
+        info "  Trying user: $user" >&2
         if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
            "${user}@${node_ip}" "echo connected" 2>&1 | tee /tmp/ssh-test-$user.log | grep -q "connected"; then
             ssh_user="$user"
-            success "  ✓ SSH works with user: $user"
+            success "  ✓ SSH works with user: $user" >&2
             break
         else
-            warn "  ✗ SSH failed for user: $user"
-            info "  Error details: $(cat /tmp/ssh-test-$user.log 2>/dev/null | head -3)"
+            warn "  ✗ SSH failed for user: $user" >&2
+            info "  Error details: $(cat /tmp/ssh-test-$user.log 2>/dev/null | head -3)" >&2
         fi
     done
     
     if [[ -z "$ssh_user" ]]; then
-        warn "Could not determine SSH user for $node_ip."
-        warn "Ensure SSH key-based auth is set up for the worker node."
-        warn "Run: ssh-copy-id <username>@${node_ip}"
+        warn "Could not determine SSH user for $node_ip." >&2
+        warn "Ensure SSH key-based auth is set up for the worker node." >&2
+        warn "Run: ssh-copy-id <username>@${node_ip}" >&2
         if [[ -n "$node_name" ]]; then
-            warn "Or add label: kubectl label node $node_name mynodeone.io/ssh-user=<username>"
+            warn "Or add label: kubectl label node $node_name mynodeone.io/ssh-user=<username>" >&2
         fi
         return 1
     fi
     
+    # Only the username goes to stdout (captured by caller)
     echo "$ssh_user"
 }
 

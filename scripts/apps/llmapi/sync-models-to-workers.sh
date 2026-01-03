@@ -172,8 +172,8 @@ sync_to_worker() {
         info "This may take several minutes depending on model size and network speed..."
         echo ""
         
-        info "Running: rsync -avz --progress -e \"ssh -o StrictHostKeyChecking=no\" ..."
-        if rsync -avz --progress \
+        info "Running: rsync -av --progress -e \"ssh -o StrictHostKeyChecking=no\" ..."
+        if rsync -av --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/vllm/" \
             "${ssh_user}@${node_ip}:${DEST_DIR}/vllm/" 2>&1 | tee /tmp/rsync-vllm.log; then
@@ -198,7 +198,7 @@ sync_to_worker() {
         info "  Files: $llamacpp_files"
         echo ""
         
-        if rsync -avz --progress \
+        if rsync -av --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/llamacpp/" \
             "${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/" 2>&1 | tee /tmp/rsync-llamacpp.log; then
@@ -223,7 +223,7 @@ sync_to_worker() {
         info "  Files: $embedding_files"
         echo ""
         
-        if rsync -avz --progress \
+        if rsync -av --progress \
             -e "ssh -o StrictHostKeyChecking=no" \
             "$SOURCE_DIR/embedding/" \
             "${ssh_user}@${node_ip}:${DEST_DIR}/embedding/" 2>&1 | tee /tmp/rsync-embedding.log; then
@@ -273,14 +273,24 @@ main() {
     # Get worker nodes
     local worker_data
     if [[ $# -gt 0 ]]; then
-        # Use specified worker node (hostname or IP)
-        # Try to get IP from label if hostname provided
-        local node_ip=$(kubectl get node "$1" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
-        if [[ -n "$node_ip" ]]; then
-            worker_data="$1 $node_ip"
+        local target_node="$1"
+        local target_ip=""
+        
+        # Check if specific IP provided as second argument
+        if [[ $# -gt 1 ]]; then
+            target_ip="$2"
+            worker_data="$target_node $target_ip"
+            info "Using specified IP for sync: $target_ip"
         else
-            # Assume it's an IP
-            worker_data="$1 $1"
+            # Try to get IP from label if hostname provided
+            target_ip=$(kubectl get node "$target_node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
+            
+            if [[ -n "$target_ip" ]]; then
+                worker_data="$target_node $target_ip"
+            else
+                # Assume the first argument is an IP if lookup failed
+                worker_data="$target_node $target_node"
+            fi
         fi
     else
         # Auto-detect all worker nodes

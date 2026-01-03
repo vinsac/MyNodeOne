@@ -1199,18 +1199,28 @@ EOF
             sudo chown -R root:root /var/lib/llmapi/models 2>/dev/null || true
         fi
         
-        # Copy model to predownload location if provided
+        # Check if model needs to be copied or is already in place
         if [ -d "$PRE_DOWNLOADED_VLLM" ]; then
             model_name=$(basename "$PRE_DOWNLOADED_VLLM")
-            echo "   📁 Copying $model_name to $vllm_predownload..."
+            destination="$vllm_predownload/$model_name"
             
-            if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_predownload/" 2>/dev/null; then
-                copied_size=$(du -sh "$vllm_predownload/$model_name" 2>/dev/null | cut -f1)
-                echo -e "   ${GREEN}✓ Model staged for init container ($copied_size)${NC}"
+            # Check if model is already in the correct location
+            if [ "$PRE_DOWNLOADED_VLLM" = "$destination" ]; then
+                # Model is already in hostPath, just verify it
+                model_size=$(du -sh "$PRE_DOWNLOADED_VLLM" 2>/dev/null | cut -f1)
+                echo -e "   ${GREEN}✓ Model already in hostPath: $model_name ($model_size)${NC}"
                 echo "   💡 Init container will copy this to PVC (~2 min startup)"
             else
-                echo -e "   ${YELLOW}⚠ Failed to copy model to predownload${NC}"
-                echo "   💡 vLLM will download directly from HuggingFace (~5 min)"
+                # Model is in a different location, copy it
+                echo "   📁 Copying $model_name to $vllm_predownload..."
+                if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_predownload/" 2>/dev/null; then
+                    copied_size=$(du -sh "$destination" 2>/dev/null | cut -f1)
+                    echo -e "   ${GREEN}✓ Model staged for init container ($copied_size)${NC}"
+                    echo "   💡 Init container will copy this to PVC (~2 min startup)"
+                else
+                    echo -e "   ${YELLOW}⚠ Failed to copy model to predownload${NC}"
+                    echo "   💡 vLLM will download directly from HuggingFace (~5 min)"
+                fi
             fi
         fi
     else

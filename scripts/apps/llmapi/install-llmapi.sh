@@ -659,12 +659,6 @@ echo -e "${BLUE}  Installing Components${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Generate secure admin password
-ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 20)
-echo "🔐 Generated admin password: $ADMIN_PASSWORD"
-echo "   (Save this! You'll need it to access the Admin UI)"
-echo ""
-
 # Create namespace
 echo "📦 Creating namespace..."
 kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
@@ -994,7 +988,6 @@ data:
   EMBEDDING_MODEL_FILE: "nomic-embed-text-v1.5.Q8_0.gguf"
   DEFAULT_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
   DEFAULT_TOKENS_PER_DAY: "$DEFAULT_TOKENS"
-  ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
   OLLAMA_URL: "http://ollama:11434"
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"

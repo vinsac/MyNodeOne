@@ -146,6 +146,9 @@ spec:
         volumeMounts:
         - name: models
           mountPath: /models
+        - name: predownload
+          mountPath: /predownload
+          readOnly: true
         resources:
           requests:
             memory: "1Gi"
@@ -246,6 +249,10 @@ spec:
       - name: models
         hostPath:
           path: /var/lib/vllm-models
+          type: DirectoryOrCreate
+      - name: predownload
+        hostPath:
+          path: /var/lib/llmapi/models
           type: DirectoryOrCreate
       - name: shm
         emptyDir:

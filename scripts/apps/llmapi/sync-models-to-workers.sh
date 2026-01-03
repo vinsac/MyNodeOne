@@ -1,0 +1,232 @@
+#!/bin/bash
+# =============================================================================
+# Sync Pre-Downloaded Models to Worker Nodes
+# =============================================================================
+# This script syncs pre-downloaded models from control plane to worker nodes
+# for use with hostPath storage in multi-node deployments.
+#
+# Usage:
+#   ./sync-models-to-workers.sh [worker_node_hostname]
+#
+# Examples:
+#   ./sync-models-to-workers.sh canada-pc-0002
+#   ./sync-models-to-workers.sh  # Syncs to all worker nodes
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="/var/lib/llmapi/models"
+DEST_DIR="/var/lib/llmapi/models"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+error() {
+    echo -e "${RED}ERROR: $1${NC}" >&2
+    exit 1
+}
+
+info() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+warn() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+# =============================================================================
+# Get Worker Nodes
+# =============================================================================
+
+get_worker_nodes() {
+    kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' \
+        -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true
+}
+
+# =============================================================================
+# Check SSH Access
+# =============================================================================
+
+check_ssh_access() {
+    local node="$1"
+    
+    # Try to detect the username
+    local ssh_user=""
+    
+    # Try common usernames
+    for user in vinaysachdeva vinay ubuntu; do
+        if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
+           "${user}@${node}" "echo connected" &>/dev/null; then
+            ssh_user="$user"
+            break
+        fi
+    done
+    
+    if [[ -z "$ssh_user" ]]; then
+        warn "Could not determine SSH user for $node. Skipping."
+        warn "Ensure SSH key-based auth is set up for the worker node."
+        return 1
+    fi
+    
+    echo "$ssh_user"
+}
+
+# =============================================================================
+# Sync Models to Worker
+# =============================================================================
+
+sync_to_worker() {
+    local node="$1"
+    
+    info "Syncing models to worker node: $node"
+    
+    # Check SSH access
+    local ssh_user
+    ssh_user=$(check_ssh_access "$node")
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+    
+    info "Using SSH user: $ssh_user"
+    
+    # Check if source directory exists
+    if [[ ! -d "$SOURCE_DIR" ]]; then
+        warn "Source directory $SOURCE_DIR does not exist. No models to sync."
+        return 1
+    fi
+    
+    # Create destination directory on worker
+    info "Creating destination directory on $node..."
+    ssh "${ssh_user}@${node}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" || {
+        error "Failed to create destination directory on $node"
+    }
+    
+    # Sync vLLM models
+    if [[ -d "$SOURCE_DIR/vllm" ]]; then
+        local vllm_size=$(du -sh "$SOURCE_DIR/vllm" 2>/dev/null | cut -f1)
+        info "Syncing vLLM models ($vllm_size) to $node..."
+        info "This may take several minutes depending on model size and network speed..."
+        
+        rsync -avz --progress \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            "$SOURCE_DIR/vllm/" \
+            "${ssh_user}@${node}:${DEST_DIR}/vllm/" || {
+            warn "Failed to sync vLLM models to $node"
+            return 1
+        }
+        success "vLLM models synced to $node"
+    fi
+    
+    # Sync llamacpp models
+    if [[ -d "$SOURCE_DIR/llamacpp" ]]; then
+        local llamacpp_size=$(du -sh "$SOURCE_DIR/llamacpp" 2>/dev/null | cut -f1)
+        info "Syncing llamacpp models ($llamacpp_size) to $node..."
+        
+        rsync -avz --progress \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            "$SOURCE_DIR/llamacpp/" \
+            "${ssh_user}@${node}:${DEST_DIR}/llamacpp/" || {
+            warn "Failed to sync llamacpp models to $node"
+            return 1
+        }
+        success "llamacpp models synced to $node"
+    fi
+    
+    # Sync embedding models
+    if [[ -d "$SOURCE_DIR/embedding" ]]; then
+        local embedding_size=$(du -sh "$SOURCE_DIR/embedding" 2>/dev/null | cut -f1)
+        info "Syncing embedding models ($embedding_size) to $node..."
+        
+        rsync -avz --progress \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            "$SOURCE_DIR/embedding/" \
+            "${ssh_user}@${node}:${DEST_DIR}/embedding/" || {
+            warn "Failed to sync embedding models to $node"
+            return 1
+        }
+        success "embedding models synced to $node"
+    fi
+    
+    # Fix permissions on worker
+    info "Fixing permissions on $node..."
+    ssh "${ssh_user}@${node}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" || {
+        warn "Failed to fix permissions on $node"
+    }
+    
+    success "All models synced to $node successfully!"
+    echo ""
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📦 Sync Models to Worker Nodes${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Check if running on control plane
+    if ! kubectl get nodes &>/dev/null; then
+        error "Cannot access Kubernetes cluster. Run this on the control plane."
+    fi
+    
+    # Get worker nodes
+    local worker_nodes
+    if [[ $# -gt 0 ]]; then
+        # Use specified worker node
+        worker_nodes="$1"
+    else
+        # Auto-detect all worker nodes
+        worker_nodes=$(get_worker_nodes)
+        if [[ -z "$worker_nodes" ]]; then
+            warn "No worker nodes found in cluster."
+            exit 0
+        fi
+    fi
+    
+    info "Found worker node(s): $worker_nodes"
+    echo ""
+    
+    # Sync to each worker
+    local success_count=0
+    local fail_count=0
+    
+    for node in $worker_nodes; do
+        if sync_to_worker "$node"; then
+            ((success_count++))
+        else
+            ((fail_count++))
+        fi
+    done
+    
+    # Summary
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📊 Sync Summary${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    success "Successfully synced to $success_count worker node(s)"
+    if [[ $fail_count -gt 0 ]]; then
+        warn "Failed to sync to $fail_count worker node(s)"
+    fi
+    echo ""
+    
+    info "Next steps:"
+    echo "  • Restart vLLM pods to use synced models: kubectl rollout restart statefulset/vllm -n llmapi"
+    echo "  • Or scale vLLM to use both GPUs: kubectl scale statefulset/vllm -n llmapi --replicas=2"
+}
+
+main "$@"

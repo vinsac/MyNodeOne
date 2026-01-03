@@ -1221,13 +1221,36 @@ EOF
             fi
         fi
         
-        # Automatically sync models to worker nodes if any exist
+        # Automatically label and sync models to worker nodes if any exist
         echo ""
         echo "   🔄 Checking for worker nodes to sync models..."
         worker_nodes=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
         
         if [[ -n "$worker_nodes" ]]; then
             echo "   📡 Found worker nodes: $worker_nodes"
+            
+            # Auto-label worker nodes with Tailscale IPs (required for SSH sync)
+            echo "   🏷️  Labeling worker nodes with Tailscale IPs..."
+            for node in $worker_nodes; do
+                # Check if node already has worker-ip label
+                existing_ip=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
+                
+                if [[ -n "$existing_ip" ]]; then
+                    echo "      ✓ $node already labeled: $existing_ip"
+                else
+                    # Get Tailscale IP for this node
+                    ts_ip=$(tailscale status --json 2>/dev/null | jq -r ".Peer[] | select(.HostName == \"$node\") | .TailscaleIPs[0]" 2>/dev/null)
+                    
+                    if [[ -n "$ts_ip" && "$ts_ip" != "null" ]]; then
+                        kubectl label node "$node" mynodeone.io/worker-ip="$ts_ip" --overwrite 2>/dev/null
+                        echo "      ✓ $node labeled: $ts_ip"
+                    else
+                        echo -e "      ${YELLOW}⚠ Could not detect Tailscale IP for $node${NC}"
+                        echo "      💡 Manual label: kubectl label node $node mynodeone.io/worker-ip=<TAILSCALE_IP>"
+                    fi
+                fi
+            done
+            
             echo "   🚀 Syncing models to workers (this ensures fast startup)..."
             
             # Run sync script, but don't fail installation if sync fails

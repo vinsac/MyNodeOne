@@ -200,19 +200,21 @@ label_node() {
     # This requires kubectl access from control plane
     # We'll save the labels in a file for the admin to apply
     
+    # Generate one-liner label command
+    LABEL_CMD="kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true mynodeone.io/location=${NODE_LOCATION} mynodeone.io/storage=true mynodeone.io/worker-ip=${TAILSCALE_IP} --overwrite"
+    
     cat > "$ACTUAL_HOME/mynodeone-node-labels.txt" <<EOF
-# Apply these labels on the control plane node:
-kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true --overwrite
-kubectl label node $NODE_NAME mynodeone.io/location=${NODE_LOCATION} --overwrite
-kubectl label node $NODE_NAME mynodeone.io/storage=true --overwrite
-kubectl label node $NODE_NAME mynodeone.io/worker-ip=${TAILSCALE_IP} --overwrite
+# Apply node labels on the control plane:
+$LABEL_CMD
 EOF
     
     # Fix ownership (script runs as root via sudo)
     chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/mynodeone-node-labels.txt"
     
-    log_info "Node labels saved to $ACTUAL_HOME/mynodeone-node-labels.txt"
-    log_info "Run these commands on the control plane to complete setup"
+    log_success "Node labels saved to $ACTUAL_HOME/mynodeone-node-labels.txt"
+    echo
+    log_info "Run this command on the control plane:"
+    echo "  $LABEL_CMD"
 }
 
 print_summary() {

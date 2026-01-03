@@ -665,6 +665,17 @@ LLMAPI uses a multi-tier storage strategy optimized for different deployment sce
 │  │    models-vllm-1: 30Gi (RWO)                             │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
+│  Model Distribution Strategies (Worker Nodes):                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Option A: Sync from Control Plane (LAN optimized)        │  │
+│  │ • Uses rsync over SSH (auto-heals permissions)           │  │
+│  │ • Best for slow internet, fast LAN                       │  │
+│  │                                                          │  │
+│  │ Option B: Independent Download (Default)                 │  │
+│  │ • Workers download directly from HuggingFace             │  │
+│  │ • Best for robust, zero-dependency setup                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
 │  Production / Multi-Cluster (Recommended):                     │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ 1. S3-Compatible Object Storage (MinIO/S3/R2)            │  │

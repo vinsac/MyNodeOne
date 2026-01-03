@@ -5,6 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/name: llmapi
     app.kubernetes.io/component: ai-inference
+    # Allow hostPath volumes for pre-downloaded model optimization
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
 ---
 apiVersion: v1
 kind: ResourceQuota

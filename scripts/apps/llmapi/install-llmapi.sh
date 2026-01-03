@@ -1183,10 +1183,38 @@ EOF
     # Deploy vLLM StatefulSet
     kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
     
-    echo ""
-    echo "   💡 vLLM uses per-pod PVCs for model storage"
-    echo "   💡 First startup: model downloads from HuggingFace (~5 min)"
-    echo "   💡 Subsequent restarts: uses cached PVC model (instant)"
+    # Setup predownload directory for pre-downloaded models
+    # Init container will check /predownload first before downloading
+    if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
+        echo ""
+        echo "   � Setting up pre-downloaded vLLM models..."
+        
+        # Create predownload directory (mounted as hostPath in init container)
+        vllm_predownload="/var/lib/llmapi/models/vllm"
+        sudo mkdir -p "$vllm_predownload"
+        
+        # Copy model to predownload location if provided
+        if [ -d "$PRE_DOWNLOADED_VLLM" ]; then
+            model_name=$(basename "$PRE_DOWNLOADED_VLLM")
+            echo "   📁 Copying $model_name to $vllm_predownload..."
+            
+            if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_predownload/" 2>/dev/null; then
+                copied_size=$(du -sh "$vllm_predownload/$model_name" 2>/dev/null | cut -f1)
+                echo -e "   ${GREEN}✓ Model staged for init container ($copied_size)${NC}"
+                echo "   💡 Init container will copy this to PVC (~2 min startup)"
+            else
+                echo -e "   ${YELLOW}⚠ Failed to copy model to predownload${NC}"
+                echo "   💡 vLLM will download directly from HuggingFace (~5 min)"
+            fi
+        fi
+    else
+        # Create empty predownload directory for future model placement
+        sudo mkdir -p /var/lib/llmapi/models/vllm 2>/dev/null || true
+        echo ""
+        echo "   💡 No pre-downloaded models provided"
+        echo "   💡 vLLM will download from HuggingFace on first start (~5 min)"
+        echo "   💡 To use pre-download: ./scripts/apps/llmapi/download-models.sh"
+    fi
 else
     echo "⏭️  Skipping vLLM (no GPU or not selected)"
 fi

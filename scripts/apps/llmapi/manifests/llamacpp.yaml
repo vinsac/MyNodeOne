@@ -1,17 +1,4 @@
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: llamacpp-models
-  namespace: llmapi
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn
-  resources:
-    requests:
-      storage: 300Gi
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: llamacpp-config
@@ -101,16 +88,16 @@ spec:
           echo "Target: ${MODEL_PATH}"
           echo "HF Token: $([ -n \"${HF_TOKEN:-}\" ] && echo 'configured' || echo 'not set')"
           
-          # 1. Check if model already exists in PVC
+          # 1. Check if model already exists on hostPath (persistent across reinstalls)
+          # Models are stored directly on node disk at /var/lib/llmapi/models/llamacpp
           if [ -f "$MODEL_PATH" ]; then
             EXISTING_SIZE=$(stat -c%s "$MODEL_PATH" 2>/dev/null || echo 0)
-            echo "Existing file found: $(echo $EXISTING_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
+            echo "Existing file found on hostPath: $(echo $EXISTING_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
             
-            # For pre-copied models, skip size validation if file is reasonably large (>50MB)
-            # This handles cases where URL validation fails (404 errors) but model was copied successfully
-            # 50MB threshold catches most legitimate models while avoiding partial downloads
+            # For cached models, skip size validation if file is reasonably large (>50MB)
+            # Models persist on node disk and are reused across pod restarts/reinstalls
             if [ "$EXISTING_SIZE" -gt 52428800 ]; then  # 50MB threshold
-              echo "✓ Pre-downloaded model detected ($(echo $EXISTING_SIZE | awk '{if($1>=1073741824) printf "%.1fG", $1/1073741824; else printf "%.0fM", $1/1048576}')). Skipping download."
+              echo "✓ Model cached on hostPath ($(echo $EXISTING_SIZE | awk '{if($1>=1073741824) printf "%.1fG", $1/1073741824; else printf "%.0fM", $1/1048576}')). Skipping download."
               exit 0
             fi
             
@@ -125,7 +112,7 @@ spec:
             if [ -n "$EXPECTED_SIZE" ]; then
               echo "Expected size: $(echo $EXPECTED_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
               if [ "$EXISTING_SIZE" -ge "$EXPECTED_SIZE" ]; then
-                echo "✓ Model already complete. Skipping download."
+                echo "✓ Model cached and complete on hostPath. Skipping download."
                 exit 0
               else
                 echo "Incomplete download detected. Will resume..."
@@ -134,7 +121,7 @@ spec:
               echo "⚠ Cannot validate file size (URL check failed), but file exists ($(echo $EXISTING_SIZE | awk '{if($1>=1073741824) printf "%.1fG", $1/1073741824; else printf "%.0fM", $1/1048576}'))"
               # Apply same 50MB threshold for URL validation failures
               if [ "$EXISTING_SIZE" -gt 52428800 ]; then  # 50MB threshold
-                echo "✓ File is substantial (>50MB). Assuming pre-copied model is complete. Skipping download."
+                echo "✓ File is substantial (>50MB). Assuming cached model is complete. Skipping download."
                 exit 0
               else
                 echo "⚠ File is small (<50MB). May be incomplete. Will attempt download."
@@ -142,11 +129,11 @@ spec:
             fi
           fi
           
-          # 2. Skip predownload check (models should be copied by install script)
+          # 2. Download from URL directly to hostPath
+          # Model will persist on node disk and be reused across pod restarts/reinstalls
           echo ""
-          echo "Proceeding with download if model not found in PVC..."
-          echo ""
-          echo "No cached model found. Downloading from URL..."
+          echo "No cached model found on hostPath."
+          echo "Download progress (saving to hostPath):"
           echo "This may take 30-60 minutes for a 40GB model."
           echo ""
           
@@ -166,7 +153,9 @@ spec:
           if [ -f "$MODEL_PATH" ]; then
             FINAL_SIZE=$(stat -c%s "$MODEL_PATH")
             echo ""
-            echo "✓ Download complete! Size: $(echo $FINAL_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
+            echo "✓ Download complete! Model cached on hostPath."
+            echo "✓ Model will be reused on next pod restart/reinstall"
+            echo "Size: $(echo $FINAL_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
           else
             echo "ERROR: Download failed!"
             exit 1
@@ -254,8 +243,9 @@ spec:
           failureThreshold: 20
       volumes:
       - name: models
-        persistentVolumeClaim:
-          claimName: llamacpp-models
+        hostPath:
+          path: /var/lib/llmapi/models/llamacpp
+          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

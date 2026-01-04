@@ -1212,14 +1212,14 @@ EOF
                 # Model is already in hostPath, just verify it
                 model_size=$(du -sh "$PRE_DOWNLOADED_VLLM" 2>/dev/null | cut -f1)
                 echo -e "   ${GREEN}✓ Model already in hostPath: $model_name ($model_size)${NC}"
-                echo "   💡 Init container will copy this to PVC (~2 min startup)"
+                echo "   💡 Init container will use this directly (instant startup)"
             else
                 # Model is in a different location, copy it
                 echo "   📁 Copying $model_name to $vllm_predownload..."
                 if sudo cp -r "$PRE_DOWNLOADED_VLLM" "$vllm_predownload/" 2>/dev/null; then
                     copied_size=$(du -sh "$destination" 2>/dev/null | cut -f1)
-                    echo -e "   ${GREEN}✓ Model staged for init container ($copied_size)${NC}"
-                    echo "   💡 Init container will copy this to PVC (~2 min startup)"
+                    echo -e "   ${GREEN}✓ Model staged on hostPath ($copied_size)${NC}"
+                    echo "   💡 Init container will use this directly (instant startup)"
                 else
                     echo -e "   ${YELLOW}⚠ Failed to copy model to predownload${NC}"
                     echo "   💡 vLLM will download directly from HuggingFace (~5 min)"
@@ -1369,14 +1369,12 @@ EOF
 
     kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml"
     
-    # Copy pre-downloaded models after PVC creation
+    # Models are now used directly from hostPath at /var/lib/llmapi/models/llamacpp
     if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]]; then
         echo ""
-        echo "   📦 Copying pre-downloaded llamacpp model to PVC..."
-        if copy_predownloaded_models "llamacpp" "$PRE_DOWNLOADED_LLAMACPP" "llamacpp-models"; then
-            echo "   💡 Pre-copied model detected. Init container will skip download automatically."
-            echo "   📄 Model file: $LLAMACPP_MODEL_FILE"
-        fi
+        echo "   📦 Pre-downloaded llamacpp model detected on hostPath"
+        echo "   💡 Model file: $LLAMACPP_MODEL_FILE"
+        echo "   💡 Init container will use this directly (instant startup)"
     fi
 else
     echo "⏭️  Skipping llama.cpp (not selected)"

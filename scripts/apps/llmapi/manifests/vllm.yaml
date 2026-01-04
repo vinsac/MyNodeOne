@@ -45,58 +45,33 @@ spec:
           # Model name without org prefix for directory matching
           MODEL_SHORT=$(echo "$MODEL_NAME" | sed 's|.*/||' | tr '[:upper:]' '[:lower:]')
           
-          # 1. Check if model already cached in PVC (from previous run)
+          # 1. Check if model already exists on hostPath (persistent across reinstalls)
+          # Models are stored directly on node disk at /var/lib/llmapi/models/vllm
+          # This directory is shared across all vLLM pods on this node
           CACHE_DIR="/models/models--$(echo $MODEL_NAME | tr '/' '--')"
           CACHE_DIR_HUB="/models/hub/models--$(echo $MODEL_NAME | tr '/' '--')"
           
           for DIR in "$CACHE_DIR" "$CACHE_DIR_HUB"; do
             if [ -d "$DIR/snapshots" ] && [ "$(ls -A $DIR/snapshots 2>/dev/null)" ]; then
               CACHED_SIZE=$(du -sh "$DIR" 2>/dev/null | cut -f1)
-              echo "Checking PVC cache at $DIR ($CACHED_SIZE)..."
+              echo "Checking hostPath cache at $DIR ($CACHED_SIZE)..."
               if find "$DIR" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
-                echo "✓ Model weights found in PVC. Skipping download."
+                echo "✓ Model weights found on hostPath. Skipping download."
+                # Fix permissions to ensure vLLM can write lock files
+                chown -R 1000:1000 /models
+                chmod -R 755 /models
                 exit 0
               fi
             fi
           done
           
-          # 2. Check for pre-downloaded model on host (mounted at /predownload)
+          # 2. No cached model found - download from HuggingFace directly to hostPath
+          # Models persist on node disk and are reused across pod restarts/reinstalls
           echo ""
-          echo "Checking for pre-downloaded model on host..."
-          for HOST_DIR in /predownload/vllm/*; do
-            if [ -d "$HOST_DIR" ]; then
-              HOST_MODEL=$(basename "$HOST_DIR" | tr '[:upper:]' '[:lower:]')
-              # Fuzzy match: extract base model name (e.g., qwen2.5-14b from qwen2.5-14b-instruct-awq)
-              MODEL_BASE=$(echo "$MODEL_SHORT" | sed -E 's/-(instruct|chat|code|base).*$//')
-              HOST_BASE=$(echo "$HOST_MODEL" | sed -E 's/-(instruct|chat|code|base).*$//')
-              
-              if echo "$MODEL_BASE" | grep -qi "$HOST_BASE" || echo "$HOST_BASE" | grep -qi "$MODEL_BASE"; then
-                HOST_SIZE=$(du -sh "$HOST_DIR" 2>/dev/null | cut -f1)
-                echo "Found pre-downloaded model: $HOST_DIR ($HOST_SIZE)"
-                # Verify it has actual model files
-                if find "$HOST_DIR" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
-                  echo "✓ Model weights found. Copying to PVC..."
-                  # Copy to PVC maintaining HuggingFace cache structure
-                  mkdir -p /models/hub
-                  cp -r "$HOST_DIR" "/models/hub/$(basename "$HOST_DIR")"
-                  
-                  # CRITICAL: Fix permissions so vLLM container can write lock files
-                  echo "Fixing permissions for vLLM container..."
-                  chown -R 1000:1000 /models
-                  chmod -R 755 /models
-                  
-                  FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
-                  echo "✓ Copy complete. PVC cache size: $FINAL_SIZE"
-                  echo "✓ Permissions fixed (1000:1000)"
-                  exit 0
-                fi
-              fi
-            fi
-          done
+          echo "No cached model found on hostPath."
           
-          # 3. Download from HuggingFace
-          echo ""
-          echo "No cached model found. Downloading from HuggingFace..."
+          echo "Downloading from HuggingFace to hostPath..."
+          echo "Model will persist on this node for future use."
           
           # Prepare /models directory with correct permissions BEFORE download
           # This prevents "Read-only file system" errors when creating lock files
@@ -136,7 +111,8 @@ spec:
           if find "/models" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
             FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
             echo ""
-            echo "Total cache size: $FINAL_SIZE"
+            echo "✓ Download complete. Model cached on hostPath: $FINAL_SIZE"
+            echo "✓ Model will be reused on next pod restart/reinstall"
             
             # CRITICAL: Fix permissions for vLLM container to write lock files
             # Set ownership to 1000:1000 (vLLM user) and make writable
@@ -263,30 +239,14 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 60
       volumes:
-      - name: predownload
+      - name: models
         hostPath:
-          path: /var/lib/llmapi/models
+          path: /var/lib/llmapi/models/vllm
           type: DirectoryOrCreate
       - name: shm
         emptyDir:
           medium: Memory
           sizeLimit: 8Gi
-  # StatefulSet volumeClaimTemplates - creates one PVC per pod
-  # This is the industry standard for multi-node stateful workloads
-  volumeClaimTemplates:
-  - metadata:
-      name: models
-      annotations:
-        # Longhorn-specific: number of replicas for the volume
-        # Set to 1 for single-node or when nodes have local storage
-        longhorn.io/replica-count: "1"
-    spec:
-      accessModes:
-      - ReadWriteOnce  # Each pod gets its own RWO PVC
-      storageClassName: longhorn
-      resources:
-        requests:
-          storage: 30Gi  # Enough for one model + cache
 ---
 apiVersion: v1
 kind: Service

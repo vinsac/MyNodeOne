@@ -19,21 +19,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="/var/lib/llmapi/models"
 DEST_DIR="/var/lib/llmapi/models"
 
-# Detect actual user when running under sudo
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    ACTUAL_USER="$SUDO_USER"
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-else
-    ACTUAL_USER="$(whoami)"
-    ACTUAL_HOME="$HOME"
+# Detect control plane user (authoritative source: cluster config)
+# This is critical because SSH keys are owned by the control plane user, not root
+CONTROL_PLANE_USER=""
+if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    CONTROL_PLANE_USER=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.control-plane-user}' 2>/dev/null)
 fi
+
+# Fallback to SUDO_USER if cluster config not available
+if [ -z "$CONTROL_PLANE_USER" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        CONTROL_PLANE_USER="$SUDO_USER"
+    else
+        CONTROL_PLANE_USER="$(whoami)"
+    fi
+fi
+
+ACTUAL_USER="$CONTROL_PLANE_USER"
+ACTUAL_HOME=$(getent passwd "$CONTROL_PLANE_USER" | cut -d: -f6 2>/dev/null || echo "$HOME")
 
 # Use user-specific temp directory to avoid permission issues
 TEMP_DIR="${ACTUAL_HOME}/.cache/mynodeone/tmp"
 mkdir -p "$TEMP_DIR" 2>/dev/null || TEMP_DIR="/tmp"
 # Ensure proper ownership if we created it
-if [ -n "${SUDO_USER:-}" ] && [ "$TEMP_DIR" != "/tmp" ]; then
-    chown -R "$SUDO_USER:$SUDO_USER" "$TEMP_DIR" 2>/dev/null || true
+if [ "$(whoami)" = "root" ] && [ "$TEMP_DIR" != "/tmp" ]; then
+    chown -R "$CONTROL_PLANE_USER:$CONTROL_PLANE_USER" "$TEMP_DIR" 2>/dev/null || true
 fi
 
 # Colors
@@ -89,10 +99,11 @@ check_ssh_access() {
     local ssh_user=""
     
     # Prepare SSH command that works under sudo
+    # Use CONTROL_PLANE_USER (from cluster config) who has SSH keys, not SUDO_USER
     local ssh_cmd="ssh"
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        ssh_cmd="sudo -u $SUDO_USER ssh"
-        info "  Script running under sudo - using SSH as: $SUDO_USER" >&2
+    if [ "$(whoami)" = "root" ]; then
+        ssh_cmd="sudo -u $CONTROL_PLANE_USER ssh"
+        info "  Script running as root - using SSH as: $CONTROL_PLANE_USER" >&2
     fi
     
     # First, try to get username from node label (set during worker node setup)

@@ -1566,17 +1566,25 @@ create_cluster_info() {
     # Get absolute path to MyNodeOne repository
     REPO_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     
+    # Detect control plane user from repo path (e.g., /home/vinaysachdeva/MyNodeOne -> vinaysachdeva)
+    CONTROL_PLANE_USER=$(echo "$REPO_PATH" | sed 's|/home/\([^/]*\)/.*|\1|')
+    if [ -z "$CONTROL_PLANE_USER" ] || [ "$CONTROL_PLANE_USER" = "$REPO_PATH" ]; then
+        CONTROL_PLANE_USER="$ACTUAL_USER"
+    fi
+    
     # Create configmap with cluster metadata for management laptops and workers to discover
     kubectl create configmap cluster-info \
         --from-literal=cluster-name="$CLUSTER_NAME" \
         --from-literal=cluster-domain="$CLUSTER_DOMAIN" \
         --from-literal=control-plane-ip="$TAILSCALE_IP" \
+        --from-literal=control-plane-user="$CONTROL_PLANE_USER" \
         --from-literal=repo-path="$REPO_PATH" \
         --namespace=kube-system \
         --dry-run=client -o yaml | kubectl apply -f -
     
     log_success "Cluster info configmap created"
     log_info "Repository path saved: $REPO_PATH"
+    log_info "Control plane user: $CONTROL_PLANE_USER"
 }
 
 create_cluster_token() {

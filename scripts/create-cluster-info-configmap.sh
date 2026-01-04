@@ -139,11 +139,21 @@ echo "  • Control Plane IP: $TAILSCALE_IP"
 echo "  • Repo Path: $MYNODEONE_PATH"
 echo
 
+# Detect control plane user from repo path
+CONTROL_PLANE_USER=$(echo "$MYNODEONE_PATH" | sed 's|/home/\([^/]*\)/.*|\1|')
+if [ -z "$CONTROL_PLANE_USER" ] || [ "$CONTROL_PLANE_USER" = "$MYNODEONE_PATH" ]; then
+    CONTROL_PLANE_USER="$ACTUAL_USER"
+fi
+
+echo "  • Control Plane User: $CONTROL_PLANE_USER"
+echo
+
 # Create the ConfigMap
 kubectl create configmap cluster-info \
     --from-literal=cluster-name="$CLUSTER_NAME" \
     --from-literal=cluster-domain="$CLUSTER_DOMAIN" \
     --from-literal=control-plane-ip="$TAILSCALE_IP" \
+    --from-literal=control-plane-user="$CONTROL_PLANE_USER" \
     --from-literal=repo-path="$MYNODEONE_PATH" \
     --namespace=kube-system \
     --dry-run=client -o yaml | kubectl apply -f -

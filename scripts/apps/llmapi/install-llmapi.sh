@@ -33,13 +33,25 @@ NC='\033[0m'
 # Load cluster resource detection utilities
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
 
+# Detect control plane user (authoritative source: cluster config)
+# This is critical because SSH keys are owned by the control plane user, not root
+CONTROL_PLANE_USER=""
+if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null 2>&1; then
+    CONTROL_PLANE_USER=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.control-plane-user}' 2>/dev/null)
+fi
+
+# Fallback to SUDO_USER if cluster config not available
+if [ -z "$CONTROL_PLANE_USER" ]; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        CONTROL_PLANE_USER="$SUDO_USER"
+    else
+        CONTROL_PLANE_USER="$(whoami)"
+    fi
+fi
+
 # Load configuration
 if [ -z "${ACTUAL_HOME:-}" ]; then
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    else
-        export ACTUAL_HOME="$HOME"
-    fi
+    export ACTUAL_HOME=$(getent passwd "$CONTROL_PLANE_USER" | cut -d: -f6 2>/dev/null || echo "$HOME")
 fi
 CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
 if [[ -f "$CONFIG_FILE" ]]; then
@@ -1274,10 +1286,10 @@ EOF
                 # Defensive: Fix SSH permissions on workers before syncing
                 echo "      🛡️  Verifying worker SSH permissions..."
                 
-                # Determine SSH command (sudo-aware if running under sudo)
+                # Determine SSH command (use CONTROL_PLANE_USER who has SSH keys)
                 local ssh_cmd="ssh"
-                if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-                    ssh_cmd="sudo -u $SUDO_USER ssh"
+                if [ "$(whoami)" = "root" ]; then
+                    ssh_cmd="sudo -u $CONTROL_PLANE_USER ssh"
                 fi
                 
                 for node in $worker_nodes; do

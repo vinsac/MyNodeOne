@@ -33,31 +33,31 @@ if command -v kubectl &> /dev/null; then
         jq -r '.domains | keys[]' 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
 fi
 
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}  Public Access Configuration${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo "Would you like to make ${APP_NAME} accessible from the internet?"
-echo ""
-echo -e "  ${GREEN}Public access enables:${NC}"
-echo "  • Access from any device on any network"
-echo "  • Use from mobile devices outside your home"
-echo ""
+echo "" >&2
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+echo -e "${BLUE}  Public Access Configuration${NC}" >&2
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+echo "" >&2
+echo "Would you like to make ${APP_NAME} accessible from the internet?" >&2
+echo "" >&2
+echo -e "  ${GREEN}Public access enables:${NC}" >&2
+echo "  • Access from any device on any network" >&2
+echo "  • Use from mobile devices outside your home" >&2
+echo "" >&2
 
 if [ -n "$CONFIGURED_DOMAINS" ]; then
-    echo -e "  ${GREEN}Your configured domain(s):${NC} $CONFIGURED_DOMAINS"
-    echo "  Public URL will be: ${APP_SUBDOMAIN}.${CONFIGURED_DOMAINS%%,*}"
+    echo -e "  ${GREEN}Your configured domain(s):${NC} $CONFIGURED_DOMAINS" >&2
+    echo "  Public URL will be: ${APP_SUBDOMAIN}.${CONFIGURED_DOMAINS%%,*}" >&2
 else
-    echo -e "  ${YELLOW}No public domains configured yet.${NC}"
-    echo "  Run: sudo $PROJECT_ROOT/scripts/add-domain.sh"
+    echo -e "  ${YELLOW}No public domains configured yet.${NC}" >&2
+    echo "  Run: sudo $PROJECT_ROOT/scripts/add-domain.sh" >&2
 fi
-echo ""
-echo "  You can change this later by running:"
-echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
-echo ""
+echo "" >&2
+echo "  You can change this later by running:" >&2
+echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh" >&2
+echo "" >&2
 
-read -p "Make ${APP_NAME} publicly accessible? [y/N]: " MAKE_PUBLIC
+read -p "Make ${APP_NAME} publicly accessible? [y/N]: " MAKE_PUBLIC < /dev/tty
 
 if [[ "${MAKE_PUBLIC,,}" == "y" || "${MAKE_PUBLIC,,}" == "yes" ]]; then
     echo ""

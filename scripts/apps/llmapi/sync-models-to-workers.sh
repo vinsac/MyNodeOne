@@ -404,19 +404,20 @@ main() {
         fi
     done <<< "$worker_data"
     
-    # Summary
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}📊 Sync Summary${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    success "Successfully synced to $success_count worker node(s)"
+    # Summary - output to both stdout and stderr to ensure visibility
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo -e "${BLUE}📊 Sync Summary${NC}" >&2
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    success "Successfully synced to $success_count worker node(s)" >&2
     if [[ $fail_count -gt 0 ]]; then
-        warn "Failed to sync to $fail_count worker node(s)"
+        warn "Failed to sync to $fail_count worker node(s)" >&2
     fi
-    echo ""
+    echo "" >&2
     
-    info "Next steps:"
-    echo "  • Restart vLLM pods to use synced models: kubectl rollout restart statefulset/vllm -n llmapi"
-    echo "  • Or scale vLLM to use both GPUs: kubectl scale statefulset/vllm -n llmapi --replicas=2"
+    info "Next steps:" >&2
+    echo "  • Restart vLLM pods to use synced models: kubectl rollout restart statefulset/vllm -n llmapi" >&2
+    echo "  • Or scale vLLM to use both GPUs: kubectl scale statefulset/vllm -n llmapi --replicas=2" >&2
+    echo "" >&2
     
     # Return success if at least one node synced successfully, failure if all failed
     if [[ $success_count -gt 0 ]]; then

@@ -136,6 +136,16 @@ sync_to_worker() {
     info "Using SSH user: $ssh_user"
     echo ""
     
+    # Defensive: Ensure correct SSH permissions on worker to prevent auth issues
+    info "Fixing SSH permissions on $node_ip (defensive)..."
+    if ssh -o BatchMode=yes "${ssh_user}@${node_ip}" "chmod 700 ~/.ssh 2>/dev/null; chmod 600 ~/.ssh/authorized_keys 2>/dev/null; chmod go-w ~ 2>/dev/null; true" 2>&1 | tee /tmp/ssh-fix-perms.log; then
+        success "SSH permissions verified/fixed on $node_ip"
+    else
+        warn "Could not verify SSH permissions on $node_ip (non-critical)"
+        info "Error details: $(cat /tmp/ssh-fix-perms.log 2>/dev/null | head -3)"
+    fi
+    echo ""
+    
     # Check if source directory exists
     if [[ ! -d "$SOURCE_DIR" ]]; then
         warn "Source directory $SOURCE_DIR does not exist. No models to sync."

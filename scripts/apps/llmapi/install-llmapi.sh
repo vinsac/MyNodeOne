@@ -1308,12 +1308,13 @@ EOF
 
                 # Run sync script with full output for debugging
                 echo ""
-                if "$SCRIPT_DIR/sync-models-to-workers.sh"; then
-                    echo ""
+                "$SCRIPT_DIR/sync-models-to-workers.sh"
+                SYNC_EXIT_CODE=$?
+                echo ""
+                if [ $SYNC_EXIT_CODE -eq 0 ]; then
                     echo -e "   ${GREEN}✓ Models synced to worker nodes${NC}"
                     echo "   💡 Workers will use local models (~2 min startup)"
                 else
-                    echo ""
                     echo -e "   ${YELLOW}⚠ Model sync failed or incomplete${NC}"
                     echo "   💡 Workers will download from HuggingFace if needed (~5-10 min)"
                     echo "   💡 To retry sync: ./scripts/apps/llmapi/sync-models-to-workers.sh"

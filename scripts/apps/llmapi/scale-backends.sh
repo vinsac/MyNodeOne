@@ -8,6 +8,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")" 
+
+# Load cluster resource detection utilities
+source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -59,8 +65,8 @@ fi
 
 case "$BACKEND" in
     vllm)
-        # Check GPU availability
-        GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' | paste -sd+ | bc 2>/dev/null || echo "0")
+        # Check GPU availability using centralized utility
+        GPU_COUNT=$(get_cluster_gpu_count)
         
         if [ "$REPLICAS" -gt "$GPU_COUNT" ]; then
             echo -e "${YELLOW}Warning: Requesting $REPLICAS replicas but only $GPU_COUNT GPUs available${NC}"

@@ -30,6 +30,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+# Load cluster resource detection utilities
+source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
+
 # Load configuration
 if [ -z "${ACTUAL_HOME:-}" ]; then
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
@@ -89,14 +92,11 @@ if ! command -v aria2c &> /dev/null; then
     fi
 fi
 
-# Check for GPU
+# Check for GPU using centralized utility
+GPU_COUNT=$(get_cluster_gpu_count)
 GPU_AVAILABLE=false
-GPU_COUNT=0
-if kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | grep -q "[0-9]"; then
-    GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' | paste -sd+ | bc 2>/dev/null || echo "1")
-    if [ "$GPU_COUNT" -gt 0 ] 2>/dev/null; then
-        GPU_AVAILABLE=true
-    fi
+if [ "$GPU_COUNT" -gt 0 ] 2>/dev/null; then
+    GPU_AVAILABLE=true
 fi
 
 # Check for Longhorn
@@ -108,20 +108,13 @@ if ! kubectl get storageclass longhorn &> /dev/null; then
     fi
 fi
 
-# Get system resources
-TOTAL_RAM_KB=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.memory}' | sed 's/Ki//')
-TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
-TOTAL_CPU=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.cpu}')
+# Get system resources using centralized utility
+TOTAL_CPU=$(get_cluster_cpu)
+TOTAL_RAM_GB=$(get_cluster_ram_gb)
+TOTAL_RAM_KB=$(get_cluster_ram_kb)
 
 echo ""
-echo "📊 Cluster Resources Detected:"
-echo "   • CPU Cores: $TOTAL_CPU"
-echo "   • RAM: ${TOTAL_RAM_GB}GB"
-if [ "$GPU_AVAILABLE" = true ]; then
-    echo -e "   • GPUs: ${GREEN}${GPU_COUNT} NVIDIA GPU(s)${NC}"
-else
-    echo -e "   • GPUs: ${YELLOW}None detected${NC}"
-fi
+print_cluster_resources
 echo ""
 
 # =============================================================================

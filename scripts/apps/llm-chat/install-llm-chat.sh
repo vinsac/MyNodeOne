@@ -16,6 +16,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # Load shared validation library
 source "$SCRIPT_DIR/../lib/validation.sh"
 
+# Load cluster resource detection utilities
+source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -46,35 +49,32 @@ validate_prerequisites
 
 NAMESPACE="llm-chat"
 
-# Detect GPU availability in cluster
+# Detect GPU availability in cluster using centralized utility
+GPU_COUNT=$(get_cluster_gpu_count)
 GPU_AVAILABLE=false
-GPU_COUNT=0
 USE_GPU=false
 
-if kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | grep -q "[0-9]"; then
-    GPU_COUNT=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' | paste -sd+ | bc 2>/dev/null || echo "1")
-    if [ "$GPU_COUNT" -gt 0 ] 2>/dev/null; then
-        GPU_AVAILABLE=true
-        echo -e "${GREEN}🎮 GPU Detected: ${GPU_COUNT} NVIDIA GPU(s) available in cluster${NC}"
+if [ "$GPU_COUNT" -gt 0 ] 2>/dev/null; then
+    GPU_AVAILABLE=true
+    echo -e "${GREEN}🎮 GPU Detected: ${GPU_COUNT} NVIDIA GPU(s) available in cluster${NC}"
+    echo ""
+    echo "GPU Acceleration Options:"
+    echo "  1) Use GPU for Ollama (faster inference, recommended for most users)"
+    echo "  2) Use CPU only (reserve GPU for other apps like LLMAPI)"
+    echo ""
+    read -p "Choose GPU mode [1-2, default: 1]: " GPU_CHOICE
+    GPU_CHOICE="${GPU_CHOICE:-1}"
+    
+    if [ "$GPU_CHOICE" = "1" ]; then
+        USE_GPU=true
         echo ""
-        echo "GPU Acceleration Options:"
-        echo "  1) Use GPU for Ollama (faster inference, recommended for most users)"
-        echo "  2) Use CPU only (reserve GPU for other apps like LLMAPI)"
+        echo -e "${GREEN}✓ Ollama will use GPU acceleration${NC}"
         echo ""
-        read -p "Choose GPU mode [1-2, default: 1]: " GPU_CHOICE
-        GPU_CHOICE="${GPU_CHOICE:-1}"
-        
-        if [ "$GPU_CHOICE" = "1" ]; then
-            USE_GPU=true
-            echo ""
-            echo -e "${GREEN}✓ Ollama will use GPU acceleration${NC}"
-            echo ""
-        else
-            USE_GPU=false
-            echo ""
-            echo -e "${YELLOW}✓ Ollama will use CPU only (GPU reserved for other apps)${NC}"
-            echo ""
-        fi
+    else
+        USE_GPU=false
+        echo ""
+        echo -e "${YELLOW}✓ Ollama will use CPU only (GPU reserved for other apps)${NC}"
+        echo ""
     fi
 fi
 
@@ -509,11 +509,11 @@ if [ "${UPGRADE_RESOURCES:-false}" = "custom" ]; then
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
-    # Detect cluster capacity
+    # Detect cluster capacity using centralized utility
     echo "🔍 Detecting cluster capacity..."
-    TOTAL_CPU=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.cpu}')
-    TOTAL_RAM_KB=$(kubectl get nodes -o jsonpath='{.items[0].status.capacity.memory}' | sed 's/Ki//')
-    TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
+    TOTAL_CPU=$(get_cluster_cpu)
+    TOTAL_RAM_GB=$(get_cluster_ram_gb)
+    TOTAL_RAM_KB=$(get_cluster_ram_kb)
     
     echo "   Total CPU cores: $TOTAL_CPU"
     echo "   Total RAM: ${TOTAL_RAM_GB}GB"

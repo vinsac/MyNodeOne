@@ -1309,15 +1309,19 @@ EOF
                     fi
                 done
 
-                # Run sync script, but don't fail installation if sync fails
-                if "$SCRIPT_DIR/sync-models-to-workers.sh" 2>&1 | grep -q "✓"; then
+                # Run sync script with full output for debugging
+                echo ""
+                if "$SCRIPT_DIR/sync-models-to-workers.sh"; then
+                    echo ""
                     echo -e "   ${GREEN}✓ Models synced to worker nodes${NC}"
                     echo "   💡 Workers will use local models (~2 min startup)"
                 else
+                    echo ""
                     echo -e "   ${YELLOW}⚠ Model sync failed or incomplete${NC}"
                     echo "   💡 Workers will download from HuggingFace if needed (~5-10 min)"
                     echo "   💡 To retry sync: ./scripts/apps/llmapi/sync-models-to-workers.sh"
                 fi
+                echo ""
             else
                 echo "   ⬇️  Workers will download models from HuggingFace on startup."
                 echo "   💡 This may take 5-10 minutes per node depending on internet speed."

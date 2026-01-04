@@ -207,11 +207,20 @@ EOF
 label_node() {
     log_info "Labeling node..."
     
+    # Prompt for SSH username (needed for model syncing from control plane)
+    echo ""
+    echo "For model syncing from control plane, what SSH username should be used?"
+    echo "This is the username that will be used to SSH into this node from control plane."
+    read -p "SSH username (default: ${ACTUAL_USER}): " SSH_USERNAME
+    SSH_USERNAME="${SSH_USERNAME:-${ACTUAL_USER}}"
+    
+    log_info "SSH username for this node: $SSH_USERNAME"
+    
     # This requires kubectl access from control plane
     # We'll save the labels in a file for the admin to apply
     
     # Generate one-liner label command
-    LABEL_CMD="kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true mynodeone.io/location=${NODE_LOCATION} mynodeone.io/storage=true mynodeone.io/worker-ip=${TAILSCALE_IP} mynodeone.io/ssh-user=${ACTUAL_USER} --overwrite"
+    LABEL_CMD="kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true mynodeone.io/location=${NODE_LOCATION} mynodeone.io/storage=true mynodeone.io/worker-ip=${TAILSCALE_IP} mynodeone.io/ssh-user=${SSH_USERNAME} --overwrite"
     
     cat > "$ACTUAL_HOME/mynodeone-node-labels.txt" <<EOF
 # Apply node labels on the control plane:

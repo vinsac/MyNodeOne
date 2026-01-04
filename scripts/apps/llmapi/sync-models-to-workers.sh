@@ -77,31 +77,28 @@ check_ssh_access() {
         labeled_user=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
     fi
     
-    local users_to_try=()
     if [[ -n "$labeled_user" ]]; then
         info "  Found labeled SSH user: $labeled_user" >&2
-        users_to_try=("$labeled_user")
+        ssh_user="$labeled_user"
+        
+        # Verify SSH access works
+        if ! ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
+           "${ssh_user}@${node_ip}" "echo connected" &>/dev/null; then
+            warn "  ✗ SSH access failed for ${ssh_user}@${node_ip}" >&2
+            warn "  Make sure SSH keys are set up: ssh-copy-id ${ssh_user}@${node_ip}" >&2
+            ssh_user=""
+        else
+            success "  ✓ SSH works with user: $ssh_user" >&2
+        fi
     else
-        info "  No mynodeone.io/ssh-user label found, trying common usernames..." >&2
-        users_to_try=($(whoami) ubuntu)
+        warn "  ✗ No mynodeone.io/ssh-user label found on node" >&2
+        warn "  Please label the node with SSH username:" >&2
+        warn "    kubectl label node $node_name mynodeone.io/ssh-user=<USERNAME>" >&2
+        ssh_user=""
     fi
     
-    # Try each username
-    for user in "${users_to_try[@]}"; do
-        info "  Trying user: $user" >&2
-        if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
-           "${user}@${node_ip}" "echo connected" 2>&1 | tee /tmp/ssh-test-$user.log | grep -q "connected"; then
-            ssh_user="$user"
-            success "  ✓ SSH works with user: $user" >&2
-            break
-        else
-            warn "  ✗ SSH failed for user: $user" >&2
-            info "  Error details: $(cat /tmp/ssh-test-$user.log 2>/dev/null | head -3)" >&2
-        fi
-    done
-    
     if [[ -z "$ssh_user" ]]; then
-        warn "Could not determine SSH user for $node_ip." >&2
+        warn "Cannot sync to $node_ip - SSH username not configured." >&2
         warn "Ensure SSH key-based auth is set up for the worker node." >&2
         warn "Run: ssh-copy-id <username>@${node_ip}" >&2
         if [[ -n "$node_name" ]]; then

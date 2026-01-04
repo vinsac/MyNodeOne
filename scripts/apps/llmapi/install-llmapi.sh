@@ -1249,28 +1249,12 @@ EOF
                             kubectl label node "$node" mynodeone.io/worker-ip="$ts_ip" --overwrite 2>/dev/null
                         fi
                         
-                        # Try to detect SSH username if not already set
+                        # Check if SSH username is configured
                         if [[ -z "$existing_user" ]]; then
-                            echo "      🔍 Detecting SSH username for $node ($ts_ip)..."
-                            detected_user=""
-                            for test_user in $(whoami) ubuntu root; do
-                                if timeout 3 ssh -o ConnectTimeout=2 -o BatchMode=yes -o StrictHostKeyChecking=no \
-                                   "${test_user}@${ts_ip}" "echo ok" &>/dev/null; then
-                                    detected_user="$test_user"
-                                    break
-                                fi
-                            done
-                            
-                            if [[ -n "$detected_user" ]]; then
-                                kubectl label node "$node" mynodeone.io/ssh-user="$detected_user" --overwrite 2>/dev/null
-                                echo "      ✓ $node labeled: $ts_ip (user: $detected_user)"
-                            else
-                                kubectl label node "$node" mynodeone.io/worker-ip="$ts_ip" --overwrite 2>/dev/null
-                                echo -e "      ${YELLOW}⚠ $node labeled with IP: $ts_ip${NC}"
-                                echo -e "      ${YELLOW}⚠ Could not detect SSH username - model sync may fail${NC}"
-                                echo "      💡 Add SSH user label: kubectl label node $node mynodeone.io/ssh-user=<USERNAME>"
-                                echo "      💡 Or set up SSH keys: ssh-copy-id <username>@$ts_ip"
-                            fi
+                            echo -e "      ${YELLOW}⚠ $node needs SSH username label for model sync${NC}"
+                            echo "      💡 Set SSH user label: kubectl label node $node mynodeone.io/ssh-user=<USERNAME>"
+                            echo "      💡 Then set up SSH keys: ssh-copy-id <username>@$ts_ip"
+                            echo "      💡 This should have been done during worker node setup (add-worker-node.sh)"
                         else
                             echo "      ✓ $node labeled: $ts_ip (user: $existing_user)"
                         fi

@@ -28,6 +28,7 @@ spec:
       labels:
         app: redis
     spec:
+      priorityClassName: mynodeone-infrastructure
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -50,11 +51,10 @@ spec:
         - allkeys-lru
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "250m"
+            memory: "64Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "1000m"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

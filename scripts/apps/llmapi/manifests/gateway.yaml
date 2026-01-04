@@ -47,6 +47,7 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      priorityClassName: mynodeone-app
       serviceAccountName: gateway
       securityContext:
         runAsNonRoot: true
@@ -70,11 +71,10 @@ spec:
             name: gateway-config
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "64Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "2000m"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

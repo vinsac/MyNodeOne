@@ -161,6 +161,7 @@ spec:
       labels:
         app: nextcloud-postgres
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
         image: postgres:15-alpine
@@ -182,11 +183,10 @@ spec:
           subPath: data
         resources:
           requests:
-            memory: "256Mi"
+            memory: "128Mi"
             cpu: "100m"
           limits:
             memory: "1Gi"
-            cpu: "500m"
       volumes:
       - name: postgres-data
         persistentVolumeClaim:
@@ -223,6 +223,7 @@ spec:
       labels:
         app: nextcloud-redis
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: redis
         image: redis:7-alpine
@@ -230,11 +231,10 @@ spec:
         - containerPort: 6379
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "50m"
+            memory: "64Mi"
+            cpu: "100m"
           limits:
             memory: "512Mi"
-            cpu: "200m"
 ---
 apiVersion: v1
 kind: Service
@@ -267,6 +267,7 @@ spec:
       labels:
         app: nextcloud
     spec:
+      priorityClassName: mynodeone-app
       containers:
       - name: nextcloud
         image: nextcloud:28-apache
@@ -300,11 +301,10 @@ spec:
           mountPath: /var/www/html
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "200m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /status.php

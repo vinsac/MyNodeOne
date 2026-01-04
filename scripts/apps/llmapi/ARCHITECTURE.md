@@ -1217,6 +1217,105 @@ For non-urgent transfers (nightly model updates):
 
 ---
 
+## Resource Management
+
+### Homelab-Optimized Configuration
+
+LLMAPI is configured for **bursty homelab workloads** with low baseline resource requests and high limits to maximize pod density while allowing bursts.
+
+**Resource Philosophy:**
+- **Low memory requests** (64 Mi - 4 Gi) for high pod density
+- **High memory limits** (2 Gi - 180 Gi) to handle inference bursts
+- **No CPU limits** to prevent throttling during token generation
+- **PriorityClasses** to protect infrastructure during resource pressure
+
+### Resource Allocations
+
+| Component | Memory Request | Memory Limit | CPU Request | CPU Limit | Priority |
+|-----------|----------------|--------------|-------------|-----------|----------|
+| **Gateway** | 64 Mi | 2 Gi | 100m | None | app |
+| **Redis** | 64 Mi | 2 Gi | 100m | None | infrastructure |
+| **vLLM (init)** | 256 Mi | 4 Gi | 100m | None | app |
+| **vLLM (main)** | 2 Gi | 32 Gi | 1000m | None | app |
+| **llama.cpp (init)** | 256 Mi | 2 Gi | 100m | None | app |
+| **llama.cpp (main)** | 4 Gi | 180 Gi | 2000m | None | app |
+| **Embedding (init)** | 128 Mi | 512 Mi | 100m | None | app |
+| **Embedding (main)** | 512 Mi | 8 Gi | 500m | None | app |
+
+### Why These Values?
+
+**Low Requests:**
+- Allows scheduling many pods on limited homelab hardware
+- Most components idle 90% of the time between inference requests
+- Kubernetes scheduler can fit more workloads per node
+
+**High Limits:**
+- vLLM needs 16-32 Gi for large context windows (32k+ tokens)
+- llama.cpp can use 70-150 Gi for 70B parameter models
+- Prevents OOM kills during legitimate bursts
+
+**No CPU Limits:**
+- Token generation is CPU-intensive during active inference
+- Allows using all available CPU cores during bursts
+- No penalty when other pods are idle
+
+### Priority Classes
+
+**`mynodeone-infrastructure` (2000):**
+- Redis: Ensures queue and cache survive resource pressure
+- Protects critical services from eviction
+
+**`mynodeone-app` (1000):**
+- Gateway, vLLM, llama.cpp, Embedding
+- Higher than default but lower than infrastructure
+- Allows eviction if node runs out of resources
+
+### Resource Quota
+
+Namespace-level quota prevents runaway resource consumption:
+
+```yaml
+requests.cpu: "32"
+requests.memory: 256Gi
+limits.cpu: "64"
+limits.memory: 300Gi
+requests.nvidia.com/gpu: "4"
+```
+
+### Tuning for Your Environment
+
+**If experiencing OOM kills:**
+```bash
+# Increase memory limits
+kubectl patch statefulset vllm -n llmapi --type='json' -p='[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "48Gi"}
+]'
+```
+
+**If pods are evicted frequently:**
+```bash
+# Increase memory requests (reduces pod density)
+kubectl patch deployment gateway -n llmapi --type='json' -p='[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "512Mi"}
+]'
+```
+
+**Monitoring:**
+```bash
+# Check actual resource usage
+kubectl top pods -n llmapi
+
+# Watch for OOM events
+kubectl get events -n llmapi | grep OOM
+
+# View resource quotas
+kubectl describe quota llmapi-quota -n llmapi
+```
+
+For complete resource optimization strategy across all MyNodeOne apps, see `scripts/apps/README-RESOURCES.md`.
+
+---
+
 ## Security
 
 ### API Key Management

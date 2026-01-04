@@ -1,0 +1,19 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mynodeone-app
+  labels:
+    app.kubernetes.io/part-of: mynodeone
+value: 1000
+globalDefault: false
+description: "Priority class for MyNodeOne user applications. Higher than default (0) but lower than system-critical."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mynodeone-infrastructure
+  labels:
+    app.kubernetes.io/part-of: mynodeone
+value: 2000
+globalDefault: false
+description: "Priority class for MyNodeOne infrastructure services (databases, caches). Higher priority to ensure stability."

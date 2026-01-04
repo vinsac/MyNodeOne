@@ -20,9 +20,10 @@ spec:
       labels:
         app: vllm
     spec:
+      priorityClassName: mynodeone-app
       # CRITICAL: Required for GPU access in K3s
       runtimeClassName: nvidia
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 30
       # Set fsGroup to ensure both containers can write to /models volume
       # Init container runs as root to install packages, fsGroup gives it write access
       securityContext:
@@ -162,11 +163,10 @@ spec:
           readOnly: true
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "4Gi"
-            cpu: "2000m"
       containers:
       - name: vllm
         image: vllm/vllm-openai:v0.6.6.post1
@@ -218,12 +218,11 @@ spec:
               optional: true
         resources:
           requests:
-            memory: "16Gi"
-            cpu: "4000m"
+            memory: "2Gi"
+            cpu: "1000m"
             nvidia.com/gpu: "1"
           limits:
             memory: "32Gi"
-            cpu: "8000m"
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: models

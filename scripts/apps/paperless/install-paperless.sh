@@ -195,6 +195,7 @@ spec:
       labels:
         app: paperless-postgres
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
         image: postgres:16
@@ -217,11 +218,10 @@ spec:
           mountPath: /var/lib/postgresql/data
         resources:
           requests:
-            memory: "256Mi"
+            memory: "128Mi"
             cpu: "100m"
           limits:
             memory: "512Mi"
-            cpu: "500m"
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
@@ -258,6 +258,7 @@ spec:
       labels:
         app: paperless-redis
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: redis
         image: redis:7
@@ -268,11 +269,10 @@ spec:
           mountPath: /data
         resources:
           requests:
-            memory: "128Mi"
+            memory: "64Mi"
             cpu: "100m"
           limits:
             memory: "256Mi"
-            cpu: "500m"
       volumes:
       - name: redis-storage
         persistentVolumeClaim:
@@ -314,6 +314,7 @@ spec:
       labels:
         app: paperless
     spec:
+      priorityClassName: mynodeone-app
       containers:
       - name: paperless
         image: ghcr.io/paperless-ngx/paperless-ngx:latest
@@ -370,11 +371,10 @@ spec:
           mountPath: /usr/src/paperless/export
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "2000m"
       volumes:
       - name: data
         persistentVolumeClaim:

@@ -155,6 +155,7 @@ spec:
       labels:
         app: mattermost-postgres
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
         image: postgres:15-alpine
@@ -177,11 +178,10 @@ spec:
           mountPath: /var/lib/postgresql/data
         resources:
           requests:
-            memory: "256Mi"
+            memory: "128Mi"
             cpu: "100m"
           limits:
             memory: "1Gi"
-            cpu: "500m"
       volumes:
       - name: postgres-data
         persistentVolumeClaim:
@@ -222,6 +222,7 @@ spec:
       labels:
         app: mattermost
     spec:
+      priorityClassName: mynodeone-app
       containers:
       - name: mattermost
         image: mattermost/mattermost-team-edition:latest
@@ -252,11 +253,10 @@ spec:
           mountPath: /mattermost/client/plugins
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "200m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /api/v4/system/ping

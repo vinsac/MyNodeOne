@@ -279,12 +279,11 @@ EOF
         OLLAMA_RESOURCES="
         resources:
           requests:
-            memory: \"16Gi\"
-            cpu: \"4000m\"
+            memory: \"2Gi\"
+            cpu: \"1000m\"
             nvidia.com/gpu: \"1\"
           limits:
             memory: \"128Gi\"
-            cpu: \"16000m\"
             nvidia.com/gpu: \"1\""
         # GPU pods need privileged access for NVIDIA runtime
         OLLAMA_SECURITY_CONTEXT="
@@ -307,11 +306,10 @@ EOF
         OLLAMA_RESOURCES="
         resources:
           requests:
-            memory: \"4Gi\"
-            cpu: \"2000m\"
+            memory: \"1Gi\"
+            cpu: \"500m\"
           limits:
-            memory: \"16Gi\"
-            cpu: \"6000m\""
+            memory: \"16Gi\""
         OLLAMA_SECURITY_CONTEXT="
         securityContext:
           allowPrivilegeEscalation: false
@@ -338,7 +336,7 @@ spec:
       labels:
         app: ollama
     spec:
-      priorityClassName: system-cluster-critical
+      priorityClassName: mynodeone-app
       ${OLLAMA_RUNTIME_CLASS}
       securityContext:
         runAsNonRoot: true
@@ -405,7 +403,7 @@ spec:
       labels:
         app: open-webui
     spec:
-      priorityClassName: system-cluster-critical
+      priorityClassName: mynodeone-app
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -432,11 +430,10 @@ spec:
           value: "true"
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "4Gi"
-            cpu: "2000m"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

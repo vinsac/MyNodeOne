@@ -42,6 +42,7 @@ spec:
       labels:
         app: embedding
     spec:
+      priorityClassName: mynodeone-app
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -77,11 +78,10 @@ spec:
           mountPath: /models
         resources:
           requests:
-            memory: "256Mi"
+            memory: "128Mi"
             cpu: "100m"
           limits:
             memory: "512Mi"
-            cpu: "500m"
       containers:
       - name: embedding
         image: ghcr.io/ggml-org/llama.cpp:server
@@ -112,11 +112,10 @@ spec:
             name: embedding-config
         resources:
           requests:
-            memory: "2Gi"
-            cpu: "2000m"
+            memory: "512Mi"
+            cpu: "500m"
           limits:
             memory: "8Gi"
-            cpu: "4000m"
         volumeMounts:
         - name: models
           mountPath: /models

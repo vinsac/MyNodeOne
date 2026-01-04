@@ -155,6 +155,7 @@ spec:
       labels:
         app: jellyfin
     spec:
+      priorityClassName: mynodeone-app
       containers:
       - name: jellyfin
         image: jellyfin/jellyfin:latest
@@ -171,11 +172,10 @@ spec:
           mountPath: /media
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "4Gi"
-            cpu: "2000m"
       volumes:
       - name: config
         persistentVolumeClaim:

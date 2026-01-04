@@ -71,6 +71,7 @@ spec:
       labels:
         app: llamacpp
     spec:
+      priorityClassName: mynodeone-app
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -185,11 +186,10 @@ spec:
           mountPath: /models
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "2000m"
       containers:
       - name: llamacpp
         image: ghcr.io/ggml-org/llama.cpp:server
@@ -223,11 +223,10 @@ spec:
             name: llamacpp-config
         resources:
           requests:
-            memory: "64Gi"
-            cpu: "8000m"
+            memory: "4Gi"
+            cpu: "2000m"
           limits:
             memory: "180Gi"
-            cpu: "24000m"
         volumeMounts:
         - name: models
           mountPath: /models

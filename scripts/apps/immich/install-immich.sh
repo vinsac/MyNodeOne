@@ -215,6 +215,7 @@ spec:
       labels:
         app: immich-postgres
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
         image: tensorchord/pgvecto-rs:pg14-v0.2.0
@@ -237,11 +238,10 @@ spec:
           mountPath: /var/lib/postgresql/data
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "250m"
+            memory: "128Mi"
+            cpu: "100m"
           limits:
             memory: "2Gi"
-            cpu: "1000m"
       volumes:
       - name: data
         persistentVolumeClaim:
@@ -277,6 +277,7 @@ spec:
       labels:
         app: immich-server
     spec:
+      priorityClassName: mynodeone-app
       containers:
       - name: immich-server
         image: $IMMICH_IMAGE
@@ -301,11 +302,10 @@ spec:
           mountPath: /usr/src/app/upload
         resources:
           requests:
-            memory: "4Gi"
-            cpu: "2000m"
+            memory: "1Gi"
+            cpu: "500m"
           limits:
             memory: "16Gi"
-            cpu: "8000m"
       volumes:
       - name: photos
         persistentVolumeClaim:
@@ -346,6 +346,7 @@ spec:
       labels:
         app: immich-redis
     spec:
+      priorityClassName: mynodeone-infrastructure
       containers:
       - name: redis
         image: redis:7-alpine
@@ -353,11 +354,10 @@ spec:
         - containerPort: 6379
         resources:
           requests:
-            memory: "128Mi"
+            memory: "64Mi"
             cpu: "100m"
           limits:
             memory: "512Mi"
-            cpu: "500m"
 ---
 apiVersion: v1
 kind: Service

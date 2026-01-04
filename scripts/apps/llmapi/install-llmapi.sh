@@ -660,7 +660,8 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Create namespace
-echo "📦 Creating namespace..."
+echo "📦 Creating namespace and PriorityClasses..."
+kubectl apply -f "$SCRIPT_DIR/../lib/priorityclass.yaml" 2>/dev/null || true
 kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
 
 # Deploy RBAC for gateway (allows model changes from Admin UI)

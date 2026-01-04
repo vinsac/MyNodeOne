@@ -51,6 +51,7 @@ spec:
       labels:
         app: homepage
     spec:
+      priorityClassName: mynodeone-app
       containers:
       - name: homepage
         image: ghcr.io/gethomepage/homepage:latest
@@ -58,11 +59,10 @@ spec:
         - containerPort: 3000
         resources:
           requests:
-            memory: "128Mi"
+            memory: "64Mi"
             cpu: "50m"
           limits:
             memory: "512Mi"
-            cpu: "200m"
 ---
 apiVersion: v1
 kind: Service

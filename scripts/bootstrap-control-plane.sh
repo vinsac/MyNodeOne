@@ -974,6 +974,31 @@ install_helm() {
     fi
 }
 
+create_priority_classes() {
+    log_info "Creating PriorityClasses for resource management..."
+    
+    # Apply shared PriorityClass manifest
+    cat <<EOF | kubectl apply -f -
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mynodeone-infrastructure
+value: 2000
+globalDefault: false
+description: "Priority class for MyNodeOne infrastructure components (databases, caches, monitoring, GitOps)"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mynodeone-app
+value: 1000
+globalDefault: false
+description: "Priority class for MyNodeOne user-facing applications"
+EOF
+    
+    log_success "PriorityClasses created (mynodeone-infrastructure: 2000, mynodeone-app: 1000)"
+}
+
 install_cert_manager() {
     log_info "Installing cert-manager..."
     
@@ -1276,7 +1301,7 @@ install_minio() {
     
     log_info "Installing MinIO (this may take 2-3 minutes)..."
     
-    # Install with safe wrapper
+    # Install with safe wrapper and optimized resources for homelab
     helm_install_safe "minio" "minio/minio" "minio" \
         --set rootUser="$MINIO_ROOT_USER" \
         --set rootPassword="$MINIO_ROOT_PASSWORD" \
@@ -1287,6 +1312,10 @@ install_minio() {
         --set persistence.storageClass=longhorn \
         --set service.type=LoadBalancer \
         --set consoleService.type=LoadBalancer \
+        --set resources.requests.memory=1Gi \
+        --set resources.requests.cpu=200m \
+        --set resources.limits.memory=32Gi \
+        --set priorityClassName=mynodeone-infrastructure \
     || {
         log_error "MinIO installation had issues"
         log_warn "This usually happens when LoadBalancer IPs can't be allocated"
@@ -1347,18 +1376,38 @@ install_monitoring() {
     # Generate Grafana password
     GRAFANA_PASSWORD="$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)"
     
-    # Install kube-prometheus-stack with safe wrapper
+    # Install kube-prometheus-stack with safe wrapper and optimized resources for homelab
     helm_install_safe "kube-prometheus-stack" "prometheus-community/kube-prometheus-stack" "monitoring" \
         --version 55.5.0 \
         --set prometheus.prometheusSpec.retention=30d \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=100Gi \
+        --set prometheus.prometheusSpec.resources.requests.memory=512Mi \
+        --set prometheus.prometheusSpec.resources.requests.cpu=200m \
+        --set prometheus.prometheusSpec.resources.limits.memory=8Gi \
+        --set prometheus.prometheusSpec.priorityClassName=mynodeone-infrastructure \
         --set grafana.adminPassword="$GRAFANA_PASSWORD" \
         --set grafana.service.type=LoadBalancer \
         --set grafana.persistence.enabled=true \
         --set grafana.persistence.storageClassName=longhorn \
         --set grafana.persistence.size=10Gi \
+        --set grafana.resources.requests.memory=128Mi \
+        --set grafana.resources.requests.cpu=50m \
+        --set grafana.resources.limits.memory=2Gi \
+        --set grafana.priorityClassName=mynodeone-infrastructure \
+        --set alertmanager.alertmanagerSpec.resources.requests.memory=64Mi \
+        --set alertmanager.alertmanagerSpec.resources.requests.cpu=50m \
+        --set alertmanager.alertmanagerSpec.resources.limits.memory=512Mi \
+        --set alertmanager.alertmanagerSpec.priorityClassName=mynodeone-infrastructure \
+        --set prometheusOperator.resources.requests.memory=128Mi \
+        --set prometheusOperator.resources.requests.cpu=50m \
+        --set prometheusOperator.resources.limits.memory=512Mi \
+        --set prometheusOperator.priorityClassName=mynodeone-infrastructure \
+        --set kube-state-metrics.resources.requests.memory=64Mi \
+        --set kube-state-metrics.resources.requests.cpu=50m \
+        --set kube-state-metrics.resources.limits.memory=256Mi \
+        --set kube-state-metrics.priorityClassName=mynodeone-infrastructure \
     || {
         log_error "Failed to install kube-prometheus-stack"
         log_info "Checking if pods started anyway..."
@@ -1422,10 +1471,32 @@ install_argocd() {
     retry_command 3 "helm repo add argo https://argoproj.github.io/argo-helm 2>&1" || true
     timeout 60 helm repo update 2>&1 || log_warn "Helm repo update timed out, continuing..."
     
-    # Install ArgoCD using helm (more reliable than raw manifests)
+    # Install ArgoCD using helm with optimized resources for homelab
     helm_install_safe "argocd" "argo/argo-cd" "argocd" \
         --version 5.51.6 \
         --set server.service.type=LoadBalancer \
+        --set global.priorityClassName=mynodeone-infrastructure \
+        --set controller.resources.requests.memory=256Mi \
+        --set controller.resources.requests.cpu=100m \
+        --set controller.resources.limits.memory=2Gi \
+        --set server.resources.requests.memory=128Mi \
+        --set server.resources.requests.cpu=50m \
+        --set server.resources.limits.memory=1Gi \
+        --set repoServer.resources.requests.memory=128Mi \
+        --set repoServer.resources.requests.cpu=50m \
+        --set repoServer.resources.limits.memory=1Gi \
+        --set dex.resources.requests.memory=64Mi \
+        --set dex.resources.requests.cpu=25m \
+        --set dex.resources.limits.memory=256Mi \
+        --set redis.resources.requests.memory=64Mi \
+        --set redis.resources.requests.cpu=50m \
+        --set redis.resources.limits.memory=512Mi \
+        --set applicationSet.resources.requests.memory=64Mi \
+        --set applicationSet.resources.requests.cpu=25m \
+        --set applicationSet.resources.limits.memory=256Mi \
+        --set notifications.resources.requests.memory=64Mi \
+        --set notifications.resources.requests.cpu=25m \
+        --set notifications.resources.limits.memory=256Mi \
     || {
         log_error "ArgoCD helm install failed, trying kubectl method..."
         # Fallback to kubectl method
@@ -2418,6 +2489,7 @@ main() {
     setup_gpu_support  # Configure GPU after K3s is installed (if NVIDIA GPU present)
     install_helm
     install_kompose  # For external app deployment (docker-compose conversion)
+    create_priority_classes  # Create PriorityClasses before installing infrastructure
     install_cert_manager
     install_metallb
     configure_tailscale_subnet_routes

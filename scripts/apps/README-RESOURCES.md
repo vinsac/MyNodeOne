@@ -93,12 +93,34 @@ Two priority classes ensure critical infrastructure survives resource pressure:
 
 **Rationale:** WebDAV, chat, and OCR processing have moderate memory needs. Ultra-low requests allow high pod density.
 
-### Infrastructure
+### Infrastructure (Application-level)
 
 **PostgreSQL:** 64 Mi request → 512 Mi - 2 Gi limit
 **Redis:** 32 Mi request → 256 Mi - 4 Gi limit
 
 **Rationale:** Databases need baseline memory, but ultra-low requests allow multiple database instances. Redis 4 Gi limit provides generous cache capacity with LRU eviction policy.
+
+### Cluster Infrastructure
+
+**Prometheus:** 512 Mi request → 8 Gi limit
+**Grafana:** 128 Mi request → 2 Gi limit
+**Alertmanager:** 64 Mi request → 512 Mi limit
+**Prometheus Operator:** 128 Mi request → 512 Mi limit
+**Kube-state-metrics:** 64 Mi request → 256 Mi limit
+**MinIO:** 1 Gi request → 32 Gi limit
+**ArgoCD Controller:** 256 Mi request → 2 Gi limit
+**ArgoCD Server:** 128 Mi request → 1 Gi limit
+**ArgoCD Repo Server:** 128 Mi request → 1 Gi limit
+**ArgoCD Redis:** 64 Mi request → 512 Mi limit
+**ArgoCD Dex/AppSet/Notifications:** 64 Mi request → 256 Mi limit
+
+**Total Cluster Infrastructure Requests:** ~2.5 Gi (down from 16+ Gi unbounded)
+
+**Rationale:** Infrastructure components are critical but must not consume all schedulable memory. Ultra-low requests with high limits allow:
+- Monitoring and GitOps to run alongside user apps
+- Burst capacity for metric scraping, log ingestion, and S3 operations
+- Higher priority (`mynodeone-infrastructure`) protects them during resource pressure
+- Memory limits prevent runaway growth and OOM scenarios
 
 ## Monitoring Recommendations
 

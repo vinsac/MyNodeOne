@@ -1369,6 +1369,9 @@ EOF
 
     kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml"
     
+    # Scale to 1 replica (manifest defaults to 0 to save RAM)
+    kubectl scale deployment llamacpp -n "$NAMESPACE" --replicas=1
+    
     # Models are now used directly from hostPath at /var/lib/llmapi/models/llamacpp
     if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]]; then
         echo ""

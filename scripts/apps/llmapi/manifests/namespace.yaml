@@ -18,6 +18,6 @@ metadata:
 spec:
   hard:
     requests.cpu: "32"
-    requests.memory: 256Gi
+    requests.memory: 10Gi
     limits.memory: 300Gi
     requests.nvidia.com/gpu: "4"

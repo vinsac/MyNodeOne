@@ -1234,7 +1234,7 @@ LLMAPI is configured for **bursty homelab workloads** with low baseline resource
 | Component | Memory Request | Memory Limit | CPU Request | CPU Limit | Priority |
 |-----------|----------------|--------------|-------------|-----------|----------|
 | **Gateway** | 32 Mi | 2 Gi | 50m | None | app |
-| **Redis** | 32 Mi | 2 Gi | 50m | None | infrastructure |
+| **Redis** | 32 Mi | 4 Gi | 50m | None | infrastructure |
 | **vLLM (init)** | 256 Mi | 4 Gi | 100m | None | app |
 | **vLLM (main)** | 1 Gi | 32 Gi | 500m | None | app |
 | **llama.cpp (init)** | 256 Mi | 2 Gi | 100m | None | app |

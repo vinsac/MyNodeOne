@@ -46,7 +46,7 @@ spec:
         - --appendonly
         - "yes"
         - --maxmemory
-        - "2gb"
+        - "4gb"
         - --maxmemory-policy
         - allkeys-lru
         resources:
@@ -54,7 +54,7 @@ spec:
             memory: "32Mi"
             cpu: "50m"
           limits:
-            memory: "2Gi"
+            memory: "4Gi"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

@@ -96,9 +96,9 @@ Two priority classes ensure critical infrastructure survives resource pressure:
 ### Infrastructure
 
 **PostgreSQL:** 64 Mi request → 512 Mi - 2 Gi limit
-**Redis:** 32 Mi request → 256 Mi - 2 Gi limit
+**Redis:** 32 Mi request → 256 Mi - 4 Gi limit
 
-**Rationale:** Databases need baseline memory, but ultra-low requests allow multiple database instances. Redis 2 Gi limit is appropriate with LRU eviction policy.
+**Rationale:** Databases need baseline memory, but ultra-low requests allow multiple database instances. Redis 4 Gi limit provides generous cache capacity with LRU eviction policy.
 
 ## Monitoring Recommendations
 

@@ -1287,7 +1287,7 @@ EOF
                 echo "      🛡️  Verifying worker SSH permissions..."
                 
                 # Determine SSH command (use CONTROL_PLANE_USER who has SSH keys)
-                local ssh_cmd="ssh"
+                ssh_cmd="ssh"
                 if [ "$(whoami)" = "root" ]; then
                     ssh_cmd="sudo -u $CONTROL_PLANE_USER ssh"
                 fi

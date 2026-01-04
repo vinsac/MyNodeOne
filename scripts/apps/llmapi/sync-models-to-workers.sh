@@ -83,7 +83,7 @@ check_ssh_access() {
         users_to_try=("$labeled_user")
     else
         info "  No mynodeone.io/ssh-user label found, trying common usernames..." >&2
-        users_to_try=(vinaysachdeva vinaysachdeva2 vinay ubuntu)
+        users_to_try=($(whoami) ubuntu)
     fi
     
     # Try each username

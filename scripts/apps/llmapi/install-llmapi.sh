@@ -1253,7 +1253,7 @@ EOF
                         if [[ -z "$existing_user" ]]; then
                             echo "      🔍 Detecting SSH username for $node ($ts_ip)..."
                             detected_user=""
-                            for test_user in $(whoami) vinaysachdeva vinaysachdeva2 vinay ubuntu root; do
+                            for test_user in $(whoami) ubuntu root; do
                                 if timeout 3 ssh -o ConnectTimeout=2 -o BatchMode=yes -o StrictHostKeyChecking=no \
                                    "${test_user}@${ts_ip}" "echo ok" &>/dev/null; then
                                     detected_user="$test_user"

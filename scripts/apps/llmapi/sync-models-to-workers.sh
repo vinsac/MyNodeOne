@@ -151,7 +151,7 @@ sync_to_worker() {
     info "Creating destination directory on $node_ip..."
     info "Command: ssh ${ssh_user}@${node_ip} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
     
-    if ssh "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
+    if ssh -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
         success "Destination directory created: $DEST_DIR"
     else
         error "Failed to create destination directory on $node_ip"
@@ -172,9 +172,9 @@ sync_to_worker() {
         info "This may take several minutes depending on model size and network speed..."
         echo ""
         
-        info "Running: rsync -av --progress -e \"ssh -o StrictHostKeyChecking=no\" ..."
+        info "Running: rsync -av --progress -e \"ssh -o StrictHostKeyChecking=no -o BatchMode=yes\" ..."
         if rsync -av --progress \
-            -e "ssh -o StrictHostKeyChecking=no" \
+            -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
             "$SOURCE_DIR/vllm/" \
             "${ssh_user}@${node_ip}:${DEST_DIR}/vllm/" 2>&1 | tee /tmp/rsync-vllm.log; then
             success "vLLM models synced to $node_ip"
@@ -199,7 +199,7 @@ sync_to_worker() {
         echo ""
         
         if rsync -av --progress \
-            -e "ssh -o StrictHostKeyChecking=no" \
+            -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
             "$SOURCE_DIR/llamacpp/" \
             "${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/" 2>&1 | tee /tmp/rsync-llamacpp.log; then
             success "llamacpp models synced to $node_ip"
@@ -224,7 +224,7 @@ sync_to_worker() {
         echo ""
         
         if rsync -av --progress \
-            -e "ssh -o StrictHostKeyChecking=no" \
+            -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
             "$SOURCE_DIR/embedding/" \
             "${ssh_user}@${node_ip}:${DEST_DIR}/embedding/" 2>&1 | tee /tmp/rsync-embedding.log; then
             success "embedding models synced to $node_ip"
@@ -243,8 +243,7 @@ sync_to_worker() {
     info "Fixing permissions on $node_ip..."
     info "Command: ssh ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
     
-    # Use -t to allow sudo password prompt
-    if ssh -t "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
+    if ssh -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
         success "Permissions fixed on $node_ip"
     else
         warn "Failed to fix permissions on $node_ip"

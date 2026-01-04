@@ -133,20 +133,46 @@ spec:
           # Model will persist on node disk and be reused across pod restarts/reinstalls
           echo ""
           echo "No cached model found on hostPath."
-          echo "Download progress (saving to hostPath):"
           echo "This may take 30-60 minutes for a 40GB model."
           echo ""
           
-          # Download with resume support (-c) - BusyBox wget doesn't support --progress
-          if [ -n "${HF_TOKEN:-}" ]; then
-            wget -c \
-              --header="Authorization: Bearer ${HF_TOKEN}" \
-              -O "$MODEL_PATH" \
-              "${MODEL_URL}"
+          # Try aria2c first (16 parallel connections), fallback to wget
+          if command -v apk >/dev/null 2>&1; then
+            echo "Installing aria2 for multi-connection downloads..."
+            apk add --no-cache aria2 2>/dev/null || true
+          fi
+          
+          if command -v aria2c >/dev/null 2>&1; then
+            echo "Using aria2c (16 parallel connections, 5-10x faster)"
+            echo ""
+            
+            if [ -n "${HF_TOKEN:-}" ]; then
+              aria2c -x 16 -s 16 -c --allow-overwrite=true \
+                --header="Authorization: Bearer ${HF_TOKEN}" \
+                -d "$(dirname "$MODEL_PATH")" \
+                -o "$(basename "$MODEL_PATH")" \
+                "${MODEL_URL}"
+            else
+              aria2c -x 16 -s 16 -c --allow-overwrite=true \
+                -d "$(dirname "$MODEL_PATH")" \
+                -o "$(basename "$MODEL_PATH")" \
+                "${MODEL_URL}"
+            fi
           else
-            wget -c \
-              -O "$MODEL_PATH" \
-              "${MODEL_URL}"
+            echo "Using wget (single connection)"
+            echo ""
+            
+            # Download with resume support (-c)
+            if [ -n "${HF_TOKEN:-}" ]; then
+              wget -c \
+                --header="Authorization: Bearer ${HF_TOKEN}" \
+                -O "$MODEL_PATH" \
+                "${MODEL_URL}"
+            else
+              wget -c \
+                -O "$MODEL_PATH" \
+                "${MODEL_URL}"
+            fi
           fi
           
           # Verify download

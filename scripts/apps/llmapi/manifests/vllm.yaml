@@ -80,17 +80,59 @@ spec:
           chown -R 1000:1000 /models
           chmod -R 755 /models
           
-          # Install huggingface_hub with hf_transfer for faster downloads
-          echo "Installing huggingface_hub..."
-          pip install --quiet --no-cache-dir huggingface_hub hf_transfer
-          export HF_HUB_ENABLE_HF_TRANSFER=1
+          # Try aria2c first (16 parallel connections), fallback to hf_transfer
+          if command -v aria2 >/dev/null 2>&1; then
+            echo "Installing aria2 for multi-connection downloads..."
+            apt-get update -qq && apt-get install -y -qq aria2 2>/dev/null || apk add --no-cache aria2 2>/dev/null || true
+          fi
           
-          echo ""
-          echo "Using hf_transfer for accelerated download (up to 500 MB/s)"
-          echo ""
+          if command -v aria2c >/dev/null 2>&1; then
+            echo ""
+            echo "Using aria2c (16 parallel connections, 5-10x faster)"
+            echo ""
+            
+            # Install huggingface-cli to resolve model files
+            pip install --quiet --no-cache-dir huggingface_hub
+            
+            # Get list of files to download
+            python3 << 'PYEOF'
+          import os
+          from huggingface_hub import list_repo_files
           
-          # Download with resume support and progress using Python API
-          python3 << 'PYEOF'
+          model_name = os.environ.get("MODEL_NAME")
+          token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
+          
+          print("Fetching file list...")
+          files = list_repo_files(model_name, token=token if token else None)
+          
+          # Download key files (safetensors, json configs)
+          base_url = f"https://huggingface.co/{model_name}/resolve/main"
+          for f in files:
+              if f.endswith(('.safetensors', '.json', '.txt', '.model', '.tiktoken')):
+                  url = f"{base_url}/{f}"
+                  out_dir = f"/models/hub/models--{model_name.replace('/', '--')}/snapshots/main"
+                  os.makedirs(out_dir, exist_ok=True)
+                  
+                  aria_cmd = f"aria2c -x 16 -s 16 -c --allow-overwrite=true"
+                  if token := os.environ.get("HUGGING_FACE_HUB_TOKEN"):
+                      aria_cmd += f' --header="Authorization: Bearer {token}"'
+                  aria_cmd += f' -d "{out_dir}" -o "{f.split("/")[-1]}" "{url}"'
+                  
+                  print(f"Downloading {f}...")
+                  os.system(aria_cmd)
+          PYEOF
+          else
+            # Fallback to hf_transfer
+            echo "Installing huggingface_hub with hf_transfer..."
+            pip install --quiet --no-cache-dir huggingface_hub hf_transfer
+            export HF_HUB_ENABLE_HF_TRANSFER=1
+            
+            echo ""
+            echo "Using hf_transfer for accelerated download (up to 500 MB/s)"
+            echo ""
+            
+            # Download with resume support and progress using Python API
+            python3 << 'PYEOF'
           import os
           from huggingface_hub import snapshot_download
           
@@ -106,6 +148,7 @@ spec:
           )
           print("Download complete!")
           PYEOF
+          fi
           
           # Verify download
           if find "/models" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then

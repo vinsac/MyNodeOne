@@ -238,8 +238,8 @@ spec:
           mountPath: /var/lib/postgresql/data
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "50m"
           limits:
             memory: "2Gi"
       volumes:
@@ -302,8 +302,8 @@ spec:
           mountPath: /usr/src/app/upload
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "200m"
           limits:
             memory: "16Gi"
       volumes:
@@ -354,8 +354,8 @@ spec:
         - containerPort: 6379
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "100m"
+            memory: "32Mi"
+            cpu: "50m"
           limits:
             memory: "512Mi"
 ---

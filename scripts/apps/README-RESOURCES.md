@@ -8,11 +8,11 @@ MyNodeOne apps are optimized for **homelab environments with bursty traffic patt
 
 ### Philosophy
 
-**Low Requests + High Limits = Maximum Pod Density**
+**Ultra-Low Requests + High Limits = Maximum Pod Density**
 
-- **Memory Requests:** Set very low (64-256 Mi) to allow maximum pod scheduling density
-- **Memory Limits:** Set reasonably high (2-16 Gi) to handle bursts without OOM kills
-- **CPU Requests:** Minimal (50-100m) to avoid over-provisioning
+- **Memory Requests:** Set ultra-low (32-256 Mi) to allow maximum pod scheduling density with replicas
+- **Memory Limits:** Set reasonably high (2-80 Gi) to handle bursts without OOM kills
+- **CPU Requests:** Minimal (25-200m) to avoid over-provisioning
 - **CPU Limits:** Removed to prevent throttling during bursts
 
 ### Why This Works
@@ -48,8 +48,8 @@ Two priority classes ensure critical infrastructure survives resource pressure:
 - Other backing services
 
 **Resource Profile:**
-- Requests: 64-128 Mi memory, 100m CPU
-- Limits: 512 Mi - 2 Gi memory, no CPU limit
+- Requests: 32-64 Mi memory, 50m CPU
+- Limits: 256 Mi - 2 Gi memory, no CPU limit
 
 ### `mynodeone-app` (Priority: 1000)
 
@@ -61,42 +61,44 @@ Two priority classes ensure critical infrastructure survives resource pressure:
 - Jellyfin, Open WebUI, Homepage
 
 **Resource Profile:**
-- Requests: 64-256 Mi memory, 50-100m CPU
+- Requests: 32-256 Mi memory, 25-200m CPU
 - Limits: 2-128 Gi memory (varies by app), no CPU limit
 
 ## Per-App Configuration
 
 ### AI/LLM Workloads
 
-**Gateway:** 64 Mi request → 2 Gi limit
-**vLLM (GPU):** 2 Gi request → 32 Gi limit (+ 1 GPU)
-**llama.cpp (CPU):** 4 Gi request → 180 Gi limit
-**Embedding:** 512 Mi request → 8 Gi limit
-**Ollama:** 1-2 Gi request → 16-128 Gi limit (depends on GPU/CPU mode)
+**Gateway:** 32 Mi request → 2 Gi limit
+**vLLM (GPU):** 1 Gi request → 32 Gi limit (+ 1 GPU)
+**llama.cpp (CPU):** 2 Gi request → 80 Gi limit
+**Embedding:** 256 Mi request → 20 Gi limit
+**Ollama:** 512 Mi - 1 Gi request → 16-128 Gi limit (depends on GPU/CPU mode)
 
-**Rationale:** AI models need large limits for context windows, but idle most of the time.
+**Rationale:** AI models need large limits for context windows, but idle most of the time. Ultra-low requests allow running multiple replicas.
 
 ### Photo/Media Apps
 
-**Immich:** 1 Gi request → 16 Gi limit
-**Jellyfin:** 256 Mi request → 4 Gi limit
+**Immich:** 256 Mi request → 16 Gi limit
+**Jellyfin:** 128 Mi request → 4 Gi limit
 
-**Rationale:** Photo uploads and video transcoding are sporadic but memory-intensive.
+**Rationale:** Photo uploads and video transcoding are sporadic but memory-intensive. Ultra-low requests enable running multiple instances.
 
 ### Productivity Apps
 
-**Nextcloud:** 256 Mi request → 2 Gi limit
-**Mattermost:** 256 Mi request → 2 Gi limit
-**Paperless:** 256 Mi request → 2 Gi limit
+**Nextcloud:** 128 Mi request → 2 Gi limit
+**Mattermost:** 128 Mi request → 2 Gi limit
+**Paperless:** 128 Mi request → 2 Gi limit
+**Open WebUI:** 128 Mi request → 4 Gi limit
+**Homepage:** 32 Mi request → 512 Mi limit
 
-**Rationale:** WebDAV, chat, and OCR processing have moderate memory needs.
+**Rationale:** WebDAV, chat, and OCR processing have moderate memory needs. Ultra-low requests allow high pod density.
 
 ### Infrastructure
 
-**PostgreSQL:** 128 Mi request → 512 Mi - 2 Gi limit
-**Redis:** 64 Mi request → 256 Mi - 512 Mi limit
+**PostgreSQL:** 64 Mi request → 512 Mi - 2 Gi limit
+**Redis:** 32 Mi request → 256 Mi - 2 Gi limit
 
-**Rationale:** Databases need guaranteed baseline memory, but don't burst much.
+**Rationale:** Databases need baseline memory, but ultra-low requests allow multiple database instances. Redis 2 Gi limit is appropriate with LRU eviction policy.
 
 ## Monitoring Recommendations
 

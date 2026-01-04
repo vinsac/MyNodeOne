@@ -112,10 +112,10 @@ spec:
             name: embedding-config
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "200m"
           limits:
-            memory: "8Gi"
+            memory: "20Gi"
         volumeMounts:
         - name: models
           mountPath: /models

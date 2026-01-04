@@ -1224,8 +1224,8 @@ For non-urgent transfers (nightly model updates):
 LLMAPI is configured for **bursty homelab workloads** with low baseline resource requests and high limits to maximize pod density while allowing bursts.
 
 **Resource Philosophy:**
-- **Low memory requests** (64 Mi - 4 Gi) for high pod density
-- **High memory limits** (2 Gi - 180 Gi) to handle inference bursts
+- **Ultra-low memory requests** (32 Mi - 2 Gi) for maximum pod density with replicas
+- **High memory limits** (2 Gi - 80 Gi) to handle inference bursts
 - **No CPU limits** to prevent throttling during token generation
 - **PriorityClasses** to protect infrastructure during resource pressure
 
@@ -1233,14 +1233,14 @@ LLMAPI is configured for **bursty homelab workloads** with low baseline resource
 
 | Component | Memory Request | Memory Limit | CPU Request | CPU Limit | Priority |
 |-----------|----------------|--------------|-------------|-----------|----------|
-| **Gateway** | 64 Mi | 2 Gi | 100m | None | app |
-| **Redis** | 64 Mi | 2 Gi | 100m | None | infrastructure |
+| **Gateway** | 32 Mi | 2 Gi | 50m | None | app |
+| **Redis** | 32 Mi | 2 Gi | 50m | None | infrastructure |
 | **vLLM (init)** | 256 Mi | 4 Gi | 100m | None | app |
-| **vLLM (main)** | 2 Gi | 32 Gi | 1000m | None | app |
+| **vLLM (main)** | 1 Gi | 32 Gi | 500m | None | app |
 | **llama.cpp (init)** | 256 Mi | 2 Gi | 100m | None | app |
-| **llama.cpp (main)** | 4 Gi | 180 Gi | 2000m | None | app |
+| **llama.cpp (main)** | 2 Gi | 80 Gi | 1000m | None | app |
 | **Embedding (init)** | 128 Mi | 512 Mi | 100m | None | app |
-| **Embedding (main)** | 512 Mi | 8 Gi | 500m | None | app |
+| **Embedding (main)** | 256 Mi | 20 Gi | 200m | None | app |
 
 ### Why These Values?
 

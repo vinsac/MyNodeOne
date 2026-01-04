@@ -218,8 +218,8 @@ spec:
           mountPath: /var/lib/postgresql/data
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "50m"
           limits:
             memory: "512Mi"
       volumes:
@@ -269,8 +269,8 @@ spec:
           mountPath: /data
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "100m"
+            memory: "32Mi"
+            cpu: "50m"
           limits:
             memory: "256Mi"
       volumes:
@@ -371,8 +371,8 @@ spec:
           mountPath: /usr/src/paperless/export
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "100m"
+            memory: "128Mi"
+            cpu: "50m"
           limits:
             memory: "2Gi"
       volumes:

@@ -183,8 +183,8 @@ spec:
           subPath: data
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "50m"
           limits:
             memory: "1Gi"
       volumes:
@@ -231,8 +231,8 @@ spec:
         - containerPort: 6379
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "100m"
+            memory: "32Mi"
+            cpu: "50m"
           limits:
             memory: "512Mi"
 ---
@@ -301,8 +301,8 @@ spec:
           mountPath: /var/www/html
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "100m"
+            memory: "128Mi"
+            cpu: "50m"
           limits:
             memory: "2Gi"
         livenessProbe:

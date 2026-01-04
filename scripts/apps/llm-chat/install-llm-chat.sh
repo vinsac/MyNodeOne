@@ -279,8 +279,8 @@ EOF
         OLLAMA_RESOURCES="
         resources:
           requests:
-            memory: \"2Gi\"
-            cpu: \"1000m\"
+            memory: \"1Gi\"
+            cpu: \"500m\"
             nvidia.com/gpu: \"1\"
           limits:
             memory: \"128Gi\"
@@ -306,8 +306,8 @@ EOF
         OLLAMA_RESOURCES="
         resources:
           requests:
-            memory: \"1Gi\"
-            cpu: \"500m\"
+            memory: \"512Mi\"
+            cpu: \"200m\"
           limits:
             memory: \"16Gi\""
         OLLAMA_SECURITY_CONTEXT="
@@ -430,8 +430,8 @@ spec:
           value: "true"
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "100m"
+            memory: "128Mi"
+            cpu: "50m"
           limits:
             memory: "4Gi"
         securityContext:

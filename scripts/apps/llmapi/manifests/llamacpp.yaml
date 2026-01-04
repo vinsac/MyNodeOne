@@ -223,10 +223,10 @@ spec:
             name: llamacpp-config
         resources:
           requests:
-            memory: "4Gi"
-            cpu: "2000m"
+            memory: "2Gi"
+            cpu: "1000m"
           limits:
-            memory: "180Gi"
+            memory: "80Gi"
         volumeMounts:
         - name: models
           mountPath: /models

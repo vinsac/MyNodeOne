@@ -79,8 +79,15 @@ spec:
                   # Copy to PVC maintaining HuggingFace cache structure
                   mkdir -p /models/hub
                   cp -r "$HOST_DIR" "/models/hub/$(basename "$HOST_DIR")"
+                  
+                  # CRITICAL: Fix permissions so vLLM container can write lock files
+                  echo "Fixing permissions for vLLM container..."
+                  chown -R 1000:1000 /models
+                  chmod -R 755 /models
+                  
                   FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
                   echo "✓ Copy complete. PVC cache size: $FINAL_SIZE"
+                  echo "✓ Permissions fixed (1000:1000)"
                   exit 0
                 fi
               fi

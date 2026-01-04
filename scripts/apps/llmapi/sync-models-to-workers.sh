@@ -19,6 +19,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="/var/lib/llmapi/models"
 DEST_DIR="/var/lib/llmapi/models"
 
+# Detect actual user when running under sudo
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_USER="$SUDO_USER"
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    ACTUAL_USER="$(whoami)"
+    ACTUAL_HOME="$HOME"
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -81,14 +90,25 @@ check_ssh_access() {
         info "  Found labeled SSH user: $labeled_user" >&2
         ssh_user="$labeled_user"
         
-        # Verify SSH access works
-        if ! ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
-           "${ssh_user}@${node_ip}" "echo connected" &>/dev/null; then
-            warn "  ✗ SSH access failed for ${ssh_user}@${node_ip}" >&2
-            warn "  Make sure SSH keys are set up: ssh-copy-id ${ssh_user}@${node_ip}" >&2
-            ssh_user=""
-        else
+        # Verify SSH access works - run as actual user if under sudo
+        local ssh_cmd="ssh"
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            ssh_cmd="sudo -u $SUDO_USER ssh"
+            info "  Running SSH as user: $SUDO_USER (script invoked with sudo)" >&2
+        fi
+        
+        local ssh_test_output
+        if ssh_test_output=$($ssh_cmd -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
+           "${ssh_user}@${node_ip}" "echo connected" 2>&1); then
             success "  ✓ SSH works with user: $ssh_user" >&2
+        else
+            warn "  ✗ SSH access failed for ${ssh_user}@${node_ip}" >&2
+            warn "  SSH error: $ssh_test_output" >&2
+            warn "  Make sure SSH keys are set up: ssh-copy-id ${ssh_user}@${node_ip}" >&2
+            if [ -n "${SUDO_USER:-}" ]; then
+                warn "  Note: Script running as root via sudo, but SSH keys should be in /home/$SUDO_USER/.ssh/" >&2
+            fi
+            ssh_user=""
         fi
     else
         warn "  ✗ No mynodeone.io/ssh-user label found on node" >&2
@@ -134,8 +154,18 @@ sync_to_worker() {
     echo ""
     
     # Defensive: Ensure correct SSH permissions on worker to prevent auth issues
+    # Run SSH as actual user if under sudo
+    local ssh_cmd="ssh"
+    local rsync_ssh_opt=""
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        ssh_cmd="sudo -u $SUDO_USER ssh"
+        rsync_ssh_opt="-e 'sudo -u $SUDO_USER ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
+    else
+        rsync_ssh_opt="-e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
+    fi
+    
     info "Fixing SSH permissions on $node_ip (defensive)..."
-    if ssh -o BatchMode=yes "${ssh_user}@${node_ip}" "chmod 700 ~/.ssh 2>/dev/null; chmod 600 ~/.ssh/authorized_keys 2>/dev/null; chmod go-w ~ 2>/dev/null; true" 2>&1 | tee /tmp/ssh-fix-perms.log; then
+    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "chmod 700 ~/.ssh 2>/dev/null; chmod 600 ~/.ssh/authorized_keys 2>/dev/null; chmod go-w ~ 2>/dev/null; true" 2>&1 | tee /tmp/ssh-fix-perms.log; then
         success "SSH permissions verified/fixed on $node_ip"
     else
         warn "Could not verify SSH permissions on $node_ip (non-critical)"
@@ -156,9 +186,9 @@ sync_to_worker() {
     
     # Create destination directory on worker
     info "Creating destination directory on $node_ip..."
-    info "Command: ssh ${ssh_user}@${node_ip} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
+    info "Command: $ssh_cmd ${ssh_user}@${node_ip} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
     
-    if ssh -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
+    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
         success "Destination directory created: $DEST_DIR"
     else
         error "Failed to create destination directory on $node_ip"
@@ -179,11 +209,15 @@ sync_to_worker() {
         info "This may take several minutes depending on model size and network speed..."
         echo ""
         
-        info "Running: rsync -av --progress -e \"ssh -o StrictHostKeyChecking=no -o BatchMode=yes\" ..."
-        if rsync -av --progress \
-            -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
-            "$SOURCE_DIR/vllm/" \
-            "${ssh_user}@${node_ip}:${DEST_DIR}/vllm/" 2>&1 | tee /tmp/rsync-vllm.log; then
+        info "Running: rsync -av --progress $rsync_ssh_opt ..."
+        local rsync_cmd
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            rsync_cmd="sudo -u $SUDO_USER rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
+        else
+            rsync_cmd="rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
+        fi
+        
+        if eval "$rsync_cmd \"$SOURCE_DIR/vllm/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/vllm/\"" 2>&1 | tee /tmp/rsync-vllm.log; then
             success "vLLM models synced to $node_ip"
         else
             warn "Failed to sync vLLM models to $node_ip"
@@ -205,10 +239,7 @@ sync_to_worker() {
         info "  Files: $llamacpp_files"
         echo ""
         
-        if rsync -av --progress \
-            -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
-            "$SOURCE_DIR/llamacpp/" \
-            "${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/" 2>&1 | tee /tmp/rsync-llamacpp.log; then
+        if eval "$rsync_cmd \"$SOURCE_DIR/llamacpp/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/\"" 2>&1 | tee /tmp/rsync-llamacpp.log; then
             success "llamacpp models synced to $node_ip"
         else
             warn "Failed to sync llamacpp models to $node_ip"
@@ -230,10 +261,7 @@ sync_to_worker() {
         info "  Files: $embedding_files"
         echo ""
         
-        if rsync -av --progress \
-            -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
-            "$SOURCE_DIR/embedding/" \
-            "${ssh_user}@${node_ip}:${DEST_DIR}/embedding/" 2>&1 | tee /tmp/rsync-embedding.log; then
+        if eval "$rsync_cmd \"$SOURCE_DIR/embedding/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/embedding/\"" 2>&1 | tee /tmp/rsync-embedding.log; then
             success "embedding models synced to $node_ip"
         else
             warn "Failed to sync embedding models to $node_ip"
@@ -248,9 +276,9 @@ sync_to_worker() {
     
     # Fix permissions on worker
     info "Fixing permissions on $node_ip..."
-    info "Command: ssh ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
+    info "Command: $ssh_cmd ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
     
-    if ssh -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
+    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
         success "Permissions fixed on $node_ip"
     else
         warn "Failed to fix permissions on $node_ip"

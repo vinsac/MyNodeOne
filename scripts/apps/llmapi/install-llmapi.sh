@@ -1475,11 +1475,14 @@ fi
 # Wait for vLLM if deployed (model download can take 10-30 minutes)
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
     echo ""
-    echo "   📥 vLLM model download may take 10-30 minutes for first install..."
-    if ! kubectl wait --for=condition=available --timeout=60s statefulset/vllm -n "$NAMESPACE" 2>/dev/null; then
-        echo -e "   ${YELLOW}vLLM is downloading model. Monitor: kubectl logs -n $NAMESPACE statefulset/vllm -f${NC}"
-    else
+    # Check if vLLM pod is already running
+    if kubectl get pods -n "$NAMESPACE" -l app=vllm --field-selector=status.phase=Running 2>/dev/null | grep -q vllm; then
         echo -e "   ${GREEN}✓ vLLM is ready${NC}"
+    elif kubectl wait --for=condition=available --timeout=60s statefulset/vllm -n "$NAMESPACE" 2>/dev/null; then
+        echo -e "   ${GREEN}✓ vLLM is ready${NC}"
+    else
+        echo "   📥 vLLM model download may take 10-30 minutes for first install..."
+        echo -e "   ${YELLOW}vLLM is downloading model. Monitor: kubectl logs -n $NAMESPACE statefulset/vllm -f${NC}"
     fi
 fi
 

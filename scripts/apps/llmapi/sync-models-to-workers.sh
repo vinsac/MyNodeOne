@@ -88,45 +88,54 @@ check_ssh_access() {
     # Try to detect the username
     local ssh_user=""
     
+    # Prepare SSH command that works under sudo
+    local ssh_cmd="ssh"
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        ssh_cmd="sudo -u $SUDO_USER ssh"
+        info "  Script running under sudo - using SSH as: $SUDO_USER" >&2
+    fi
+    
     # First, try to get username from node label (set during worker node setup)
     local labeled_user=""
     if [[ -n "$node_name" ]]; then
         labeled_user=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
     fi
     
+    # Determine usernames to try
+    local users_to_try=()
     if [[ -n "$labeled_user" ]]; then
         info "  Found labeled SSH user: $labeled_user" >&2
-        ssh_user="$labeled_user"
-        
-        # Verify SSH access works - run as actual user if under sudo
-        local ssh_cmd="ssh"
-        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-            ssh_cmd="sudo -u $SUDO_USER ssh"
-            info "  Running SSH as user: $SUDO_USER (script invoked with sudo)" >&2
-        fi
-        
-        local ssh_test_output
-        if ssh_test_output=$($ssh_cmd -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
-           "${ssh_user}@${node_ip}" "echo connected" 2>&1); then
-            success "  ✓ SSH works with user: $ssh_user" >&2
-        else
-            warn "  ✗ SSH access failed for ${ssh_user}@${node_ip}" >&2
-            warn "  SSH error: $ssh_test_output" >&2
-            warn "  Make sure SSH keys are set up: ssh-copy-id ${ssh_user}@${node_ip}" >&2
-            if [ -n "${SUDO_USER:-}" ]; then
-                warn "  Note: Script running as root via sudo, but SSH keys should be in /home/$SUDO_USER/.ssh/" >&2
-            fi
-            ssh_user=""
-        fi
+        users_to_try=("$labeled_user")
     else
-        warn "  ✗ No mynodeone.io/ssh-user label found on node" >&2
-        warn "  Please label the node with SSH username:" >&2
-        warn "    kubectl label node $node_name mynodeone.io/ssh-user=<USERNAME>" >&2
-        ssh_user=""
+        info "  No mynodeone.io/ssh-user label found, trying common usernames..." >&2
+        # Use ACTUAL_USER (detected from SUDO_USER or whoami), then common defaults
+        users_to_try=("$ACTUAL_USER" "ubuntu" "root")
     fi
     
+    # Try each username
+    for user in "${users_to_try[@]}"; do
+        info "  Trying user: $user" >&2
+        local ssh_test_output
+        if ssh_test_output=$($ssh_cmd -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
+           "${user}@${node_ip}" "echo connected" 2>&1); then
+            ssh_user="$user"
+            success "  ✓ SSH works with user: $ssh_user" >&2
+            break
+        else
+            warn "  ✗ SSH failed for user: $user" >&2
+            if [[ "$user" == "$labeled_user" ]]; then
+                warn "  SSH error: $ssh_test_output" >&2
+                warn "  Make sure SSH keys are set up: ssh-copy-id ${user}@${node_ip}" >&2
+                if [ -n "${SUDO_USER:-}" ]; then
+                    warn "  Note: SSH keys should be in /home/$SUDO_USER/.ssh/" >&2
+                fi
+            fi
+        fi
+    done
+    
     if [[ -z "$ssh_user" ]]; then
-        warn "Cannot sync to $node_ip - SSH username not configured." >&2
+        warn "Cannot sync to $node_ip - SSH username not found." >&2
+        warn "Tried usernames: ${users_to_try[*]}" >&2
         warn "Ensure SSH key-based auth is set up for the worker node." >&2
         warn "Run: ssh-copy-id <username>@${node_ip}" >&2
         if [[ -n "$node_name" ]]; then

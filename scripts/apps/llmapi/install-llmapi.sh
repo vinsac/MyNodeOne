@@ -1486,11 +1486,14 @@ fi
 # Wait for llama.cpp if deployed (model download can take 5-15 minutes)
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo ""
-    echo "   📥 llama.cpp model download may take 5-15 minutes for first install..."
-    if ! kubectl wait --for=condition=available --timeout=60s deployment/llamacpp -n "$NAMESPACE" 2>/dev/null; then
-        echo -e "   ${YELLOW}llama.cpp is downloading model. Monitor: kubectl logs -n $NAMESPACE deploy/llamacpp -c model-downloader -f${NC}"
-    else
+    # Check if llama.cpp pod is already running
+    if kubectl get pods -n "$NAMESPACE" -l app=llamacpp --field-selector=status.phase=Running 2>/dev/null | grep -q llamacpp; then
         echo -e "   ${GREEN}✓ llama.cpp is ready${NC}"
+    elif kubectl wait --for=condition=available --timeout=60s deployment/llamacpp -n "$NAMESPACE" 2>/dev/null; then
+        echo -e "   ${GREEN}✓ llama.cpp is ready${NC}"
+    else
+        echo "   📥 llama.cpp model download may take 5-15 minutes for first install..."
+        echo -e "   ${YELLOW}llama.cpp is downloading model. Monitor: kubectl logs -n $NAMESPACE deploy/llamacpp -c model-downloader -f${NC}"
     fi
 fi
 

@@ -349,6 +349,13 @@ main() {
     info "Next steps:"
     echo "  • Restart vLLM pods to use synced models: kubectl rollout restart statefulset/vllm -n llmapi"
     echo "  • Or scale vLLM to use both GPUs: kubectl scale statefulset/vllm -n llmapi --replicas=2"
+    
+    # Return success if at least one node synced successfully, failure if all failed
+    if [[ $success_count -gt 0 ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 main "$@"

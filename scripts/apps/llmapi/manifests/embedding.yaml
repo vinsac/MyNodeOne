@@ -138,8 +138,9 @@ spec:
           periodSeconds: 10
       volumes:
       - name: models
-        persistentVolumeClaim:
-          claimName: embedding-models
+        hostPath:
+          path: /var/lib/llmapi/models/embedding
+          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

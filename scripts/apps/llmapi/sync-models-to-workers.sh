@@ -291,20 +291,21 @@ sync_to_worker() {
         info "No embedding models found at $SOURCE_DIR/embedding"
     fi
     
-    # Fix permissions on worker
+    # Fix permissions on worker (non-critical, requires passwordless sudo)
     info "Fixing permissions on $node_ip..."
     info "Command: $ssh_cmd ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
     
     if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee "$TEMP_DIR/ssh-chown.log"; then
         success "Permissions fixed on $node_ip"
     else
-        warn "Failed to fix permissions on $node_ip"
-        info "Error details: $(cat "$TEMP_DIR/ssh-chown.log" 2>/dev/null)"
+        warn "Could not fix permissions on $node_ip (requires passwordless sudo)"
+        info "This is non-critical - containers will fix permissions on startup"
     fi
     echo ""
     
     success "All models synced to $node_ip successfully!"
     echo ""
+    return 0  # Explicitly return success since sync completed
 }
 
 # =============================================================================

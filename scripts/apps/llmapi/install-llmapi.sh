@@ -1273,6 +1273,13 @@ EOF
                 
                 # Defensive: Fix SSH permissions on workers before syncing
                 echo "      🛡️  Verifying worker SSH permissions..."
+                
+                # Determine SSH command (sudo-aware if running under sudo)
+                local ssh_cmd="ssh"
+                if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+                    ssh_cmd="sudo -u $SUDO_USER ssh"
+                fi
+                
                 for node in $worker_nodes; do
                     # Get info from labels
                     node_ip=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
@@ -1280,9 +1287,9 @@ EOF
                     
                     if [[ -n "$node_ip" && -n "$node_user" ]]; then
                         echo "         • Fixing permissions on $node ($node_user@$node_ip)..."
-                        # Run the fix command
-                        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$node_user@$node_ip" \
-                            "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys && sudo chown -R $node_user:$node_user ~/.ssh" || \
+                        # Run the fix command with sudo-aware SSH (no sudo needed for user's own .ssh dir)
+                        $ssh_cmd -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes "$node_user@$node_ip" \
+                            "chmod 700 ~/.ssh 2>/dev/null; chmod 600 ~/.ssh/authorized_keys 2>/dev/null; chmod go-w ~ 2>/dev/null; true" || \
                             echo "         ⚠️  Could not auto-fix permissions for $node (SSH failed)"
                     fi
                 done

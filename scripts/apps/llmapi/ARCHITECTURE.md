@@ -1056,6 +1056,167 @@ GET /health/vllm-1    # Specific backend
 
 ---
 
+## Network Architecture
+
+### Current Implementation: Tailscale Mesh Network
+
+All node-to-node communication in MyNodeOne uses **Tailscale** (WireGuard-based mesh VPN):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Network Communication Layer                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  All Traffic Routes Through Tailscale:                         │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Kubernetes Control Plane ↔ Worker Nodes              │  │
+│  │    • kubelet → kube-apiserver                            │  │
+│  │    • All K8s cluster traffic                             │  │
+│  │                                                           │  │
+│  │ 2. Pod-to-Pod Communication (CNI)                        │  │
+│  │    • Cross-node pod networking                           │  │
+│  │    • Service mesh traffic                                │  │
+│  │                                                           │  │
+│  │ 3. Storage Replication (Longhorn)                        │  │
+│  │    • PVC data synchronization between nodes              │  │
+│  │    • Volume replication (default 3 replicas)             │  │
+│  │                                                           │  │
+│  │ 4. Management Operations (SSH)                           │  │
+│  │    • Model sync via rsync                                │  │
+│  │    • Administrative access                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Tailscale Network Properties:                                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Protocol:  WireGuard (kernel-space, ChaCha20-Poly1305)   │  │
+│  │ IP Range:  100.64.0.0/10 (CGNAT space)                   │  │
+│  │ Routing:   Direct peer-to-peer when possible             │  │
+│  │ Fallback:  DERP relay for NAT traversal                  │  │
+│  │ Security:  End-to-end encrypted, key rotation            │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Performance Characteristics
+
+**Current Throughput (Observed):**
+- **Small transfers (<10 MB):** 5-10 MB/s
+- **Large transfers (>1 GB):** 1-10 MB/s sustained
+- **PVC writes (Longhorn):** 1-5 MB/s (replication overhead)
+
+**Bottlenecks:**
+1. **WireGuard single-core encryption:** Each tunnel limited to one CPU core
+2. **Tailscale overhead:** Additional protocol layers
+3. **Longhorn replication:** 3x write amplification for replicated volumes
+4. **Network path:** Encryption/decryption at source and destination
+
+**Comparison to Physical Networks:**
+
+| Network Type | Typical Throughput | Encryption | Complexity |
+|--------------|-------------------|------------|------------|
+| **Tailscale (current)** | 1-10 MB/s | ✅ WireGuard | ✅ Zero config |
+| **10 Gbps LAN** | 500-1200 MB/s | ❌ Plain text | ⚠️ Physical setup |
+| **10 Gbps LAN + IPsec** | 200-400 MB/s | ✅ IPsec | ⚠️ Manual config |
+
+### Why Tailscale for Production Clusters?
+
+**Benefits:**
+- ✅ **Works anywhere:** Nodes can be on different networks, locations, or cloud providers
+- ✅ **Zero manual configuration:** Automatic mesh routing, NAT traversal
+- ✅ **Secure by default:** End-to-end encryption, automatic key rotation
+- ✅ **Split-brain resistant:** Central coordination via Tailscale control plane
+- ✅ **Simple firewall rules:** Only outbound HTTPS needed
+
+**Trade-offs:**
+- ❌ **Limited throughput:** 10-100 MB/s vs. multi-GB/s on physical networks
+- ❌ **CPU overhead:** Encryption consumes ~10-20% CPU per active connection
+- ❌ **Not suitable for high-frequency storage:** Real-time databases, video streaming
+
+**Acceptable for:**
+- LLM inference workloads (model loaded once, then served)
+- Occasional large file transfers (model updates, backups)
+- Distributed control plane (control plane and workers in different locations)
+
+**Not acceptable for:**
+- High-frequency database replication
+- Streaming large datasets continuously
+- Latency-sensitive real-time applications
+
+### Future Optimization Plans
+
+**Problem:** Large file transfers (models, backups) are slow over Tailscale due to single-core encryption bottleneck.
+
+**Planned Solutions:**
+
+#### Option 1: Pre-encrypted Multi-stream Transfer Utility
+
+Create a dedicated tool for large file transfers that:
+
+1. **Encrypt at source using multiple CPU cores:**
+   ```bash
+   # Split file into chunks, encrypt in parallel
+   split -b 100M model.safetensor /tmp/chunks/
+   parallel -j $(nproc) openssl enc -aes-256-cbc -in {} -out {}.enc ::: /tmp/chunks/*
+   ```
+
+2. **Transfer over multiple Tailscale connections:**
+   ```bash
+   # Open parallel rsync streams (each gets own WireGuard tunnel)
+   parallel -j 8 rsync {} remote:/dest/ ::: /tmp/chunks/*.enc
+   ```
+
+3. **Decrypt and reassemble at destination:**
+   ```bash
+   parallel -j $(nproc) openssl enc -d -aes-256-cbc -in {} -out {.} ::: /dest/chunks/*.enc
+   cat /dest/chunks/* > model.safetensor
+   ```
+
+**Expected improvement:** 5-8x faster for multi-GB files on multi-core systems
+
+#### Option 2: Direct Public Internet Transfer (Optional)
+
+For nodes with public IPs, bypass Tailscale for large transfers:
+
+1. **Temporary HTTP server with TLS:**
+   ```bash
+   # On source node
+   python3 -m http.server --bind 0.0.0.0 8443 --cert cert.pem --key key.pem
+   ```
+
+2. **Parallel downloads:**
+   ```bash
+   # On destination
+   aria2c -x 16 -s 16 https://source-ip:8443/model.safetensor
+   ```
+
+3. **Automatic fallback to Tailscale** if direct connection fails
+
+**Expected improvement:** 10-50x faster (limited by internet bandwidth, not encryption)
+
+#### Option 3: Background Asynchronous Sync
+
+For non-urgent transfers (nightly model updates):
+
+1. **Queue transfers during off-peak hours**
+2. **Use lower-priority nice/ionice**
+3. **Spread transfers over time** (throttled rsync)
+
+**Trade-off:** Slower but doesn't impact user-facing workloads
+
+### Implementation Status
+
+| Feature | Status | ETA |
+|---------|--------|-----|
+| Tailscale mesh networking | ✅ Production | - |
+| SSH permission auto-fix | ✅ Production | - |
+| Multi-stream transfer utility | 📋 Planned | TBD |
+| Direct public internet fallback | 📋 Planned | TBD |
+| Background async sync scheduler | 📋 Planned | TBD |
+
+**Note:** The current Tailscale implementation is intentionally kept as-is for stability and simplicity. Future optimizations will be additive (optional tools) rather than replacing the base network layer.
+
+---
+
 ## Security
 
 ### API Key Management

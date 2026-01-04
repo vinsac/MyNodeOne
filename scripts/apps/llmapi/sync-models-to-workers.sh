@@ -243,7 +243,8 @@ sync_to_worker() {
     info "Fixing permissions on $node_ip..."
     info "Command: ssh ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
     
-    if ssh "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
+    # Use -t to allow sudo password prompt
+    if ssh -t "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
         success "Permissions fixed on $node_ip"
     else
         warn "Failed to fix permissions on $node_ip"

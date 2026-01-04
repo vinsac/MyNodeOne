@@ -28,6 +28,14 @@ else
     ACTUAL_HOME="$HOME"
 fi
 
+# Use user-specific temp directory to avoid permission issues
+TEMP_DIR="${ACTUAL_HOME}/.cache/mynodeone/tmp"
+mkdir -p "$TEMP_DIR" 2>/dev/null || TEMP_DIR="/tmp"
+# Ensure proper ownership if we created it
+if [ -n "${SUDO_USER:-}" ] && [ "$TEMP_DIR" != "/tmp" ]; then
+    chown -R "$SUDO_USER:$SUDO_USER" "$TEMP_DIR" 2>/dev/null || true
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -165,11 +173,11 @@ sync_to_worker() {
     fi
     
     info "Fixing SSH permissions on $node_ip (defensive)..."
-    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "chmod 700 ~/.ssh 2>/dev/null; chmod 600 ~/.ssh/authorized_keys 2>/dev/null; chmod go-w ~ 2>/dev/null; true" 2>&1 | tee /tmp/ssh-fix-perms.log; then
+    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "chmod 700 ~/.ssh 2>/dev/null; chmod 600 ~/.ssh/authorized_keys 2>/dev/null; chmod go-w ~ 2>/dev/null; true" 2>&1 | tee "$TEMP_DIR/ssh-fix-perms.log"; then
         success "SSH permissions verified/fixed on $node_ip"
     else
         warn "Could not verify SSH permissions on $node_ip (non-critical)"
-        info "Error details: $(cat /tmp/ssh-fix-perms.log 2>/dev/null | head -3)"
+        info "Error details: $(cat "$TEMP_DIR/ssh-fix-perms.log" 2>/dev/null | head -3)"
     fi
     echo ""
     
@@ -188,11 +196,11 @@ sync_to_worker() {
     info "Creating destination directory on $node_ip..."
     info "Command: $ssh_cmd ${ssh_user}@${node_ip} \"sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR\""
     
-    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee /tmp/ssh-mkdir.log; then
+    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee "$TEMP_DIR/ssh-mkdir.log"; then
         success "Destination directory created: $DEST_DIR"
     else
         error "Failed to create destination directory on $node_ip"
-        info "Error details: $(cat /tmp/ssh-mkdir.log 2>/dev/null)"
+        info "Error details: $(cat "$TEMP_DIR/ssh-mkdir.log" 2>/dev/null)"
         return 1
     fi
     echo ""
@@ -217,12 +225,12 @@ sync_to_worker() {
             rsync_cmd="rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
         fi
         
-        if eval "$rsync_cmd \"$SOURCE_DIR/vllm/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/vllm/\"" 2>&1 | tee /tmp/rsync-vllm.log; then
+        if eval "$rsync_cmd \"$SOURCE_DIR/vllm/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/vllm/\"" 2>&1 | tee "$TEMP_DIR/rsync-vllm.log"; then
             success "vLLM models synced to $node_ip"
         else
             warn "Failed to sync vLLM models to $node_ip"
             info "Rsync error details:"
-            tail -20 /tmp/rsync-vllm.log
+            tail -20 "$TEMP_DIR/rsync-vllm.log"
             return 1
         fi
         echo ""
@@ -239,12 +247,12 @@ sync_to_worker() {
         info "  Files: $llamacpp_files"
         echo ""
         
-        if eval "$rsync_cmd \"$SOURCE_DIR/llamacpp/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/\"" 2>&1 | tee /tmp/rsync-llamacpp.log; then
+        if eval "$rsync_cmd \"$SOURCE_DIR/llamacpp/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/llamacpp/\"" 2>&1 | tee "$TEMP_DIR/rsync-llamacpp.log"; then
             success "llamacpp models synced to $node_ip"
         else
             warn "Failed to sync llamacpp models to $node_ip"
             info "Rsync error details:"
-            tail -20 /tmp/rsync-llamacpp.log
+            tail -20 "$TEMP_DIR/rsync-llamacpp.log"
             return 1
         fi
         echo ""
@@ -261,12 +269,12 @@ sync_to_worker() {
         info "  Files: $embedding_files"
         echo ""
         
-        if eval "$rsync_cmd \"$SOURCE_DIR/embedding/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/embedding/\"" 2>&1 | tee /tmp/rsync-embedding.log; then
+        if eval "$rsync_cmd \"$SOURCE_DIR/embedding/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/embedding/\"" 2>&1 | tee "$TEMP_DIR/rsync-embedding.log"; then
             success "embedding models synced to $node_ip"
         else
             warn "Failed to sync embedding models to $node_ip"
             info "Rsync error details:"
-            tail -20 /tmp/rsync-embedding.log
+            tail -20 "$TEMP_DIR/rsync-embedding.log"
             return 1
         fi
         echo ""
@@ -278,11 +286,11 @@ sync_to_worker() {
     info "Fixing permissions on $node_ip..."
     info "Command: $ssh_cmd ${ssh_user}@${node_ip} \"sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR\""
     
-    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee /tmp/ssh-chown.log; then
+    if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo chown -R 1000:1000 $DEST_DIR && sudo chmod -R 755 $DEST_DIR" 2>&1 | tee "$TEMP_DIR/ssh-chown.log"; then
         success "Permissions fixed on $node_ip"
     else
         warn "Failed to fix permissions on $node_ip"
-        info "Error details: $(cat /tmp/ssh-chown.log 2>/dev/null)"
+        info "Error details: $(cat "$TEMP_DIR/ssh-chown.log" 2>/dev/null)"
     fi
     echo ""
     

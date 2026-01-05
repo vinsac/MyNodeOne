@@ -39,6 +39,31 @@ spec:
         - |
           set -e
           
+          # Install redis-cli for status reporting (lightweight, <1MB)
+          echo "Installing redis-cli for status reporting..."
+          apt-get update -qq && apt-get install -y -qq redis-tools 2>/dev/null || true
+          
+          # Helper function to report errors to Redis for admin UI visibility
+          report_error() {
+            local error_msg="$1"
+            echo "ERROR: $error_msg"
+            
+            # Try to write error to Redis so admin UI can show it
+            if command -v redis-cli >/dev/null 2>&1; then
+              redis-cli -h redis SET "vllm:download:error" "$error_msg" EX 3600 2>/dev/null || true
+              redis-cli -h redis SET "vllm:download:status" "failed" EX 3600 2>/dev/null || true
+            fi
+            
+            exit 1
+          }
+          
+          # Report download start
+          if command -v redis-cli >/dev/null 2>&1; then
+            redis-cli -h redis SET "vllm:download:status" "downloading" EX 3600 2>/dev/null || true
+            redis-cli -h redis SET "vllm:download:model" "$MODEL_NAME" EX 3600 2>/dev/null || true
+            redis-cli -h redis DEL "vllm:download:error" 2>/dev/null || true
+          fi
+          
           # CRITICAL: Export HF_TOKEN at the very start for huggingface_hub library
           # The library checks this env var globally, not just in function calls
           if [ -n "$HF_TOKEN" ]; then

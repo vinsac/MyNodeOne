@@ -2940,9 +2940,25 @@ async def admin_dashboard():
 async def admin_list_models(api_key: str = Depends(get_api_key)):
     """List all models (admin endpoint)."""
     await require_scope("admin", api_key)
+    
+    # Get vLLM download status from Redis
+    download_status = None
+    if redis_client.client:
+        status = await redis_client.client.get("vllm:download:status")
+        error = await redis_client.client.get("vllm:download:error")
+        model = await redis_client.client.get("vllm:download:model")
+        
+        if status:
+            download_status = {
+                "status": status,
+                "model": model if model else "unknown",
+                "error": error if error else None
+            }
+    
     return {
         "models": model_registry.get_available_models(),
         "backends": model_registry.backends,
+        "download_status": download_status,
     }
 
 

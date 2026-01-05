@@ -2110,8 +2110,40 @@ ADMIN_HTML = """
                 const data = await resp.json();
                 
                 const list = document.getElementById('models-list');
+                let html = '';
+                
+                // Show download status if present
+                if (data.download_status) {
+                    const ds = data.download_status;
+                    if (ds.status === 'downloading') {
+                        html += `
+                            <div class="bg-blue-900/30 border border-blue-700 rounded p-3 mb-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent"></div>
+                                    <span class="text-blue-300 font-medium">Downloading: ${ds.model}</span>
+                                </div>
+                                <p class="text-xs text-blue-400 mt-1">This may take several minutes depending on model size...</p>
+                            </div>
+                        `;
+                    } else if (ds.status === 'failed' && ds.error) {
+                        html += `
+                            <div class="bg-red-900/30 border border-red-700 rounded p-3 mb-3">
+                                <div class="flex items-start gap-2">
+                                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 mt-0.5"></i>
+                                    <div class="flex-1">
+                                        <span class="text-red-300 font-medium block">Download Failed: ${ds.model}</span>
+                                        <p class="text-sm text-red-400 mt-1">${ds.error}</p>
+                                        <p class="text-xs text-red-500 mt-2">Check the model name and try again. vLLM pod is crash-looping until a valid model is configured.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // Show loaded models
                 if (data.models && data.models.length > 0) {
-                    list.innerHTML = data.models.map(m => `
+                    html += data.models.map(m => `
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
                             <div>
                                 <span class="font-medium">${m.id}</span>
@@ -2131,10 +2163,12 @@ ADMIN_HTML = """
                             </div>
                         </div>
                     `).join('');
-                    lucide.createIcons();
-                } else {
-                    list.innerHTML = '<p class="text-yellow-400">No models loaded. Use the form above to download a model.</p>';
+                } else if (!data.download_status || data.download_status.status !== 'downloading') {
+                    html += '<p class="text-yellow-400">No models loaded. Use the form above to download a model.</p>';
                 }
+                
+                list.innerHTML = html;
+                lucide.createIcons();
             } catch (e) {
                 console.error('Failed to load models:', e);
             }

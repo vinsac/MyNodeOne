@@ -192,10 +192,26 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
         done
     fi
     
-    # Always offer download options, regardless of existing models
     echo ""
-    if [[ -z "$PRE_DOWNLOADED_VLLM" ]] && [[ -z "$PRE_DOWNLOADED_LLAMACPP" ]] && [[ -z "$PRE_DOWNLOADED_EMBEDDING" ]]; then
-        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Model Download Strategy"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "ℹ️  Models download automatically on first pod startup:"
+    echo ""
+    echo "  • vLLM: Downloads from HuggingFace (~3-5 min with hf_transfer)"
+    echo "    → Saves to /var/lib/llmapi/models/vllm/ in HF cache format"
+    echo "    → Subsequent restarts use cached models (~30 sec)"
+    echo ""
+    echo "  • llama.cpp: Downloads GGUF files (~5-10 min for 70B model)"
+    echo "    → Saves to /var/lib/llmapi/models/llamacpp/"
+    echo ""
+    echo "  • Embedding: Downloads GGUF files (~1 min)"
+    echo "    → Saves to /var/lib/llmapi/models/embedding/"
+    echo ""
+    echo "  All models persist on hostPath across pod restarts and reinstalls."
+    echo ""
+fi
 
 # =============================================================================
 # Check for Existing Installation and Cached Models

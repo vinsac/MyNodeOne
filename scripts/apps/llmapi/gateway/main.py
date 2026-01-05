@@ -3333,29 +3333,34 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
         except:
             k8s_config.load_kube_config()
         
+        core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
         
-        # Get current StatefulSet
+        # Derive served model name from model ID (e.g., "Qwen/Qwen2.5-14B-Instruct-AWQ" -> "qwen2.5-14b")
+        served_model_name = model_id.split('/')[-1].lower()
+        served_model_name = served_model_name.replace('-instruct', '').replace('-awq', '').replace('-gptq', '')
+        # Keep only model name without quantization suffixes
+        if '-' in served_model_name:
+            parts = served_model_name.split('-')
+            # Usually format is: modelname-version-size, keep first 2-3 parts
+            served_model_name = '-'.join(parts[:3]) if len(parts) > 2 else served_model_name
+        
+        # Update vllm-config ConfigMap with new MODEL_NAME and SERVED_MODEL_NAME
+        # This is what the init container reads to download the model
+        try:
+            configmap = core_v1.read_namespaced_config_map("vllm-config", namespace)
+            configmap.data["MODEL_NAME"] = model_id
+            configmap.data["SERVED_MODEL_NAME"] = served_model_name
+            core_v1.replace_namespaced_config_map("vllm-config", namespace, configmap)
+            logger.info(f"Updated vllm-config ConfigMap: MODEL_NAME={model_id}, SERVED_MODEL_NAME={served_model_name}")
+        except Exception as e:
+            logger.error(f"Failed to update ConfigMap: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to update ConfigMap: {str(e)}")
+        
+        # Trigger rollout restart by updating pod template annotation
+        # This will cause StatefulSet to recreate pods with new ConfigMap values
         sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
-        
-        # Update MODEL_ID environment variable
-        for container in sts.spec.template.spec.containers:
-            if container.name == "vllm":
-                for i, env in enumerate(container.env or []):
-                    if env.name == "MODEL_ID":
-                        container.env[i].value = model_id
-                        break
-                else:
-                    # Add if not exists
-                    if container.env is None:
-                        container.env = []
-                    container.env.append(client.V1EnvVar(name="MODEL_ID", value=model_id))
-        
-        # Apply update
-        apps_v1.patch_namespaced_stateful_set("vllm", namespace, sts)
-        
-        # Trigger rollout restart by updating an annotation
         if sts.spec.template.metadata.annotations is None:
             sts.spec.template.metadata.annotations = {}
         sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
@@ -3364,8 +3369,8 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
         # Store in Redis for UI
         await redis_client.client.set("config:vllm_model", model_id)
         
-        logger.info(f"vLLM model change initiated: {model_id}")
-        return {"status": "initiated", "model_id": model_id, "message": "vLLM pod is restarting with new model"}
+        logger.info(f"vLLM model change initiated: {model_id} (served as {served_model_name})")
+        return {"status": "initiated", "model_id": model_id, "served_model_name": served_model_name, "message": "vLLM pod is restarting with new model"}
         
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")

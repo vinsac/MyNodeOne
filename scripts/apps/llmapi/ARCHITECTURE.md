@@ -695,15 +695,15 @@ LLMAPI uses a multi-tier storage strategy optimized for different deployment sce
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Current Implementation: hostPath Pre-download
+### Current Implementation: Automatic Download via Init Containers
 
 **How It Works:**
 
 ```bash
-# 1. Pre-download models using parallel downloader
-./scripts/apps/llmapi/download-models.sh
+# 1. Install the service - models download automatically
+./scripts/apps/llmapi/install-llmapi.sh
 
-# Downloads to: /var/lib/llmapi/models/vllm/qwen2.5-14b-awq
+# Models download to: /var/lib/llmapi/models/vllm/models--Qwen--Qwen2.5-14B-Instruct-AWQ
 #   - Uses parallel connections (up to 500 MB/s with hf_transfer)
 #   - Downloads once, used by all pods on that node
 

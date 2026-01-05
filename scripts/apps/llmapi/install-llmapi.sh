@@ -211,6 +211,10 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
     echo ""
     echo "  All models persist on hostPath across pod restarts and reinstalls."
     echo ""
+else
+    echo "No pre-download directory found at $PRE_DOWNLOAD_DIR"
+    echo "Models will download automatically on first pod startup."
+    echo ""
 fi
 
 # =============================================================================

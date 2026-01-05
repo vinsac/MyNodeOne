@@ -39,21 +39,33 @@ sudo ./scripts/apps/llmapi/install-llmapi.sh
 - Startup time: ~3-5 min first run, ~30 sec subsequent restarts (cached)
 - Models are shared across pods via hostPath mount
 
-**Model Directory Standard:**
+**Model Directory Standards (by backend):**
+
+Different backends have different format requirements:
+
 ```
-/var/lib/llmapi/models/vllm/
-├── models--Qwen--Qwen2.5-14B-Instruct-AWQ/
-│   ├── snapshots/abc123/
-│   │   ├── model-00001-of-00003.safetensors
-│   │   └── config.json
-│   ├── blobs/
-│   └── refs/main
-└── hub/
+/var/lib/llmapi/models/
+├── vllm/                                           # HuggingFace cache format
+│   ├── models--Qwen--Qwen2.5-14B-Instruct-AWQ/
+│   │   ├── snapshots/abc123/
+│   │   ├── blobs/
+│   │   └── refs/main
+│   └── hub/
+├── llamacpp/                                       # Single GGUF file
+│   └── Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf
+└── embedding/                                      # Single GGUF file
+    └── nomic-embed-text-v1.5.Q8_0.gguf
 ```
+
+**Why different formats?**
+- **vLLM**: Uses `huggingface_hub` library, needs full HF cache structure for transformers/tokenizers
+- **llama.cpp/embedding**: Use GGUF quantized format, single-file downloads via direct URL
 
 **Verify Model Format:**
 ```bash
-./scripts/apps/llmapi/verify-model-format.sh
+./scripts/apps/llmapi/verify-model-format.sh  # vLLM only
+ls -lh /var/lib/llmapi/models/llamacpp/*.gguf
+ls -lh /var/lib/llmapi/models/embedding/*.gguf
 ```
 
 ### Step 2: Worker Node Provisioning

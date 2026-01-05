@@ -17,34 +17,44 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 
 ## Quick Start
 
-### Step 1: Pre-Download Models (Recommended)
+### Step 1: Install the Service
 
-Large language models can be 10-50GB. Pre-downloading them ensures faster installation and avoids pod timeouts:
+Models are downloaded automatically by init containers in the correct HuggingFace cache format:
 
 ```bash
-# Download all recommended models (vLLM, llama.cpp, embedding)
-sudo ./scripts/apps/llmapi/download-models.sh --model all
+# Install the LLM API service
+sudo ./scripts/apps/llmapi/install-llmapi.sh
 
-# Or download specific models interactively
-sudo ./scripts/apps/llmapi/download-models.sh
+# Interactive prompts will ask:
+# 1. Deployment Mode (Full Stack, GPU Only, CPU Only, Minimal)
+# 2. Model selection (if applicable)
+# 3. Worker node provisioning strategy
+# 4. Public access configuration
 ```
 
-**Why pre-download?**
-- Downloads use `hf_transfer` with parallel connections (up to 500 MB/s)
-- Models are persisted in `/var/lib/llmapi/models/` and survive reinstalls
-- vLLM startup time: ~2 min (with pre-download) vs ~5-10 min (download from HuggingFace)
-- Downloads once per node, shared by all pods via hostPath mount
-- Can resume interrupted downloads
+**Model Download Behavior:**
+- Init containers use `huggingface_hub` with `hf_transfer` (up to 500 MB/s)
+- Models persist on node hostPath at `/var/lib/llmapi/models/vllm/`
+- Directory structure: `models--Org--ModelName/snapshots/...` (HuggingFace cache format)
+- Startup time: ~3-5 min first run, ~30 sec subsequent restarts (cached)
+- Models are shared across pods via hostPath mount
 
-**How it works:**
+**Model Directory Standard:**
 ```
-1. Pre-download script → /var/lib/llmapi/models/vllm/qwen2.5-14b-awq
-2. Install creates pods with hostPath mount → /predownload/vllm/
-3. Init container detects pre-downloaded model → copies to pod PVC (~2 min)
-4. vLLM loads from PVC and starts serving
+/var/lib/llmapi/models/vllm/
+├── models--Qwen--Qwen2.5-14B-Instruct-AWQ/
+│   ├── snapshots/abc123/
+│   │   ├── model-00001-of-00003.safetensors
+│   │   └── config.json
+│   ├── blobs/
+│   └── refs/main
+└── hub/
 ```
 
-**For production deployments**, see [Model Storage Architecture](./ARCHITECTURE.md#model-storage--caching) for S3-based model distribution using MinIO/Cloudflare R2.
+**Verify Model Format:**
+```bash
+./scripts/apps/llmapi/verify-model-format.sh
+```
 
 ### Step 2: Worker Node Provisioning
 

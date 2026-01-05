@@ -3400,24 +3400,28 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         except:
             k8s_config.load_kube_config()
         
+        core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
         
-        # Get current Deployment
+        # Extract model filename from URL
+        model_file = model_url.split("/")[-1]
+        
+        # Update llamacpp-config ConfigMap with new MODEL_URL and MODEL_FILE
+        # This is what the init container reads to download the model
+        try:
+            configmap = core_v1.read_namespaced_config_map("llamacpp-config", namespace)
+            configmap.data["MODEL_URL"] = model_url
+            configmap.data["MODEL_FILE"] = model_file
+            core_v1.replace_namespaced_config_map("llamacpp-config", namespace, configmap)
+            logger.info(f"Updated llamacpp-config ConfigMap: MODEL_URL={model_url}, MODEL_FILE={model_file}")
+        except Exception as e:
+            logger.error(f"Failed to update ConfigMap: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to update ConfigMap: {str(e)}")
+        
+        # Trigger rollout restart by updating pod template annotation
+        # This will cause Deployment to recreate pods with new ConfigMap values
         deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
-        
-        # Update MODEL_URL environment variable in init container
-        for container in deploy.spec.template.spec.init_containers or []:
-            if container.name == "model-downloader":
-                for i, env in enumerate(container.env or []):
-                    if env.name == "MODEL_URL":
-                        container.env[i].value = model_url
-                        break
-        
-        # Apply update
-        apps_v1.patch_namespaced_deployment("llamacpp", namespace, deploy)
-        
-        # Trigger rollout restart
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
@@ -3426,8 +3430,8 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         # Store in Redis for UI
         await redis_client.client.set("config:llamacpp_model_url", model_url)
         
-        logger.info(f"llama.cpp model change initiated: {model_url}")
-        return {"status": "initiated", "model_url": model_url, "message": "llama.cpp pod is restarting with new model"}
+        logger.info(f"llama.cpp model change initiated: {model_url} (file: {model_file})")
+        return {"status": "initiated", "model_url": model_url, "model_file": model_file, "message": "llama.cpp pod is restarting with new model"}
         
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")

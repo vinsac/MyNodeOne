@@ -46,18 +46,7 @@ sudo ./scripts/apps/llmapi/download-models.sh
 
 **For production deployments**, see [Model Storage Architecture](./ARCHITECTURE.md#model-storage--caching) for S3-based model distribution using MinIO/Cloudflare R2.
 
-### Step 2: Install the Service
-
-```bash
-# Install the LLM API service (will use pre-downloaded models if available)
-sudo ./scripts/apps/llmapi/install-llmapi.sh
-
-# Interactive prompts will ask:
-# 1. Model Provisioning Strategy for Workers:
-#    - Sync from Control Plane (Fast, requires SSH)
-#    - Download from HuggingFace (Simple, no SSH needed)
-# 2. Public Access Configuration
-```
+### Step 2: Worker Node Provisioning
 
 **Worker Node Provisioning Strategies:**
 

@@ -38,9 +38,19 @@ spec:
         args:
         - |
           set -e
+          
+          # CRITICAL: Export HF_TOKEN at the very start for huggingface_hub library
+          # The library checks this env var globally, not just in function calls
+          if [ -n "$HF_TOKEN" ]; then
+            export HF_TOKEN="$HF_TOKEN"
+          elif [ -n "$HUGGING_FACE_HUB_TOKEN" ]; then
+            export HF_TOKEN="$HUGGING_FACE_HUB_TOKEN"
+          fi
+          
           echo "=== vLLM Model Pre-Download ==="
           echo "Model: $MODEL_NAME"
-          echo "HF Token configured: $([ -n \"$HUGGING_FACE_HUB_TOKEN\" ] && echo 'yes' || echo 'no')"
+          echo "HF Token (HF_TOKEN): $([ -n \"$HF_TOKEN\" ] && echo 'SET' || echo 'NOT SET')"
+          echo "HF Token (HUGGING_FACE_HUB_TOKEN): $([ -n \"$HUGGING_FACE_HUB_TOKEN\" ] && echo 'SET' || echo 'NOT SET')"
           
           # Model name without org prefix for directory matching
           MODEL_SHORT=$(echo "$MODEL_NAME" | sed 's|.*/||' | tr '[:upper:]' '[:lower:]')
@@ -129,15 +139,16 @@ spec:
             
             echo ""
             echo "Using hf_transfer for accelerated download (up to 500 MB/s)"
+            echo "HF_TOKEN status before download: $([ -n \"$HF_TOKEN\" ] && echo 'SET' || echo 'NOT SET')"
             echo ""
             
             # Download with resume support and progress using Python API
-            python3 << 'PYEOF'
+            python3 << PYEOF
           import os
           from huggingface_hub import snapshot_download
           
           model_name = os.environ.get("MODEL_NAME")
-          token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
+          token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
           
           print(f"Downloading {model_name}...")
           snapshot_download(

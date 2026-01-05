@@ -3207,13 +3207,40 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
     await require_scope("admin", api_key)
     body = await request.json()
     
-    # Store HF token in Redis for persistence
+    # Update HF token in Kubernetes secret
     if "hf_token" in body:
         hf_token = body["hf_token"]
-        await redis_client.client.set("config:hf_token", hf_token)
-        # Also update the Ollama secret (this requires kubectl access)
-        # For now, just store in Redis and document that manual secret update may be needed
-        return {"status": "saved", "note": "Token saved. Ollama may need restart to use new token."}
+        
+        try:
+            from kubernetes import client, config as k8s_config
+            import base64
+            
+            try:
+                k8s_config.load_incluster_config()
+            except:
+                k8s_config.load_kube_config()
+            
+            core_v1 = client.CoreV1Api()
+            namespace = os.getenv("NAMESPACE", "llmapi")
+            
+            # Update hf-token secret
+            secret = core_v1.read_namespaced_secret("hf-token", namespace)
+            secret.data["token"] = base64.b64encode(hf_token.encode()).decode()
+            core_v1.replace_namespaced_secret("hf-token", namespace, secret)
+            
+            # Also store in Redis for UI display
+            await redis_client.client.set("config:hf_token", hf_token)
+            
+            logger.info("HuggingFace token updated successfully")
+            return {"status": "saved", "message": "HuggingFace token updated. Restart vLLM pods to use new token."}
+            
+        except ImportError:
+            # Fallback to Redis only if Kubernetes client not available
+            await redis_client.client.set("config:hf_token", hf_token)
+            return {"status": "saved", "note": "Token saved to Redis only. Kubernetes secret update requires manual action."}
+        except Exception as e:
+            logger.error(f"Failed to update HF token: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
     
     return {"status": "no changes"}
 

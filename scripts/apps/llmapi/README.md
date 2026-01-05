@@ -32,12 +32,43 @@ sudo ./scripts/apps/llmapi/install-llmapi.sh
 # 4. Public access configuration
 ```
 
-**Model Download Behavior:**
-- Init containers use `huggingface_hub` with `hf_transfer` (up to 500 MB/s)
-- Models persist on node hostPath at `/var/lib/llmapi/models/vllm/`
-- Directory structure: `models--Org--ModelName/snapshots/...` (HuggingFace cache format)
-- Startup time: ~3-5 min first run, ~30 sec subsequent restarts (cached)
-- Models are shared across pods via hostPath mount
+Installation takes ~5-10 minutes:
+- Deploys API Gateway, Redis, and backend pods
+- Models download automatically on first pod startup
+- vLLM: ~3-5 min | llama.cpp: ~5-10 min | Embedding: ~1 min
+
+### Step 2: Access the API
+
+```bash
+# Get API Gateway endpoint
+kubectl get svc -n llmapi llmapi-gateway
+
+# Test with curl
+curl http://<gateway-ip>:8000/v1/models \
+  -H "Authorization: Bearer <your-api-key>"
+```
+
+## Automatic Model Downloads
+
+Models download automatically via init containers on **first pod startup only**. All models persist in hostPath volumes and are reused across pod restarts and reinstalls.
+
+### vLLM Models (GPU Inference)
+- **Location**: `/var/lib/llmapi/models/vllm/`
+- **Format**: HuggingFace cache structure (`models--Org--ModelName/snapshots/<hash>/`)
+- **Download**: Uses `huggingface_hub` with `hf_transfer` for parallel downloads (~3-5 min)
+- **Example**: `models--Qwen--Qwen2.5-14B-Instruct-AWQ/snapshots/abc123/`
+
+### llama.cpp Models (CPU Inference)
+- **Location**: `/var/lib/llmapi/models/llamacpp/`
+- **Format**: Single GGUF file per model
+- **Download**: Uses `aria2c` or `wget` from HuggingFace URLs (~5-10 min for 70B)
+- **Example**: `Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf`
+
+### Embedding Models
+- **Location**: `/var/lib/llmapi/models/embedding/`
+- **Format**: Single GGUF file per model
+- **Download**: Uses `aria2c` or `wget` (~1 min)
+- **Example**: `nomic-embed-text-v1.5.Q8_0.gguf`
 
 **Model Directory Standards (by backend):**
 

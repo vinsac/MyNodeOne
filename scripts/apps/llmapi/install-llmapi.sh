@@ -196,47 +196,6 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
     echo ""
     if [[ -z "$PRE_DOWNLOADED_VLLM" ]] && [[ -z "$PRE_DOWNLOADED_LLAMACPP" ]] && [[ -z "$PRE_DOWNLOADED_EMBEDDING" ]]; then
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${YELLOW}⚠️  No Models Pre-Downloaded${NC}"
-        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        echo "LLM models are large (10-50GB) and downloading them during"
-        echo "installation can be slow and may cause pod timeouts."
-    else
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${BLUE}  Model Download Options${NC}"
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        echo "Found some models, but you may want to download additional ones:"
-        if [[ -n "$PRE_DOWNLOADED_VLLM" ]]; then
-            echo "  ✅ GPU models (vLLM) - available"
-        else
-            echo "  ❌ GPU models (vLLM) - missing"
-        fi
-        if [[ -n "$PRE_DOWNLOADED_LLAMACPP" ]]; then
-            echo "  ✅ CPU models (llama.cpp) - available"  
-        else
-            echo "  ❌ CPU models (llama.cpp) - missing"
-        fi
-        if [[ -n "$PRE_DOWNLOADED_EMBEDDING" ]]; then
-            echo "  ✅ Embedding models - available"
-        else
-            echo "  ❌ Embedding models - missing"
-        fi
-    fi
-    echo ""
-    echo "Pre-downloading benefits:"
-    echo "  • Uses aria2c with 16 parallel connections (5-10x faster)"
-    echo "  • Models persist in /var/lib/llmapi/models/ across reinstalls"
-    echo "  • Can resume interrupted downloads"
-    echo "  • Download different model sizes/quantizations"
-    echo ""
-    echo "ℹ️  Models will be downloaded automatically by init containers:"
-    echo "  • vLLM will download on first pod startup (~3-5 min with hf_transfer)"
-    echo "  • Models persist in HuggingFace cache format at /var/lib/llmapi/models/vllm/"
-    echo "  • Subsequent restarts use cached models (~30 sec startup)"
-    echo ""
-    fi
-    echo ""
 
 # =============================================================================
 # Check for Existing Installation and Cached Models

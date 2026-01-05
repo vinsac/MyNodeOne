@@ -230,45 +230,11 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
     echo "  • Can resume interrupted downloads"
     echo "  • Download different model sizes/quantizations"
     echo ""
-    echo "Options:"
-    echo "  1) Download additional models (recommended)"
-    echo "  2) Continue with current models"
-    echo "  3) Exit and download manually"
+    echo "ℹ️  Models will be downloaded automatically by init containers:"
+    echo "  • vLLM will download on first pod startup (~3-5 min with hf_transfer)"
+    echo "  • Models persist in HuggingFace cache format at /var/lib/llmapi/models/vllm/"
+    echo "  • Subsequent restarts use cached models (~30 sec startup)"
     echo ""
-    read -p "Choose an option [1/2/3]: " download_choice
-        case "$download_choice" in
-            1)
-                echo ""
-                echo "🚀 Launching model download manager..."
-                echo ""
-                sudo "$SCRIPT_DIR/download-models.sh"
-                # Re-check for downloaded models
-                if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
-                    for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
-                        [[ -d "$model_dir" ]] && PRE_DOWNLOADED_VLLM="$model_dir"
-                    done
-                fi
-                if [[ -d "$PRE_DOWNLOAD_DIR/llamacpp" ]]; then
-                    for gguf_file in "$PRE_DOWNLOAD_DIR/llamacpp"/*.gguf; do
-                        [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_LLAMACPP="$gguf_file"
-                    done
-                fi
-                if [[ -d "$PRE_DOWNLOAD_DIR/embedding" ]]; then
-                    for gguf_file in "$PRE_DOWNLOAD_DIR/embedding"/*.gguf; do
-                        [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_EMBEDDING="$gguf_file"
-                    done
-                fi
-                echo ""
-                echo "Continuing with installation..."
-                ;;
-            2)
-                echo ""
-                echo -e "${YELLOW}⚠️  Continuing without pre-downloaded models.${NC}"
-                echo "   Models will be downloaded by pods during startup (slower)."
-                echo ""
-                ;;
-            3)
-    esac
     fi
     echo ""
 
@@ -1274,8 +1240,8 @@ EOF
         sudo mkdir -p /var/lib/llmapi/models/vllm 2>/dev/null || true
         echo ""
         echo "   💡 No pre-downloaded models provided"
-        echo "   💡 vLLM will download from HuggingFace on first start (~5-10 min)"
-        echo "   💡 To use pre-download: ./scripts/apps/llmapi/download-models.sh"
+        echo "   💡 vLLM will download from HuggingFace on first start (~3-5 min)"
+        echo "   💡 Models persist in HuggingFace cache format at hostPath"
     fi
 else
     echo "⏭️  Skipping vLLM (no GPU or not selected)"

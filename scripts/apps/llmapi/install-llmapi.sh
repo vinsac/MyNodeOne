@@ -268,66 +268,8 @@ if [[ -d "$PRE_DOWNLOAD_DIR" ]]; then
                 echo ""
                 ;;
             3)
-                echo ""
-                echo "To download models manually, run:"
-                echo "  sudo $SCRIPT_DIR/download-models.sh"
-                echo ""
-                echo "Then re-run this installation script."
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}Invalid option. Exiting.${NC}"
-                exit 1
-                ;;
-        esac
-    fi
-    echo ""
-    case "$download_choice" in
-        1)
-            echo ""
-            echo "🚀 Launching model download manager..."
-            echo ""
-            # Create the directory first
-            sudo mkdir -p "$PRE_DOWNLOAD_DIR"
-            sudo "$SCRIPT_DIR/download-models.sh"
-            # Re-check for downloaded models
-            if [[ -d "$PRE_DOWNLOAD_DIR/vllm" ]] && [[ -n "$(ls -A "$PRE_DOWNLOAD_DIR/vllm" 2>/dev/null)" ]]; then
-                for model_dir in "$PRE_DOWNLOAD_DIR/vllm"/*/; do
-                    [[ -d "$model_dir" ]] && PRE_DOWNLOADED_VLLM="$model_dir"
-                done
-            fi
-            if [[ -d "$PRE_DOWNLOAD_DIR/llamacpp" ]]; then
-                for gguf_file in "$PRE_DOWNLOAD_DIR/llamacpp"/*.gguf; do
-                    [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_LLAMACPP="$gguf_file"
-                done
-            fi
-            if [[ -d "$PRE_DOWNLOAD_DIR/embedding" ]]; then
-                for gguf_file in "$PRE_DOWNLOAD_DIR/embedding"/*.gguf; do
-                    [[ -f "$gguf_file" ]] && PRE_DOWNLOADED_EMBEDDING="$gguf_file"
-                done
-            fi
-            echo ""
-            echo "Continuing with installation..."
-            ;;
-        2)
-            echo ""
-            echo -e "${YELLOW}⚠️  Continuing without pre-downloaded models.${NC}"
-            echo "   Models will be downloaded by pods during startup (slower)."
-            echo ""
-            ;;
-        3)
-            echo ""
-            echo "To download models manually, run:"
-            echo "  sudo $SCRIPT_DIR/download-models.sh"
-            echo ""
-            echo "Then re-run this installation script."
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}Invalid option. Exiting.${NC}"
-            exit 1
-            ;;
     esac
+    fi
     echo ""
 
 # =============================================================================

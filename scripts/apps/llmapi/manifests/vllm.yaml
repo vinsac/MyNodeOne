@@ -239,6 +239,12 @@ spec:
           value: "/models"
         - name: TRANSFORMERS_CACHE
           value: "/models"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+              optional: true
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:

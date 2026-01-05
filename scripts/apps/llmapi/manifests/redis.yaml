@@ -43,10 +43,14 @@ spec:
           name: redis
         command:
         - redis-server
-        - --save
-        - ""
         - --appendonly
-        - "no"
+        - "yes"
+        - --appendfsync
+        - "everysec"
+        - --save
+        - "300 1"
+        - --dir
+        - "/data"
         - --maxmemory
         - "4gb"
         - --maxmemory-policy

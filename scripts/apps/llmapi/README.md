@@ -59,20 +59,20 @@ sudo ./scripts/apps/llmapi/install-llmapi.sh
 # 2. Public Access Configuration
 ```
 
-### Worker Node Provisioning
-
-The installer offers two strategies for getting models to worker nodes:
+**Worker Node Provisioning Strategies:**
 
 1.  **Sync from Control Plane (Recommended for LAN)**
-    *   **Pros:** Fast (uses local network), uses cached models from control plane.
-    *   **Cons:** Requires SSH access (keys must be set up).
-    *   **How it works:** Uses `rsync` to copy models from `/var/lib/llmapi/models` to workers.
-    *   **Note:** The script now supports direct LAN IP sync and auto-fixes SSH permissions.
+    *   **Pros:** Fast (uses local network), avoids duplicate downloads
+    *   **Cons:** Requires SSH access (keys must be set up)
+    *   **How it works:** Uses `rsync` to copy HuggingFace cache from control plane to workers
+    *   **Validation:** Only syncs models in correct HuggingFace format (`models--Org--ModelName`)
 
 2.  **Download from HuggingFace (Default)**
-    *   **Pros:** Simple, robust, no SSH dependency.
-    *   **Cons:** Slower (depends on internet speed), uses external bandwidth.
-    *   **How it works:** Workers independently download models from HuggingFace on startup.
+    *   **Pros:** Simple, robust, no SSH dependency
+    *   **Cons:** Slower (depends on internet speed), uses external bandwidth per node
+    *   **How it works:** Workers independently download models using `huggingface_hub`
+
+**Important:** Models must be in HuggingFace cache format. Flat directory structures are not supported.
 
 ### Step 3: API Keys
 

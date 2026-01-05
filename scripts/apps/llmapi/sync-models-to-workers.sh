@@ -225,13 +225,36 @@ sync_to_worker() {
     fi
     echo ""
     
-    # Sync vLLM models
+    # Sync vLLM models (only HuggingFace cache format)
     if [[ -d "$SOURCE_DIR/vllm" ]]; then
+        # Validate models are in HuggingFace format before syncing
+        local hf_model_count=$(find "$SOURCE_DIR/vllm" -maxdepth 1 -type d -name "models--*" 2>/dev/null | wc -l)
+        
+        if [[ $hf_model_count -eq 0 ]]; then
+            warn "No HuggingFace-format models found in $SOURCE_DIR/vllm"
+            info "Expected directory structure: models--Org--ModelName/snapshots/..."
+            info "Flat directory structures are no longer supported."
+            info "Models will be downloaded directly by init containers in HuggingFace format."
+            return 1
+        fi
+        
+        info "Found $hf_model_count HuggingFace-format model(s)"
+        
+        # List models being synced
+        for model_dir in "$SOURCE_DIR/vllm"/models--*/; do
+            if [[ -d "$model_dir" ]]; then
+                local model_name=$(basename "$model_dir")
+                local model_size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
+                info "  • $model_name ($model_size)"
+            fi
+        done
+        
         local vllm_size=$(du -sh "$SOURCE_DIR/vllm" 2>/dev/null | cut -f1)
         local vllm_files=$(find "$SOURCE_DIR/vllm" -type f | wc -l)
+        echo ""
         info "Syncing vLLM models:"
-        info "  Size: $vllm_size"
-        info "  Files: $vllm_files"
+        info "  Total Size: $vllm_size"
+        info "  Total Files: $vllm_files"
         info "  Source: $SOURCE_DIR/vllm/"
         info "  Destination: ${ssh_user}@${node_ip}:${DEST_DIR}/vllm/"
         info "This may take several minutes depending on model size and network speed..."

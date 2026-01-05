@@ -43,8 +43,10 @@ spec:
           name: redis
         command:
         - redis-server
+        - --save
+        - ""
         - --appendonly
-        - "yes"
+        - "no"
         - --maxmemory
         - "4gb"
         - --maxmemory-policy

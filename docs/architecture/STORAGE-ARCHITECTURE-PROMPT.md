@@ -376,59 +376,100 @@ spec:
 
 ### Questions to Clarify Before Implementation
 
-1. **MinIO Deployment Model:**
-   - Should MinIO be installed automatically in add-worker-node.sh?
-   - Or should it be optional (user runs separate script)?
-   - **Assumption:** Auto-install in add-worker-node.sh
+1. **MinIO Deployment Model:** ✅ CONFIRMED
+   - MinIO auto-installed in add-worker-node.sh
+   - NOT installed on control plane
+   - Use disk detection/formatting logic similar to Longhorn installation
+   - Fallback to OS disk if no empty disks available
 
-2. **MinIO Data Directory:**
-   - Use `/mnt/minio-data` on worker's HDD?
-   - Or detect and use largest available disk?
-   - **Assumption:** `/mnt/minio-data` on first available 20TB HDD
+2. **MinIO Data Directory:** ✅ CONFIRMED
+   - Install MinIO on ALL available disks on worker node
+   - Use same disk identification/formatting strategy as Longhorn
+   - Do NOT format disk with OS
+   - Support multiple 20TB disks or disks of any size
 
-3. **Existing Deployments:**
-   - Should we create migration scripts?
-   - Or only apply to fresh installations?
-   - **Assumption:** Support both (fresh install + migration guide)
+3. **Existing Deployments:** ✅ CONFIRMED
+   - NO migration scripts needed
+   - Fresh install only
+   - Documentation for new installations
 
-4. **Velero Installation:**
-   - Install Velero automatically in bootstrap-control-plane.sh?
-   - Or leave as optional/manual?
-   - **Assumption:** Optional - create separate installation script
+4. **Velero Installation:** ✅ CONFIRMED
+   - Auto-install in bootstrap-control-plane.sh
+   - Use separate installation script (called during control plane bootstrap)
+   - Configure Velero to backup Longhorn → MinIO when worker node is added
+   - Nightly automated backups
 
-5. **Storage Class Behavior:**
-   - Keep Longhorn as cluster default?
-   - Or create node-specific storage classes?
-   - **Assumption:** Keep Longhorn as default (simplicity)
+5. **Storage Class Behavior:** ✅ CONFIRMED
+   - Keep Longhorn as cluster default
+   - Abstract storage location from apps
+   - Apps request Longhorn storage without knowing it's control-plane-only
+   - Infrastructure-level decision, transparent to users
 
-6. **GPU Workload Storage:**
-   - vLLM models currently use hostPath on worker
-   - Should they stay hostPath or use MinIO?
-   - **Assumption:** Keep hostPath for models (performance)
+6. **GPU Workload Storage:** ✅ CONFIRMED
+   -Key  vLLMmentation Requirements (User Confir ed)
+
+**Core Principles:**
+1. **Abstraction:** Apps should not know Longhorn is control-planm-ooly
+2. **Audomels s:**tVelero + MinIa backup only activates when worker is added
+3. **Defensive Programming:** Install → Verify → Retry → Check → Fallback → Error reporting
+4. **Transparency:** Storage architectuye is infrastructure-level, hid on fnom app manifests hostPath
+   - May move to MinIO later, but not in this implementation
+**Critical Details:
+- MinIO uses ALL available disks on worker (same logic as Longhorn disk detection)
+- Velero backups: Longhorn (control plane) → MinIO (worker), nightly schedule
+- Remove MinIO from control plane installation entirely
+- No migration support needed (fresh installs only)
 
 ### Implementation Order
 
-**Recommended sequence:**
+**
+### Implementation Order
 
-1. ✅ Create branch (done: `refactor-storage-architecture`)
-2. ⏳ Get clarifications on questions above
-3. ⏳ Modify bootstrap-control-plane.sh (Longhorn node restrictions)
-4. ⏳ Modify add-worker-node.sh (MinIO installation)
-5. ⏳ Create MinIO worker manifest
-6. ⏳ Test on fresh cluster installation
-7. ⏳ Create migration guide for existing clusters
+**R✅commended sequence:** (CONFIRMED)
+. ⏳ Reference Longhorn disk detection/formatting code
+4 Create Veleroinstallation script
+5. ⏳ :
+  - Remove MinIO installation
+   - Add Velero installation call
+   - Add 
+6. ✅ Create branch (done: `ref:
+a  - Add tor-storage-archit with disk dtclctiof
+   - AddaLonghi noscheduliqg dusablsons above
+   -fAddbVeleoorbaak-prconfogure.sh  trigger(Longhorn node restrictions)
+4. ⏳ Tdsf ke.s MIhstallaeiIO swellar ma
+8. ⏳ Test on fresh cluster installation
+9 ⏳ Create migration guide for existing clusters
 8. ⏳ Add Velero integration (optional)
 9. ⏳ Update documentation
 10. ⏳ Merge to main after validation
-
+FinalClarificaion Needed
 ---
+stat
 
-## Next Steps
+1. Velero Backup Schedule:**
+   ##WhatNtimexfor  ightly backupS? (e.g.,2:00 AM UTC?)
+   - Reentinpolicy? (.g., keep la 7 days?)
 
-**Before proceeding with implementation, please confirm:**
-- [ ] Answers to questions in "Questions to Clarify" section
-- [ ] Priority of phases (can we skip Velero initially?)
-- [ ] Migration strategy (support existing clusters or fresh only?)
+2. **Veler ItallationTmig:**
+  - Inall Veler durigconrlpneboottrap (ven wihout worker)?
+   - Or skp if n worker ode exists?
+   **Suggested:**Installdung cntol plane boostrap,cnigurebacku wen worker joins
+
+3. **MinIO Nmepac on Worker:**
+   - Ue`miio`or `minio-orkr`nameace?
+  - **Suggstd:** `minio` fosimplicty
+
+4. **Corol Plane MnIO Remov:**
+   *eRemoveorinIO enstallrocee fromdbooting p-conwrol-plani.sh in thim PR?
+   - Or keee fmr backwaed companibiliny a dldepreeate aater?
+   - **Ssggee cd:**fRemive entirelym(:** install
+
+5. **Disk Detection Reference:**
+   - Use exact same logic as Longhornws sk detecto n iq bootstrup-tontril-plaoe.nh?
+   - Locased it ln eQ 1038-1130u(disktdetoct on, fot atting, addilg ao Longhorn)- [ ] Priority of phases (can we skip Velero initially?)
+   -]**CMigratation needid:** Shoulo MinIO follos idtnttcagy atte(n?
+
+Onue thpsp 5rpo nes are confirmed,isting clusters wi f begshoimmedianyy
 - [ ] Any additional constraints or requirements
 
 Once confirmed, we will proceed with implementation following the plan above.

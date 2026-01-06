@@ -354,6 +354,113 @@ setup_gpu() {
     fi
 }
 
+disable_longhorn_on_worker() {
+    log_info "Configuring Longhorn to use control plane only..."
+    
+    # Wait for Longhorn to be ready
+    log_info "Waiting for Longhorn to initialize on control plane..."
+    sleep 10
+    
+    # Get this worker node's name
+    local WORKER_NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    
+    if [ -z "$WORKER_NODE_NAME" ]; then
+        log_warn "Could not detect worker node name, skipping Longhorn configuration"
+        return 0
+    fi
+    
+    log_info "Worker node name: $WORKER_NODE_NAME"
+    
+    # Wait for Longhorn node CRD to be created
+    local max_attempts=30
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if kubectl get nodes.longhorn.io "$WORKER_NODE_NAME" -n longhorn-system &> /dev/null; then
+            log_success "Longhorn node CRD found"
+            break
+        fi
+        
+        if [ $attempt -eq $max_attempts ]; then
+            log_warn "Longhorn node CRD not found after ${max_attempts} attempts"
+            log_warn "Longhorn may not be installed or not ready yet"
+            return 0
+        fi
+        
+        log_info "Waiting for Longhorn node CRD... (attempt $attempt/$max_attempts)"
+        sleep 5
+        attempt=$((attempt + 1))
+    done
+    
+    # Disable scheduling on this worker node
+    log_info "Disabling Longhorn scheduling on worker node..."
+    
+    if kubectl -n longhorn-system patch nodes.longhorn.io "$WORKER_NODE_NAME" \
+        --type=merge -p '{"spec":{"allowScheduling":false}}' 2>&1; then
+        log_success "Longhorn scheduling disabled on worker node"
+        log_info "Longhorn will only use control plane for storage"
+    else
+        log_warn "Could not disable Longhorn scheduling on worker"
+        log_warn "You can do this manually via Longhorn UI or:"
+        log_warn "  kubectl -n longhorn-system patch nodes.longhorn.io $WORKER_NODE_NAME --type=merge -p '{\"spec\":{\"allowScheduling\":false}}'"
+    fi
+}
+
+install_minio_worker() {
+    log_info "Installing MinIO object storage on worker node..."
+    
+    # Call modular MinIO worker installation script
+    if [ -f "$SCRIPT_DIR/storage/install-minio-worker.sh" ]; then
+        if bash "$SCRIPT_DIR/storage/install-minio-worker.sh"; then
+            log_success "MinIO installed successfully on worker node"
+        else
+            log_error "MinIO installation failed"
+            log_warn "Object storage will not be available"
+            log_warn "You can install manually later:"
+            log_warn "  sudo $SCRIPT_DIR/storage/install-minio-worker.sh"
+        fi
+    else
+        log_error "MinIO installation script not found: $SCRIPT_DIR/storage/install-minio-worker.sh"
+        log_warn "Skipping MinIO installation"
+    fi
+}
+
+configure_velero_backup() {
+    log_info "Configuring Velero backup to use MinIO..."
+    
+    # Check if Velero is installed
+    if ! kubectl get deployment velero -n velero &> /dev/null; then
+        log_warn "Velero not found on control plane"
+        log_warn "Backups will not be configured"
+        log_warn "Install Velero on control plane first"
+        return 0
+    fi
+    
+    # Check if MinIO is running
+    if ! kubectl get svc minio -n minio &> /dev/null; then
+        log_warn "MinIO not found, skipping Velero backup configuration"
+        log_warn "Run this after MinIO is installed:"
+        log_warn "  sudo $SCRIPT_DIR/storage/configure-velero-backup.sh"
+        return 0
+    fi
+    
+    # Call modular Velero backup configuration script
+    if [ -f "$SCRIPT_DIR/storage/configure-velero-backup.sh" ]; then
+        if bash "$SCRIPT_DIR/storage/configure-velero-backup.sh"; then
+            log_success "Velero backup configured successfully"
+            log_info "Nightly backups scheduled: 2:00 AM UTC"
+            log_info "Retention: 6 months"
+        else
+            log_error "Velero backup configuration failed"
+            log_warn "You can configure manually later:"
+            log_warn "  sudo $SCRIPT_DIR/storage/configure-velero-backup.sh"
+        fi
+    else
+        log_error "Velero backup configuration script not found: $SCRIPT_DIR/storage/configure-velero-backup.sh"
+        log_warn "Skipping Velero backup configuration"
+    fi
+}
+
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MyNodeOne Worker Node Addition"
@@ -372,6 +479,9 @@ main() {
     join_cluster
     setup_model_directories  # Create model storage for LLM API
     label_node
+    disable_longhorn_on_worker  # Configure Longhorn to use control plane only
+    install_minio_worker  # Install MinIO on worker with local disks
+    configure_velero_backup  # Configure Velero to backup to MinIO
     install_node_agent
     
     # Run validation tests

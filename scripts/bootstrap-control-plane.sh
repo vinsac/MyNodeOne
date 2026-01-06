@@ -1275,85 +1275,30 @@ install_traefik() {
     log_success "Traefik installed"
 }
 
-install_minio() {
-    log_info "Installing MinIO object storage..."
+install_velero() {
+    log_info "Installing Velero backup system..."
     
-    kubectl create namespace minio --dry-run=client -o yaml | kubectl apply -f -
-    
-    # Generate strong random credentials
-    MINIO_ROOT_USER="admin"
-    MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)
-    
-    # Create secret
-    kubectl create secret generic minio-credentials \
-        --from-literal=rootUser="$MINIO_ROOT_USER" \
-        --from-literal=rootPassword="$MINIO_ROOT_PASSWORD" \
-        --namespace minio \
-        --dry-run=client -o yaml | kubectl apply -f -
-    
-    # Install MinIO
-    log_info "Adding MinIO helm repository..."
-    retry_command 3 "helm repo add minio https://charts.min.io/ 2>&1" || true
-    timeout 60 helm repo update 2>&1 || log_warn "Helm repo update timed out, continuing..."
-    
-    # Set default storage size if not defined
-    MINIO_STORAGE_SIZE="${MINIO_STORAGE_SIZE:-100Gi}"
-    
-    log_info "Installing MinIO (this may take 2-3 minutes)..."
-    
-    # Install with safe wrapper and optimized resources for homelab
-    helm_install_safe "minio" "minio/minio" "minio" \
-        --set rootUser="$MINIO_ROOT_USER" \
-        --set rootPassword="$MINIO_ROOT_PASSWORD" \
-        --set mode=standalone \
-        --set replicas=1 \
-        --set persistence.enabled=true \
-        --set persistence.size="${MINIO_STORAGE_SIZE}" \
-        --set persistence.storageClass=longhorn \
-        --set service.type=LoadBalancer \
-        --set consoleService.type=LoadBalancer \
-        --set resources.requests.memory=1Gi \
-        --set resources.requests.cpu=200m \
-        --set resources.limits.memory=32Gi \
-        --set priorityClassName=mynodeone-infrastructure \
-    || {
-        log_error "MinIO installation had issues"
-        log_warn "This usually happens when LoadBalancer IPs can't be allocated"
-        log_warn "Possible causes:"
-        echo "  1. Tailscale subnet route not approved"
-        echo "  2. MetalLB not working properly"
-        echo "  3. Longhorn storage not ready"
-        echo
-        log_info "Checking MinIO status..."
-        kubectl get pods -n minio || true
-        kubectl get svc -n minio || true
-        echo
-        if [ "${UNATTENDED:-0}" != "1" ]; then
-            if ! prompt_confirm "Continue with installation despite MinIO issue?" "y"; then
-                log_error "Installation aborted"
-                exit 1
+    # Call modular Velero installation script
+    if [ -f "$SCRIPT_DIR/storage/install-velero.sh" ]; then
+        if bash "$SCRIPT_DIR/storage/install-velero.sh"; then
+            log_success "Velero installed successfully"
+            log_info "Backup storage will be configured when worker node joins"
+        else
+            log_error "Velero installation failed"
+            log_warn "Backups will not be available until Velero is installed"
+            
+            if [ "${UNATTENDED:-0}" != "1" ]; then
+                if ! prompt_confirm "Continue with installation despite Velero issue?" "y"; then
+                    log_error "Installation aborted"
+                    exit 1
+                fi
             fi
+            log_warn "Continuing without Velero (can be installed later)"
         fi
-        log_warn "Continuing installation, but MinIO may not be fully functional"
-    }
-    
-    # Save credentials securely
-    cat > $ACTUAL_HOME/mynodeone-minio-credentials.txt <<EOF
-MinIO Credentials
-=================
-Root User: $MINIO_ROOT_USER
-Root Password: $MINIO_ROOT_PASSWORD
-Endpoint: http://$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):9000
-Console: http://$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):9001
-
-WARNING: Store these credentials securely and delete this file after saving them elsewhere.
-EOF
-    chmod 600 $ACTUAL_HOME/mynodeone-minio-credentials.txt
-    chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-minio-credentials.txt
-    
-    log_success "MinIO installed"
-    log_warn "MinIO credentials saved to $ACTUAL_HOME/mynodeone-minio-credentials.txt (chmod 600)"
-    log_warn "IMPORTANT: Save these credentials securely and delete the file!"
+    else
+        log_error "Velero installation script not found: $SCRIPT_DIR/storage/install-velero.sh"
+        log_warn "Skipping Velero installation"
+    fi
 }
 
 install_monitoring() {
@@ -1688,13 +1633,8 @@ initialize_service_registries() {
             log_warn "Could not register ArgoCD (will retry later)"
     fi
     
-    # Register MinIO Console
-    if kubectl get svc -n minio minio-console &>/dev/null; then
-        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
-            "minio-console" "minio" "minio" \
-            "minio-console" "9001" "false" 2>/dev/null || \
-            log_warn "Could not register MinIO (will retry later)"
-    fi
+    # MinIO is now installed on worker node (not control plane)
+    # Registration will happen when worker joins
     
     # Register Longhorn (if LoadBalancer type)
     if kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.spec.type}' 2>/dev/null | grep -q "LoadBalancer"; then
@@ -1823,7 +1763,6 @@ display_credentials() {
     DASHBOARD_IP=$(kubectl get svc -n mynodeone-dashboard dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-    MINIO_CONSOLE_IP=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     
     # Longhorn uses NodePort by default, so get the LoadBalancer IP or fall back to node IP:port
     LONGHORN_LB_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
@@ -1856,12 +1795,10 @@ display_credentials() {
     fi
     echo
     
-    echo "💾 MINIO (S3 Storage):"
-    echo "   Console: http://$MINIO_CONSOLE_IP:9001 (also http://minio.${CLUSTER_DOMAIN}.local:9001)"
-    echo "   Note: Port 9001 is MinIO's web console (9000 is for S3 API)"
-    if [ -f $ACTUAL_HOME/mynodeone-minio-credentials.txt ]; then
-        cat $ACTUAL_HOME/mynodeone-minio-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
-    fi
+    echo "💾 VELERO (Backup System):"
+    echo "   Status: Installed (backup storage configured when worker joins)"
+    echo "   Backups: Nightly at 2:00 AM UTC → MinIO on worker node"
+    echo "   Retention: 6 months"
     echo
     
     echo "📦 LONGHORN (Storage Dashboard):"
@@ -1940,10 +1877,7 @@ delete_credential_files() {
         files_deleted=$((files_deleted + 1))
     fi
     
-    if [ -f $ACTUAL_HOME/mynodeone-minio-credentials.txt ]; then
-        shred -vfz -n 3 $ACTUAL_HOME/mynodeone-minio-credentials.txt 2>/dev/null || rm -f $ACTUAL_HOME/mynodeone-minio-credentials.txt
-        files_deleted=$((files_deleted + 1))
-    fi
+    # MinIO credentials now saved on worker node (not control plane)
     
     if [ -f $ACTUAL_HOME/mynodeone-grafana-credentials.txt ]; then
         shred -vfz -n 3 $ACTUAL_HOME/mynodeone-grafana-credentials.txt 2>/dev/null || rm -f $ACTUAL_HOME/mynodeone-grafana-credentials.txt
@@ -2064,9 +1998,10 @@ print_summary() {
     echo "      URL: https://$ARGOCD_IP"
     echo "      Credentials: cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt"
     echo
-    echo "   💾 MinIO Console (S3 Storage):"
-    echo "      URL: http://$MINIO_CONSOLE_IP:9001"
-    echo "      Credentials: cat $ACTUAL_HOME/mynodeone-minio-credentials.txt"
+    echo "   💾 Velero Backups:"
+    echo "      Status: Installed (configure after adding worker node)"
+    echo "      Schedule: Nightly at 2:00 AM UTC"
+    echo "      Storage: MinIO on worker node"
     echo
     echo "   📦 Longhorn UI (Block Storage):"
     echo "      URL: $LONGHORN_URL"
@@ -2503,7 +2438,7 @@ main() {
     configure_tailscale_subnet_routes
     install_traefik
     install_longhorn
-    install_minio
+    install_velero
     install_monitoring
     install_argocd
     deploy_dashboard

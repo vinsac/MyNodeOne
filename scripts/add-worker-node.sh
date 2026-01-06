@@ -410,17 +410,17 @@ install_minio_worker() {
     log_info "Installing MinIO object storage on worker node..."
     
     # Call modular MinIO worker installation script
-    if [ -f "$SCRIPT_DIR/storage/install-minio-worker.sh" ]; then
-        if bash "$SCRIPT_DIR/storage/install-minio-worker.sh"; then
+    if [ -f "$SCRIPT_DIR/storage/minio/install-worker.sh" ]; then
+        if bash "$SCRIPT_DIR/storage/minio/install-worker.sh"; then
             log_success "MinIO installed successfully on worker node"
         else
             log_error "MinIO installation failed"
             log_warn "Object storage will not be available"
             log_warn "You can install manually later:"
-            log_warn "  sudo $SCRIPT_DIR/storage/install-minio-worker.sh"
+            log_warn "  sudo $SCRIPT_DIR/storage/minio/install-worker.sh"
         fi
     else
-        log_error "MinIO installation script not found: $SCRIPT_DIR/storage/install-minio-worker.sh"
+        log_error "MinIO installation script not found: $SCRIPT_DIR/storage/minio/install-worker.sh"
         log_warn "Skipping MinIO installation"
     fi
 }
@@ -440,23 +440,23 @@ configure_velero_backup() {
     if ! kubectl get svc minio -n minio &> /dev/null; then
         log_warn "MinIO not found, skipping Velero backup configuration"
         log_warn "Run this after MinIO is installed:"
-        log_warn "  sudo $SCRIPT_DIR/storage/configure-velero-backup.sh"
+        log_warn "  sudo $SCRIPT_DIR/storage/velero/configure-backup.sh"
         return 0
     fi
     
     # Call modular Velero backup configuration script
-    if [ -f "$SCRIPT_DIR/storage/configure-velero-backup.sh" ]; then
-        if bash "$SCRIPT_DIR/storage/configure-velero-backup.sh"; then
+    if [ -f "$SCRIPT_DIR/storage/velero/configure-backup.sh" ]; then
+        if bash "$SCRIPT_DIR/storage/velero/configure-backup.sh"; then
             log_success "Velero backup configured successfully"
             log_info "Nightly backups scheduled: 2:00 AM UTC"
             log_info "Retention: 6 months"
         else
             log_error "Velero backup configuration failed"
             log_warn "You can configure manually later:"
-            log_warn "  sudo $SCRIPT_DIR/storage/configure-velero-backup.sh"
+            log_warn "  sudo $SCRIPT_DIR/storage/velero/configure-backup.sh"
         fi
     else
-        log_error "Velero backup configuration script not found: $SCRIPT_DIR/storage/configure-velero-backup.sh"
+        log_error "Velero backup configuration script not found: $SCRIPT_DIR/storage/velero/configure-backup.sh"
         log_warn "Skipping Velero backup configuration"
     fi
 }

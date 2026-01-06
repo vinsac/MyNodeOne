@@ -1279,8 +1279,8 @@ install_velero() {
     log_info "Installing Velero backup system..."
     
     # Call modular Velero installation script
-    if [ -f "$SCRIPT_DIR/storage/install-velero.sh" ]; then
-        if bash "$SCRIPT_DIR/storage/install-velero.sh"; then
+    if [ -f "$SCRIPT_DIR/storage/velero/install.sh" ]; then
+        if bash "$SCRIPT_DIR/storage/velero/install.sh"; then
             log_success "Velero installed successfully"
             log_info "Backup storage will be configured when worker node joins"
         else

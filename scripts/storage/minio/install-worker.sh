@@ -27,6 +27,26 @@ MINIO_GROUP="minio"
 MINIO_UID=1000
 MINIO_GID=1000
 
+# Detect actual user on THIS machine (not remote caller)
+detect_actual_user() {
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        # Check if SUDO_USER exists on THIS system
+        if getent passwd "$SUDO_USER" &>/dev/null; then
+            ACTUAL_USER="$SUDO_USER"
+            ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        else
+            # SUDO_USER doesn't exist here (remote caller), use current system user
+            ACTUAL_USER=$(whoami)
+            ACTUAL_HOME="$HOME"
+        fi
+    else
+        ACTUAL_USER=$(whoami)
+        ACTUAL_HOME="$HOME"
+    fi
+    export ACTUAL_USER
+    export ACTUAL_HOME
+}
+
 # Helper functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -131,6 +151,38 @@ detect_available_disks() {
     fi
 }
 
+ensure_minio_user() {
+    log_info "Ensuring MinIO user and group exist..."
+    
+    # Check/create group
+    if ! getent group "$MINIO_GROUP" &>/dev/null; then
+        log_info "Creating minio group (GID: $MINIO_GID)..."
+        if groupadd -g $MINIO_GID "$MINIO_GROUP" 2>/dev/null; then
+            log_success "MinIO group created"
+        else
+            log_warn "Could not create group with GID $MINIO_GID, using existing GID"
+            # Group might exist with different GID, that's OK
+        fi
+    else
+        log_info "MinIO group already exists"
+    fi
+    
+    # Check/create user
+    if ! getent passwd "$MINIO_USER" &>/dev/null; then
+        log_info "Creating minio user (UID: $MINIO_UID)..."
+        if useradd -u $MINIO_UID -g $MINIO_GID -s /bin/false -d /nonexistent -M "$MINIO_USER" 2>/dev/null; then
+            log_success "MinIO user created"
+        else
+            log_warn "Could not create user with UID $MINIO_UID, using existing UID"
+            # User might exist with different UID, that's OK
+        fi
+    else
+        log_info "MinIO user already exists"
+    fi
+    
+    return 0
+}
+
 prepare_minio_directories() {
     log_info "Preparing MinIO data directories..."
     
@@ -147,8 +199,8 @@ prepare_minio_directories() {
             return 1
         fi
         
-        # Set ownership
-        if ! chown -R ${MINIO_UID}:${MINIO_GID} "$MINIO_DATA_DIR"; then
+        # Set ownership (use user:group names, not UID:GID)
+        if ! chown -R ${MINIO_USER}:${MINIO_GROUP} "$MINIO_DATA_DIR"; then
             log_error "Failed to set ownership on: $MINIO_DATA_DIR"
             return 1
         fi
@@ -416,8 +468,8 @@ verify_minio_installation() {
 save_credentials() {
     log_info "Saving MinIO credentials..."
     
-    local ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-    local ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" 2>/dev/null | cut -d: -f6 || echo "$HOME")
+    # Detect actual user on this machine
+    detect_actual_user
     
     # Get MinIO endpoint
     local MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
@@ -460,6 +512,11 @@ main() {
     
     if ! detect_available_disks; then
         log_error "Disk detection failed"
+        exit 1
+    fi
+    
+    if ! ensure_minio_user; then
+        log_error "MinIO user/group setup failed"
         exit 1
     fi
     

@@ -473,3 +473,148 @@ Onue thpsp 5rpo nes are confirmed,isting clusters wi f begshoimmedianyy
 - [ ] Any additional constraints or requirements
 
 Once confirmed, we will proceed with implementation following the plan above.
+
+---
+
+## IMPLEMENTATION STATUS 
+
+**Implementation Completed:** January 6, 2026
+
+### What Was Implemented
+
+**1. Modular Storage Scripts** (`scripts/storage/`)
+- `install-velero.sh` - Velero installation during control plane bootstrap
+- `install-minio-worker.sh` - MinIO worker installation with disk detection
+- `configure-velero-backup.sh` - Velero backup configuration
+
+**2. Bootstrap Control Plane Changes** (`scripts/bootstrap-control-plane.sh`)
+- Removed `install_minio()` function
+- Added `install_velero()` function
+- Updated bootstrap sequence: `install_velero` replaces `install_minio`
+- Removed MinIO service registration
+- Updated summary display to show Velero status
+- Removed MinIO credentials from cleanup and display
+
+**3. Worker Node Changes** (`scripts/add-worker-node.sh`)
+- Added `disable_longhorn_on_worker()` - Disables Longhorn scheduling on worker
+- Added `install_minio_worker()` - Installs MinIO with local disk detection
+- Added `configure_velero_backup()` - Configures Velero backup to MinIO
+- Updated main() sequence to call new functions after node joins
+
+### Architecture Achieved
+
+```
+Control Plane Node:
+├── Longhorn (Block Storage)
+│   ├── Single-node operation (replica=1)
+│   ├── Uses all available disks on control plane
+│   ├── Default storage class for PVCs
+│   └── Scheduling disabled on worker node
+├── Velero (Backup System)
+│   ├── Installed during bootstrap
+│   ├── Backup storage configured when worker joins
+│   └── Nightly backups: 2:00 AM UTC, 6-month retention
+└── Applications using Longhorn PVCs
+    └── Transparent to apps (abstracted)
+
+Worker Node:
+├── MinIO (Object Storage)
+│   ├── Uses ALL available disks (same detection as Longhorn)
+│   ├── Fallback to /var/lib/minio if no dedicated disks
+│   ├── Credentials saved to ~/mynodeone-minio-worker-credentials.txt
+│   └── Serves as Velero backup target
+├── Longhorn (Disabled)
+│   └── allowScheduling=false
+└── GPU Workloads
+    └── vLLM models on hostPath (unchanged)
+
+Backup Flow:
+Control Plane (Longhorn PVCs) → Velero → Worker Node (MinIO)
+```
+
+### Key Features
+
+**Defensive Programming:**
+- Install → Verify → Retry → Check → Fallback → Error reporting
+- All scripts include prerequisite checks
+- Graceful degradation if components fail
+- Clear error messages and recovery instructions
+
+**Abstraction:**
+- Apps request Longhorn storage without knowing it's control-plane-only
+- Storage architecture is infrastructure-level decision
+- No changes required to existing application manifests
+
+**Automation:**
+- Velero installed automatically during control plane bootstrap
+- MinIO installed automatically when worker joins
+- Backup configuration triggered automatically when worker joins
+- Nightly backups scheduled automatically
+
+### Testing Checklist
+
+**Control Plane Installation:**
+- [ ] Velero CLI installed
+- [ ] Velero server running
+- [ ] Longhorn installed on control plane
+- [ ] Longhorn set as default storage class
+- [ ] No MinIO on control plane
+
+**Worker Node Addition:**
+- [ ] Worker node joins cluster successfully
+- [ ] Longhorn scheduling disabled on worker
+- [ ] MinIO installed on worker with local disks
+- [ ] MinIO credentials saved
+- [ ] Velero backup storage location configured
+- [ ] Backup schedules created
+
+**Backup Verification:**
+- [ ] `velero backup-location get` shows "Available"
+- [ ] `velero schedule get` shows nightly schedules
+- [ ] Test backup: `velero backup create test-backup --wait`
+- [ ] Test restore: `velero restore create --from-backup test-backup`
+
+**Storage Verification:**
+- [ ] PVCs use Longhorn storage class
+- [ ] PVCs only scheduled on control plane
+- [ ] MinIO accessible from cluster
+- [ ] Velero can write to MinIO bucket
+
+### Files Modified
+
+**Created:**
+- `scripts/storage/install-velero.sh`
+- `scripts/storage/install-minio-worker.sh`
+- `scripts/storage/configure-velero-backup.sh`
+- `docs/architecture/STORAGE-IMPLEMENTATION.md`
+
+**Modified:**
+- `scripts/bootstrap-control-plane.sh`
+- `scripts/add-worker-node.sh`
+- `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md` (this file)
+
+### Next Steps
+
+1. **Test on Fresh Installation:**
+   - Bootstrap control plane
+   - Verify Velero installation
+   - Add worker node
+   - Verify MinIO installation
+   - Verify Velero backup configuration
+
+2. **Validate Backups:**
+   - Create test PVC
+   - Create backup
+   - Delete PVC
+   - Restore from backup
+   - Verify data integrity
+
+3. **Documentation:**
+   - Update main README with new storage architecture
+   - Document backup/restore procedures
+   - Add troubleshooting guide
+
+4. **Merge to Main:**
+   - After successful testing
+   - Update CHANGELOG
+   - Tag release

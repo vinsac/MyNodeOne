@@ -465,6 +465,35 @@ verify_minio_installation() {
     return 0
 }
 
+register_minio_services() {
+    log_info "Registering MinIO services for DNS..."
+    
+    # Source service registry functions if available
+    local REGISTRY_SCRIPT="$SCRIPT_DIR/../../lib/service-registry.sh"
+    if [ -f "$REGISTRY_SCRIPT" ]; then
+        source "$REGISTRY_SCRIPT"
+        
+        # Register MinIO Console
+        if register_service "minio-console" "minio" "minio" "minio-console" "9001" "false" 2>/dev/null; then
+            log_success "MinIO Console registered for DNS"
+        else
+            log_warn "Could not register MinIO Console (DNS may not work)"
+        fi
+        
+        # Register MinIO API
+        if register_service "minio-api" "minio-api" "minio" "minio" "9000" "false" 2>/dev/null; then
+            log_success "MinIO API registered for DNS"
+        else
+            log_warn "Could not register MinIO API (DNS may not work)"
+        fi
+    else
+        log_warn "Service registry not found, skipping DNS registration"
+        log_info "MinIO will be accessible via LoadBalancer IP only"
+    fi
+    
+    return 0
+}
+
 save_credentials() {
     log_info "Saving MinIO credentials..."
     
@@ -550,6 +579,9 @@ main() {
     fi
     
     save_credentials
+    
+    # Register MinIO services for DNS
+    register_minio_services
     
     echo
     log_success "===== MinIO Worker Installation Complete ====="

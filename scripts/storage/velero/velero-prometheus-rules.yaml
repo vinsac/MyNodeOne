@@ -1,0 +1,89 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: velero-backup-alerts
+  namespace: velero
+  labels:
+    app: velero
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: velero.backup.rules
+    interval: 5m
+    rules:
+    # Alert when backup fails
+    - alert: VeleroBackupFailed
+      expr: |
+        velero_backup_failure_total > 0
+      for: 5m
+      labels:
+        severity: critical
+        component: velero
+      annotations:
+        summary: "Velero backup failed"
+        description: "Velero backup {{ $labels.schedule }} has failed. Check velero logs for details."
+        
+    # Alert when backup is taking too long
+    - alert: VeleroBackupTakingTooLong
+      expr: |
+        velero_backup_duration_seconds{status="InProgress"} > 3600
+      for: 10m
+      labels:
+        severity: warning
+        component: velero
+      annotations:
+        summary: "Velero backup taking too long"
+        description: "Velero backup {{ $labels.schedule }} has been running for over 1 hour."
+        
+    # Alert when no successful backup in 48 hours
+    - alert: VeleroNoRecentBackup
+      expr: |
+        time() - velero_backup_last_successful_timestamp > 172800
+      for: 1h
+      labels:
+        severity: warning
+        component: velero
+      annotations:
+        summary: "No recent Velero backup"
+        description: "No successful Velero backup in the last 48 hours for schedule {{ $labels.schedule }}."
+        
+    # Alert when backup storage location is unavailable
+    - alert: VeleroBackupStorageLocationUnavailable
+      expr: |
+        velero_backup_storage_location_available == 0
+      for: 10m
+      labels:
+        severity: critical
+        component: velero
+      annotations:
+        summary: "Velero backup storage location unavailable"
+        description: "Velero backup storage location {{ $labels.location }} is unavailable. Check MinIO connectivity."
+        
+    # Alert when backup partial failure (some resources failed)
+    - alert: VeleroBackupPartialFailure
+      expr: |
+        velero_backup_partial_failure_total > 0
+      for: 5m
+      labels:
+        severity: warning
+        component: velero
+      annotations:
+        summary: "Velero backup partial failure"
+        description: "Velero backup {{ $labels.schedule }} completed with partial failures."
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: velero
+  namespace: velero
+  labels:
+    app: velero
+spec:
+  selector:
+    matchLabels:
+      component: velero
+  endpoints:
+  - port: monitoring
+    interval: 30s
+    path: /metrics

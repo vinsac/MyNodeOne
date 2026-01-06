@@ -195,6 +195,34 @@ send_alert_to_monitoring() {
     return 0
 }
 
+deploy_prometheus_monitoring() {
+    log_info "Deploying Prometheus monitoring for Velero..."
+    
+    # Check if Prometheus is installed
+    if ! kubectl get crd prometheusrules.monitoring.coreos.com &> /dev/null; then
+        log_warn "Prometheus Operator not found, skipping monitoring setup"
+        log_info "Install Prometheus to get automated backup failure alerts"
+        return 0
+    fi
+    
+    # Deploy PrometheusRule and ServiceMonitor
+    local RULES_FILE="$SCRIPT_DIR/velero-prometheus-rules.yaml"
+    
+    if [ -f "$RULES_FILE" ]; then
+        if kubectl apply -f "$RULES_FILE" 2>&1; then
+            log_success "Prometheus monitoring rules deployed"
+            log_info "Backup failure alerts will appear in Grafana automatically"
+        else
+            log_warn "Could not deploy Prometheus rules (continuing)"
+        fi
+    else
+        log_warn "Prometheus rules file not found: $RULES_FILE"
+        log_info "Backup monitoring will use Kubernetes events only"
+    fi
+    
+    return 0
+}
+
 configure_minio_quota() {
     log_info "Configuring MinIO storage quota..."
     
@@ -404,34 +432,27 @@ create_backup_schedules() {
         fi
     fi
     
-    # Schedule 3: Monthly Longhorn PVC full backup
-    log_info "Creating monthly Longhorn PVC backup schedule..."
+    # NOTE: We do NOT backup PVC data (only Kubernetes manifests)
+    # Backing up 40TB+ of Longhorn volume data over Tailscale is impossible
+    # Users should use:
+    #   1. Longhorn snapshots (local, for quick rollback)
+    #   2. Application-level backups (pg_dump, mysqldump, etc.)
+    #   3. Optional external replication to cloud storage
     
-    if velero schedule create monthly-pvc-backup \
-        --schedule="$FULL_BACKUP_SCHEDULE" \
-        --ttl="${FULL_BACKUP_RETENTION_DAYS}h" \
-        --include-resources=persistentvolumeclaims,persistentvolumes \
-        --selector='app.kubernetes.io/name!=minio' \
-        --snapshot-volumes=false \
-        --labels backup-type=full 2>&1; then
-        log_success "Monthly PVC backup schedule created"
-    else
-        if velero schedule get monthly-pvc-backup &> /dev/null; then
-            log_info "Monthly PVC backup schedule already exists"
-        else
-            log_warn "Failed to create monthly PVC backup schedule (continuing)"
-        fi
-    fi
-    
-    # Delete old daily backup schedules if they exist
+    # Delete old backup schedules if they exist
     if velero schedule get nightly-backup &> /dev/null; then
         log_info "Removing old nightly-backup schedule (replaced by monthly+incremental)..."
         velero schedule delete nightly-backup --confirm &>/dev/null || true
     fi
     
     if velero schedule get longhorn-pvc-backup &> /dev/null; then
-        log_info "Removing old longhorn-pvc-backup schedule (replaced by monthly)..."
+        log_info "Removing old longhorn-pvc-backup schedule (misleading - only backed up YAML)..."
         velero schedule delete longhorn-pvc-backup --confirm &>/dev/null || true
+    fi
+    
+    if velero schedule get monthly-pvc-backup &> /dev/null; then
+        log_info "Removing old monthly-pvc-backup schedule (misleading - only backed up YAML)..."
+        velero schedule delete monthly-pvc-backup --confirm &>/dev/null || true
     fi
     
     return 0
@@ -479,16 +500,35 @@ display_summary() {
     log_info "  Storage: MinIO at $MINIO_ENDPOINT"
     log_info "  Bucket: $BACKUP_BUCKET"
     echo
+    log_info "What Gets Backed Up:"
+    log_info "  ✓ Kubernetes manifests (Deployments, Services, ConfigMaps, Secrets)"
+    log_info "  ✓ PVC/PV definitions (YAML only, NOT the data inside volumes)"
+    log_info "  ✓ Namespace configurations"
+    log_info "  ✓ RBAC policies"
+    echo
+    log_warn "⚠️  IMPORTANT: Velero backs up Kubernetes YAML, NOT your data!"
+    echo
+    log_info "What is NOT Backed Up:"
+    log_info "  ✗ Database contents (PostgreSQL, MySQL, etc.)"
+    log_info "  ✗ Files inside PVCs/volumes"
+    log_info "  ✗ Application data"
+    log_info "  ✗ Longhorn volume data (40TB+ cannot transfer over Tailscale)"
+    echo
+    log_info "For Data Backup, Use:"
+    log_info "  1. Longhorn snapshots (local, for quick rollback)"
+    log_info "  2. Application-level backups (pg_dump, mysqldump, rsync)"
+    log_info "  3. External replication (optional, to cloud storage)"
+    echo
     log_info "Backup Schedules:"
-    log_info "  - monthly-full-backup: Full cluster backup (1st of month)"
-    log_info "  - daily-incremental-backup: Incremental changes (daily)"
-    log_info "  - monthly-pvc-backup: PVC and PV backup (1st of month)"
+    log_info "  - monthly-full-backup: Full Kubernetes manifests (1st of month)"
+    log_info "  - daily-incremental-backup: Changed Kubernetes resources (daily)"
     echo
     log_info "Monitoring & Maintenance:"
     log_info "  - Disk space monitoring: Enabled (alert at <${MIN_FREE_SPACE_PERCENT}% free)"
     log_info "  - Automatic cleanup: Enabled (removes old incrementals when space low)"
     log_info "  - MinIO quota: Configured (80% of disk capacity)"
-    log_info "  - Failure notifications: Enabled (Kubernetes events)"
+    log_info "  - Prometheus alerts: Enabled (backup failures → Grafana)"
+    log_info "  - Kubernetes events: Enabled (for manual monitoring)"
     echo
     log_info "Useful Commands:"
     log_info "  velero backup get"
@@ -496,8 +536,9 @@ display_summary() {
     log_info "  velero backup create <name> --from-schedule monthly-full-backup"
     log_info "  velero restore create --from-backup <backup-name>"
     echo
-    log_warn "Note: Incremental backups in Velero are resource-level changes, not block-level."
-    log_warn "      Each backup captures current state. Retention policies manage storage."
+    log_info "Documentation:"
+    log_info "  See: scripts/storage/BACKUP-STRATEGY-ANALYSIS.md"
+    log_info "  See: scripts/storage/BACKUP-RESTORE-GUIDE.md"
     echo
 }
 
@@ -538,6 +579,9 @@ main() {
     # Check disk space and configure quota
     check_minio_disk_space
     configure_minio_quota
+    
+    # Deploy Prometheus monitoring rules
+    deploy_prometheus_monitoring
     
     if ! verify_configuration; then
         log_warn "Verification had warnings, but configuration may still work"

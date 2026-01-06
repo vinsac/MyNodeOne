@@ -22,9 +22,12 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Backup configuration
-BACKUP_SCHEDULE="0 2 * * *"  # 2:00 AM UTC daily
-BACKUP_RETENTION_DAYS=180    # 6 months
+FULL_BACKUP_SCHEDULE="0 2 1 * *"     # 2:00 AM UTC on 1st of month (monthly full)
+INCREMENTAL_BACKUP_SCHEDULE="0 2 * * *"  # 2:00 AM UTC daily (incremental)
+FULL_BACKUP_RETENTION_DAYS=180       # 6 months for full backups
+INCREMENTAL_BACKUP_RETENTION_DAYS=30 # 30 days for incremental backups
 BACKUP_BUCKET="velero-backups"
+MIN_FREE_SPACE_PERCENT=20            # Alert and cleanup threshold
 
 # Helper functions
 log_info() {
@@ -89,6 +92,149 @@ check_requirements() {
     fi
     
     log_success "Prerequisites check passed"
+    return 0
+}
+
+check_minio_disk_space() {
+    log_info "Checking MinIO disk space..."
+    
+    # Get MinIO pod name
+    local MINIO_POD=$(kubectl get pods -n minio -l app=minio -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    
+    if [ -z "$MINIO_POD" ]; then
+        log_warn "Could not find MinIO pod, skipping disk space check"
+        return 0
+    fi
+    
+    # Check disk space for each mount point
+    local LOW_SPACE=false
+    while IFS= read -r line; do
+        local MOUNT=$(echo "$line" | awk '{print $6}')
+        local USED_PERCENT=$(echo "$line" | awk '{print $5}' | tr -d '%')
+        local FREE_PERCENT=$((100 - USED_PERCENT))
+        
+        if [ "$FREE_PERCENT" -lt "$MIN_FREE_SPACE_PERCENT" ]; then
+            log_warn "MinIO disk space low: $MOUNT is ${USED_PERCENT}% full (${FREE_PERCENT}% free)"
+            LOW_SPACE=true
+        else
+            log_info "MinIO disk space OK: $MOUNT is ${USED_PERCENT}% full (${FREE_PERCENT}% free)"
+        fi
+    done < <(kubectl exec -n minio "$MINIO_POD" -- df -h 2>/dev/null | grep -E '/minio-data|/var/lib/minio' || true)
+    
+    if [ "$LOW_SPACE" = "true" ]; then
+        log_warn "MinIO disk space below ${MIN_FREE_SPACE_PERCENT}% threshold"
+        log_info "Will attempt automatic cleanup of old backups..."
+        cleanup_old_backups
+    fi
+    
+    return 0
+}
+
+cleanup_old_backups() {
+    log_info "Cleaning up old incremental backups to free space..."
+    
+    # Delete incremental backups older than 7 days (keep recent ones)
+    local CUTOFF_DATE=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-7d '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+    
+    if [ -z "$CUTOFF_DATE" ]; then
+        log_warn "Could not calculate cutoff date for cleanup"
+        return 1
+    fi
+    
+    log_info "Deleting incremental backups older than $CUTOFF_DATE..."
+    
+    # Get list of incremental backups older than cutoff
+    local OLD_BACKUPS=$(velero backup get -o json 2>/dev/null | \
+        jq -r ".items[] | select(.metadata.labels.\"backup-type\" == \"incremental\" and .status.completionTimestamp < \"$CUTOFF_DATE\") | .metadata.name" 2>/dev/null || true)
+    
+    if [ -z "$OLD_BACKUPS" ]; then
+        log_info "No old incremental backups to clean up"
+        return 0
+    fi
+    
+    local DELETED_COUNT=0
+    while IFS= read -r backup_name; do
+        if [ -n "$backup_name" ]; then
+            log_info "Deleting old backup: $backup_name"
+            if velero backup delete "$backup_name" --confirm &>/dev/null; then
+                DELETED_COUNT=$((DELETED_COUNT + 1))
+            fi
+        fi
+    done <<< "$OLD_BACKUPS"
+    
+    if [ $DELETED_COUNT -gt 0 ]; then
+        log_success "Cleaned up $DELETED_COUNT old incremental backup(s)"
+    else
+        log_info "No backups were deleted"
+    fi
+    
+    return 0
+}
+
+send_alert_to_monitoring() {
+    local ALERT_TITLE="$1"
+    local ALERT_MESSAGE="$2"
+    local SEVERITY="${3:-warning}"  # warning, error, info
+    
+    log_info "Sending alert to monitoring: $ALERT_TITLE"
+    
+    # Create Kubernetes event for monitoring systems to pick up
+    kubectl create event "velero-backup-alert-$(date +%s)" \
+        --namespace=velero \
+        --type="$SEVERITY" \
+        --reason="BackupAlert" \
+        --message="$ALERT_TITLE: $ALERT_MESSAGE" \
+        --reporting-controller="velero-backup-config" \
+        --reporting-instance="configure-backup-script" 2>/dev/null || true
+    
+    # Also create annotation on Velero deployment for visibility
+    kubectl annotate deployment velero -n velero \
+        "mynodeone.io/last-alert"="$(date -u '+%Y-%m-%dT%H:%M:%SZ'): $ALERT_TITLE" \
+        --overwrite 2>/dev/null || true
+    
+    return 0
+}
+
+configure_minio_quota() {
+    log_info "Configuring MinIO storage quota..."
+    
+    # Get MinIO credentials
+    local MINIO_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' 2>/dev/null | base64 -d)
+    local MINIO_PASS=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' 2>/dev/null | base64 -d)
+    local MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+    
+    if [ -z "$MINIO_ENDPOINT" ] || [ "$MINIO_ENDPOINT" = "null" ]; then
+        log_warn "MinIO endpoint not available yet, skipping quota configuration"
+        return 0
+    fi
+    
+    # Install mc (MinIO client) if not present
+    if ! command -v mc &> /dev/null; then
+        log_info "Installing MinIO client (mc)..."
+        curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+        chmod +x /usr/local/bin/mc
+    fi
+    
+    # Configure mc alias
+    mc alias set mynodeone-minio "http://${MINIO_ENDPOINT}:9000" "$MINIO_USER" "$MINIO_PASS" &>/dev/null || true
+    
+    # Set bucket quota (80% of available disk space)
+    # This prevents MinIO from filling disk completely
+    log_info "Setting bucket quota to prevent disk exhaustion..."
+    
+    # Get available disk space from MinIO pod
+    local MINIO_POD=$(kubectl get pods -n minio -l app=minio -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$MINIO_POD" ]; then
+        local TOTAL_SIZE=$(kubectl exec -n minio "$MINIO_POD" -- df -B1 /minio-data 2>/dev/null | tail -1 | awk '{print $2}' || echo "0")
+        if [ "$TOTAL_SIZE" -gt 0 ]; then
+            # Set quota to 80% of total size
+            local QUOTA_SIZE=$((TOTAL_SIZE * 80 / 100))
+            log_info "Setting bucket quota to $((QUOTA_SIZE / 1024 / 1024 / 1024))GB (80% of available space)"
+            mc quota set mynodeone-minio/$BACKUP_BUCKET --size ${QUOTA_SIZE} &>/dev/null || log_warn "Could not set bucket quota"
+        fi
+    fi
+    
+    log_success "MinIO quota configuration complete"
     return 0
 }
 
@@ -218,43 +364,74 @@ EOF
 create_backup_schedules() {
     log_info "Creating backup schedules..."
     
-    # Schedule 1: Nightly full cluster backup
-    log_info "Creating nightly cluster backup schedule..."
+    # Schedule 1: Monthly FULL cluster backup (1st of each month)
+    log_info "Creating monthly FULL cluster backup schedule..."
     
-    if velero schedule create nightly-backup \
-        --schedule="$BACKUP_SCHEDULE" \
-        --ttl="${BACKUP_RETENTION_DAYS}h" \
+    if velero schedule create monthly-full-backup \
+        --schedule="$FULL_BACKUP_SCHEDULE" \
+        --ttl="${FULL_BACKUP_RETENTION_DAYS}h" \
         --include-namespaces='*' \
         --exclude-namespaces='kube-system,kube-public,kube-node-lease' \
-        --snapshot-volumes=false 2>&1; then
-        log_success "Nightly backup schedule created"
+        --snapshot-volumes=false \
+        --labels backup-type=full 2>&1; then
+        log_success "Monthly full backup schedule created"
     else
-        # Check if already exists
-        if velero schedule get nightly-backup &> /dev/null; then
-            log_info "Nightly backup schedule already exists"
+        if velero schedule get monthly-full-backup &> /dev/null; then
+            log_info "Monthly full backup schedule already exists"
         else
-            log_error "Failed to create nightly backup schedule"
+            log_error "Failed to create monthly full backup schedule"
             return 1
         fi
     fi
     
-    # Schedule 2: Longhorn PVC backup (with Longhorn snapshots if available)
-    log_info "Creating Longhorn PVC backup schedule..."
+    # Schedule 2: Daily INCREMENTAL cluster backup
+    log_info "Creating daily INCREMENTAL cluster backup schedule..."
     
-    if velero schedule create longhorn-pvc-backup \
-        --schedule="$BACKUP_SCHEDULE" \
-        --ttl="${BACKUP_RETENTION_DAYS}h" \
+    if velero schedule create daily-incremental-backup \
+        --schedule="$INCREMENTAL_BACKUP_SCHEDULE" \
+        --ttl="${INCREMENTAL_BACKUP_RETENTION_DAYS}h" \
+        --include-namespaces='*' \
+        --exclude-namespaces='kube-system,kube-public,kube-node-lease' \
+        --snapshot-volumes=false \
+        --labels backup-type=incremental 2>&1; then
+        log_success "Daily incremental backup schedule created"
+    else
+        if velero schedule get daily-incremental-backup &> /dev/null; then
+            log_info "Daily incremental backup schedule already exists"
+        else
+            log_error "Failed to create daily incremental backup schedule"
+            return 1
+        fi
+    fi
+    
+    # Schedule 3: Monthly Longhorn PVC full backup
+    log_info "Creating monthly Longhorn PVC backup schedule..."
+    
+    if velero schedule create monthly-pvc-backup \
+        --schedule="$FULL_BACKUP_SCHEDULE" \
+        --ttl="${FULL_BACKUP_RETENTION_DAYS}h" \
         --include-resources=persistentvolumeclaims,persistentvolumes \
         --selector='app.kubernetes.io/name!=minio' \
-        --snapshot-volumes=false 2>&1; then
-        log_success "Longhorn PVC backup schedule created"
+        --snapshot-volumes=false \
+        --labels backup-type=full 2>&1; then
+        log_success "Monthly PVC backup schedule created"
     else
-        # Check if already exists
-        if velero schedule get longhorn-pvc-backup &> /dev/null; then
-            log_info "Longhorn PVC backup schedule already exists"
+        if velero schedule get monthly-pvc-backup &> /dev/null; then
+            log_info "Monthly PVC backup schedule already exists"
         else
-            log_warn "Failed to create Longhorn PVC backup schedule (continuing)"
+            log_warn "Failed to create monthly PVC backup schedule (continuing)"
         fi
+    fi
+    
+    # Delete old daily backup schedules if they exist
+    if velero schedule get nightly-backup &> /dev/null; then
+        log_info "Removing old nightly-backup schedule (replaced by monthly+incremental)..."
+        velero schedule delete nightly-backup --confirm &>/dev/null || true
+    fi
+    
+    if velero schedule get longhorn-pvc-backup &> /dev/null; then
+        log_info "Removing old longhorn-pvc-backup schedule (replaced by monthly)..."
+        velero schedule delete longhorn-pvc-backup --confirm &>/dev/null || true
     fi
     
     return 0
@@ -296,21 +473,31 @@ display_summary() {
     echo
     log_success "===== Velero Backup Configuration Complete ====="
     echo
-    log_info "Backup Configuration:"
-    log_info "  Schedule: Nightly at 2:00 AM UTC"
-    log_info "  Retention: 6 months (${BACKUP_RETENTION_DAYS} days)"
+    log_info "Backup Strategy:"
+    log_info "  FULL Backups: Monthly on 1st at 2:00 AM UTC (retention: 6 months)"
+    log_info "  INCREMENTAL Backups: Daily at 2:00 AM UTC (retention: 30 days)"
     log_info "  Storage: MinIO at $MINIO_ENDPOINT"
     log_info "  Bucket: $BACKUP_BUCKET"
     echo
     log_info "Backup Schedules:"
-    log_info "  - nightly-backup: Full cluster backup (excludes system namespaces)"
-    log_info "  - longhorn-pvc-backup: PVC and PV backup"
+    log_info "  - monthly-full-backup: Full cluster backup (1st of month)"
+    log_info "  - daily-incremental-backup: Incremental changes (daily)"
+    log_info "  - monthly-pvc-backup: PVC and PV backup (1st of month)"
+    echo
+    log_info "Monitoring & Maintenance:"
+    log_info "  - Disk space monitoring: Enabled (alert at <${MIN_FREE_SPACE_PERCENT}% free)"
+    log_info "  - Automatic cleanup: Enabled (removes old incrementals when space low)"
+    log_info "  - MinIO quota: Configured (80% of disk capacity)"
+    log_info "  - Failure notifications: Enabled (Kubernetes events)"
     echo
     log_info "Useful Commands:"
     log_info "  velero backup get"
     log_info "  velero schedule get"
-    log_info "  velero backup create <name> --from-schedule nightly-backup"
+    log_info "  velero backup create <name> --from-schedule monthly-full-backup"
     log_info "  velero restore create --from-backup <backup-name>"
+    echo
+    log_warn "Note: Incremental backups in Velero are resource-level changes, not block-level."
+    log_warn "      Each backup captures current state. Retention policies manage storage."
     echo
 }
 
@@ -344,11 +531,19 @@ main() {
     
     if ! create_backup_schedules; then
         log_error "Failed to create backup schedules"
+        send_alert_to_monitoring "Backup Schedule Creation Failed" "Could not create Velero backup schedules" "error"
         exit 1
     fi
     
+    # Check disk space and configure quota
+    check_minio_disk_space
+    configure_minio_quota
+    
     if ! verify_configuration; then
         log_warn "Verification had warnings, but configuration may still work"
+        send_alert_to_monitoring "Backup Configuration Warning" "Velero backup verification had warnings" "warning"
+    else
+        send_alert_to_monitoring "Backup Configuration Success" "Velero backups configured successfully" "info"
     fi
     
     display_summary

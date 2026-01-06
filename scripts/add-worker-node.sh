@@ -251,7 +251,37 @@ print_summary() {
     echo "Installed Components:"
     echo "  ✓ K3s agent (joined cluster)"
     echo "  ✓ Node Agent (pull-based config sync)"
+    echo "  ✓ MinIO (Object Storage for backups)"
+    echo "  ✓ Velero (Backup system configured)"
     echo
+    
+    # Display MinIO credentials if available
+    if kubectl get svc minio -n minio &> /dev/null; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  🔐 MinIO Credentials (Object Storage)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        
+        local MINIO_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' 2>/dev/null | base64 -d 2>/dev/null || echo "admin")
+        local MINIO_PASS=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' 2>/dev/null | base64 -d 2>/dev/null || echo "See credentials file")
+        local MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+        local MINIO_CONSOLE=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+        
+        echo "💾 MINIO (Backup Storage):"
+        echo "   S3 API: http://${MINIO_ENDPOINT}:9000"
+        echo "   Console: http://${MINIO_CONSOLE}:9001"
+        echo "   Username: $MINIO_USER"
+        echo "   Password: $MINIO_PASS"
+        echo
+        echo "   📄 Credentials also saved to: $ACTUAL_HOME/mynodeone-minio-worker-credentials.txt"
+        echo
+        echo "⚠️  IMPORTANT: Save these credentials to your password manager NOW!"
+        echo "   Then delete the credentials file for security."
+        echo
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+    fi
+    
     echo "Next Steps:"
     echo "  1. On the control plane node, apply node labels:"
     echo "     See: $ACTUAL_HOME/mynodeone-node-labels.txt on this machine"

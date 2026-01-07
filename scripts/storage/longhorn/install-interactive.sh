@@ -320,6 +320,9 @@ install_longhorn_helm() {
         --version 1.5.3 \
         --set defaultSettings.defaultReplicaCount=1 \
         --set defaultSettings.defaultDataPath="${default_path}" \
+        --set defaultSettings.replicaAutoBalance="best-effort" \
+        --set defaultSettings.storageOverProvisioningPercentage=200 \
+        --set defaultSettings.storageMinimalAvailablePercentage=10 \
         --wait \
         --timeout 10m
     

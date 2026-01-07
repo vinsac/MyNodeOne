@@ -606,7 +606,7 @@ main() {
     fi
     
     # Ask if user wants MinIO
-    read -p "Do you want to install MinIO on this node? [y/N]: " -n 1 -r
+    read -p "Do you want to install MinIO on this node? [y/N]: " -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         log_info "Installation cancelled"

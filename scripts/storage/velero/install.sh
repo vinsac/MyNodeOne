@@ -164,7 +164,6 @@ install_velero_server() {
         --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio:9000 \
         --no-secret \
         --use-volume-snapshots=false \
-        --no-default-backup-location \
         --wait"; then
         
         log_success "Velero server installed"

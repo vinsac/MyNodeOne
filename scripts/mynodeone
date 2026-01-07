@@ -5,10 +5,10 @@
 # 
 # This is the ONE script users run. It handles everything:
 # - System cleanup
-# - Disk detection and setup
 # - Interactive configuration
 # - Node type selection
 # - Automated deployment
+# Note: Disk setup now handled by interactive storage installers (Longhorn/MinIO)
 ###############################################################################
 
 set -euo pipefail
@@ -161,9 +161,10 @@ EOF
     echo "It handles everything automatically:"
     echo
     echo "  ✓ System optimization"
-    echo "  ✓ Disk detection and setup"
+    echo "  ✓ Interactive configuration"
     echo "  ✓ Network configuration"
     echo "  ✓ Service installation"
+    echo "  ✓ Storage setup (Longhorn/MinIO with disk selection)"
     echo
     echo -e "${YELLOW}Note: This script requires sudo/root access.${NC}"
     echo
@@ -1459,69 +1460,12 @@ main() {
         fi
     fi
     
-    # Now do disk detection and setup if this is a storage node
-    if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
-        detect_disks
-        
-        # Now let user configure disks interactively
-        if [ ${#UNMOUNTED_DISKS[@]} -gt 0 ]; then
-            echo
-            print_info "Found ${#UNMOUNTED_DISKS[@]} disk(s) available for storage."
-            echo
-            if prompt_confirm "Do you want to set up these disks for MyNodeOne storage?" "y"; then
-                select_disks_for_setup
-            else
-                print_info "Skipping disk setup. You can configure storage later."
-                # Set default LONGHORN_PATH for later use
-                local cfg_file="$ACTUAL_HOME/.mynodeone/config.env"
-                if [ -f "$cfg_file" ]; then
-                    sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
-                    echo "LONGHORN_PATH=\"/var/lib/longhorn\"" >> "$cfg_file"
-                fi
-            fi
-        else
-            print_warning "No additional disks detected for storage setup."
-            echo
-            print_info "Single-disk configuration detected."
-            print_info "Storage will be configured automatically using: /var/lib/longhorn"
-            echo
-            echo "This is SAFE and works well for:"
-            echo "  ✅ Home labs and learning"
-            echo "  ✅ Development environments"
-            echo "  ✅ Personal projects and small applications"
-            echo "  ✅ Machines with 500GB+ free space"
-            echo
-            echo "Limitations:"
-            echo "  ⚠️  Storage limited to OS disk free space"
-            echo "  ⚠️  Performance may be lower (OS + apps share I/O)"
-            echo "  ⚠️  No redundancy (if disk fails, data is lost)"
-            echo
-            print_info "You can add more disks later! Just plug them in and run:"
-            echo "  sudo ./scripts/add-storage-disk.sh"
-            echo
-            
-            if prompt_confirm "Proceed with single-disk setup?" "y"; then
-                print_success "Single-disk configuration accepted."
-                print_info "Longhorn will use /var/lib/longhorn for storage."
-                
-                # Update config file with LONGHORN_PATH
-                local cfg_file="$ACTUAL_HOME/.mynodeone/config.env"
-                if [ -f "$cfg_file" ]; then
-                    sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
-                    echo "LONGHORN_PATH=\"/var/lib/longhorn\"" >> "$cfg_file"
-                    print_info "Updated config with LONGHORN_PATH=/var/lib/longhorn"
-                fi
-            else
-                print_error "Installation cancelled."
-                echo
-                echo "Options:"
-                echo "  1. Add additional disks to this machine"
-                echo "  2. Re-run installer after adding disks"
-                echo "  3. See docs/single-disk-setup.md for more information"
-                exit 0
-            fi
-        fi
-    fi
+    echo
+    print_info "💾 Storage Setup:"
+    echo "  • Longhorn will prompt for disk selection during installation"
+    echo "  • MinIO (optional) will prompt separately for its disks"
+    echo "  • You can skip disk setup and use OS disk (works fine for testing)"
+    echo
     
     echo
     print_success "Configuration complete!"

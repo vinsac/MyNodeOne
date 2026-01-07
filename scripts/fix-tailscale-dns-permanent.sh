@@ -20,6 +20,10 @@ log_error() {
     echo "$LOG_PREFIX ERROR: $1"
 }
 
+log_warn() {
+    echo "$LOG_PREFIX WARN: $1"
+}
+
 fix_tailscale_dns_permanent() {
     log_info "Applying permanent fix for Tailscale DNS override..."
     

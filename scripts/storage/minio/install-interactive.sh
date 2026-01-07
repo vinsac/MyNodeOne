@@ -65,7 +65,8 @@ CREDENTIALS_FILE="$ACTUAL_HOME/mynodeone-minio-credentials.txt"
 
 # Detect available disks (excluding OS disk and Longhorn disks)
 detect_available_disks() {
-    log_info "Detecting available disks for MinIO..."
+    # Log to stderr to not pollute stdout (which is captured)
+    echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') Detecting available disks for MinIO..." >&2
     
     # Get OS disk
     local os_disk=$(df / | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
@@ -110,13 +111,26 @@ detect_available_disks() {
             continue
         fi
         
+        # Skip loop devices, NBD, RAM disks
+        local disk_basename=$(basename "$disk_name")
+        if [[ "$disk_basename" =~ ^loop[0-9]+ ]] || [[ "$disk_basename" =~ ^nbd[0-9]+ ]] || [[ "$disk_basename" =~ ^ram[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Skip virtual disks
+        local model=$(lsblk -n -o MODEL "$disk_name" 2>/dev/null | head -1 | xargs)
+        if [[ "$model" == "VIRTUAL-DISK" ]] || [[ "$model" == *"Virtual"* ]]; then
+            continue
+        fi
+        
         # Skip disks smaller than 10GB
         local size_gb=$(echo "$disk_size" | sed 's/G//' | sed 's/T/*1024/' | bc 2>/dev/null || echo "0")
         if (( $(echo "$size_gb < 10" | bc -l 2>/dev/null || echo "0") )); then
             continue
         fi
         
-        available_disks+=("$disk_name:$disk_size:$disk_fstype")
+        # Get disk model for display
+        available_disks+=("$disk_name:$disk_size:$disk_fstype:$model")
     done <<< "$all_disks"
     
     echo "${available_disks[@]}"
@@ -146,8 +160,9 @@ select_disk_for_minio() {
         return 0
     fi
     
-    log_info "Available disks for MinIO:"
+    log_info "Available disks for MinIO (excluding OS disk and Longhorn disks):"
     echo
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     local disk_count=0
     for disk_info in "${available_disks[@]}"; do
@@ -155,14 +170,22 @@ select_disk_for_minio() {
         local disk_name=$(echo "$disk_info" | cut -d: -f1)
         local disk_size=$(echo "$disk_info" | cut -d: -f2)
         local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
+        local disk_model=$(echo "$disk_info" | cut -d: -f4)
         
-        local status=""
-        if [[ -n "$disk_fstype" ]]; then
-            status=" (has filesystem: $disk_fstype)"
+        # Build display string
+        local display="  $disk_count) $disk_name ($disk_size)"
+        
+        if [[ -n "$disk_model" ]]; then
+            display="$display - $disk_model"
         fi
         
-        echo "  $disk_count) $disk_name - $disk_size$status"
+        if [[ -n "$disk_fstype" ]]; then
+            display="$display ${YELLOW}[has filesystem: $disk_fstype]${NC}"
+        fi
+        
+        echo -e "$display"
     done
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     echo
     log_info "Select ONE disk for MinIO (enter number or 'none'):"

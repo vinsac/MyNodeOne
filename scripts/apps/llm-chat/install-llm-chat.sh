@@ -283,7 +283,7 @@ EOF
             cpu: \"500m\"
             nvidia.com/gpu: \"1\"
           limits:
-            memory: \"128Gi\"
+            memory: \"56Gi\"
             nvidia.com/gpu: \"1\""
         # GPU pods need privileged access for NVIDIA runtime
         OLLAMA_SECURITY_CONTEXT="
@@ -309,7 +309,7 @@ EOF
             memory: \"512Mi\"
             cpu: \"200m\"
           limits:
-            memory: \"128Gi\""
+            memory: \"56Gi\""
         OLLAMA_SECURITY_CONTEXT="
         securityContext:
           allowPrivilegeEscalation: false

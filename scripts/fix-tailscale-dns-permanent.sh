@@ -121,7 +121,11 @@ search tail9bb5a2.ts.net home
 EOF
     
     # Make immutable to prevent Tailscale from overwriting
-    chattr +i /etc/resolv.conf
+    # Note: chattr may fail on some filesystems (e.g., tmpfs, overlayfs) - this is non-critical
+    if ! chattr +i /etc/resolv.conf 2>/dev/null; then
+        log_warn "Could not make /etc/resolv.conf immutable (filesystem may not support it)"
+        log_info "DNS will still be maintained by the timer service"
+    fi
     
     # 6. Enable and start services
     systemctl daemon-reload

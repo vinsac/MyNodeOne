@@ -692,10 +692,15 @@ update_cluster_node_longhorn() {
             if [[ -b "$disk_path" ]]; then
                 disk_size=$(lsblk -b -d -n -o SIZE "$disk_path" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "Unknown")
             fi
+            # Extract disk basename for mount point
+            local disk_basename=$(basename "$disk_path")
+            local mount_point="/mnt/longhorn-disks/disk-${disk_basename}"
+            
             disks_array=$(echo "$disks_array" | jq \
                 --arg path "$disk_path" \
                 --arg size "$disk_size" \
-                '. += [{path: $path, size: $size, mount_point: "/var/lib/longhorn-" + ($path | split("/")[-1])}]')
+                --arg mount "$mount_point" \
+                '. += [{path: $path, size: $size, mount_point: $mount}]')
         done
     fi
     

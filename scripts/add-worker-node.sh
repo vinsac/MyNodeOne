@@ -513,6 +513,7 @@ main() {
     setup_model_directories  # Create model storage for LLM API
     label_node
     install_longhorn  # Interactive Longhorn installation (same as control plane)
+    scale_longhorn_replicas  # Increase replica count from 1 to 2 for redundancy
     install_minio     # Interactive MinIO installation (optional, standalone)
     configure_velero_backup  # Configure Velero to backup to MinIO
     install_node_agent

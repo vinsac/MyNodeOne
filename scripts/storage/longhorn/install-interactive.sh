@@ -384,6 +384,77 @@ add_additional_disks() {
     log_success "Additional disks configured"
 }
 
+# Setup monitoring and maintenance cron jobs
+setup_monitoring_and_maintenance() {
+    log_info "Setting up Longhorn monitoring and maintenance..."
+    
+    local monitoring_script="$SCRIPT_DIR/../../longhorn-maintenance/scripts/setup-longhorn-monitoring.sh"
+    
+    if [[ -f "$monitoring_script" ]]; then
+        if bash "$monitoring_script"; then
+            log_success "Monitoring and quarterly maintenance scheduled"
+        else
+            log_warn "Failed to setup monitoring (non-critical)"
+        fi
+    else
+        log_warn "Monitoring setup script not found: $monitoring_script"
+    fi
+}
+
+# Fix disk reservations (reduce from default 30% to optimal 5-10%)
+fix_disk_reservations() {
+    log_info "Optimizing disk reservations..."
+    
+    # Wait for Longhorn to initialize disk status
+    sleep 5
+    
+    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [[ -z "$node_name" ]]; then
+        log_warn "Could not detect node name, skipping reservation optimization"
+        return 0
+    fi
+    
+    # Get disk configuration
+    local disks_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null)
+    if [[ -z "$disks_json" ]]; then
+        log_warn "Could not retrieve Longhorn node info, skipping reservation optimization"
+        return 0
+    fi
+    
+    # Process each disk
+    echo "$disks_json" | jq -r '.spec.disks // {} | to_entries[] | @json' 2>/dev/null | while read -r disk_json; do
+        local disk_name=$(echo "$disk_json" | jq -r '.key')
+        local disk_path=$(echo "$disk_json" | jq -r '.value.path')
+        
+        # Get disk status
+        local disk_status=$(echo "$disks_json" | jq -r ".status.diskStatus.\"$disk_name\" // {}")
+        local storage_max=$(echo "$disk_status" | jq -r '.storageMaximum // 0')
+        
+        if [[ "$storage_max" -eq 0 ]]; then
+            continue
+        fi
+        
+        # Calculate optimal reservation: 5% for >1TB disks, 10% for smaller
+        local optimal_reserved=0
+        if [[ $storage_max -gt 1099511627776 ]]; then
+            # >1TB: 5% reservation (max 250GB or 5%)
+            optimal_reserved=$(awk "BEGIN {reserved = $storage_max * 0.05; if (reserved > 268435456000) reserved = 268435456000; printf \"%.0f\", reserved}")
+        else
+            # <1TB: 10% reservation
+            optimal_reserved=$(awk "BEGIN {printf \"%.0f\", ($storage_max * 0.10)}")
+        fi
+        
+        # Update reservation
+        kubectl -n longhorn-system patch nodes.longhorn.io "$node_name" --type=merge \
+            -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$optimal_reserved}}}}" &>/dev/null || true
+        
+        local reserved_gb=$(awk "BEGIN {printf \"%.1f\", ($optimal_reserved / 1073741824)}")
+        log_info "  $disk_path: Reserved ${reserved_gb}GB"
+    done
+    
+    log_success "Disk reservations optimized"
+}
+
 # Register configuration in node registry
 register_in_node_registry() {
     if ! command -v register_cluster_node &>/dev/null; then

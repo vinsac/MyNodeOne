@@ -449,13 +449,14 @@ install_longhorn() {
 install_minio() {
     log_info "MinIO installation (optional)..."
     
-    # Use new interactive installation script
-    if [ -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
-        bash "$SCRIPT_DIR/storage/minio/install-interactive.sh" || log_info "MinIO installation skipped or failed"
-    else
-        log_warn "MinIO installation script not found: $SCRIPT_DIR/storage/minio/install-interactive.sh"
-        log_info "Skipping MinIO installation"
+    # Check if MinIO install script exists
+    if [ ! -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
+        log_warn "MinIO installation script not found, skipping"
+        return 0
     fi
+    
+    # Run MinIO interactive installer
+    bash "$SCRIPT_DIR/storage/minio/install-interactive.sh"
 }
 
 configure_velero_backup() {

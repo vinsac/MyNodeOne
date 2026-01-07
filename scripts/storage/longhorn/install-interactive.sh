@@ -384,23 +384,6 @@ add_additional_disks() {
     log_success "Additional disks configured"
 }
 
-# Setup monitoring and maintenance cron jobs
-setup_monitoring_and_maintenance() {
-    log_info "Setting up Longhorn monitoring and maintenance..."
-    
-    local monitoring_script="$SCRIPT_DIR/../../longhorn-maintenance/scripts/setup-longhorn-monitoring.sh"
-    
-    if [[ -f "$monitoring_script" ]]; then
-        if bash "$monitoring_script"; then
-            log_success "Monitoring and quarterly maintenance scheduled"
-        else
-            log_warn "Failed to setup monitoring (non-critical)"
-        fi
-    else
-        log_warn "Monitoring setup script not found: $monitoring_script"
-    fi
-}
-
 # Fix disk reservations (reduce from default 30% to optimal 5-10%)
 fix_disk_reservations() {
     log_info "Optimizing disk reservations..."

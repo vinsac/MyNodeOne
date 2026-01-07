@@ -156,14 +156,19 @@ install_velero_server() {
     # Backup storage location will be configured later when worker joins
     log_info "Installing Velero server (backup storage will be configured when worker joins)..."
     
+    # Note: Using placeholder bucket name - will be reconfigured when MinIO is available
     if retry_command 2 "velero install \
         --provider aws \
         --plugins velero/velero-plugin-for-aws:v1.8.2 \
+        --bucket velero-backups \
+        --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio:9000 \
         --no-secret \
         --use-volume-snapshots=false \
+        --no-default-backup-location \
         --wait"; then
         
         log_success "Velero server installed"
+        log_info "Backup location will be configured when MinIO is available"
     else
         log_error "Velero server installation failed"
         return 1

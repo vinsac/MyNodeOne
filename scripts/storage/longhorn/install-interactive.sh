@@ -145,6 +145,7 @@ select_disks_for_longhorn() {
     log_info "Available disks for Longhorn:"
     echo
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${BLUE}0) Use OS disk only${NC} - /var/lib/longhorn (no formatting)"
     
     local disk_count=0
     for disk_info in "${available_disks[@]}"; do
@@ -170,15 +171,15 @@ select_disks_for_longhorn() {
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     echo
-    log_info "Select disks for Longhorn (comma-separated numbers, or 'all', or 'none'):"
-    echo "  Examples: 1,2,3  or  all  or  none"
+    log_info "Select disks for Longhorn (enter numbers, 'all', or '0' for OS disk):"
+    echo "  Examples: 1,2,3  or  all  or  0  or  1"
     echo
     read -p "Your choice: " selection
     
     SELECTED_DISKS=()
     
-    if [[ "$selection" == "none" ]]; then
-        log_info "Using OS disk only"
+    if [[ "$selection" == "none" ]] || [[ "$selection" == "0" ]]; then
+        log_info "Using OS disk only (no formatting required)"
         return 0
     fi
     
@@ -209,7 +210,7 @@ select_disks_for_longhorn() {
         echo
         log_warn "⚠️  WARNING: Selected disks will be FORMATTED (all data will be lost)"
         echo
-        read -p "Continue with formatting? [y/N]: " -n 1 -r
+        read -p "Continue with formatting? [y/N]: " -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log_error "Installation cancelled"

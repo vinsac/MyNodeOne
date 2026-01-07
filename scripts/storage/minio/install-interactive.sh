@@ -150,7 +150,7 @@ select_disk_for_minio() {
         log_warn "No additional disks available for MinIO"
         log_info "MinIO can use OS disk at /mnt/minio, but this is NOT recommended"
         echo
-        read -p "Continue with OS disk? [y/N]: " -n 1 -r
+        read -p "Continue with OS disk? [y/N]: " -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log_info "Installation cancelled"
@@ -163,6 +163,7 @@ select_disk_for_minio() {
     log_info "Available disks for MinIO (excluding OS disk and Longhorn disks):"
     echo
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${BLUE}0) Use OS disk${NC} - /mnt/minio (no formatting)"
     
     local disk_count=0
     for disk_info in "${available_disks[@]}"; do
@@ -188,13 +189,13 @@ select_disk_for_minio() {
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     echo
-    log_info "Select ONE disk for MinIO (enter number or 'none'):"
+    log_info "Select ONE disk for MinIO (enter number or '0' for OS disk):"
     read -p "Your choice: " selection
     
     SELECTED_DISK=""
     
-    if [[ "$selection" == "none" ]]; then
-        log_info "Using OS disk at /mnt/minio"
+    if [[ "$selection" == "none" ]] || [[ "$selection" == "0" ]]; then
+        log_info "Using OS disk at /mnt/minio (no formatting required)"
         return 0
     fi
     
@@ -208,7 +209,7 @@ select_disk_for_minio() {
         echo
         log_warn "⚠️  WARNING: This disk will be FORMATTED (all data will be lost)"
         echo
-        read -p "Continue with formatting? [y/N]: " -n 1 -r
+        read -p "Continue with formatting? [y/N]: " -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log_error "Installation cancelled"

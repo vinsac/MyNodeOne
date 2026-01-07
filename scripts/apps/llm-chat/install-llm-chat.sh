@@ -493,7 +493,7 @@ EOF
 
     # Update local DNS
     echo "🌐 Updating local DNS entries..."
-    if bash "$SCRIPT_DIR/../update-laptop-dns.sh"; then
+    if bash "$PROJECT_ROOT/scripts/update-laptop-dns.sh"; then
         echo ""
         echo "✓ Local DNS updated! Access LLM Chat at:"
         echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"

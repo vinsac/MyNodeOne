@@ -198,10 +198,17 @@ echo "$DNS_ENTRIES" | sed 's/^/   /'
 echo ""
 
 # Verify DNS resolution works
-if getent hosts dashboard.${CLUSTER_DOMAIN}.local >/dev/null 2>&1; then
-    log_success "DNS resolution verified ✓"
+# Note: getent may use cached DNS, so we verify /etc/hosts directly
+if grep -q "dashboard.${CLUSTER_DOMAIN}.local" /etc/hosts 2>/dev/null; then
+    log_success "DNS entries verified in /etc/hosts ✓"
+    # Test actual resolution (may fail due to DNS caching)
+    if getent hosts dashboard.${CLUSTER_DOMAIN}.local >/dev/null 2>&1; then
+        log_success "DNS resolution verified ✓"
+    else
+        log_info "DNS entries added successfully (resolution may take a moment due to caching)"
+    fi
 else
-    log_warn "DNS resolution failed - /etc/hosts may have permission issues"
+    log_warn "DNS entries not found in /etc/hosts"
     HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
     log_warn "Current /etc/hosts permissions: $HOSTS_PERMS"
 fi

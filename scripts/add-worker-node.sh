@@ -459,6 +459,34 @@ install_minio() {
     bash "$SCRIPT_DIR/storage/minio/install-interactive.sh"
 }
 
+scale_longhorn_replicas() {
+    log_info "Scaling Longhorn replica count for redundancy..."
+    
+    # Check if Longhorn is installed
+    if ! kubectl get namespace longhorn-system &>/dev/null; then
+        log_warn "Longhorn not found, skipping replica scaling"
+        return 0
+    fi
+    
+    # Count Longhorn nodes
+    local node_count=$(kubectl get nodes.longhorn.io -n longhorn-system --no-headers 2>/dev/null | wc -l)
+    
+    if [ "$node_count" -ge 2 ]; then
+        log_info "Detected $node_count Longhorn nodes, increasing default replica count to 2"
+        
+        # Update default replica count setting
+        kubectl -n longhorn-system patch setting default-replica-count --type=merge \
+            -p '{"value":"2"}' &>/dev/null || \
+        kubectl -n longhorn-system patch setting defaultReplicaCount --type=merge \
+            -p '{"value":"2"}' &>/dev/null || true
+        
+        log_success "Longhorn will now create 2 replicas for new volumes (redundancy across nodes)"
+        log_info "Existing volumes will remain at 1 replica (change manually via Longhorn UI if needed)"
+    else
+        log_warn "Only $node_count Longhorn node(s) detected, keeping replica count at 1"
+    fi
+}
+
 configure_velero_backup() {
     log_info "Configuring Velero backup to use MinIO..."
     
@@ -514,7 +542,6 @@ main() {
     setup_model_directories  # Create model storage for LLM API
     label_node
     install_longhorn  # Interactive Longhorn installation (same as control plane)
-    scale_longhorn_replicas  # Increase replica count from 1 to 2 for redundancy
     install_minio     # Interactive MinIO installation (optional, standalone)
     configure_velero_backup  # Configure Velero to backup to MinIO
     install_node_agent

@@ -232,6 +232,56 @@ EOF
     
     log_success "Node labels saved to $ACTUAL_HOME/mynodeone-node-labels.txt"
     echo
+    
+    # Register cluster node in node registry (requires kubectl access from control plane)
+    log_info "To register this node in the cluster registry, run this on the CONTROL PLANE:"
+    echo ""
+    
+    cat > "$ACTUAL_HOME/mynodeone-register-node.sh" <<'REGEOF'
+#!/bin/bash
+# Run this script on the control plane to register the worker node
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "$SCRIPT_DIR/scripts/lib/node-registry-manager.sh" ]; then
+    source "$SCRIPT_DIR/scripts/lib/node-registry-manager.sh"
+    
+    # Get node name from kubectl
+    K8S_NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
+    
+    if [ -z "$K8S_NODE_NAME" ]; then
+        echo "Error: Could not detect worker node name"
+        exit 1
+    fi
+    
+    echo "Registering worker node: $K8S_NODE_NAME"
+    
+    # Get node location from label
+    NODE_LOCATION=$(kubectl get node "$K8S_NODE_NAME" -o jsonpath='{.metadata.labels.mynodeone\.io/location}' 2>/dev/null || echo "unknown")
+    TAILSCALE_IP=$(kubectl get node "$K8S_NODE_NAME" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
+    SSH_USER=$(kubectl get node "$K8S_NODE_NAME" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
+    
+    # Register cluster node
+    register_cluster_node \
+        --name "$K8S_NODE_NAME" \
+        --k8s-node-name "$K8S_NODE_NAME" \
+        --role "worker" \
+        --location "$NODE_LOCATION" \
+        --tailscale-ip "$TAILSCALE_IP" \
+        --ssh-user "$SSH_USER"
+    
+    echo "Worker node registered successfully!"
+else
+    echo "Error: Node registry manager not found"
+    exit 1
+fi
+REGEOF
+    
+    chmod +x "$ACTUAL_HOME/mynodeone-register-node.sh"
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/mynodeone-register-node.sh"
+    
+    echo "  bash ~/mynodeone-register-node.sh"
+    echo ""
     log_info "Run this command on the control plane:"
     echo "  $LABEL_CMD"
 }
@@ -384,74 +434,27 @@ setup_gpu() {
     fi
 }
 
-disable_longhorn_on_worker() {
-    log_info "Configuring Longhorn to use control plane only..."
+install_longhorn() {
+    log_info "Installing Longhorn storage (interactive)..."
     
-    # Wait for Longhorn to be ready
-    log_info "Waiting for Longhorn to initialize on control plane..."
-    sleep 10
-    
-    # Get this worker node's name
-    local WORKER_NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    
-    if [ -z "$WORKER_NODE_NAME" ]; then
-        log_warn "Could not detect worker node name, skipping Longhorn configuration"
-        return 0
-    fi
-    
-    log_info "Worker node name: $WORKER_NODE_NAME"
-    
-    # Wait for Longhorn node CRD to be created
-    local max_attempts=30
-    local attempt=1
-    
-    while [ $attempt -le $max_attempts ]; do
-        if kubectl get nodes.longhorn.io "$WORKER_NODE_NAME" -n longhorn-system &> /dev/null; then
-            log_success "Longhorn node CRD found"
-            break
-        fi
-        
-        if [ $attempt -eq $max_attempts ]; then
-            log_warn "Longhorn node CRD not found after ${max_attempts} attempts"
-            log_warn "Longhorn may not be installed or not ready yet"
-            return 0
-        fi
-        
-        log_info "Waiting for Longhorn node CRD... (attempt $attempt/$max_attempts)"
-        sleep 5
-        attempt=$((attempt + 1))
-    done
-    
-    # Disable scheduling on this worker node
-    log_info "Disabling Longhorn scheduling on worker node..."
-    
-    if kubectl -n longhorn-system patch nodes.longhorn.io "$WORKER_NODE_NAME" \
-        --type=merge -p '{"spec":{"allowScheduling":false}}' 2>&1; then
-        log_success "Longhorn scheduling disabled on worker node"
-        log_info "Longhorn will only use control plane for storage"
+    # Use new interactive installation script
+    if [ -f "$SCRIPT_DIR/storage/longhorn/install-interactive.sh" ]; then
+        bash "$SCRIPT_DIR/storage/longhorn/install-interactive.sh"
     else
-        log_warn "Could not disable Longhorn scheduling on worker"
-        log_warn "You can do this manually via Longhorn UI or:"
-        log_warn "  kubectl -n longhorn-system patch nodes.longhorn.io $WORKER_NODE_NAME --type=merge -p '{\"spec\":{\"allowScheduling\":false}}'"
+        log_warn "Longhorn installation script not found: $SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+        log_info "Longhorn should already be available from control plane"
     fi
 }
 
-install_minio_worker() {
-    log_info "Installing MinIO object storage on worker node..."
+install_minio() {
+    log_info "MinIO installation (optional)..."
     
-    # Call modular MinIO worker installation script
-    if [ -f "$SCRIPT_DIR/storage/minio/install-worker.sh" ]; then
-        if bash "$SCRIPT_DIR/storage/minio/install-worker.sh"; then
-            log_success "MinIO installed successfully on worker node"
-        else
-            log_error "MinIO installation failed"
-            log_warn "Object storage will not be available"
-            log_warn "You can install manually later:"
-            log_warn "  sudo $SCRIPT_DIR/storage/minio/install-worker.sh"
-        fi
+    # Use new interactive installation script
+    if [ -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
+        bash "$SCRIPT_DIR/storage/minio/install-interactive.sh" || log_info "MinIO installation skipped or failed"
     else
-        log_error "MinIO installation script not found: $SCRIPT_DIR/storage/minio/install-worker.sh"
-        log_warn "Skipping MinIO installation"
+        log_warn "MinIO installation script not found: $SCRIPT_DIR/storage/minio/install-interactive.sh"
+        log_info "Skipping MinIO installation"
     fi
 }
 
@@ -509,8 +512,8 @@ main() {
     join_cluster
     setup_model_directories  # Create model storage for LLM API
     label_node
-    disable_longhorn_on_worker  # Configure Longhorn to use control plane only
-    install_minio_worker  # Install MinIO on worker with local disks
+    install_longhorn  # Interactive Longhorn installation (same as control plane)
+    install_minio     # Interactive MinIO installation (optional, standalone)
     configure_velero_backup  # Configure Velero to backup to MinIO
     install_node_agent
     

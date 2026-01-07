@@ -1,0 +1,96 @@
+---
+# Deployment Example with Single PVC
+# This demonstrates:
+# - Single replica deployment with persistent storage
+# - Explicit PVC creation (not volumeClaimTemplates)
+# - Node affinity to pin deployment to node with PVC
+# - Proper Longhorn storage usage
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data-pvc
+  namespace: default
+  labels:
+    app: example-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-app
+  namespace: default
+  labels:
+    app: example-app
+spec:
+  # Single replica since PVC is ReadWriteOnce
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-app
+  template:
+    metadata:
+      labels:
+        app: example-app
+    spec:
+      # Node affinity: Pin to specific node if needed
+      # Uncomment and modify for specific node placement
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: kubernetes.io/hostname
+      #           operator: In
+      #           values:
+      #           - pc1  # Replace with your node name
+      
+      containers:
+      - name: app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+          name: http
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/nginx/html
+        - name: config
+          mountPath: /etc/nginx/conf.d
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: app-data-pvc
+      - name: config
+        configMap:
+          name: example-app-config
+          optional: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-app
+  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: example-app
+  ports:
+  - port: 80
+    targetPort: 80
+    name: http

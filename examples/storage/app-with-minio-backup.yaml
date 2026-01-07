@@ -1,0 +1,179 @@
+---
+# Application with MinIO S3 Backup
+# This demonstrates:
+# - Using Longhorn PVC for application data
+# - CronJob to backup data to MinIO S3
+# - Node-specific MinIO endpoint usage
+# - Proper credential management
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-with-backup-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# ConfigMap with backup script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-script
+  namespace: default
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -e
+    
+    # MinIO S3 configuration
+    # Use node-specific endpoint (not load-balanced)
+    MC_HOST_minio="http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@${MINIO_ENDPOINT}"
+    export MC_HOST_minio
+    
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    BACKUP_NAME="backup-${TIMESTAMP}.tar.gz"
+    
+    echo "Starting backup at $(date)"
+    
+    # Create archive
+    tar czf "/tmp/${BACKUP_NAME}" -C /data .
+    
+    # Upload to MinIO
+    mc cp "/tmp/${BACKUP_NAME}" "minio/backups/${BACKUP_NAME}"
+    
+    # Cleanup local archive
+    rm "/tmp/${BACKUP_NAME}"
+    
+    echo "Backup completed: ${BACKUP_NAME}"
+    
+    # Cleanup old backups (keep last 7 days)
+    mc rm --recursive --force --older-than 7d "minio/backups/"
+    
+    echo "Cleanup completed"
+
+---
+# Main application deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-with-backup
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-with-backup
+  template:
+    metadata:
+      labels:
+        app: app-with-backup
+    spec:
+      containers:
+      - name: app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: app-with-backup-pvc
+
+---
+# CronJob for automated backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: app-backup
+  namespace: default
+spec:
+  # Run daily at 2 AM
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          
+          # Pin to same node as app for faster backup
+          affinity:
+            podAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                      - app-with-backup
+                  topologyKey: kubernetes.io/hostname
+          
+          containers:
+          - name: backup
+            image: minio/mc:latest
+            command: ["/bin/sh", "/scripts/backup.sh"]
+            env:
+            # MinIO credentials from secret
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: rootUser
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: rootPassword
+            # Node-specific MinIO endpoint
+            # Replace 'pc1' with your node name
+            - name: MINIO_ENDPOINT
+              value: "minio-pc1.minicloud.local:9000"
+            
+            volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: backup-script
+              mountPath: /scripts
+          
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: app-with-backup-pvc
+          - name: backup-script
+            configMap:
+              name: backup-script
+              defaultMode: 0755
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-with-backup
+  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: app-with-backup
+  ports:
+  - port: 80
+    targetPort: 80

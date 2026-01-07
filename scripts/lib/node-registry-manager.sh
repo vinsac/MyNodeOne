@@ -86,8 +86,9 @@ init_registry() {
   "management_laptops": [],
   "vps_nodes": [],
   "worker_nodes": [],
+  "cluster_nodes": [],
   "metadata": {
-    "version": "1.0",
+    "version": "2.0",
     "last_updated": "'$(date -Iseconds)'",
     "updated_by": "'$(whoami)@$(hostname)'"
   }
@@ -425,6 +426,437 @@ get_nodes() {
     jq -r --arg type "$node_type" '.[$type][]' "$LOCAL_CACHE" 2>/dev/null || echo "[]"
 }
 
+# Auto-detect hardware information
+detect_hardware() {
+    local cpu="$(lscpu 2>/dev/null | grep 'Model name' | cut -d: -f2 | xargs || echo 'Unknown')"
+    local ram="$(free -h 2>/dev/null | grep Mem | awk '{print $2}' || echo 'Unknown')"
+    local gpu="Unknown"
+    local os="$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || echo 'Unknown')"
+    
+    # Detect GPU
+    if command -v nvidia-smi &>/dev/null; then
+        gpu="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo 'NVIDIA GPU (details unavailable)')"
+    elif lspci 2>/dev/null | grep -i nvidia &>/dev/null; then
+        gpu="NVIDIA GPU (nvidia-smi not available)"
+    elif lspci 2>/dev/null | grep -i amd.*vga &>/dev/null; then
+        gpu="AMD GPU"
+    fi
+    
+    # Return as JSON
+    jq -n \
+        --arg cpu "$cpu" \
+        --arg ram "$ram" \
+        --arg gpu "$gpu" \
+        --arg os "$os" \
+        '{
+            cpu: $cpu,
+            ram: $ram,
+            gpu: $gpu,
+            os: $os
+        }'
+}
+
+# Register or update a cluster node (control plane or worker)
+# Usage: register_cluster_node --name <name> --role <role> --location <location> [options]
+register_cluster_node() {
+    local node_name=""
+    local k8s_node_name=""
+    local role=""  # control-plane or worker
+    local location=""
+    local tailscale_ip=""
+    local ip=""
+    local ssh_user=""
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --name)
+                node_name="$2"
+                shift 2
+                ;;
+            --k8s-node-name)
+                k8s_node_name="$2"
+                shift 2
+                ;;
+            --role)
+                role="$2"
+                shift 2
+                ;;
+            --location)
+                location="$2"
+                shift 2
+                ;;
+            --tailscale-ip)
+                tailscale_ip="$2"
+                shift 2
+                ;;
+            --ip)
+                ip="$2"
+                shift 2
+                ;;
+            --ssh-user)
+                ssh_user="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+    
+    # VALIDATION: Required fields
+    if [[ -z "$node_name" ]]; then
+        log_error "--name is required"
+        return 1
+    fi
+    
+    if [[ -z "$role" ]]; then
+        log_error "--role is required (control-plane or worker)"
+        return 1
+    fi
+    
+    if [[ ! "$role" =~ ^(control-plane|worker)$ ]]; then
+        log_error "Invalid role: $role (must be control-plane or worker)"
+        return 1
+    fi
+    
+    log_info "Registering cluster node: $node_name ($role)..."
+    
+    # Auto-detect Tailscale IP if not provided
+    if [[ -z "$tailscale_ip" ]] && command -v tailscale &>/dev/null; then
+        tailscale_ip=$(tailscale ip -4 2>/dev/null || echo "")
+        if [[ -n "$tailscale_ip" ]]; then
+            log_info "Detected Tailscale IP: $tailscale_ip"
+        fi
+    fi
+    
+    # Use Tailscale IP as primary IP if not provided
+    if [[ -z "$ip" ]]; then
+        ip="$tailscale_ip"
+    fi
+    
+    # Auto-detect SSH user if not provided
+    if [[ -z "$ssh_user" ]]; then
+        ssh_user="${SUDO_USER:-$(whoami)}"
+        log_info "Using SSH user: $ssh_user"
+    fi
+    
+    # Use node_name as k8s_node_name if not provided
+    if [[ -z "$k8s_node_name" ]]; then
+        k8s_node_name="$node_name"
+    fi
+    
+    # Auto-detect hardware
+    local hardware_json=$(detect_hardware)
+    
+    # Get K3s version if available
+    local k3s_version="Unknown"
+    if command -v kubectl &>/dev/null; then
+        k3s_version=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}' || echo "Unknown")
+    fi
+    
+    # Sync from ConfigMap first
+    sync_from_configmap || return 1
+    
+    # Build cluster node entry
+    local node_entry=$(jq -n \
+        --arg name "$node_name" \
+        --arg k8s_name "$k8s_node_name" \
+        --arg role "$role" \
+        --arg location "$location" \
+        --arg ip "$ip" \
+        --arg ts_ip "$tailscale_ip" \
+        --arg ssh_user "$ssh_user" \
+        --arg k3s_version "$k3s_version" \
+        --arg timestamp "$(date -Iseconds)" \
+        --argjson hardware "$hardware_json" \
+        '{
+            name: $name,
+            k8s_node_name: $k8s_name,
+            k8s_node_name_custom: ($name != $k8s_name),
+            role: $role,
+            location: $location,
+            ip: $ip,
+            tailscale_ip: $ts_ip,
+            tailscale_hostname: ($ts_ip + ".tailscale.net"),
+            ssh_user: $ssh_user,
+            hardware: $hardware,
+            longhorn: {
+                enabled: false,
+                scheduling_enabled: true,
+                disks: [],
+                total_capacity: "0"
+            },
+            minio: {
+                enabled: false,
+                endpoint: "",
+                console: "",
+                disk: "",
+                capacity: "0",
+                mode: "standalone",
+                credentials_secret: "minio-credentials",
+                namespace: "minio"
+            },
+            installation: {
+                bootstrap_date: $timestamp,
+                mynodeone_version: "1.5.0",
+                k3s_version: $k3s_version,
+                installed_components: []
+            },
+            registered: $timestamp,
+            last_updated: $timestamp,
+            status: "active"
+        }')
+    
+    # Remove existing entry for this node name if present
+    local updated_registry=$(jq \
+        --arg name "$node_name" \
+        --argjson entry "$node_entry" \
+        'del(.cluster_nodes[] | select(.name == $name)) | .cluster_nodes += [$entry]' \
+        "$LOCAL_CACHE")
+    
+    # VALIDATION: Verify jq succeeded
+    if ! echo "$updated_registry" | jq empty 2>/dev/null; then
+        log_error "Failed to update registry with new cluster node"
+        return 1
+    fi
+    
+    # Save updated registry to local cache
+    echo "$updated_registry" | jq '.' > "$LOCAL_CACHE"
+    
+    # VALIDATION: Verify node was added
+    local verify_node=$(jq -r \
+        --arg name "$node_name" \
+        '.cluster_nodes[] | select(.name == $name) | .role' \
+        "$LOCAL_CACHE")
+    
+    if [[ "$verify_node" != "$role" ]]; then
+        log_error "Cluster node registration validation failed"
+        return 1
+    fi
+    
+    # Sync to ConfigMap
+    sync_to_configmap || return 1
+    
+    log_success "Registered cluster node: $node_name ($role) at $ip"
+    return 0
+}
+
+# Update cluster node with Longhorn configuration
+# Usage: update_cluster_node_longhorn --name <name> --disks <disk1,disk2> [--capacity <total>]
+update_cluster_node_longhorn() {
+    local node_name=""
+    local disks_csv=""
+    local total_capacity=""
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --name)
+                node_name="$2"
+                shift 2
+                ;;
+            --disks)
+                disks_csv="$2"
+                shift 2
+                ;;
+            --capacity)
+                total_capacity="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+    
+    if [[ -z "$node_name" ]]; then
+        log_error "--name is required"
+        return 1
+    fi
+    
+    log_info "Updating Longhorn configuration for node: $node_name..."
+    
+    # Sync from ConfigMap
+    sync_from_configmap || return 1
+    
+    # Build disks array from CSV
+    local disks_array='[]'
+    if [[ -n "$disks_csv" ]]; then
+        IFS=',' read -ra DISK_LIST <<< "$disks_csv"
+        for disk_path in "${DISK_LIST[@]}"; do
+            disk_path=$(echo "$disk_path" | xargs)  # trim whitespace
+            local disk_size="Unknown"
+            if [[ -b "$disk_path" ]]; then
+                disk_size=$(lsblk -b -d -n -o SIZE "$disk_path" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "Unknown")
+            fi
+            disks_array=$(echo "$disks_array" | jq \
+                --arg path "$disk_path" \
+                --arg size "$disk_size" \
+                '. += [{path: $path, size: $size, mount_point: "/var/lib/longhorn-" + ($path | split("/")[-1])}]')
+        done
+    fi
+    
+    # Update node entry
+    local updated_registry=$(jq \
+        --arg name "$node_name" \
+        --argjson disks "$disks_array" \
+        --arg capacity "$total_capacity" \
+        --arg timestamp "$(date -Iseconds)" \
+        '(.cluster_nodes[] | select(.name == $name) | .longhorn) = {
+            enabled: true,
+            scheduling_enabled: true,
+            disks: $disks,
+            total_capacity: $capacity
+        } | (.cluster_nodes[] | select(.name == $name) | .last_updated) = $timestamp | 
+        (.cluster_nodes[] | select(.name == $name) | .installation.installed_components) |= (. + ["longhorn"] | unique)' \
+        "$LOCAL_CACHE")
+    
+    # Save and sync
+    echo "$updated_registry" | jq '.' > "$LOCAL_CACHE"
+    sync_to_configmap || return 1
+    
+    log_success "Updated Longhorn configuration for $node_name"
+    return 0
+}
+
+# Update cluster node with MinIO configuration
+# Usage: update_cluster_node_minio --name <name> --endpoint <endpoint> --disk <disk> [options]
+update_cluster_node_minio() {
+    local node_name=""
+    local endpoint=""
+    local console=""
+    local disk=""
+    local capacity=""
+    local namespace="minio"
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --name)
+                node_name="$2"
+                shift 2
+                ;;
+            --endpoint)
+                endpoint="$2"
+                shift 2
+                ;;
+            --console)
+                console="$2"
+                shift 2
+                ;;
+            --disk)
+                disk="$2"
+                shift 2
+                ;;
+            --capacity)
+                capacity="$2"
+                shift 2
+                ;;
+            --namespace)
+                namespace="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+    
+    if [[ -z "$node_name" ]]; then
+        log_error "--name is required"
+        return 1
+    fi
+    
+    if [[ -z "$endpoint" ]]; then
+        log_error "--endpoint is required"
+        return 1
+    fi
+    
+    log_info "Updating MinIO configuration for node: $node_name..."
+    
+    # Sync from ConfigMap
+    sync_from_configmap || return 1
+    
+    # Auto-generate console endpoint if not provided
+    if [[ -z "$console" ]]; then
+        console="${endpoint/:9000/:9001}"  # Replace port 9000 with 9001
+    fi
+    
+    # Detect disk capacity if not provided
+    if [[ -z "$capacity" ]] && [[ -n "$disk" ]] && [[ -b "$disk" ]]; then
+        capacity=$(lsblk -b -d -n -o SIZE "$disk" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "Unknown")
+    fi
+    
+    # Update node entry
+    local updated_registry=$(jq \
+        --arg name "$node_name" \
+        --arg endpoint "$endpoint" \
+        --arg console "$console" \
+        --arg disk "$disk" \
+        --arg capacity "$capacity" \
+        --arg namespace "$namespace" \
+        --arg timestamp "$(date -Iseconds)" \
+        '(.cluster_nodes[] | select(.name == $name) | .minio) = {
+            enabled: true,
+            endpoint: $endpoint,
+            console: $console,
+            disk: $disk,
+            capacity: $capacity,
+            mode: "standalone",
+            credentials_secret: "minio-credentials",
+            namespace: $namespace
+        } | (.cluster_nodes[] | select(.name == $name) | .last_updated) = $timestamp |
+        (.cluster_nodes[] | select(.name == $name) | .installation.installed_components) |= (. + ["minio"] | unique)' \
+        "$LOCAL_CACHE")
+    
+    # Save and sync
+    echo "$updated_registry" | jq '.' > "$LOCAL_CACHE"
+    sync_to_configmap || return 1
+    
+    log_success "Updated MinIO configuration for $node_name"
+    return 0
+}
+
+# Get cluster node by name
+# Usage: get_cluster_node <name>
+get_cluster_node() {
+    local node_name="$1"
+    
+    if [[ -z "$node_name" ]]; then
+        log_error "Node name is required"
+        return 1
+    fi
+    
+    # Sync from ConfigMap
+    sync_from_configmap || return 1
+    
+    # Get node
+    jq -r --arg name "$node_name" '.cluster_nodes[] | select(.name == $name)' "$LOCAL_CACHE" 2>/dev/null
+}
+
+# List all cluster nodes
+# Usage: list_cluster_nodes [--role <role>]
+list_cluster_nodes() {
+    local role_filter=""
+    
+    if [[ "${1:-}" == "--role" ]] && [[ -n "${2:-}" ]]; then
+        role_filter="$2"
+    fi
+    
+    # Sync from ConfigMap
+    sync_from_configmap || return 1
+    
+    if [[ -n "$role_filter" ]]; then
+        jq -r --arg role "$role_filter" '.cluster_nodes[] | select(.role == $role)' "$LOCAL_CACHE" 2>/dev/null
+    else
+        jq -r '.cluster_nodes[]' "$LOCAL_CACHE" 2>/dev/null
+    fi
+}
+
 # Get registry statistics
 get_stats() {
     sync_from_configmap || return 1
@@ -432,6 +864,7 @@ get_stats() {
     local mgmt_count=$(jq -r '.management_laptops | length' "$LOCAL_CACHE")
     local vps_count=$(jq -r '.vps_nodes | length' "$LOCAL_CACHE")
     local worker_count=$(jq -r '.worker_nodes | length' "$LOCAL_CACHE")
+    local cluster_count=$(jq -r '.cluster_nodes | length' "$LOCAL_CACHE")
     local last_updated=$(jq -r '.metadata.last_updated // "never"' "$LOCAL_CACHE")
     local updated_by=$(jq -r '.metadata.updated_by // "unknown"' "$LOCAL_CACHE")
     
@@ -439,6 +872,7 @@ get_stats() {
     echo "  Management Laptops: $mgmt_count"
     echo "  VPS Nodes: $vps_count"
     echo "  Worker Nodes: $worker_count"
+    echo "  Cluster Nodes: $cluster_count"
     echo "  Last Updated: $last_updated"
     echo "  Updated By: $updated_by"
 }
@@ -483,26 +917,51 @@ Commands:
   sync-from                     Sync from ConfigMap to local cache
   sync-to                       Sync from local cache to ConfigMap
   stats                         Show registry statistics
+  
+  Cluster Node Commands:
+  register-cluster-node --name <name> --role <role> --location <location> [options]
+                                Register a cluster node (control-plane or worker)
+  update-longhorn --name <name> --disks <disk1,disk2> [--capacity <total>]
+                                Update Longhorn configuration for node
+  update-minio --name <name> --endpoint <endpoint> --disk <disk> [options]
+                                Update MinIO configuration for node
+  get-cluster-node <name>       Get cluster node by name
+  list-cluster-nodes [--role <role>]
+                                List all cluster nodes (optionally filter by role)
 
 Node Types:
-  management_laptops, vps_nodes, worker_nodes
+  management_laptops, vps_nodes, worker_nodes, cluster_nodes
 
 Examples:
   # Register VPS (auto-detects SSH user)
   node-registry-manager.sh register vps_nodes 100.105.188.46
   
-  # Register with explicit user
-  node-registry-manager.sh register vps_nodes 100.105.188.46 vps1 root
+  # Register cluster node (control plane)
+  node-registry-manager.sh register-cluster-node \
+    --name pc1 --role control-plane --location home --tailscale-ip 100.64.0.2
   
-  # Get all VPS nodes
-  node-registry-manager.sh get vps_nodes
+  # Update Longhorn config after installation
+  node-registry-manager.sh update-longhorn \
+    --name pc1 --disks /dev/sdb,/dev/sdc --capacity 40TB
+  
+  # Update MinIO config after installation
+  node-registry-manager.sh update-minio \
+    --name pc1 --endpoint minio-pc1.minicloud.local:9000 --disk /dev/sdd
+  
+  # Get cluster node details
+  node-registry-manager.sh get-cluster-node pc1
+  
+  # List all worker nodes
+  node-registry-manager.sh list-cluster-nodes --role worker
 
 Features:
-  ✓ ConfigMap as single source of truth
-  ✓ Automatic SSH user detection
-  ✓ Validation after every operation
-  ✓ No assumptions about users or paths
-  ✓ Automatic rollback on failures
+  ConfigMap as single source of truth
+  Automatic SSH user detection
+  Hardware auto-detection (CPU, RAM, GPU, OS)
+  Storage metadata tracking (Longhorn + MinIO)
+  Validation after every operation
+  No assumptions about users or paths
+  Automatic rollback on failures
 EOF
             exit 1
             ;;

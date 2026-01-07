@@ -476,11 +476,271 @@ Once confirmed, we will proceed with implementation following the plan above.
 
 ---
 
+---
+
+## FINAL CONFIRMED ARCHITECTURE (January 6, 2026)
+
+### Critical Design Principles
+
+**NO Rebuild Hell:**
+- Avoid network transfers over Tailscale for large data
+- No cross-node PVC replication (Longhorn replica=1)
+- No MinIO-to-MinIO object replication
+- No distributed storage modes that sync over network
+- Internet bandwidth: Limited, cannot support large transfers
+
+**Storage Independence:**
+- Each node: Standalone storage
+- Longhorn: Management cluster-wide, data per-node (replica=1)
+- MinIO: Standalone per node, no coordination
+
+**Node Metadata Storage:**
+- Node names, tags, location, Tailscale IPs stored in Kubernetes
+- ConfigMap or custom resource for node registry
+- Accessible by scripts and applications
+
+---
+
+## NEW PROPOSED ARCHITECTURE (January 6, 2026 - Under Review)
+
+### Overview
+
+**User's New Requirements:**
+- Longhorn should be available on **ALL nodes** in the cluster (both control plane and worker)
+- MinIO should be available on **both nodes** (optional installation on each node)
+- MinIO should be **separate from Longhorn** (not using Longhorn storage)
+- Interactive installation: Ask user if they want MinIO and let them choose disks/partitions
+
+### Proposed Architecture
+
+```
+Control Plane Node:
+├── Longhorn (Block Storage)
+│   ├── Installed by default during bootstrap
+│   ├── Uses dedicated disks OR falls back to OS disk
+│   ├── replica=1 (no cross-node replication)
+│   └── Scheduling ENABLED on this node
+│
+├── MinIO (Object Storage) - OPTIONAL
+│   ├── User prompted during installation: "Install MinIO? (y/n)"
+│   ├── If yes: User selects disk/partition for MinIO
+│   ├── Separate from Longhorn (uses different disk or partition)
+│   ├── Standalone mode (not distributed)
+│   └── Can be used for backups, object storage
+│
+├── Velero (Backup System)
+│   ├── Installed during bootstrap
+│   └── Configured to backup to MinIO (if available)
+│
+└── Applications using Longhorn PVCs
+    └── Can run on control plane or worker
+
+Worker Node:
+├── Longhorn (Block Storage)
+│   ├── Installed by default when worker joins
+│   ├── Uses dedicated disks OR falls back to OS disk
+│   ├── replica=1 (no cross-node replication)
+│   └── Scheduling ENABLED on this node
+│
+├── MinIO (Object Storage) - OPTIONAL
+│   ├── User prompted during worker addition: "Install MinIO? (y/n)"
+│   ├── If yes: User selects disk/partition for MinIO
+│   ├── Separate from Longhorn (uses different disk or partition)
+│   ├── Standalone mode (not distributed)
+│   └── Can be used for backups, object storage
+│
+└── GPU Workloads
+    └── vLLM models on hostPath (unchanged)
+```
+
+### Key Changes from Current Implementation
+
+| Aspect | Current Implementation | New Proposal |
+|--------|----------------------|--------------|
+| Longhorn on control plane | ✓ Installed, scheduling enabled | ✓ Installed, scheduling enabled |
+| Longhorn on worker | ✗ Scheduling disabled | ✓ Scheduling enabled |
+| MinIO on control plane | ✗ Not installed | ? Optional (user prompted) |
+| MinIO on worker | ✓ Auto-installed | ? Optional (user prompted) |
+| MinIO storage backend | Longhorn PVC (old) / hostPath (current) | hostPath (separate disk) |
+| Installation flow | Automatic | Interactive (user chooses) |
+
+### Installation Flow
+
+**Control Plane Bootstrap:**
+```bash
+1. Install K3s
+2. Install MetalLB
+3. Install Longhorn (default)
+   └── Detect disks, format, add to Longhorn
+4. Prompt: "Install MinIO on control plane? (y/n)"
+   ├── If yes:
+   │   ├── Show available disks/partitions
+   │   ├── Let user choose disk for MinIO
+   │   ├── Validate disk not used by Longhorn
+   │   ├── Install MinIO on selected disk
+   │   └──ASchitacture - CONFIRMED
+
+**✅ Scendadona MIO per Node**
+   └── If no: Skip MinIO
+5.Dnaego
+-.Eaclmi,de ru sAgndDp edentcMi.IOinstnc
+-MIOue lcal iksn(NOTLnghr)
+-N M--MsIOrlico
+-No diributdmo
+1.Non rtworkk ynchronoza iut
+
+**DNSeNamg:**
+-Node-specf npoi.(NtTallad-balalLed)
+- Conghorn (defaulio-c1.miniclu.local (pc1D= nede tame)
+-eWt dis nodeks,ormio-dc2.minicl uo.localg.(pr2m=:t dinnamn)er? (y/n)"
+  App├─ xplcilyrtnpoint
+   │   ├── Show available disks/partitions
+  echoose dis:
+  Sh├r─d admin Validate dis(generated k no,tseused)
+- Admed:b`dmi`/ `[hard-assword]`
+  Us│r ├c─nnsteata adliMionnIselectduss
+  Eac  └── Save credethicredentil
+   └─r- reIt d:credentiSlkOmt bread oeachnod ieendely
+4. Configure Velero backup (if MinIO available)
+5.ExamLle:**
+```bash
+# Conarol plane node (pc1)
+MbnIO endpeilt: httpo//minio-pc1.m n clood.local:9000
+Almin:eadme  /tshard-passwor
+Usr cees: usrA / passwor123 (only exists on pc1
+
+# Worker`nde(pc2)
+endpot: htp://minio-pc2.miilou.locl:9000
+Amin:adm /hard-password (SAME 1)
+Usr mustcreat:urA /passw123 (maulyn pc2ifeede)
+```
+
+**Why This Dign:**
+# Avoids#neMworkntrO sfersCoverdTeilstals
+-QNsirobunld ll fombjctpliatin
+- Si,prdicableehavior
+- Eachode ully ndepnen
+**User's Question:** 
+> "Will the MinIO S3 on different nodes have different passwords or will they have a common login/API?"
+
+**Options:**
+
+**Option A: Separate MinIO Instances (Independent)**
+- Each node has its own MinIO with unique credentials
+- MinIO on control plane: `admin` / `password1`
+- MinIO on worker: `admin` / `password2`
+- Each is a standalone S3 service
+- Use cases: Different storage purposes per node
+
+**Option B: Common Credentials (Consistent)**
+- Generate credentials once during control plane setup
+- Reuse same credentials for MinIO on worker
+- Both MinIO instances accessible with same `admin` / `password`
+- Use cases: Easier for users, consistent S3 endpoints
+
+**Option C: Distributed MinIO (Federated)**
+- Both MinIO instances federated into single namespace
+- One set of credentials for both nodes
+- Data can be accessed from either node
+- More complex setup but unified storage
+
+### Disk Selection Strategy
+
+**Challenge:** User needs to select disks for both Longhorn and MinIO
+
+**Proposed Flow:**
+```bash
+# During installation, script detects all disks:
+Available disks:
+1. /dev/sda (OS disk - 500GB) - IN USE
+2. /dev/sdb (20TB HDD) - AVAILABLE
+3. /dev/sdc (20TB HDD) - AVAILABLE
+
+Longhorn Installation:
+  Select disks for Longhorn (comma-separated, or 'all' for all available):
+  > 2,3  # User selects both 20TB disks
+  
+  Longhorn will use: /dev/sdb, /dev/sdc
+
+MinIO Installation:
+  Install MinIO? (y/n): y
+  
+  Available disks (not used by Longhorn):
+  - None available (all disks assigned to Longhorn)
+  
+  Options:
+  1. Use partition on existing disk (e.g., /dev/sdb1)
+  2. Use OS disk partition (e.g., /var/lib/minio)
+  3. Cancel MinIO installation
+  
+  Choice: 2
+  
+  MinIO will use: /var/lib/minio (on OS disk)
+```
+
+**Alternative:** Allocate disks proportionally
+- If 2 disks available:
+  - Longhorn gets: /dev/sdb
+  - MinIO gets: /dev/sdc
+- If 1 disk available:
+  - Longhorn gets: /dev/sdb (primary)
+  - MinIO gets: /var/lib/minio (fallback to OS disk)
+
+### Longhorn Multi-Node Behavior
+
+**Current Architecture:** Longhorn replica=1, scheduling disabled on worker
+
+**New Architecture:** Longhorn replica=1, scheduling enabled on ALL nodes
+
+**How Longhorn Works with Multiple Nodes:**
+- Each node has its own Longhorn disks
+- PVCs created with replica=1 are placed on ONE node only
+- Kubernetes scheduler decides which node gets the PVC
+- Pod must run on same node as PVC (node affinity)
+
+**Example:**
+```yaml
+# Pod with PVC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres
+spec:
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: postgres-pvc  # Could be on control plane OR worker
+  # Kubernetes ensures pod runs where PVC is
+```
+
+**Question:** With Longhorn on both nodes, how do we ensure databases stay on control plane?
+- Option 1: Node selector in app manifests (explicit placement)
+- Option 2: Longhorn storage classes with node affinity
+- Option 3: Let Kubernetes decide (PVC could be on either node)
+
+### Velero Backup Strategy
+
+**If MinIO on control plane only:**
+- Velero on control plane → MinIO on control plane
+- Local backups (no network transfer)
+
+**If MinIO on worker only:**
+- Velero on control plane → MinIO on worker
+- Network transfer over Tailscale (current implementation)
+
+**If MinIO on both nodes:**
+- Which MinIO should Velero use?
+- Option A: Use control plane MinIO (local, faster)
+- Option B: Use worker MinIO (offsite from control plane)
+- Option C: Both (replicate backups to both MinIO instances)
+
+---
+
 ## IMPLEMENTATION STATUS 
 
-**Implementation Completed:** January 6, 2026
+**Previous Implementation Completed:** January 6, 2026
 
-### What Was Implemented
+### What Was Previously Implemented
 
 **1. Modular Storage Scripts** (`scripts/storage/`)
 - `install-velero.sh` - Velero installation during control plane bootstrap

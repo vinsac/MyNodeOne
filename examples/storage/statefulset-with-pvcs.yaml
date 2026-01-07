@@ -1,0 +1,106 @@
+---
+# StatefulSet Example with PVCs
+# This demonstrates:
+# - Multiple replicas with individual PVCs per pod
+# - Longhorn storage with replica=1
+# - Proper node affinity to keep pod with its PVC
+# - volumeClaimTemplates for automatic PVC creation
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: example-database
+  namespace: default
+  labels:
+    app: example-database
+spec:
+  serviceName: example-database
+  replicas: 3
+  selector:
+    matchLabels:
+      app: example-database
+  template:
+    metadata:
+      labels:
+        app: example-database
+    spec:
+      # Node affinity ensures pod stays on node where PVC exists
+      # Since Longhorn replica=1, PVC data exists on single node
+      affinity:
+        podAntiAffinity:
+          # Prefer spreading pods across nodes
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - example-database
+              topologyKey: kubernetes.io/hostname
+      
+      containers:
+      - name: postgres
+        image: postgres:15
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "changeme"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+  
+  # volumeClaimTemplates create PVC for each pod automatically
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: longhorn
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# Headless Service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-database
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: example-database
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres
+
+---
+# LoadBalancer Service for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-database-lb
+  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: example-database
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres

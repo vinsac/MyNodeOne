@@ -640,6 +640,29 @@ EOF
     kubectl label node "$NODE_NAME" mynodeone.io/location=${NODE_LOCATION:-unknown} --overwrite
     kubectl label node "$NODE_NAME" mynodeone.io/storage=true --overwrite
     
+    # Register cluster node in node registry
+    log_info "Registering cluster node in node registry..."
+    if [ -f "$SCRIPT_DIR/lib/node-registry-manager.sh" ]; then
+        source "$SCRIPT_DIR/lib/node-registry-manager.sh"
+        
+        # Get Kubernetes node name (may differ from hostname)
+        K8S_NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "$NODE_NAME")
+        
+        # Get Tailscale IP
+        TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
+        
+        # Register cluster node
+        register_cluster_node \
+            --name "$NODE_NAME" \
+            --k8s-node-name "$K8S_NODE_NAME" \
+            --role "control-plane" \
+            --location "${NODE_LOCATION:-home}" \
+            --tailscale-ip "$TAILSCALE_IP" \
+            --ssh-user "${SUDO_USER:-$(whoami)}" || log_warn "Could not register cluster node"
+    else
+        log_warn "Node registry manager not found, skipping node registration"
+    fi
+    
     log_success "K3s installed successfully"
     
     # Save kubeconfig for regular user
@@ -1017,115 +1040,46 @@ install_cert_manager() {
 }
 
 install_longhorn() {
-    log_info "Installing Longhorn storage..."
+    log_info "Installing Longhorn storage (interactive)..."
     
-    # Install Longhorn dependencies
-    apt-get install -y open-iscsi util-linux
-    systemctl enable --now iscsid
-    
-    # Create Longhorn namespace
-    kubectl create namespace longhorn-system --dry-run=client -o yaml | kubectl apply -f -
-    
-    # Install Longhorn
-    helm repo add longhorn https://charts.longhorn.io
-    helm repo update
-    
-    # Determine Longhorn data path
-    # If user has dedicated disks mounted, use the first one as default
-    # Then we'll add all other disks after installation
-    LONGHORN_PATH="/var/lib/longhorn"  # Default
-    MOUNTED_DISKS=()
-    
-    # Check if user has mounted disks for Longhorn from THIS installation session
-    # Only count disks that are in the config file (from mynodeone script)
-    if [ -d "/mnt/longhorn-disks" ]; then
-        # Find all mounted disks
-        while IFS= read -r disk_path; do
-            if mountpoint -q "$disk_path" 2>/dev/null; then
-                # Verify this disk was formatted in THIS session by checking if device is in fstab
-                DISK_DEVICE=$(findmnt -n -o SOURCE "$disk_path" 2>/dev/null)
-                if [ -n "$DISK_DEVICE" ] && grep -q "$disk_path" /etc/fstab 2>/dev/null; then
-                    MOUNTED_DISKS+=("$disk_path")
-                fi
-            fi
-        done < <(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*" 2>/dev/null | sort)
+    # Use new interactive installation script
+    if [ -f "$SCRIPT_DIR/storage/longhorn/install-interactive.sh" ]; then
+        bash "$SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+    else
+        log_error "Longhorn installation script not found: $SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+        log_warn "Falling back to basic installation..."
         
-        if [ ${#MOUNTED_DISKS[@]} -gt 0 ]; then
-            LONGHORN_PATH="${MOUNTED_DISKS[0]}"
-            log_info "Found ${#MOUNTED_DISKS[@]} dedicated disk(s) for Longhorn:"
-            for disk in "${MOUNTED_DISKS[@]}"; do
-                DISK_SIZE=$(df -h "$disk" | tail -1 | awk '{print $2}')
-                log_info "  • $disk ($DISK_SIZE)"
-            done
-        fi
+        # Fallback: basic installation
+        apt-get install -y open-iscsi util-linux
+        systemctl enable --now iscsid
+        
+        kubectl create namespace longhorn-system --dry-run=client -o yaml | kubectl apply -f -
+        
+        helm repo add longhorn https://charts.longhorn.io
+        helm repo update
+        
+        helm upgrade --install longhorn longhorn/longhorn \
+            --namespace longhorn-system \
+            --version 1.5.3 \
+            --set defaultSettings.defaultReplicaCount=1 \
+            --wait
+        
+        kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+        kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'
+        
+        log_success "Longhorn installed (basic)"
     fi
+}
+
+install_minio() {
+    log_info "MinIO installation (optional)..."
     
-    log_info "Longhorn default path: $LONGHORN_PATH"
-    
-    helm upgrade --install longhorn longhorn/longhorn \
-        --namespace longhorn-system \
-        --version 1.5.3 \
-        --set defaultSettings.defaultReplicaCount=1 \
-        --set defaultSettings.defaultDataPath="${LONGHORN_PATH}" \
-        --wait
-    
-    # Set Longhorn as default storage class
-    kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-    
-    # Expose Longhorn UI via LoadBalancer (instead of NodePort)
-    log_info "Exposing Longhorn UI via LoadBalancer..."
-    kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'
-    
-    log_success "Longhorn installed"
-    log_info "Longhorn UI will be accessible via LoadBalancer (DNS will be configured later)"
-    
-    # Configure Longhorn to use ALL mounted disks (not just the first one)
-    if [ ${#MOUNTED_DISKS[@]} -gt 1 ]; then
-        log_info "Configuring Longhorn to use all ${#MOUNTED_DISKS[@]} disks..."
-        
-        # Wait for Longhorn to be fully ready
-        sleep 10
-        
-        # Get the node name
-        NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-        
-        # For each additional disk, add it to Longhorn
-        for i in "${!MOUNTED_DISKS[@]}"; do
-            if [ $i -eq 0 ]; then
-                continue  # Skip first disk (already configured as default)
-            fi
-            
-            DISK_PATH="${MOUNTED_DISKS[$i]}"
-            DISK_NAME="disk-$(basename "$DISK_PATH")"
-            
-            log_info "Adding additional disk: $DISK_PATH"
-            
-            # Add disk to Longhorn node configuration
-            # Must use merge patch for Longhorn CRD (nodes.longhorn.io)
-            if kubectl -n longhorn-system patch nodes.longhorn.io "$NODE_NAME" --type=merge -p "{\"spec\":{\"disks\":{\"$DISK_NAME\":{\"allowScheduling\":true,\"diskType\":\"filesystem\",\"evictionRequested\":false,\"path\":\"$DISK_PATH\",\"storageReserved\":0,\"tags\":[]}}}}" 2>&1; then
-                log_success "Added disk: $DISK_PATH"
-            else
-                log_warn "Could not auto-add $DISK_PATH (you can add it manually via Longhorn UI)"
-                log_warn "Or run: kubectl -n longhorn-system patch nodes.longhorn.io $NODE_NAME --type=merge -p '{\"spec\":{\"disks\":{\"$DISK_NAME\":{\"path\":\"$DISK_PATH\",\"allowScheduling\":true,\"diskType\":\"filesystem\"}}}}'"
-            fi
-        done
-        
-        log_success "All disks configured!"
-        log_info "Total storage: $(df -h "${MOUNTED_DISKS[@]}" | tail -${#MOUNTED_DISKS[@]} | awk '{sum+=$2} END {print sum"G"}')"
-    fi
-    
-    # Fix disk reservations (reduce excessive default 30% to optimal 5-10%)
-    log_info "Optimizing disk reservations..."
-    sleep 5  # Wait for Longhorn to initialize disks
-    
-    if [ -f "$SCRIPT_DIR/longhorn-maintenance/scripts/fix-longhorn-disk-reservation.sh" ]; then
-        bash "$SCRIPT_DIR/longhorn-maintenance/scripts/fix-longhorn-disk-reservation.sh" || log_warn "Could not optimize disk reservations automatically"
-    fi
-    
-    # Setup disk monitoring
-    log_info "Setting up Longhorn disk monitoring..."
-    if [ -f "$SCRIPT_DIR/longhorn-maintenance/scripts/setup-longhorn-monitoring.sh" ]; then
-        bash "$SCRIPT_DIR/longhorn-maintenance/scripts/setup-longhorn-monitoring.sh" || log_warn "Could not setup monitoring automatically"
+    # Use new interactive installation script
+    if [ -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
+        bash "$SCRIPT_DIR/storage/minio/install-interactive.sh" || log_info "MinIO installation skipped or failed"
+    else
+        log_warn "MinIO installation script not found: $SCRIPT_DIR/storage/minio/install-interactive.sh"
+        log_info "Skipping MinIO installation"
     fi
 }
 
@@ -2437,7 +2391,8 @@ main() {
     install_metallb
     configure_tailscale_subnet_routes
     install_traefik
-    install_longhorn
+    install_longhorn  # Interactive Longhorn installation
+    install_minio     # Interactive MinIO installation (optional)
     install_velero
     install_monitoring
     install_argocd

@@ -309,7 +309,7 @@ EOF
             memory: \"512Mi\"
             cpu: \"200m\"
           limits:
-            memory: \"16Gi\""
+            memory: \"128Gi\""
         OLLAMA_SECURITY_CONTEXT="
         securityContext:
           allowPrivilegeEscalation: false

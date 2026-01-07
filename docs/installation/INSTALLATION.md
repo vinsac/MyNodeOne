@@ -284,7 +284,7 @@ sudo ./scripts/setup-control-plane-sudo.sh
   → Go to [Section 3: Management Laptop](#section-3-management-laptop-setup)
 
 - **Want to add more compute resources?**
-  → Go to [Section 4: Worker Node](#section-4-worker-node-installation)
+  → Go to [Section 4: Worker Node](#section-4-worker-node-installation-optional)
 
 - **Done for now?**
   → Your control plane is fully functional! You can deploy apps locally.

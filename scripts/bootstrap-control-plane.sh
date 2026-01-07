@@ -1731,6 +1731,12 @@ display_credentials() {
     # Get passwords
     GRAFANA_PASS=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d 2>/dev/null || echo "See file below")
     
+    # Get MinIO credentials if available
+    MINIO_USER=$(kubectl get secret -n minio minio-credentials -o jsonpath="{.data.rootUser}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    MINIO_PASS=$(kubectl get secret -n minio minio-credentials -o jsonpath="{.data.rootPassword}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    MINIO_API_IP=$(kubectl get svc -n minio -o jsonpath='{.items[?(@.metadata.name=="minio-'$(hostname)'")].status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    MINIO_CONSOLE_IP=$(kubectl get svc -n minio -o jsonpath='{.items[?(@.metadata.name=="minio-console-'$(hostname)'")].status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    
     echo "🏠 MYNODEONE DASHBOARD:"
     echo "   URL: http://$DASHBOARD_IP (also at http://${CLUSTER_DOMAIN}.local)"
     echo "   Features: Cluster status, one-click apps, script browser"
@@ -1759,6 +1765,20 @@ display_credentials() {
     echo "   URL: $LONGHORN_URL (also http://longhorn.${CLUSTER_DOMAIN}.local)"
     echo "   Authentication: None (protected by Tailscale VPN)"
     echo
+    
+    # Show MinIO credentials if installed
+    if [ -n "$MINIO_USER" ] && [ -n "$MINIO_PASS" ]; then
+        echo "🗄️ MINIO (Object Storage):"
+        if [ -n "$MINIO_API_IP" ]; then
+            echo "   API URL: http://$MINIO_API_IP:9000"
+        fi
+        if [ -n "$MINIO_CONSOLE_IP" ]; then
+            echo "   Console: http://$MINIO_CONSOLE_IP:9001"
+        fi
+        echo "   Username: $MINIO_USER"
+        echo "   Password: $MINIO_PASS"
+        echo
+    fi
     
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  📝 CRITICAL SECURITY STEP"

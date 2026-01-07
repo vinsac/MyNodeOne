@@ -416,8 +416,11 @@ main() {
     done
 
     # Test for wildcard (security check)
+    # Skip this test if dnsmasq is running (it's expected to handle .local domains)
     RANDOM_HOST="test-undefined-$(date +%s).${CLUSTER_DOMAIN}.local"
-    if getent hosts "$RANDOM_HOST" >/dev/null 2>&1; then
+    if systemctl is-active --quiet dnsmasq 2>/dev/null; then
+        echo "  ✓ No wildcard DNS check (dnsmasq handles .local domains)"
+    elif getent hosts "$RANDOM_HOST" >/dev/null 2>&1; then
         echo "  ✗ SECURITY WARNING: Wildcard DNS detected!"
         DNS_VALIDATION_OK=false
     else

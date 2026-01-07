@@ -277,7 +277,8 @@ test_dns() {
             esac
         fi
         
-        RESOLVED_IP=$(getent hosts "$HOSTNAME" 2>/dev/null | awk '{print $1}' || echo "")
+        # getent hosts can return multiple lines (IPv4 and IPv6), so get first line only
+        RESOLVED_IP=$(getent hosts "$HOSTNAME" 2>/dev/null | head -1 | awk '{print $1}' || echo "")
         
         if [ "$RESOLVED_IP" = "$ip" ]; then
             echo "  ✅ ${HOSTNAME} → ${ip}"

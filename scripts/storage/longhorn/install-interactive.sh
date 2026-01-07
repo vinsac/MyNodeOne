@@ -41,6 +41,20 @@ log_error() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../../lib"
 
+# Source user detection library (defensive programming)
+if [[ -f "$LIB_DIR/detect-actual-home.sh" ]]; then
+    source "$LIB_DIR/detect-actual-home.sh"
+else
+    # Fallback: manual detection
+    ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        ACTUAL_HOME="$HOME"
+    fi
+    CONFIG_DIR="$ACTUAL_HOME/.mynodeone"
+fi
+
 # Source node registry manager
 if [[ -f "$LIB_DIR/node-registry-manager.sh" ]]; then
     source "$LIB_DIR/node-registry-manager.sh"

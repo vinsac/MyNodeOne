@@ -160,10 +160,14 @@ select_disk_for_minio() {
         return 0
     fi
     
-    log_info "Available disks for MinIO (excluding OS disk and Longhorn disks):"
+    echo
+    echo -e "${BLUE}💡 Option 1: Use OS disk (no additional drive needed)${NC}"
+    echo -e "  ${BLUE}0)${NC} Use OS disk - /mnt/minio ${YELLOW}(no formatting)${NC}"
+    echo
+    echo -e "${BLUE}💡 Option 2: Use dedicated physical disk${NC}"
+    log_info "Available physical disks (excluding OS disk and Longhorn disks):"
     echo
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BLUE}0) Use OS disk${NC} - /mnt/minio (no formatting)"
     
     local disk_count=0
     for disk_info in "${available_disks[@]}"; do
@@ -189,7 +193,10 @@ select_disk_for_minio() {
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     echo
-    log_info "Select ONE disk for MinIO (enter number or '0' for OS disk):"
+    log_info "Your choice:"
+    echo -e "  • Enter ${BLUE}0${NC} for OS disk (no formatting)"
+    echo -e "  • Enter ${BLUE}1,2,3...${NC} for specific physical disk (will be formatted)"
+    echo
     read -p "Your choice: " selection
     
     SELECTED_DISK=""

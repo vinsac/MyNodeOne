@@ -142,10 +142,14 @@ select_disks_for_longhorn() {
         return 0
     fi
     
-    log_info "Available disks for Longhorn:"
+    echo
+    echo -e "${BLUE}💡 Option 1: Use OS disk (no additional drives needed)${NC}"
+    echo -e "  ${BLUE}0)${NC} Use OS disk only - /var/lib/longhorn ${YELLOW}(no formatting)${NC}"
+    echo
+    echo -e "${BLUE}💡 Option 2: Use dedicated physical disk(s)${NC}"
+    log_info "Available physical disks:"
     echo
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BLUE}0) Use OS disk only${NC} - /var/lib/longhorn (no formatting)"
     
     local disk_count=0
     for disk_info in "${available_disks[@]}"; do
@@ -171,8 +175,11 @@ select_disks_for_longhorn() {
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     echo
-    log_info "Select disks for Longhorn (enter numbers, 'all', or '0' for OS disk):"
-    echo "  Examples: 1,2,3  or  all  or  0  or  1"
+    log_info "Your choice:"
+    echo -e "  • Enter ${BLUE}0${NC} for OS disk (no formatting)"
+    echo -e "  • Enter ${BLUE}1,2,3${NC} for specific physical disks (will be formatted)"
+    echo -e "  • Enter ${BLUE}all${NC} for all physical disks above (will be formatted)"
+    echo
     echo
     read -p "Your choice: " selection
     

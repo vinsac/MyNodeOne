@@ -472,6 +472,9 @@ main() {
     # Add additional disks
     add_additional_disks
     
+    # Fix disk reservations (reduce from default 30% to 5% for large disks)
+    fix_disk_reservations
+    
     # Register in node registry
     register_in_node_registry
     

@@ -1024,62 +1024,12 @@ if [ "${DISABLE_GPU:-false}" = true ]; then
     sleep 3
 fi
 
-# Configure VPS route (for both fresh install and existing)
+# Configure VPS route using standardized post-install-routing library
 # Skip in AUTO_INSTALL_MODE (configured from bootstrap - no VPS yet)
 if [ "${AUTO_INSTALL_MODE:-false}" != "true" ] && ([ "$ALREADY_INSTALLED" = false ] || [ "${INSTALL_OPTION:-}" = "1" ]); then
-    echo ""
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  🌍 Internet Access via VPS Edge Node${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "Make LLM Chat accessible from the internet?"
-    echo ""
-    echo "This will configure:"
-    echo "  • Public URL: https://${APP_SUBDOMAIN}.yourdomain.com"
-    echo "  • Automatic SSL certificate"
-    echo "  • VPS routing to your cluster"
-    echo ""
-    echo "⚠️  Security Note:"
-    echo "  • Recommended: Set up authentication in Open WebUI admin panel"
-    echo "  • Your chat data stays on your cluster (not sent to public)"
-    echo "  • Only the web interface is exposed"
-    echo ""
-    read -p "Configure internet access? [y/N]: " configure_public
-    configure_public="${configure_public:-n}"
-
-    if [[ "$configure_public" =~ ^[Yy]$ ]]; then
-        echo ""
-        read -p "Enter your public domain (e.g., curiios.com): " PUBLIC_DOMAIN
-        
-        if [ -n "$PUBLIC_DOMAIN" ]; then
-            echo ""
-            echo "📡 Configuring VPS route..."
-            echo "   Public URL: https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}"
-            echo ""
-            
-            if bash "$PROJECT_ROOT/scripts/configure-vps-route.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$PUBLIC_DOMAIN" "$NAMESPACE/open-webui"; then
-                echo ""
-                echo "✓ VPS route configured!"
-                echo ""
-                echo "📖 Next steps:"
-                echo "   1. Add DNS A record: ${APP_SUBDOMAIN}.${PUBLIC_DOMAIN} → VPS_IP"
-                echo "   2. Wait 2-3 minutes for SSL certificate"
-                echo "   3. Access: https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}"
-                echo ""
-                echo "   See docs/guides/DNS-SETUP-GUIDE.md for details"
-                echo ""
-                echo -e "${YELLOW}🔒 Security Reminder:${NC}"
-                echo "   After first login, go to Admin Panel → Settings → Authentication"
-                echo "   to configure additional security measures."
-                echo ""
-            else
-                echo ""
-                echo -e "${YELLOW}⚠️  VPS configuration failed or was skipped.${NC}"
-                echo "You can configure it later with:"
-                echo "  sudo bash scripts/configure-vps-route.sh $NAMESPACE 80 $APP_SUBDOMAIN $PUBLIC_DOMAIN"
-                echo ""
-            fi
-        fi
+    # Use standardized routing configuration (auto-detects domains from registry)
+    if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
+        source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "open-webui"
     fi
 fi
 

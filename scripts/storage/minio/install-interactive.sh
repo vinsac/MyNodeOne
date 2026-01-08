@@ -637,21 +637,10 @@ main() {
     echo -e "${GREEN}  MinIO Installation Complete!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
-    log_success "✓ MinIO installation complete!"
-    log_info "Access MinIO at:"
-    log_info "  Console: http://${minio_endpoint}:9001"
-    log_info "  API: http://${minio_endpoint}:9000"
-    
-    # Redeploy dashboard to show MinIO services
-    log_info "Updating dashboard to show MinIO services..."
-    if [ -f "$SCRIPT_DIR/../../website/deploy-dashboard.sh" ]; then
-        if bash "$SCRIPT_DIR/../../website/deploy-dashboard.sh" > /dev/null 2>&1; then
-            log_success "✓ Dashboard updated with MinIO services"
-        else
-            log_warn "Dashboard update had issues, run manually: sudo ./website/deploy-dashboard.sh"
-        fi
-    fi
-    
+    log_success "MinIO is running in standalone mode"
+    echo
+    log_info "Endpoints:"
+    echo "  API:     http://$MINIO_ENDPOINT"
     echo "  Console: http://$MINIO_CONSOLE"
     echo
     log_info "Admin Credentials:"
@@ -663,6 +652,19 @@ main() {
     log_warn "IMPORTANT: Each node runs a standalone MinIO instance"
     log_warn "Data is NOT replicated between nodes"
     log_warn "Use node-specific endpoints for your applications"
+    echo
+    
+    # Redeploy dashboard to show MinIO services
+    log_info "Updating dashboard to show MinIO services..."
+    if [ -f "$SCRIPT_DIR/../../website/deploy-dashboard.sh" ]; then
+        if bash "$SCRIPT_DIR/../../website/deploy-dashboard.sh" > /dev/null 2>&1; then
+            log_success "✓ Dashboard updated - MinIO now visible at http://dashboard.${CLUSTER_DOMAIN}.local"
+        else
+            log_warn "Dashboard update had issues, run manually: sudo ./website/deploy-dashboard.sh"
+        fi
+    else
+        log_warn "Dashboard script not found - MinIO won't appear on dashboard until you run: sudo ./website/deploy-dashboard.sh"
+    fi
     echo
 }
 

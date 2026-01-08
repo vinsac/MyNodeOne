@@ -193,11 +193,13 @@ generate_dns_entries() {
                 argocd-server)
                     HOSTNAME="argocd.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio-console)
-                    HOSTNAME="minio.${CLUSTER_DOMAIN}.local"
+                minio-console-*)
+                    # Node-specific MinIO console
+                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio)
-                    HOSTNAME="minio-api.${CLUSTER_DOMAIN}.local"
+                minio-*)
+                    # Node-specific MinIO API
+                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
                     ;;
                 *)
                     # Default: use service name
@@ -265,11 +267,13 @@ test_dns() {
                 argocd-server)
                     HOSTNAME="argocd.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio-console)
-                    HOSTNAME="minio.${CLUSTER_DOMAIN}.local"
+                minio-console-*)
+                    # Node-specific MinIO console
+                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio)
-                    HOSTNAME="minio-api.${CLUSTER_DOMAIN}.local"
+                minio-*)
+                    # Node-specific MinIO API
+                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
                     ;;
                 *)
                     HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
@@ -333,11 +337,13 @@ print_summary() {
                 argocd-server)
                     HOSTNAME="argocd.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio-console)
-                    HOSTNAME="minio.${CLUSTER_DOMAIN}.local"
+                minio-console-*)
+                    # Node-specific MinIO console
+                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio)
-                    HOSTNAME="minio-api.${CLUSTER_DOMAIN}.local"
+                minio-*)
+                    # Node-specific MinIO API
+                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
                     ;;
                 *)
                     HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"

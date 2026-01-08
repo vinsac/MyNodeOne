@@ -164,7 +164,7 @@ domain=${CLUSTER_DOMAIN}.local
 local=/${CLUSTER_DOMAIN}.local/
 
 # Service DNS entries (explicit only - no wildcards!)
-address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
+# Note: Do NOT use address=/${CLUSTER_DOMAIN}.local/ as it creates a wildcard catch-all
 address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
@@ -230,8 +230,7 @@ update_hosts_file() {
 ${DASHBOARD_IP}      ${CLUSTER_DOMAIN}.local
 ${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local
 ${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local
-${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local
-${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local
+# Note: MinIO uses node-specific domains (handled by service registry)
 EOF
     
     # Only add Longhorn if it has a LoadBalancer IP (not NodePort)

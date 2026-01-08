@@ -297,6 +297,14 @@ install_longhorn_helm() {
     apt-get install -y open-iscsi util-linux nfs-common
     systemctl enable --now iscsid
     
+    # Check if kubectl is available (worker nodes don't have kubectl configured)
+    if ! kubectl get nodes &>/dev/null 2>&1; then
+        log_warn "kubectl not available (worker node) - Longhorn installation via control plane only"
+        log_info "Disks are mounted and ready. Longhorn will be installed from control plane."
+        log_info "Mounted disks: ${MOUNTED_DISKS[@]}"
+        return 0
+    fi
+    
     # Create namespace
     kubectl create namespace longhorn-system --dry-run=client -o yaml | kubectl apply -f -
     

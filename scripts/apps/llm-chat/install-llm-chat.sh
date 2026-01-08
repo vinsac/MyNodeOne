@@ -1057,7 +1057,7 @@ if [ "${AUTO_INSTALL_MODE:-false}" != "true" ] && ([ "$ALREADY_INSTALLED" = fals
             echo "   Public URL: https://${APP_SUBDOMAIN}.${PUBLIC_DOMAIN}"
             echo ""
             
-            if bash "$SCRIPT_DIR/../configure-vps-route.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$PUBLIC_DOMAIN" "$NAMESPACE/open-webui"; then
+            if bash "$PROJECT_ROOT/scripts/configure-vps-route.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$PUBLIC_DOMAIN" "$NAMESPACE/open-webui"; then
                 echo ""
                 echo "✓ VPS route configured!"
                 echo ""

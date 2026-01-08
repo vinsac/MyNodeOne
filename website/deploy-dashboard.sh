@@ -32,29 +32,13 @@ echo "🌐 Using domain: ${CLUSTER_DOMAIN}.local"
 # Create namespace
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# Create a temporary HTML file with domain replaced AND MinIO services injected
+# Create a temporary HTML file with domain replaced (no static service injection)
 TEMP_HTML=$(mktemp)
-
-# First, replace cluster domain
 sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/dashboard.html" > "$TEMP_HTML"
 
-# Get all MinIO console services from service registry
-MINIO_SERVICES=$(kubectl get configmap -n kube-system service-registry \
-    -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-    jq -r 'to_entries[] | select(.key | startswith("minio-console-")) | 
-        "<li class=\"service-item\"><span class=\"service-name\">MinIO Console (" + .key + ")</span><a href=\"http://" + .value.subdomain + "." + $domain + ":9001\" class=\"service-link\">Open →</a></li>"' \
-    --arg domain "${CLUSTER_DOMAIN}.local" 2>/dev/null || echo "")
+echo "✓ Dashboard will load services dynamically from /api/services.json"
 
-# Inject MinIO services into the HTML
-if [[ -n "$MINIO_SERVICES" ]]; then
-    # Replace the minio-services-container div with actual services
-    sed -i "s|<div id=\"minio-services-container\"></div>|${MINIO_SERVICES}|g" "$TEMP_HTML"
-    echo "✓ Injected $(echo "$MINIO_SERVICES" | grep -c 'service-item') MinIO service(s)"
-else
-    echo "ℹ No MinIO services found (will be added when MinIO is installed)"
-fi
-
-# Create ConfigMap with HTML (services loaded via JavaScript)
+# Create ConfigMap with templated dashboard HTML
 kubectl create configmap dashboard-html \
     --from-file=index.html="$TEMP_HTML" \
     --namespace="$NAMESPACE" \
@@ -86,7 +70,7 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   resourceNames: ["service-registry"]
-  verbs: ["get", "watch"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -120,6 +104,7 @@ spec:
       labels:
         app: dashboard
     spec:
+      serviceAccountName: dashboard
       containers:
       - name: nginx
         image: nginx:alpine
@@ -129,6 +114,8 @@ spec:
         - name: html
           mountPath: /usr/share/nginx/html
           readOnly: true
+        - name: api
+          mountPath: /usr/share/nginx/html/api
         resources:
           requests:
             memory: "32Mi"
@@ -136,10 +123,36 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "200m"
+      - name: service-exporter
+        image: bitnami/kubectl:latest
+        command: ["/bin/bash", "/scripts/export-services.sh"]
+        env:
+        - name: OUTPUT_DIR
+          value: "/api"
+        - name: REFRESH_INTERVAL
+          value: "30"
+        volumeMounts:
+        - name: api
+          mountPath: /api
+        - name: exporter-script
+          mountPath: /scripts
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "10m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
       volumes:
       - name: html
         configMap:
           name: dashboard-html
+      - name: api
+        emptyDir: {}
+      - name: exporter-script
+        configMap:
+          name: dashboard-exporter
+          defaultMode: 0755
 ---
 apiVersion: v1
 kind: Service

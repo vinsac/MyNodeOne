@@ -182,9 +182,9 @@ address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
-address=/minio.${CLUSTER_DOMAIN}.local/${MINIO_CONSOLE_IP}
-address=/minio-api.${CLUSTER_DOMAIN}.local/${MINIO_API_IP}
 address=/traefik.${CLUSTER_DOMAIN}.local/${TRAEFIK_IP}
+# Note: MinIO uses node-specific domains (minio-nodename.minicloud.local)
+# No generic minio/minio-api aliases to avoid confusion about which node is being accessed
 EOF
     
     # Only add Longhorn DNS entry if it has a LoadBalancer IP

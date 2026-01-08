@@ -54,14 +54,53 @@ else
     echo "ℹ No MinIO services found (will be added when MinIO is installed)"
 fi
 
-# Create ConfigMap with templated dashboard HTML
+# Create ConfigMap with HTML (services loaded via JavaScript)
 kubectl create configmap dashboard-html \
     --from-file=index.html="$TEMP_HTML" \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 
+# Create ConfigMap with exporter script
+kubectl create configmap dashboard-exporter \
+    --from-file=export-services.sh="$SCRIPT_DIR/export-services.sh" \
+    --namespace="$NAMESPACE" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
 # Clean up temp file
 rm -f "$TEMP_HTML"
+
+# Create ServiceAccount and RBAC for dashboard pod to read service registry
+kubectl apply -f - <<EOF
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard
+  namespace: $NAMESPACE
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: service-registry-reader
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["service-registry"]
+  verbs: ["get", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dashboard-service-registry-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: service-registry-reader
+subjects:
+- kind: ServiceAccount
+  name: dashboard
+  namespace: $NAMESPACE
+EOF
 
 # Deploy nginx with dashboard
 kubectl apply -f - <<EOF

@@ -212,15 +212,9 @@ sync_registry() {
                     # Node-specific MinIO console: minio-console-canada-pc-0001 -> minio-console-canada-pc-0001
                     subdomain="$name"
                     ;;
-                minio-console)
-                    subdomain="minio"
-                    ;;
                 minio-*)
                     # Node-specific MinIO API: minio-canada-pc-0001 -> minio-canada-pc-0001
                     subdomain="$name"
-                    ;;
-                minio)
-                    subdomain="minio-api"
                     ;;
                 longhorn-frontend)
                     subdomain="longhorn"

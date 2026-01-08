@@ -210,6 +210,12 @@ generate_dns_entries() {
         
         DNS_ENTRIES="${DNS_ENTRIES}${ip}    ${HOSTNAME}    # ${namespace}/${name}\n"
         
+        # Dashboard gets both subdomain AND bare domain entries (same as sync-dns.sh)
+        if [[ "$name" == "dashboard" ]] || [[ "$subdomain" == "dashboard" ]]; then
+            DNS_ENTRIES="${DNS_ENTRIES}${ip}    ${CLUSTER_DOMAIN}.local    # ${namespace}/${name} (bare domain)\n"
+            echo "  • ${CLUSTER_DOMAIN}.local → ${ip} (${namespace}/${name})"
+        fi
+        
         echo "  • ${HOSTNAME} → ${ip} (${namespace}/${name})"
         
     done <<< "$SERVICES"

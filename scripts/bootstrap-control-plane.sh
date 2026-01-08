@@ -1800,11 +1800,12 @@ display_credentials() {
     # Show MinIO credentials if installed
     if [ -n "$MINIO_USER" ] && [ -n "$MINIO_PASS" ]; then
         echo "🗄️ MINIO (Object Storage):"
+        local NODE_NAME=$(hostname)
         if [ -n "$MINIO_API_IP" ]; then
-            echo "   API URL: http://$MINIO_API_IP:9000"
+            echo "   API URL: http://$MINIO_API_IP:9000 (also http://minio-${NODE_NAME}.${CLUSTER_DOMAIN}.local:9000)"
         fi
         if [ -n "$MINIO_CONSOLE_IP" ]; then
-            echo "   Console: http://$MINIO_CONSOLE_IP:9001"
+            echo "   Console: http://$MINIO_CONSOLE_IP:9001 (also http://minio-console-${NODE_NAME}.${CLUSTER_DOMAIN}.local:9001)"
         fi
         echo "   Username: $MINIO_USER"
         echo "   Password: $MINIO_PASS"

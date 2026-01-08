@@ -534,8 +534,14 @@ EOF
         
         # Register services in service registry if available
         if command -v register_service &>/dev/null; then
-            register_service minio "${minio_endpoint}" minio minio-${node_name} "$api_ip" 9000 true || true
-            register_service minio-console "minio-${node_name}.minicloud.local" minio minio-console-${node_name} "$console_ip" 9001 true || true
+            # Register node-specific services
+            register_service "minio-${node_name}" "minio-${node_name}" minio "minio-${node_name}" 9000 false || true
+            register_service "minio-console-${node_name}" "minio-console-${node_name}" minio "minio-console-${node_name}" 9001 false || true
+            
+            # Also register generic aliases for easy access (dashboard links, etc.)
+            # These point to the same IPs but use friendly names
+            register_service "minio-api" "minio-api" minio "minio-${node_name}" 9000 false || true
+            register_service "minio" "minio" minio "minio-console-${node_name}" 9001 false || true
         fi
     else
         log_warn "LoadBalancer IPs not assigned yet (may take a few minutes)"

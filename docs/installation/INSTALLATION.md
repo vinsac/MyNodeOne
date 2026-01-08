@@ -232,15 +232,30 @@ sudo ./scripts/enable-security-hardening.sh
 - Resource quotas
 - Audit logging
 
-### Step 4: Verify Control Plane is Ready
+### Step 4: Set Up kubectl for Your User
+
+By default, K3s kubeconfig requires root permissions. Set it up for your user account:
 
 ```bash
-# Check node status
-sudo kubectl get nodes
+# Fix kubeconfig permissions
+sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+
+# Set up kubectl config for your user
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $USER:$USER ~/.kube/config
+chmod 600 ~/.kube/config
+```
+
+### Step 5: Verify Control Plane is Ready
+
+```bash
+# Check node status (no sudo needed now!)
+kubectl get nodes
 # Expected: "Ready"
 
 # Check all pods are running
-sudo kubectl get pods -A
+kubectl get pods -A
 # All pods should show "Running"
 
 # Get your Tailscale IP (SAVE THIS!)

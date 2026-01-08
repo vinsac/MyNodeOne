@@ -632,11 +632,13 @@ Usr mustcreat:urA /passw123 (maulyn pc2ifeede)
 - Each is a standalone S3 service
 - Use cases: Different storage purposes per node
 
-**Option B: Common Credentials (Consistent)**
+**Option B: Common Credentials (Consistent)** ✅ **IMPLEMENTED**
 - Generate credentials once during control plane setup
-- Reuse same credentials for MinIO on worker
+- Store in Kubernetes secret: `minio-credentials` in `minio` namespace
+- Worker nodes read credentials from secret using kubectl
 - Both MinIO instances accessible with same `admin` / `password`
 - Use cases: Easier for users, consistent S3 endpoints
+- **Implementation:** Workers configured with kubectl access during join to read shared credentials
 
 **Option C: Distributed MinIO (Federated)**
 - Both MinIO instances federated into single namespace
@@ -778,10 +780,16 @@ Control Plane Node:
     └── Transparent to apps (abstracted)
 
 Worker Node:
+├── kubectl (Cluster Access)
+│   ├── Configured automatically during worker join
+│   ├── Kubeconfig copied from /etc/rancher/k3s/k3s.yaml
+│   ├── Required for MinIO shared credentials (Option B architecture)
+│   └── Required for service registration in cluster
 ├── MinIO (Object Storage)
 │   ├── Uses ALL available disks (same detection as Longhorn)
 │   ├── Fallback to /var/lib/minio if no dedicated disks
-│   ├── Credentials saved to ~/mynodeone-minio-worker-credentials.txt
+│   ├── Credentials READ from Kubernetes secrets (shared with control plane)
+│   ├── Service registered in cluster for discovery
 │   └── Serves as Velero backup target
 ├── Longhorn (Disabled)
 │   └── allowScheduling=false

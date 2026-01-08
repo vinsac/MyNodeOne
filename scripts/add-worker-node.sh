@@ -204,6 +204,44 @@ EOF
     log_success "Successfully joined MyNodeOne cluster!"
 }
 
+# Configure kubectl on worker node
+configure_kubectl_worker() {
+    log_info "Configuring kubectl on worker node..."
+    
+    # K3s agent writes kubeconfig to /etc/rancher/k3s/k3s.yaml
+    # Copy it to user's .kube directory for kubectl access
+    
+    local KUBECONFIG_SOURCE="/etc/rancher/k3s/k3s.yaml"
+    local KUBECONFIG_DEST="$ACTUAL_HOME/.kube/config"
+    
+    if [ ! -f "$KUBECONFIG_SOURCE" ]; then
+        log_warn "K3s kubeconfig not found at $KUBECONFIG_SOURCE"
+        log_warn "kubectl will not be available on this worker node"
+        return 1
+    fi
+    
+    # Create .kube directory
+    mkdir -p "$ACTUAL_HOME/.kube"
+    
+    # Copy kubeconfig
+    cp "$KUBECONFIG_SOURCE" "$KUBECONFIG_DEST"
+    
+    # Fix ownership
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube"
+    
+    # Set permissions
+    chmod 600 "$KUBECONFIG_DEST"
+    
+    # Test kubectl access
+    if sudo -u "$ACTUAL_USER" kubectl get nodes &>/dev/null; then
+        log_success "kubectl configured successfully on worker node"
+        log_info "Worker can now access cluster for MinIO credential sharing"
+    else
+        log_warn "kubectl configured but cluster access verification failed"
+        log_warn "MinIO installation may need manual credential configuration"
+    fi
+}
+
 label_node() {
     log_info "Labeling node..."
     
@@ -539,6 +577,7 @@ main() {
     install_dependencies
     configure_firewall
     join_cluster
+    configure_kubectl_worker  # Configure kubectl for MinIO shared credentials
     setup_model_directories  # Create model storage for LLM API
     label_node
     install_longhorn  # Interactive Longhorn installation (same as control plane)

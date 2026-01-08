@@ -1783,11 +1783,14 @@ display_credentials() {
     fi
     echo
     
-    echo "💾 VELERO (Backup System):"
-    echo "   Status: Installed (backup storage configured when worker joins)"
-    echo "   Backups: Nightly at 2:00 AM UTC → MinIO on worker node"
-    echo "   Retention: 6 months"
-    echo
+    # Show Velero info only if installed
+    if kubectl get deployment velero -n velero &>/dev/null; then
+        echo "💾 VELERO (Backup System):"
+        echo "   Status: Installed"
+        echo "   Backup storage: Configure with MinIO after installation"
+        echo "   Configure: sudo ./scripts/storage/velero/configure-backup.sh"
+        echo
+    fi
     
     echo "📦 LONGHORN (Storage Dashboard):"
     echo "   URL: $LONGHORN_URL (also http://longhorn.${CLUSTER_DOMAIN}.local)"

@@ -473,18 +473,20 @@ register_minio_services() {
     if [ -f "$REGISTRY_SCRIPT" ]; then
         source "$REGISTRY_SCRIPT"
         
-        # Register MinIO Console
-        if register_service "minio-console" "minio" "minio" "minio-console" "9001" "false" 2>/dev/null; then
-            log_success "MinIO Console registered for DNS"
-        else
-            log_warn "Could not register MinIO Console (DNS may not work)"
-        fi
+        # Get node name from hostname
+        local node_name=$(hostname)
         
-        # Register MinIO API
-        if register_service "minio-api" "minio-api" "minio" "minio" "9000" "false" 2>/dev/null; then
-            log_success "MinIO API registered for DNS"
+        # Register ONLY node-specific services (no generic aliases)
+        if register_service "minio-${node_name}" "minio-${node_name}" "minio" "minio-${node_name}" "9000" "false" 2>/dev/null; then
+            log_success "MinIO API registered: minio-${node_name}.minicloud.local:9000"
         else
             log_warn "Could not register MinIO API (DNS may not work)"
+        fi
+        
+        if register_service "minio-console-${node_name}" "minio-console-${node_name}" "minio" "minio-console-${node_name}" "9001" "false" 2>/dev/null; then
+            log_success "MinIO Console registered: minio-console-${node_name}.minicloud.local:9001"
+        else
+            log_warn "Could not register MinIO Console (DNS may not work)"
         fi
     else
         log_warn "Service registry not found, skipping DNS registration"

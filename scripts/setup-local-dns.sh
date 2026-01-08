@@ -66,22 +66,8 @@ get_service_ips() {
     GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     
-    # MinIO services are node-specific (e.g., minio-canada-pc-0001)
-    # Find the actual service names dynamically
-    local minio_console_svc=$(kubectl get svc -n minio -o name 2>/dev/null | grep 'minio-console-' | head -1 | cut -d/ -f2)
-    local minio_api_svc=$(kubectl get svc -n minio -o name 2>/dev/null | grep -E '^service/minio-[^c]' | head -1 | cut -d/ -f2)
-    
-    if [ -n "$minio_console_svc" ]; then
-        MINIO_CONSOLE_IP=$(kubectl get svc -n minio "$minio_console_svc" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    else
-        MINIO_CONSOLE_IP=""
-    fi
-    
-    if [ -n "$minio_api_svc" ]; then
-        MINIO_API_IP=$(kubectl get svc -n minio "$minio_api_svc" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    else
-        MINIO_API_IP=""
-    fi
+    # MinIO services are node-specific and handled by service registry
+    # No generic aliases needed in dnsmasq
     
     LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     DASHBOARD_IP=$(kubectl get svc -n mynodeone-dashboard dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")

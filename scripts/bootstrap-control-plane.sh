@@ -1230,24 +1230,52 @@ install_traefik() {
 }
 
 install_velero() {
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Velero (Cluster Backup System) - Optional"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "Velero backs up Kubernetes cluster configuration (not app data)."
+    echo
+    echo "What Velero backs up:"
+    echo "  Cluster configuration (ConfigMaps, Secrets, RBAC)"
+    echo "  Kubernetes manifests (Deployments, Services, etc.)"
+    echo "  Namespace-level snapshots for testing/migration"
+    echo
+    echo "What Velero does NOT backup:"
+    echo "  Application data inside PVCs (use app-level backups)"
+    echo "  Database contents (use pg_dump, mysqldump, etc.)"
+    echo "  Files in volumes (use rsync, rclone to MinIO)"
+    echo
+    echo "Recommended for:"
+    echo "  Production clusters requiring disaster recovery"
+    echo "  Clusters with compliance requirements"
+    echo "  Migration/testing scenarios"
+    echo
+    echo "NOT needed for:"
+    echo "  Home labs or dev clusters"
+    echo "  Clusters using app-level backups"
+    echo "  GitOps-managed clusters (ArgoCD handles manifests)"
+    echo
+    read -p "Install Velero? (y/N): " -n 1 -r
+    echo
+    
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Skipping Velero installation"
+        log_info "You can install it later with: sudo ./scripts/storage/velero/install.sh"
+        return 0
+    fi
+    
     log_info "Installing Velero backup system..."
     
     # Call modular Velero installation script
     if [ -f "$SCRIPT_DIR/storage/velero/install.sh" ]; then
         if bash "$SCRIPT_DIR/storage/velero/install.sh"; then
             log_success "Velero installed successfully"
-            log_info "Backup storage will be configured when worker node joins"
+            log_info "Backup storage configured to use MinIO"
         else
             log_error "Velero installation failed"
             log_warn "Backups will not be available until Velero is installed"
-            
-            if [ "${UNATTENDED:-0}" != "1" ]; then
-                if ! prompt_confirm "Continue with installation despite Velero issue?" "y"; then
-                    log_error "Installation aborted"
-                    exit 1
-                fi
-            fi
-            log_warn "Continuing without Velero (can be installed later)"
         fi
     else
         log_error "Velero installation script not found: $SCRIPT_DIR/storage/install-velero.sh"
@@ -1755,11 +1783,14 @@ display_credentials() {
     fi
     echo
     
-    echo "💾 VELERO (Backup System):"
-    echo "   Status: Installed (backup storage configured when worker joins)"
-    echo "   Backups: Nightly at 2:00 AM UTC → MinIO on worker node"
-    echo "   Retention: 6 months"
-    echo
+    # Show Velero info only if installed
+    if kubectl get deployment velero -n velero &>/dev/null; then
+        echo "💾 VELERO (Backup System):"
+        echo "   Status: Installed"
+        echo "   Backup storage: Configure with MinIO after installation"
+        echo "   Configure: sudo ./scripts/storage/velero/configure-backup.sh"
+        echo
+    fi
     
     echo "📦 LONGHORN (Storage Dashboard):"
     echo "   URL: $LONGHORN_URL (also http://longhorn.${CLUSTER_DOMAIN}.local)"
@@ -1769,11 +1800,12 @@ display_credentials() {
     # Show MinIO credentials if installed
     if [ -n "$MINIO_USER" ] && [ -n "$MINIO_PASS" ]; then
         echo "🗄️ MINIO (Object Storage):"
+        local NODE_NAME=$(hostname)
         if [ -n "$MINIO_API_IP" ]; then
-            echo "   API URL: http://$MINIO_API_IP:9000"
+            echo "   API URL: http://$MINIO_API_IP:9000 (also http://minio-${NODE_NAME}.${CLUSTER_DOMAIN}.local:9000)"
         fi
         if [ -n "$MINIO_CONSOLE_IP" ]; then
-            echo "   Console: http://$MINIO_CONSOLE_IP:9001"
+            echo "   Console: http://$MINIO_CONSOLE_IP:9001 (also http://minio-console-${NODE_NAME}.${CLUSTER_DOMAIN}.local:9001)"
         fi
         echo "   Username: $MINIO_USER"
         echo "   Password: $MINIO_PASS"

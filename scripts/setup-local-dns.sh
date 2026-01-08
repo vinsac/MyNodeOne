@@ -66,22 +66,8 @@ get_service_ips() {
     GRAFANA_IP=$(kubectl get svc -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     ARGOCD_IP=$(kubectl get svc -n argocd argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     
-    # MinIO services are node-specific (e.g., minio-canada-pc-0001)
-    # Find the actual service names dynamically
-    local minio_console_svc=$(kubectl get svc -n minio -o name 2>/dev/null | grep 'minio-console-' | head -1 | cut -d/ -f2)
-    local minio_api_svc=$(kubectl get svc -n minio -o name 2>/dev/null | grep -E '^service/minio-[^c]' | head -1 | cut -d/ -f2)
-    
-    if [ -n "$minio_console_svc" ]; then
-        MINIO_CONSOLE_IP=$(kubectl get svc -n minio "$minio_console_svc" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    else
-        MINIO_CONSOLE_IP=""
-    fi
-    
-    if [ -n "$minio_api_svc" ]; then
-        MINIO_API_IP=$(kubectl get svc -n minio "$minio_api_svc" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    else
-        MINIO_API_IP=""
-    fi
+    # MinIO services are node-specific and handled by service registry
+    # No generic aliases needed in dnsmasq
     
     LONGHORN_IP=$(kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
     DASHBOARD_IP=$(kubectl get svc -n mynodeone-dashboard dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
@@ -178,13 +164,13 @@ domain=${CLUSTER_DOMAIN}.local
 local=/${CLUSTER_DOMAIN}.local/
 
 # Service DNS entries (explicit only - no wildcards!)
-address=/${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
+# Note: Do NOT use address=/${CLUSTER_DOMAIN}.local/ as it creates a wildcard catch-all
 address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
-address=/minio.${CLUSTER_DOMAIN}.local/${MINIO_CONSOLE_IP}
-address=/minio-api.${CLUSTER_DOMAIN}.local/${MINIO_API_IP}
 address=/traefik.${CLUSTER_DOMAIN}.local/${TRAEFIK_IP}
+# Note: MinIO uses node-specific domains (minio-nodename.minicloud.local)
+# No generic minio/minio-api aliases to avoid confusion about which node is being accessed
 EOF
     
     # Only add Longhorn DNS entry if it has a LoadBalancer IP
@@ -244,8 +230,7 @@ update_hosts_file() {
 ${DASHBOARD_IP}      ${CLUSTER_DOMAIN}.local
 ${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local
 ${ARGOCD_IP}         argocd.${CLUSTER_DOMAIN}.local
-${MINIO_CONSOLE_IP}  minio.${CLUSTER_DOMAIN}.local
-${MINIO_API_IP}      minio-api.${CLUSTER_DOMAIN}.local
+# Note: MinIO uses node-specific domains (handled by service registry)
 EOF
     
     # Only add Longhorn if it has a LoadBalancer IP (not NodePort)

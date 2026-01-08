@@ -242,11 +242,13 @@ update_dns_entries() {
                 argocd-server)
                     echo "${ip}         argocd.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio-console)
-                    echo "${ip}  minio.${CLUSTER_DOMAIN}.local"
+                minio-console-*)
+                    # Node-specific MinIO console: use service name as subdomain
+                    echo "${ip}  ${name}.${CLUSTER_DOMAIN}.local"
                     ;;
-                minio)
-                    echo "${ip}  minio-api.${CLUSTER_DOMAIN}.local"
+                minio-*)
+                    # Node-specific MinIO API: use service name as subdomain
+                    echo "${ip}  ${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 longhorn-frontend)
                     echo "${ip}       longhorn.${CLUSTER_DOMAIN}.local"

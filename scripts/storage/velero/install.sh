@@ -153,8 +153,8 @@ install_velero_server() {
     fi
     
     # Install Velero with basic configuration
-    # Backup storage location will be configured later when worker joins
-    log_info "Installing Velero server (backup storage will be configured when worker joins)..."
+    # Backup storage uses MinIO on control plane
+    log_info "Installing Velero server (will use MinIO for backup storage)..."
     
     # Note: Using placeholder bucket name - will be reconfigured when MinIO is available
     if retry_command 2 "velero install \
@@ -167,7 +167,7 @@ install_velero_server() {
         --wait"; then
         
         log_success "Velero server installed"
-        log_info "Backup location will be configured when MinIO is available"
+        log_info "Backup location will be configured after MinIO installation"
     else
         log_error "Velero server installation failed"
         return 1
@@ -209,7 +209,8 @@ verify_installation() {
     fi
     
     log_success "Velero installation verified"
-    log_info "Backup storage will be configured when worker node joins"
+    log_info "Backup storage will be configured after MinIO installation"
+    log_info "Run: sudo ./scripts/storage/velero/configure-backup.sh"
     
     return 0
 }

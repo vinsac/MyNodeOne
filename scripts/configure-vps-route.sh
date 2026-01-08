@@ -165,18 +165,43 @@ info "App: $APP_NAME"
 info "Backend: http://${CONTROL_PLANE_IP}:${APP_PORT}"
 info "Public Domain: ${SUBDOMAIN}.${DOMAIN}"
 
-# Check if VPS edge node is configured
+# Auto-detect VPS from node registry
 if [[ -z "${VPS_EDGE_IP:-}" ]]; then
-    warn "VPS edge node not found in config"
-    echo ""
-    read -p "Enter your VPS Tailscale IP: " VPS_EDGE_IP
-    if [[ -z "$VPS_EDGE_IP" ]]; then
-        error "VPS Tailscale IP required"
+    info "Auto-detecting VPS edge node from registry..."
+    
+    # Try to get VPS from node registry
+    if [[ -f "$REGISTRY_MANAGER" ]]; then
+        # Sync from ConfigMap and get VPS nodes
+        "$REGISTRY_MANAGER" sync-from >/dev/null 2>&1 || true
+        
+        # Get first VPS node IP
+        REGISTRY_FILE="$ACTUAL_HOME/.mynodeone/node-registry.json"
+        if [[ -f "$REGISTRY_FILE" ]]; then
+            VPS_EDGE_IP=$(jq -r '.vps_nodes[0].tailscale_ip // empty' "$REGISTRY_FILE" 2>/dev/null || echo "")
+            
+            if [[ -n "$VPS_EDGE_IP" ]]; then
+                success "Auto-detected VPS: $VPS_EDGE_IP"
+            fi
+        fi
     fi
     
-    # Save to config
-    mkdir -p ~/.mynodeone
-    echo "VPS_EDGE_IP=$VPS_EDGE_IP" >> ~/.mynodeone/config.env
+    # If still not found, prompt user
+    if [[ -z "$VPS_EDGE_IP" ]]; then
+        warn "VPS edge node not found in registry"
+        echo ""
+        echo "Make sure you've installed a VPS edge node first:"
+        echo "  sudo ./scripts/install-vps-edge-node.sh"
+        echo ""
+        read -p "Or enter VPS Tailscale IP manually: " VPS_EDGE_IP
+        if [[ -z "$VPS_EDGE_IP" ]]; then
+            error "VPS Tailscale IP required"
+        fi
+        
+        # Save to config
+        mkdir -p "$ACTUAL_HOME/.mynodeone"
+        echo "VPS_EDGE_IP=$VPS_EDGE_IP" >> "$ACTUAL_HOME/.mynodeone/config.env"
+        info "Saved VPS IP to config for future use"
+    fi
 fi
 
 # Test connectivity to VPS

@@ -656,7 +656,12 @@ Run these commands on your management laptop or workstation:
 ```bash
 sudo apt install -y curl
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+
+# Connect to your Tailscale network
+# Note: --accept-dns=false prevents Tailscale from managing DNS
+# This avoids DNS resolution issues if Tailscale's DNS fails
+sudo tailscale up --accept-dns=false
+# Open the URL shown in your browser to authenticate
 
 # Verify connection
 tailscale status

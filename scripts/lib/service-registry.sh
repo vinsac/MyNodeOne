@@ -208,8 +208,16 @@ sync_registry() {
                 kube-prometheus-stack-grafana)
                     subdomain="grafana"
                     ;;
+                minio-console-*)
+                    # Node-specific MinIO console: minio-console-canada-pc-0001 -> minio-console-canada-pc-0001
+                    subdomain="$name"
+                    ;;
                 minio-console)
                     subdomain="minio"
+                    ;;
+                minio-*)
+                    # Node-specific MinIO API: minio-canada-pc-0001 -> minio-canada-pc-0001
+                    subdomain="$name"
                     ;;
                 minio)
                     subdomain="minio-api"

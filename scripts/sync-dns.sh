@@ -194,7 +194,7 @@ fi
 log_success "DNS sync complete!"
 echo ""
 echo "✅ Updated $SERVICE_COUNT service entries:"
-echo "$DNS_ENTRIES" | sed 's/^/   /'
+echo -e "$DNS_ENTRIES" | sed 's/^/   /'
 echo ""
 
 # Verify DNS resolution works

@@ -653,18 +653,7 @@ main() {
     log_warn "Data is NOT replicated between nodes"
     log_warn "Use node-specific endpoints for your applications"
     echo
-    
-    # Redeploy dashboard to show MinIO services
-    log_info "Updating dashboard to show MinIO services..."
-    if [ -f "$SCRIPT_DIR/../../website/deploy-dashboard.sh" ]; then
-        if bash "$SCRIPT_DIR/../../website/deploy-dashboard.sh" > /dev/null 2>&1; then
-            log_success "✓ Dashboard updated - MinIO now visible at http://dashboard.${CLUSTER_DOMAIN}.local"
-        else
-            log_warn "Dashboard update had issues, run manually: sudo ./website/deploy-dashboard.sh"
-        fi
-    else
-        log_warn "Dashboard script not found - MinIO won't appear on dashboard until you run: sudo ./website/deploy-dashboard.sh"
-    fi
+    log_info "MinIO will appear on dashboard within 30-60 seconds (auto-refresh)"
     echo
 }
 

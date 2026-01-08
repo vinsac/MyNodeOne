@@ -293,21 +293,24 @@ get_minio_credentials() {
         MINIO_ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' | base64 -d)
         log_success "Using shared credentials from cluster"
     else
-        log_info "Generating new MinIO credentials..."
+        log_info "No existing credentials found - generating new shared credentials"
+        log_warn "These credentials will be shared across ALL MinIO instances in the cluster"
         MINIO_ROOT_USER="admin"
         MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
         
         # Create namespace
         kubectl create namespace minio --dry-run=client -o yaml | kubectl apply -f -
         
-        # Store in Kubernetes secret
+        # Store in Kubernetes secret (persists across MinIO uninstall/reinstall)
         kubectl create secret generic minio-credentials \
             -n minio \
             --from-literal=rootUser="$MINIO_ROOT_USER" \
             --from-literal=rootPassword="$MINIO_ROOT_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
         
-        log_success "Generated and stored new credentials"
+        log_success "Generated and stored new shared credentials in Kubernetes"
+        log_info "Credentials persist even if MinIO is uninstalled"
+        log_info "To reset credentials: kubectl delete secret minio-credentials -n minio"
     fi
     
     # Save to local file for user reference

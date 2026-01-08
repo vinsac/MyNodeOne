@@ -32,9 +32,27 @@ echo "🌐 Using domain: ${CLUSTER_DOMAIN}.local"
 # Create namespace
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# Create a temporary HTML file with domain replaced
+# Create a temporary HTML file with domain replaced AND MinIO services injected
 TEMP_HTML=$(mktemp)
+
+# First, replace cluster domain
 sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/dashboard.html" > "$TEMP_HTML"
+
+# Get all MinIO console services from service registry
+MINIO_SERVICES=$(kubectl get configmap -n kube-system service-registry \
+    -o jsonpath='{.data.services\.json}' 2>/dev/null | \
+    jq -r 'to_entries[] | select(.key | startswith("minio-console-")) | 
+        "<li class=\"service-item\"><span class=\"service-name\">MinIO Console (" + .key + ")</span><a href=\"http://" + .value.subdomain + "." + $domain + ":9001\" class=\"service-link\">Open →</a></li>"' \
+    --arg domain "${CLUSTER_DOMAIN}.local" 2>/dev/null || echo "")
+
+# Inject MinIO services into the HTML
+if [[ -n "$MINIO_SERVICES" ]]; then
+    # Replace the minio-services-container div with actual services
+    sed -i "s|<div id=\"minio-services-container\"></div>|${MINIO_SERVICES}|g" "$TEMP_HTML"
+    echo "✓ Injected $(echo "$MINIO_SERVICES" | grep -c 'service-item') MinIO service(s)"
+else
+    echo "ℹ No MinIO services found (will be added when MinIO is installed)"
+fi
 
 # Create ConfigMap with templated dashboard HTML
 kubectl create configmap dashboard-html \

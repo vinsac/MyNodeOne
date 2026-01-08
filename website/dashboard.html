@@ -658,6 +658,58 @@
             alert(message);
         }
         
+        // Load MinIO services dynamically from service registry
+        async function loadMinIOServices() {
+            const container = document.getElementById('minio-services-container');
+            
+            // Since dashboard is served from the cluster, we can fetch service registry
+            // via a simple API call to the ConfigMap data
+            // For now, we'll need to add a backend endpoint or use kubectl proxy
+            
+            // Fallback: Display message if services can't be loaded
+            try {
+                // Attempt to fetch from service registry ConfigMap
+                // This requires the dashboard pod to have RBAC access or use kubectl proxy
+                const response = await fetch('/api/services/minio');
+                
+                if (response.ok) {
+                    const minioServices = await response.json();
+                    renderMinIOServices(minioServices);
+                } else {
+                    throw new Error('Could not fetch MinIO services');
+                }
+            } catch (error) {
+                console.log('MinIO services will be displayed after dashboard redeploy');
+                // Leave container empty - services will be templated during deploy
+            }
+        }
+        
+        function renderMinIOServices(services) {
+            const container = document.getElementById('minio-services-container');
+            container.innerHTML = '';
+            
+            services.forEach(service => {
+                const li = document.createElement('li');
+                li.className = 'service-item';
+                
+                const span = document.createElement('span');
+                span.className = 'service-name';
+                span.textContent = `MinIO Console (${service.node})`;
+                
+                const link = document.createElement('a');
+                link.href = service.url;
+                link.className = 'service-link';
+                link.textContent = 'Open →';
+                
+                li.appendChild(span);
+                li.appendChild(link);
+                container.appendChild(li);
+            });
+        }
+        
+        // Load MinIO services on page load
+        document.addEventListener('DOMContentLoaded', loadMinIOServices);
+        
         // Auto-refresh cluster status every 30 seconds
         setInterval(() => {
             console.log('Cluster status check - implement API call here');

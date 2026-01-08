@@ -118,7 +118,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
     if command -v kubectl &>/dev/null; then
         REGISTERED_DOMAINS=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-            jq -r 'keys[]' 2>/dev/null || echo "")
+            jq -r '.domains | keys[]' 2>/dev/null || echo "")
     fi
     
     if [[ -n "$REGISTERED_DOMAINS" ]] || [[ -n "$PUBLIC_DOMAIN" ]]; then
@@ -218,8 +218,8 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                     VPS_NODES=""
                     if command -v kubectl &>/dev/null; then
                         VPS_NODES=$(kubectl get configmap -n kube-system domain-registry \
-                            -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null | \
-                            jq -r 'keys[]' 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+                            -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+                            jq -r '.vps_nodes[].tailscale_ip' 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
                     fi
                     
                     if [[ -n "$VPS_NODES" ]]; then

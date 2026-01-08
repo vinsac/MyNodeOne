@@ -637,10 +637,21 @@ main() {
     echo -e "${GREEN}  MinIO Installation Complete!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
-    log_success "MinIO is running in standalone mode"
-    echo
-    log_info "Endpoints:"
-    echo "  API:     http://$MINIO_ENDPOINT"
+    log_success "✓ MinIO installation complete!"
+    log_info "Access MinIO at:"
+    log_info "  Console: http://${minio_endpoint}:9001"
+    log_info "  API: http://${minio_endpoint}:9000"
+    
+    # Redeploy dashboard to show MinIO services
+    log_info "Updating dashboard to show MinIO services..."
+    if [ -f "$SCRIPT_DIR/../../website/deploy-dashboard.sh" ]; then
+        if bash "$SCRIPT_DIR/../../website/deploy-dashboard.sh" > /dev/null 2>&1; then
+            log_success "✓ Dashboard updated with MinIO services"
+        else
+            log_warn "Dashboard update had issues, run manually: sudo ./website/deploy-dashboard.sh"
+        fi
+    fi
+    
     echo "  Console: http://$MINIO_CONSOLE"
     echo
     log_info "Admin Credentials:"

@@ -70,8 +70,22 @@ detect_available_disks() {
     # Get OS disk
     local os_disk=$(df / | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
     
-    # Find all block devices (only real devices like /dev/sdX, not by-id symlinks)
-    local all_disks=$(lsblk -d -n -p -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT | grep 'disk' | grep -E '^/dev/(sd|nvme|vd)' | awk '{print $1":"$3":"$4":"$5}')
+    # Find real block devices by scanning /dev directly (avoid lsblk weirdness with symlinks)
+    local real_devices=""
+    for dev in /dev/sd[a-z] /dev/nvme[0-9]n[0-9] /dev/vd[a-z]; do
+        if [ -b "$dev" ]; then
+            real_devices+="$dev "
+        fi
+    done
+    
+    # Get disk info for real devices only
+    local all_disks=""
+    for dev in $real_devices; do
+        local disk_info=$(lsblk -d -n -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT "$dev" 2>/dev/null | awk '{print $1":"$3":"$4":"$5}')
+        if [ -n "$disk_info" ]; then
+            all_disks+="$disk_info"$'\n'
+        fi
+    done
     
     local available_disks=()
     

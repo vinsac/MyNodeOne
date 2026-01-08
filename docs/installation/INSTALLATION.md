@@ -928,6 +928,22 @@ sudo systemctl restart mynodeone-node-agent
 
 ---
 
+## kubectl Configuration on Worker Nodes
+
+**Important:** Worker nodes are automatically configured with kubectl access during the join process. This is required for:
+- **MinIO shared credentials**: Workers read admin credentials from Kubernetes secrets
+- **Service registration**: Workers register their MinIO endpoints in the cluster
+- **Storage coordination**: Workers can query cluster state for storage configuration
+
+The installation script automatically:
+1. Copies K3s kubeconfig from `/etc/rancher/k3s/k3s.yaml` to `~/.kube/config`
+2. Sets correct permissions and ownership
+3. Verifies kubectl access to the cluster
+
+**Note:** Worker nodes have read access to cluster resources but cannot modify control plane components.
+
+---
+
 ## Prerequisites
 
 ### Hardware:

@@ -47,6 +47,10 @@ if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
 
+# Source node registry manager for VPS auto-detection
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REGISTRY_MANAGER="$SCRIPT_DIR/lib/node-registry-manager.sh"
+
 # Parse arguments
 APP_NAME="$1"
 APP_PORT="$2"

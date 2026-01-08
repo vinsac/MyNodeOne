@@ -195,11 +195,11 @@ generate_dns_entries() {
                     ;;
                 minio-console-*)
                     # Node-specific MinIO console
-                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 minio-*)
                     # Node-specific MinIO API
-                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 *)
                     # Default: use service name
@@ -269,11 +269,11 @@ test_dns() {
                     ;;
                 minio-console-*)
                     # Node-specific MinIO console
-                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 minio-*)
                     # Node-specific MinIO API
-                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 *)
                     HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
@@ -339,11 +339,11 @@ print_summary() {
                     ;;
                 minio-console-*)
                     # Node-specific MinIO console
-                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 minio-*)
                     # Node-specific MinIO API
-                    HOSTNAME="${NAME}.${CLUSTER_DOMAIN}.local"
+                    HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"
                     ;;
                 *)
                     HOSTNAME="${name}.${CLUSTER_DOMAIN}.local"

@@ -27,12 +27,12 @@ if [[ "${CONFIRM,,}" != "y" ]]; then
 fi
 
 echo ""
-echo "Deleting Open WebUI namespace..."
-kubectl delete namespace open-webui --ignore-not-found=true
+echo "Deleting LLM Chat namespace (contains Ollama + Open WebUI)..."
+kubectl delete namespace llm-chat --ignore-not-found=true
 
 echo ""
-echo "Deleting Ollama namespace..."
-kubectl delete namespace ollama --ignore-not-found=true
+echo "Waiting for namespace deletion to complete..."
+sleep 5
 
 echo ""
 echo -e "${YELLOW}✓ LLM Chat uninstalled${NC}"

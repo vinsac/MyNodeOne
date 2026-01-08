@@ -534,14 +534,31 @@ EOF
         
         # Register services in service registry if available
         if command -v register_service &>/dev/null; then
-            # Register node-specific services
+            # Register node-specific services for direct access
             register_service "minio-${node_name}" "minio-${node_name}" minio "minio-${node_name}" 9000 false || true
             register_service "minio-console-${node_name}" "minio-console-${node_name}" minio "minio-console-${node_name}" 9001 false || true
             
-            # Also register generic aliases for easy access (dashboard links, etc.)
-            # These point to the same IPs but use friendly names
-            register_service "minio-api" "minio-api" minio "minio-${node_name}" 9000 false || true
-            register_service "minio" "minio" minio "minio-console-${node_name}" 9001 false || true
+            # Register generic aliases pointing to THIS node's MinIO
+            # Important: Only register if this is the first/primary MinIO in the cluster
+            # If multiple nodes have MinIO, each node registers its own node-specific names
+            # The sync-services function will auto-create ONE generic alias pointing to first found
+            # This ensures dashboard links work while preserving multi-node MinIO access
+            
+            # Check if generic aliases already exist (another node registered them)
+            local has_generic_minio=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath='{.data.services\.json}' 2>/dev/null | jq -r '.minio // empty' || echo "")
+            local has_generic_api=$(kubectl get configmap -n kube-system service-registry \
+                -o jsonpath='{.data.services\.json}' 2>/dev/null | jq -r '."minio-api" // empty' || echo "")
+            
+            # Only register generic aliases if they don't exist yet (first node wins)
+            if [[ -z "$has_generic_minio" ]]; then
+                register_service "minio" "minio" minio "minio-console-${node_name}" 9001 false || true
+                log_info "Registered generic 'minio' alias pointing to this node"
+            fi
+            if [[ -z "$has_generic_api" ]]; then
+                register_service "minio-api" "minio-api" minio "minio-${node_name}" 9000 false || true
+                log_info "Registered generic 'minio-api' alias pointing to this node"
+            fi
         fi
     else
         log_warn "LoadBalancer IPs not assigned yet (may take a few minutes)"

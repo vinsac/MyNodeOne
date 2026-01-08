@@ -177,7 +177,7 @@ log_info "Adding new DNS entries..."
 {
     echo ""
     echo "# MyNodeOne Services - Auto-synced on $(date)"
-    echo "$DNS_ENTRIES"
+    echo -e "$DNS_ENTRIES"  # Use -e to interpret \n from jq output
     echo ""
 } | sudo tee -a /etc/hosts > /dev/null
 

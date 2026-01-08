@@ -1271,6 +1271,61 @@ sudo kubectl get pods -A -o wide
 
 ---
 
+## Removing a Worker Node
+
+If you need to remove a worker node from the cluster:
+
+### Step 1: Drain the Node (ON CONTROL PLANE)
+
+```bash
+# Safely evict all pods from the worker node
+kubectl drain <worker-node-name> --ignore-daemonsets --delete-emptydir-data --force --timeout=60s
+
+# Example:
+kubectl drain canada-pc-worker-0001 --ignore-daemonsets --delete-emptydir-data --force --timeout=60s
+```
+
+### Step 2: Delete the Node (ON CONTROL PLANE)
+
+```bash
+# Remove node from cluster
+kubectl delete node <worker-node-name>
+
+# Example:
+kubectl delete node canada-pc-worker-0001
+```
+
+### Step 3: Clean Up Worker Machine (ON WORKER NODE)
+
+```bash
+# Stop and remove K3s
+sudo /usr/local/bin/k3s-agent-uninstall.sh
+
+# Clean up storage mounts
+sudo umount /mnt/longhorn-disks/* 2>/dev/null || true
+sudo umount /mnt/minio-disks/* 2>/dev/null || true
+sudo rm -rf /mnt/longhorn-disks /mnt/minio-disks
+
+# Remove from fstab
+sudo sed -i '/longhorn-disks\|minio-disks/d' /etc/fstab
+
+# Stop Node Agent
+sudo systemctl stop mynodeone-node-agent
+sudo systemctl disable mynodeone-node-agent
+```
+
+### Step 4: Verify Removal (ON CONTROL PLANE)
+
+```bash
+# Check nodes
+kubectl get nodes
+
+# Check Longhorn nodes
+kubectl get nodes.longhorn.io -n longhorn-system
+```
+
+---
+
 **Installation complete! Welcome to MyNodeOne!**
 
 **Next:** See [POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md) for immediate next steps.

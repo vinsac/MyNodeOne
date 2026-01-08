@@ -346,11 +346,19 @@ add_additional_disks() {
     # Wait for Longhorn to initialize
     sleep 10
     
+    # Check if kubectl is available and working
+    if ! kubectl get nodes &>/dev/null; then
+        log_warn "kubectl not available (worker node) - disk configuration will be handled by control plane"
+        log_info "Disks mounted at: ${MOUNTED_DISKS[@]}"
+        log_info "Configure disks via Longhorn UI after node joins cluster"
+        return 0
+    fi
+    
     # Get node name
     local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping additional disk configuration"
-        return 1
+        return 0
     fi
     
     # Wait for Longhorn node CRD
@@ -393,6 +401,12 @@ fix_disk_reservations() {
     
     # Wait for Longhorn to initialize disk status
     sleep 5
+    
+    # Check if kubectl is available
+    if ! kubectl get nodes &>/dev/null; then
+        log_info "kubectl not available - disk reservation optimization skipped"
+        return 0
+    fi
     
     local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
@@ -450,11 +464,17 @@ register_in_node_registry() {
     
     log_info "Updating node registry with Longhorn configuration..."
     
+    # Check if kubectl is available
+    if ! kubectl get nodes &>/dev/null; then
+        log_info "kubectl not available - node registry update skipped"
+        return 0
+    fi
+    
     # Get node name from Kubernetes
     local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect Kubernetes node name"
-        return 1
+        return 0
     fi
     
     # Build disk list CSV

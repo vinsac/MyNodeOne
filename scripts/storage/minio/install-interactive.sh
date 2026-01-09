@@ -82,7 +82,8 @@ detect_available_disks() {
     # Get disk info for real devices only
     local all_disks=""
     for dev in $real_devices; do
-        local disk_info=$(lsblk -d -n -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT "$dev" 2>/dev/null | awk '{print $1":"$3":"$4":"$5}')
+        # Use grep to ensure we only get the disk line (type=disk), not partitions or other entries
+        local disk_info=$(lsblk -d -n -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT "$dev" 2>/dev/null | grep -w disk | head -1 | awk '{print $1":"$3":"$4":"$5}')
         if [ -n "$disk_info" ]; then
             all_disks+="$disk_info"$'\n'
         fi

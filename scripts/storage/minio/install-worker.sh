@@ -116,17 +116,29 @@ check_requirements() {
     return 0
 }
 
-detect_available_disks() {
-    log_info "Detecting available disks for MinIO..."
+    # Get current node name for affinity (works on control plane or worker)
+    local NODE_NAME=$(hostname)
     
+    # Confirm installation node
+    echo
+    log_info "MinIO will be installed on this node: $NODE_NAME"
+    echo -n "Is this correct? [Y/n]: "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Nn] ]]; then
+        log_warn "Installation cancelled by user"
+        exit 0
+    fi
+    
+    # Detect available disks
     local MOUNTED_DISKS=()
+    local AVAILABLE_DISKS=()
     
     # Check for MinIO-specific mount point first
     if [ -d "/mnt/minio" ] && mountpoint -q "/mnt/minio" 2>/dev/null; then
-        MOUNTED_DISKS+=("/mnt/minio")
+        AVAILABLE_DISKS+=("/mnt/minio")
     fi
     
-    # Also check Longhorn disks as fallback
+    # Also check Longhorn disks as fallback/additional
     if [ -d "/mnt/longhorn-disks" ]; then
         # Find all mounted disks
         while IFS= read -r disk_path; do
@@ -134,29 +146,73 @@ detect_available_disks() {
                 # Verify this disk was formatted in THIS session by checking if device is in fstab
                 DISK_DEVICE=$(findmnt -n -o SOURCE "$disk_path" 2>/dev/null)
                 if [ -n "$DISK_DEVICE" ] && grep -q "$disk_path" /etc/fstab 2>/dev/null; then
-                    MOUNTED_DISKS+=("$disk_path")
+                    AVAILABLE_DISKS+=("$disk_path")
                 fi
             fi
         done < <(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*" 2>/dev/null | sort)
     fi
     
-    if [ ${#MOUNTED_DISKS[@]} -gt 0 ]; then
-        log_success "Found ${#MOUNTED_DISKS[@]} dedicated disk(s) for MinIO:"
-        for disk in "${MOUNTED_DISKS[@]}"; do
-            DISK_SIZE=$(df -h "$disk" | tail -1 | awk '{print $2}')
-            log_info "  • $disk ($DISK_SIZE)"
-        done
-        
-        # Export for use in other functions
-        export MINIO_DISKS="${MOUNTED_DISKS[@]}"
-        return 0
-    else
-        log_warn "No dedicated disks found in /mnt/longhorn-disks"
-        log_info "Will use /var/lib/minio as fallback location"
+    if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
+        log_warn "No dedicated disks found (checked /mnt/minio and /mnt/longhorn-disks)"
+        log_info "MinIO will use /var/lib/minio (OS disk) as fallback"
+        echo -n "Continue with OS disk? [y/N]: "
+        read -r confirm
+        if [[ ! "$confirm" =~ ^[Yy] ]]; then
+            log_warn "Installation cancelled"
+            exit 0
+        fi
         export MINIO_DISKS="/var/lib/minio"
         return 0
     fi
-}
+    
+    # Interactive selection
+    log_success "Found dedicated disk(s):"
+    for i in "${!AVAILABLE_DISKS[@]}"; do
+        local disk="${AVAILABLE_DISKS[$i]}"
+        local size=$(df -h "$disk" | tail -1 | awk '{print $2}')
+        echo "  $((i+1))) $disk ($size)"
+    done
+    
+    echo
+    echo "Enter disk numbers to use (comma-separated, e.g. '1' or '1,2'), or 'all':"
+    read -r selection
+    
+    if [ -z "$selection" ]; then
+        log_error "No selection made"
+        return 1
+    fi
+    
+    if [[ "$selection" == "all" ]]; then
+        MOUNTED_DISKS=("${AVAILABLE_DISKS[@]}")
+    else
+        IFS=',' read -ra ADDR <<< "$selection"
+        for i in "${ADDR[@]}"; do
+            # Validate input is a number
+            if ! [[ "$i" =~ ^[0-9]+$ ]]; then
+                log_error "Invalid selection: $i"
+                return 1
+            fi
+            
+            # Adjust for 0-based array index
+            local index=$((i-1))
+            
+            if [ $index -ge 0 ] && [ $index -lt ${#AVAILABLE_DISKS[@]} ]; then
+                MOUNTED_DISKS+=("${AVAILABLE_DISKS[$index]}")
+            else
+                log_error "Invalid disk number: $i"
+                return 1
+            fi
+        done
+    fi
+    
+    log_info "Selected disks for MinIO:"
+    for disk in "${MOUNTED_DISKS[@]}"; do
+        echo "  • $disk"
+    done
+    
+    # Export for use in other functions
+    export MINIO_DISKS="${MOUNTED_DISKS[@]}"
+    return 0
 
 ensure_minio_user() {
     log_info "Ensuring MinIO user and group exist..."
@@ -243,14 +299,19 @@ generate_minio_credentials() {
 create_minio_secret() {
     log_info "Creating MinIO Kubernetes secret..."
     
-    # Create namespace
-    kubectl create namespace minio --dry-run=client -o yaml | kubectl apply -f -
+    # Create namespace (unique per node to support multiple MinIO instances)
+    # Using minio-<hostname> to allow each node to have its own isolated MinIO instance
+    local NODE_NAME=$(hostname)
+    export MINIO_NAMESPACE="minio-$NODE_NAME"
+    
+    log_info "Using namespace: $MINIO_NAMESPACE"
+    kubectl create namespace "$MINIO_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
     
     # Create secret
     if kubectl create secret generic minio-credentials \
         --from-literal=rootUser="$MINIO_ROOT_USER" \
         --from-literal=rootPassword="$MINIO_ROOT_PASSWORD" \
-        --namespace minio \
+        --namespace "$MINIO_NAMESPACE" \
         --dry-run=client -o yaml | kubectl apply -f -; then
         log_success "MinIO secret created"
         return 0
@@ -360,18 +421,18 @@ EOF
     
     # Install MinIO
     if helm upgrade --install minio minio/minio \
-        --namespace minio \
+        --namespace "$MINIO_NAMESPACE" \
         --values "$VALUES_FILE" \
         --wait --timeout=5m; then
         
         rm -f "$VALUES_FILE"
-        log_success "MinIO helm chart installed"
+        log_success "MinIO helm chart installed in namespace $MINIO_NAMESPACE"
     else
         rm -f "$VALUES_FILE"
         log_error "MinIO helm installation failed"
         log_info "Checking MinIO status..."
-        kubectl get pods -n minio || true
-        kubectl get svc -n minio || true
+        kubectl get pods -n "$MINIO_NAMESPACE" || true
+        kubectl get svc -n "$MINIO_NAMESPACE" || true
         return 1
     fi
     
@@ -385,10 +446,10 @@ patch_minio_for_hostpath() {
     sleep 5
     
     # Get StatefulSet name
-    local STS_NAME=$(kubectl get statefulset -n minio -o name 2>/dev/null | head -1 | cut -d'/' -f2)
+    local STS_NAME=$(kubectl get statefulset -n "$MINIO_NAMESPACE" -o name 2>/dev/null | head -1 | cut -d'/' -f2)
     
     if [ -z "$STS_NAME" ]; then
-        log_error "MinIO StatefulSet not found"
+        log_error "MinIO StatefulSet not found in namespace $MINIO_NAMESPACE"
         return 1
     fi
     
@@ -421,7 +482,7 @@ patch_minio_for_hostpath() {
     # Patch StatefulSet to use hostPath
     log_info "Patching StatefulSet with hostPath volumes..."
     
-    if kubectl patch statefulset "$STS_NAME" -n minio --type=json -p="[
+    if kubectl patch statefulset "$STS_NAME" -n "$MINIO_NAMESPACE" --type=json -p="[
         {\"op\":\"remove\",\"path\":\"/spec/volumeClaimTemplates\"},
         {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes\",\"value\":$VOLUMES},
         {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/volumeMounts\",\"value\":$VOLUME_MOUNTS}
@@ -438,23 +499,23 @@ verify_minio_installation() {
     log_info "Verifying MinIO installation..."
     
     # Check if MinIO pods exist
-    if ! kubectl get pods -n minio -l app=minio &> /dev/null; then
-        log_error "MinIO pods not found"
+    if ! kubectl get pods -n "$MINIO_NAMESPACE" -l app=minio &> /dev/null; then
+        log_error "MinIO pods not found in namespace $MINIO_NAMESPACE"
         return 1
     fi
     
     # Wait for MinIO to be ready
     log_info "Waiting for MinIO to be ready (up to 2 minutes)..."
-    if kubectl wait --for=condition=ready --timeout=120s pod -l app=minio -n minio 2>&1; then
+    if kubectl wait --for=condition=ready --timeout=120s pod -l app=minio -n "$MINIO_NAMESPACE" 2>&1; then
         log_success "MinIO pods are ready"
     else
         log_warn "MinIO pods not ready yet, checking status..."
-        kubectl get pods -n minio -l app=minio || true
+        kubectl get pods -n "$MINIO_NAMESPACE" -l app=minio || true
     fi
     
     # Check services
     log_info "Checking MinIO services..."
-    kubectl get svc -n minio || true
+    kubectl get svc -n "$MINIO_NAMESPACE" || true
     
     # Verify data directories
     log_info "Verifying MinIO data directories..."
@@ -490,14 +551,14 @@ register_minio_services() {
         # Register ONLY node-specific services (no generic aliases)
         # Use CLI syntax: bash service-registry.sh register <name> <subdomain> <namespace> <service> <port> <public>
         if bash "$REGISTRY_SCRIPT" register \
-            "minio-${node_name}" "minio-${node_name}" "minio" "minio" "9000" "false" 2>/dev/null; then
+            "minio-${node_name}" "minio-${node_name}" "$MINIO_NAMESPACE" "minio" "9000" "false" 2>/dev/null; then
             log_success "MinIO API registered: minio-${node_name}.${cluster_domain}.local:9000"
         else
             log_warn "Could not register MinIO API (DNS may not work)"
         fi
         
         if bash "$REGISTRY_SCRIPT" register \
-            "minio-console-${node_name}" "minio-console-${node_name}" "minio" "minio-console" "9001" "false" 2>/dev/null; then
+            "minio-console-${node_name}" "minio-console-${node_name}" "$MINIO_NAMESPACE" "minio-console" "9001" "false" 2>/dev/null; then
             log_success "MinIO Console registered: minio-console-${node_name}.${cluster_domain}.local:9001"
         else
             log_warn "Could not register MinIO Console (DNS may not work)"
@@ -524,8 +585,8 @@ save_credentials() {
     detect_actual_user
     
     # Get MinIO endpoint
-    local MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-    local MINIO_CONSOLE=$(kubectl get svc -n minio minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    local MINIO_ENDPOINT=$(kubectl get svc -n "$MINIO_NAMESPACE" minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    local MINIO_CONSOLE=$(kubectl get svc -n "$MINIO_NAMESPACE" minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     
     cat > "$ACTUAL_HOME/mynodeone-minio-worker-credentials.txt" <<EOF
 MinIO Worker Node Credentials

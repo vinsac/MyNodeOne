@@ -553,11 +553,23 @@ install_minio() {
     
     # Check if MinIO install script exists
     if [ ! -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
-        log_warn "MinIO installation script not found, skipping"
+        log_warn "MinIO installer not found, skipping"
         return 0
     fi
     
-    # Run MinIO interactive installer
+    # Ask user if they want MinIO
+    echo
+    log_info "MinIO provides S3-compatible object storage"
+    log_info "Each node has independent credentials (like PostgreSQL, Redis)"
+    echo
+    read -p "Do you want to install MinIO on this node? [y/N]: " -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "MinIO installation skipped"
+        return 0
+    fi
+    
+    # Run MinIO interactive installer (for disk selection only)
     bash "$SCRIPT_DIR/storage/minio/install-interactive.sh"
 }
 

@@ -550,13 +550,17 @@ install_longhorn() {
 
 install_minio() {
     log_info "MinIO installation (optional)..."
-    log_info "MinIO is now installed as an app (like Immich, LLM API)"
+    log_info "MinIO can be installed from control plane to any node"
     log_info ""
-    log_info "To install MinIO on this or any node:"
-    log_info "  sudo $SCRIPT_DIR/apps/minio/install-minio.sh"
+    log_info "To install MinIO on this or any node, run from control plane:"
+    log_info "  sudo $SCRIPT_DIR/storage/minio/install-minio.sh"
     log_info ""
-    log_info "MinIO can be installed multiple times on different nodes"
-    log_info "Each installation gets independent credentials and .local domain"
+    log_info "The script will:"
+    log_info "  - Let you select target node (control plane or worker)"
+    log_info "  - Install via SSH if remote node"
+    log_info "  - Assign unique MetalLB IP per node"
+    log_info "  - Create node-specific .local domain (minio-<nodename>.atomcloud.local)"
+    log_info "  - Generate independent credentials per node"
     log_info ""
 }
 

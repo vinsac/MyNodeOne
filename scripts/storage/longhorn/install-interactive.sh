@@ -314,8 +314,13 @@ install_longhorn_helm() {
     apt-get install -y open-iscsi util-linux nfs-common
     systemctl enable --now iscsid
     
-    # Check if kubectl is available (worker nodes don't have kubectl configured)
-    if ! kubectl get nodes &>/dev/null 2>&1; then
+    # Check if kubectl is available (use sudo kubectl on worker nodes)
+    local KUBECTL_CMD="kubectl"
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        KUBECTL_CMD="sudo -u $SUDO_USER kubectl"
+    fi
+    
+    if ! $KUBECTL_CMD get nodes &>/dev/null 2>&1; then
         log_warn "kubectl not available (worker node) - Longhorn installation via control plane only"
         log_info "Disks are mounted and ready. Longhorn will be installed from control plane."
         log_info "Mounted disks: ${MOUNTED_DISKS[@]}"
@@ -372,7 +377,12 @@ add_additional_disks() {
     sleep 10
     
     # Check if kubectl is available and working
-    if ! kubectl get nodes &>/dev/null; then
+    local KUBECTL_CMD="kubectl"
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        KUBECTL_CMD="sudo -u $SUDO_USER kubectl"
+    fi
+    
+    if ! $KUBECTL_CMD get nodes &>/dev/null; then
         log_warn "kubectl not available (worker node) - disk configuration will be handled by control plane"
         log_info "Disks mounted at: ${MOUNTED_DISKS[@]}"
         log_info "Configure disks via Longhorn UI after node joins cluster"
@@ -380,7 +390,7 @@ add_additional_disks() {
     fi
     
     # Get node name
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local node_name=$($KUBECTL_CMD get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping additional disk configuration"
         return 0
@@ -389,7 +399,7 @@ add_additional_disks() {
     # Wait for Longhorn node CRD
     local max_wait=30
     local waited=0
-    while ! kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; do
+    while ! $KUBECTL_CMD get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; do
         sleep 2
         waited=$((waited + 2))
         if [[ $waited -ge $max_wait ]]; then
@@ -428,19 +438,24 @@ fix_disk_reservations() {
     sleep 5
     
     # Check if kubectl is available
-    if ! kubectl get nodes &>/dev/null; then
+    local KUBECTL_CMD="kubectl"
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        KUBECTL_CMD="sudo -u $SUDO_USER kubectl"
+    fi
+    
+    if ! $KUBECTL_CMD get nodes &>/dev/null; then
         log_info "kubectl not available - disk reservation optimization skipped"
         return 0
     fi
     
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local node_name=$($KUBECTL_CMD get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping reservation optimization"
         return 0
     fi
     
     # Get disk configuration
-    local disks_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null)
+    local disks_json=$($KUBECTL_CMD get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null)
     if [[ -z "$disks_json" ]]; then
         log_warn "Could not retrieve Longhorn node info, skipping reservation optimization"
         return 0
@@ -490,13 +505,18 @@ register_in_node_registry() {
     log_info "Updating node registry with Longhorn configuration..."
     
     # Check if kubectl is available
-    if ! kubectl get nodes &>/dev/null; then
+    local KUBECTL_CMD="kubectl"
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        KUBECTL_CMD="sudo -u $SUDO_USER kubectl"
+    fi
+    
+    if ! $KUBECTL_CMD get nodes &>/dev/null; then
         log_info "kubectl not available - node registry update skipped"
         return 0
     fi
     
     # Get node name from Kubernetes
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local node_name=$($KUBECTL_CMD get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect Kubernetes node name"
         return 0

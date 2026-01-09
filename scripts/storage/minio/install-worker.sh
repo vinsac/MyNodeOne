@@ -129,90 +129,10 @@ check_requirements() {
         exit 0
     fi
     
-    # Detect available disks
-    local MOUNTED_DISKS=()
-    local AVAILABLE_DISKS=()
-    
-    # Check for MinIO-specific mount point first
-    if [ -d "/mnt/minio" ] && mountpoint -q "/mnt/minio" 2>/dev/null; then
-        AVAILABLE_DISKS+=("/mnt/minio")
+    if ! select_disks_for_minio; then
+        log_error "Disk selection failed"
+        exit 1
     fi
-    
-    # Also check Longhorn disks as fallback/additional
-    if [ -d "/mnt/longhorn-disks" ]; then
-        # Find all mounted disks
-        while IFS= read -r disk_path; do
-            if mountpoint -q "$disk_path" 2>/dev/null; then
-                # Verify this disk was formatted in THIS session by checking if device is in fstab
-                DISK_DEVICE=$(findmnt -n -o SOURCE "$disk_path" 2>/dev/null)
-                if [ -n "$DISK_DEVICE" ] && grep -q "$disk_path" /etc/fstab 2>/dev/null; then
-                    AVAILABLE_DISKS+=("$disk_path")
-                fi
-            fi
-        done < <(find /mnt/longhorn-disks -maxdepth 1 -type d -name "disk-*" 2>/dev/null | sort)
-    fi
-    
-    if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
-        log_warn "No dedicated disks found (checked /mnt/minio and /mnt/longhorn-disks)"
-        log_info "MinIO will use /var/lib/minio (OS disk) as fallback"
-        echo -n "Continue with OS disk? [y/N]: "
-        read -r confirm
-        if [[ ! "$confirm" =~ ^[Yy] ]]; then
-            log_warn "Installation cancelled"
-            exit 0
-        fi
-        export MINIO_DISKS="/var/lib/minio"
-        return 0
-    fi
-    
-    # Interactive selection
-    log_success "Found dedicated disk(s):"
-    for i in "${!AVAILABLE_DISKS[@]}"; do
-        local disk="${AVAILABLE_DISKS[$i]}"
-        local size=$(df -h "$disk" | tail -1 | awk '{print $2}')
-        echo "  $((i+1))) $disk ($size)"
-    done
-    
-    echo
-    echo "Enter disk numbers to use (comma-separated, e.g. '1' or '1,2'), or 'all':"
-    read -r selection
-    
-    if [ -z "$selection" ]; then
-        log_error "No selection made"
-        return 1
-    fi
-    
-    if [[ "$selection" == "all" ]]; then
-        MOUNTED_DISKS=("${AVAILABLE_DISKS[@]}")
-    else
-        IFS=',' read -ra ADDR <<< "$selection"
-        for i in "${ADDR[@]}"; do
-            # Validate input is a number
-            if ! [[ "$i" =~ ^[0-9]+$ ]]; then
-                log_error "Invalid selection: $i"
-                return 1
-            fi
-            
-            # Adjust for 0-based array index
-            local index=$((i-1))
-            
-            if [ $index -ge 0 ] && [ $index -lt ${#AVAILABLE_DISKS[@]} ]; then
-                MOUNTED_DISKS+=("${AVAILABLE_DISKS[$index]}")
-            else
-                log_error "Invalid disk number: $i"
-                return 1
-            fi
-        done
-    fi
-    
-    log_info "Selected disks for MinIO:"
-    for disk in "${MOUNTED_DISKS[@]}"; do
-        echo "  • $disk"
-    done
-    
-    # Export for use in other functions
-    export MINIO_DISKS="${MOUNTED_DISKS[@]}"
-    return 0
 
 ensure_minio_user() {
     log_info "Ensuring MinIO user and group exist..."

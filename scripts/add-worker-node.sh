@@ -204,10 +204,11 @@ EOF
     log_success "Successfully joined MyNodeOne cluster!"
 }
 
-# Configure kubectl on worker node (NOT NEEDED - MinIO uses systemd service now)
-# K3s agents don't create /etc/rancher/k3s/k3s.yaml, so we generate one manually
-# This function is kept for reference but not called anymore
-configure_kubectl_worker_DISABLED() {
+# Configure kubectl on worker node
+configure_kubectl_worker() {
+    log_info "Configuring kubectl on worker node..."
+    
+    # K3s agent nodes don't create /etc/rancher/k3s/k3s.yaml (only server nodes do)
     # We need to generate kubeconfig manually for worker nodes
     
     local KUBECONFIG_DEST="$ACTUAL_HOME/.kube/config"
@@ -556,19 +557,7 @@ install_minio() {
         return 0
     fi
     
-    # Ask user if they want MinIO
-    echo
-    log_info "MinIO provides S3-compatible object storage"
-    log_info "Each node has independent credentials (like PostgreSQL, Redis)"
-    echo
-    read -p "Do you want to install MinIO on this node? [y/N]: " -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "MinIO installation skipped"
-        return 0
-    fi
-    
-    # Run MinIO interactive installer (for disk selection only)
+    # Run MinIO interactive installer (includes user prompt and disk selection)
     bash "$SCRIPT_DIR/storage/minio/install-interactive.sh"
 }
 

@@ -937,4 +937,76 @@ select_disks_for_minio() {
     return 0
 }
 
+main() {
+    log_info "===== MinIO Worker Installation ====="
+    
+    if ! check_requirements; then
+        log_error "Prerequisites check failed"
+        exit 1
+    fi
+    
+    # Get current node name for affinity (works on control plane or worker)
+    local NODE_NAME=$(hostname)
+    
+    # Confirm installation node
+    echo
+    log_info "MinIO will be installed on this node: $NODE_NAME"
+    echo -n "Is this correct? [Y/n]: "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Nn] ]]; then
+        log_warn "Installation cancelled by user"
+        exit 0
+    fi
+    
+    if ! select_disks_for_minio; then
+        log_error "Disk selection failed"
+        exit 1
+    fi
+    
+    if ! ensure_minio_user; then
+        log_error "MinIO user/group setup failed"
+        exit 1
+    fi
+    
+    if ! prepare_minio_directories; then
+        log_error "Directory preparation failed"
+        exit 1
+    fi
+    
+    if ! generate_minio_credentials; then
+        log_error "Credential generation failed"
+        exit 1
+    fi
+    
+    if ! create_minio_secret; then
+        log_error "Secret creation failed"
+        exit 1
+    fi
+    
+    if ! install_minio_helm; then
+        log_error "MinIO helm installation failed"
+        exit 1
+    fi
+    
+    # Note: Patching for hostPath may not be needed depending on helm chart version
+    # Keeping as optional step
+    patch_minio_for_hostpath || log_warn "HostPath patching skipped or failed"
+    
+    if ! verify_minio_installation; then
+        log_error "MinIO verification failed"
+        exit 1
+    fi
+    
+    save_credentials
+    
+    # Register MinIO services for DNS
+    register_minio_services
+    
+    echo
+    log_success "===== MinIO Worker Installation Complete ====="
+    log_info "MinIO is running on worker node with local disk storage"
+    log_info "Credentials saved to: ~/mynodeone-minio-worker-credentials.txt"
+    log_info "Next: Configure Velero to use MinIO for backups"
+}
+
 main "$@"

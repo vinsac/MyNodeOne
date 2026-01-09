@@ -585,12 +585,15 @@ main() {
     register_in_node_registry
     
     echo
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}  Longhorn Installation Complete!${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Longhorn Installation Complete!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     log_success "Longhorn is now the default storage class"
-    log_info "UI will be accessible at: http://longhorn.minicloud.local"
+    
+    # Detect cluster domain from ConfigMap
+    local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "nanocloud")
+    log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
     echo
     
     if [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then

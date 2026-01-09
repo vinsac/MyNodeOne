@@ -591,10 +591,14 @@ main() {
     echo
     log_success "Longhorn is now the default storage class"
     
-    # Detect cluster domain from ConfigMap
-    local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null)
+    # Detect cluster domain - prefer environment variable (set by bootstrap), fallback to ConfigMap
+    local cluster_domain="${CLUSTER_DOMAIN:-}"
     if [[ -z "$cluster_domain" ]]; then
-        log_error "Could not detect cluster domain from ConfigMap cluster-info"
+        cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null)
+    fi
+    
+    if [[ -z "$cluster_domain" ]]; then
+        log_error "Could not detect cluster domain"
         echo -n "Please enter cluster domain (e.g., nanocloud): "
         read cluster_domain
         if [[ -z "$cluster_domain" ]]; then

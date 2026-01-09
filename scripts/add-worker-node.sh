@@ -208,29 +208,73 @@ EOF
 configure_kubectl_worker() {
     log_info "Configuring kubectl on worker node..."
     
-    # K3s agent writes kubeconfig to /etc/rancher/k3s/k3s.yaml
-    # Copy it to user's .kube directory for kubectl access
+    # K3s agent nodes don't create /etc/rancher/k3s/k3s.yaml (only server nodes do)
+    # We need to generate kubeconfig manually for worker nodes
     
-    local KUBECONFIG_SOURCE="/etc/rancher/k3s/k3s.yaml"
     local KUBECONFIG_DEST="$ACTUAL_HOME/.kube/config"
-    
-    if [ ! -f "$KUBECONFIG_SOURCE" ]; then
-        log_warn "K3s kubeconfig not found at $KUBECONFIG_SOURCE"
-        log_warn "kubectl will not be available on this worker node"
-        return 1
-    fi
     
     # Create .kube directory
     mkdir -p "$ACTUAL_HOME/.kube"
     
-    # Copy kubeconfig
-    cp "$KUBECONFIG_SOURCE" "$KUBECONFIG_DEST"
+    # Generate kubeconfig for worker node
+    log_info "Generating kubeconfig for worker node..."
+    
+    # Wait for K3s agent to be ready
+    sleep 5
+    
+    # Get cluster CA certificate from K3s agent config
+    local CA_CERT=""
+    if [ -f "/var/lib/rancher/k3s/agent/client-ca.crt" ]; then
+        CA_CERT=$(cat /var/lib/rancher/k3s/agent/client-ca.crt | base64 -w 0)
+    elif [ -f "/var/lib/rancher/k3s/agent/server-ca.crt" ]; then
+        CA_CERT=$(cat /var/lib/rancher/k3s/agent/server-ca.crt | base64 -w 0)
+    else
+        log_error "Could not find K3s CA certificate"
+        log_warn "kubectl will not be available on this worker node"
+        return 1
+    fi
+    
+    # Get client certificate and key
+    local CLIENT_CERT=""
+    local CLIENT_KEY=""
+    if [ -f "/var/lib/rancher/k3s/agent/client-kubelet.crt" ] && [ -f "/var/lib/rancher/k3s/agent/client-kubelet.key" ]; then
+        CLIENT_CERT=$(cat /var/lib/rancher/k3s/agent/client-kubelet.crt | base64 -w 0)
+        CLIENT_KEY=$(cat /var/lib/rancher/k3s/agent/client-kubelet.key | base64 -w 0)
+    else
+        log_error "Could not find K3s client certificates"
+        log_warn "kubectl will not be available on this worker node"
+        return 1
+    fi
+    
+    # Create kubeconfig
+    cat > "$KUBECONFIG_DEST" <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: ${CA_CERT}
+    server: https://${CONTROL_PLANE_IP}:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    client-certificate-data: ${CLIENT_CERT}
+    client-key-data: ${CLIENT_KEY}
+EOF
     
     # Fix ownership
     chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube"
     
     # Set permissions
     chmod 600 "$KUBECONFIG_DEST"
+    
+    log_success "Kubeconfig created at $KUBECONFIG_DEST"
     
     # Test kubectl access
     if sudo -u "$ACTUAL_USER" kubectl get nodes &>/dev/null; then

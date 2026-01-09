@@ -641,6 +641,7 @@ main() {
     install_dependencies
     configure_firewall
     join_cluster
+    configure_kubectl_worker  # Configure kubectl - needed for Longhorn and other operations
     setup_model_directories  # Create model storage for LLM API
     label_node
     install_longhorn  # Interactive Longhorn installation (same as control plane)

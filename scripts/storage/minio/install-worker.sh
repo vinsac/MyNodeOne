@@ -720,10 +720,16 @@ register_minio_services() {
         # Get node name from hostname
         local node_name=$(hostname)
         
-        # Get cluster domain - prefer env var (set by bootstrap), fallback to ConfigMap
+        # Get cluster domain - prefer env var (set by bootstrap), fallback to /etc/resolv.conf, then ConfigMap
         local cluster_domain="${CLUSTER_DOMAIN:-}"
+        
         if [[ -z "$cluster_domain" ]]; then
-            cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "cluster")
+             # Try to guess from /etc/resolv.conf (look for search svc.cluster.local)
+             cluster_domain=$(grep '^search' /etc/resolv.conf | grep -o 'svc\.[^ ]*' | sed 's/^svc\.//' | head -1)
+        fi
+        
+        if [[ -z "$cluster_domain" ]]; then
+            cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "atomcloud.local")
         fi
         
         # Register ONLY node-specific services (no generic aliases)

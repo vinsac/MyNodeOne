@@ -419,6 +419,9 @@ if [ ! -b \"\$partition\" ]; then
     partition='${device}'
 fi
 mkfs.ext4 -F \"\$partition\"
+# Set reserved blocks to 250GB max (same as Longhorn strategy)
+# Calculate 250GB in blocks (250 * 1024^3 / 4096)
+tune2fs -r 65536000 \"\$partition\"
 mkdir -p ${mount_point}
 mount \"\$partition\" ${mount_point}
 uuid=\$(blkid -s UUID -o value \"\$partition\")

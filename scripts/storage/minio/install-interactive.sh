@@ -286,38 +286,14 @@ format_and_mount_disk() {
 get_minio_credentials() {
     log_info "Configuring MinIO credentials..."
     
-    # Check if credentials already exist in Kubernetes
-    # Use sudo kubectl if running as root (worker node scenario)
-    local KUBECTL_CMD="kubectl"
-    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
-        KUBECTL_CMD="sudo -u $SUDO_USER kubectl"
-    fi
+    # Generate unique credentials for this MinIO instance
+    # Each node has its own standalone MinIO with independent credentials
+    log_info "Generating credentials for this MinIO instance"
+    MINIO_ROOT_USER="admin"
+    MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
     
-    if $KUBECTL_CMD get secret minio-credentials -n minio &>/dev/null; then
-        log_info "Found existing MinIO credentials in Kubernetes"
-        MINIO_ROOT_USER=$($KUBECTL_CMD get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' | base64 -d)
-        MINIO_ROOT_PASSWORD=$($KUBECTL_CMD get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' | base64 -d)
-        log_success "Using shared credentials from cluster"
-    else
-        log_info "No existing credentials found - generating new shared credentials"
-        log_warn "These credentials will be shared across ALL MinIO instances in the cluster"
-        MINIO_ROOT_USER="admin"
-        MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-        
-        # Create namespace
-        $KUBECTL_CMD create namespace minio --dry-run=client -o yaml | $KUBECTL_CMD apply -f -
-        
-        # Store in Kubernetes secret (persists across MinIO uninstall/reinstall)
-        $KUBECTL_CMD create secret generic minio-credentials \
-            -n minio \
-            --from-literal=rootUser="$MINIO_ROOT_USER" \
-            --from-literal=rootPassword="$MINIO_ROOT_PASSWORD" \
-            --dry-run=client -o yaml | $KUBECTL_CMD apply -f -
-        
-        log_success "Generated and stored new shared credentials in Kubernetes"
-        log_info "Credentials persist even if MinIO is uninstalled"
-        log_info "To reset credentials: $KUBECTL_CMD delete secret minio-credentials -n minio"
-    fi
+    log_success "Generated MinIO credentials"
+    log_info "Note: Each MinIO instance has independent credentials"
     
     # Save to local file for user reference
     cat > "$CREDENTIALS_FILE" <<EOF

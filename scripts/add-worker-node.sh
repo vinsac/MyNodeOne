@@ -621,7 +621,7 @@ main() {
     install_dependencies
     configure_firewall
     join_cluster
-    configure_kubectl_worker  # Configure kubectl for MinIO shared credentials
+    # Note: kubectl configuration removed - MinIO uses independent credentials per node
     setup_model_directories  # Create model storage for LLM API
     label_node
     install_longhorn  # Interactive Longhorn installation (same as control plane)

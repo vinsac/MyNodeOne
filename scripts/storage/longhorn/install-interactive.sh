@@ -592,7 +592,35 @@ main() {
     log_success "Longhorn is now the default storage class"
     
     # Detect cluster domain from ConfigMap
-    local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "nanocloud")
+    local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null)
+    if [[ -z "$cluster_domain" ]]; then
+        log_error "Could not detect cluster domain from ConfigMap cluster-info"
+        echo -n "Please enter cluster domain (e.g., nanocloud): "
+        read cluster_domain
+        if [[ -z "$cluster_domain" ]]; then
+            log_error "Cluster domain is required"
+            return 1
+        fi
+    fi
+    
+    # Register Longhorn service in service registry
+    log_info "Registering Longhorn UI in service registry..."
+    if command -v bash "$SCRIPT_DIR/../../lib/service-registry.sh" &>/dev/null; then
+        bash "$SCRIPT_DIR/../../lib/service-registry.sh" register_service \
+            "longhorn" \
+            "longhorn" \
+            "longhorn-system" \
+            "longhorn-frontend" \
+            "80" \
+            "false" || log_warn "Failed to register Longhorn in service registry"
+    fi
+    
+    # Trigger DNS sync
+    if [[ -f "$SCRIPT_DIR/../../sync-dns.sh" ]]; then
+        log_info "Syncing DNS entries..."
+        bash "$SCRIPT_DIR/../../sync-dns.sh" || log_warn "DNS sync failed"
+    fi
+    
     log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
     echo
     

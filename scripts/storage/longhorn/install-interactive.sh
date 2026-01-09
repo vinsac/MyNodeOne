@@ -12,6 +12,9 @@
 # - Follows existing MyNodeOne patterns
 ###############################################################################
 
+# Ensure KUBECONFIG is set for kubectl and helm when running as root
+export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
+
 set -euo pipefail
 
 # Colors for output

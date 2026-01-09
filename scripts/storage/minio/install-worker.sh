@@ -554,14 +554,23 @@ EOF
 patch_minio_for_hostpath() {
     log_info "Configuring MinIO to use hostPath volumes..."
     
-    # Wait for StatefulSet to be created
-    sleep 5
+    # Wait for StatefulSet to be created (retry loop)
+    local max_retries=10
+    local retry_count=0
+    local STS_NAME=""
     
-    # Get StatefulSet name
-    local STS_NAME=$(kubectl get statefulset -n "$MINIO_NAMESPACE" -o name 2>/dev/null | head -1 | cut -d'/' -f2)
+    while [ $retry_count -lt $max_retries ]; do
+        STS_NAME=$(kubectl get statefulset -n "$MINIO_NAMESPACE" -o name 2>/dev/null | head -1 | cut -d'/' -f2)
+        if [ -n "$STS_NAME" ]; then
+            break
+        fi
+        log_info "Waiting for StatefulSet to appear... ($((retry_count+1))/$max_retries)"
+        sleep 5
+        retry_count=$((retry_count+1))
+    done
     
     if [ -z "$STS_NAME" ]; then
-        log_error "MinIO StatefulSet not found in namespace $MINIO_NAMESPACE"
+        log_error "MinIO StatefulSet not found in namespace $MINIO_NAMESPACE after waiting"
         return 1
     fi
     
@@ -696,17 +705,33 @@ save_credentials() {
     # Detect actual user on this machine
     detect_actual_user
     
-    # Get MinIO endpoint
+    # Get MinIO endpoint (prefer DNS if registered)
+    local NODE_NAME=$(hostname)
+    local CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-atomcloud.local}" # Fallback
+    local MINIO_DNS="minio-${NODE_NAME}.${CLUSTER_DOMAIN}"
+    local CONSOLE_DNS="minio-console-${NODE_NAME}.${CLUSTER_DOMAIN}"
+    
     local MINIO_ENDPOINT=$(kubectl get svc -n "$MINIO_NAMESPACE" minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-    local MINIO_CONSOLE=$(kubectl get svc -n "$MINIO_NAMESPACE" minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    local MINIO_CONSOLE_IP=$(kubectl get svc -n "$MINIO_NAMESPACE" minio-console -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    
+    # Check if DNS is resolvable (simple check)
+    local S3_URL="http://${MINIO_ENDPOINT}:9000"
+    local CONSOLE_URL="http://${MINIO_CONSOLE_IP}:9001"
+    
+    if getent hosts "$MINIO_DNS" &>/dev/null; then
+        S3_URL="http://${MINIO_DNS}:9000"
+    fi
+    if getent hosts "$CONSOLE_DNS" &>/dev/null; then
+        CONSOLE_URL="http://${CONSOLE_DNS}:9001"
+    fi
     
     cat > "$ACTUAL_HOME/mynodeone-minio-worker-credentials.txt" <<EOF
 MinIO Worker Node Credentials
 ==============================
 Root User: $MINIO_ROOT_USER
 Root Password: $MINIO_ROOT_PASSWORD
-S3 Endpoint: http://${MINIO_ENDPOINT}:9000
-Console: http://${MINIO_CONSOLE}:9001
+S3 Endpoint: $S3_URL
+Console: $CONSOLE_URL
 
 Storage Locations:
 EOF
@@ -717,7 +742,7 @@ EOF
     done
     
     cat >> "$ACTUAL_HOME/mynodeone-minio-worker-credentials.txt" <<EOF
-
+    
 WARNING: Store these credentials securely and delete this file after saving them elsewhere.
 EOF
     
@@ -934,7 +959,7 @@ select_disks_for_minio() {
     done
     
     export MINIO_DISKS="${mounted_disks[@]}"
-    return 0
+    return 0LOCALLY 
 }
 
 main() {
@@ -950,7 +975,7 @@ main() {
     
     # Confirm installation node
     echo
-    log_info "MinIO will be installed on this node: $NODE_NAME"
+    log_info "MinIO will be installed LOCALLY on this node: $NODE_NAME"
     echo -n "Is this correct? [Y/n]: "
     read -r confirm
     if [[ "$confirm" =~ ^[Nn] ]]; then
@@ -997,16 +1022,15 @@ main() {
         exit 1
     fi
     
-    save_credentials
-    
-    # Register MinIO services for DNS
+    # Register MinIO services for DNS (Do this BEFORE saving credentials so we can use the DNS names)
     register_minio_services
+    
+    save_credentials
     
     echo
     log_success "===== MinIO Worker Installation Complete ====="
     log_info "MinIO is running on worker node with local disk storage"
     log_info "Credentials saved to: ~/mynodeone-minio-worker-credentials.txt"
-    log_info "Next: Configure Velero to use MinIO for backups"
 }
 
 main "$@"

@@ -959,7 +959,7 @@ select_disks_for_minio() {
     done
     
     export MINIO_DISKS="${mounted_disks[@]}"
-    return 0LOCALLY 
+    return 0
 }
 
 main() {

@@ -554,27 +554,40 @@ EOF
 patch_minio_for_hostpath() {
     log_info "Configuring MinIO to use hostPath volumes..."
     
-    # Wait for StatefulSet to be created (retry loop)
+    # Wait for Workload (StatefulSet or Deployment) to be created
     local max_retries=10
     local retry_count=0
-    local STS_NAME=""
+    local WORKLOAD_NAME=""
+    local WORKLOAD_TYPE=""
     
     while [ $retry_count -lt $max_retries ]; do
-        STS_NAME=$(kubectl get statefulset -n "$MINIO_NAMESPACE" -o name 2>/dev/null | head -1 | cut -d'/' -f2)
-        if [ -n "$STS_NAME" ]; then
+        # Check for StatefulSet first
+        local sts=$(kubectl get statefulset -n "$MINIO_NAMESPACE" -o name 2>/dev/null | head -1)
+        if [ -n "$sts" ]; then
+            WORKLOAD_NAME=$(echo "$sts" | cut -d'/' -f2)
+            WORKLOAD_TYPE="statefulset"
             break
         fi
-        log_info "Waiting for StatefulSet to appear... ($((retry_count+1))/$max_retries)"
+        
+        # Check for Deployment
+        local deploy=$(kubectl get deployment -n "$MINIO_NAMESPACE" -o name 2>/dev/null | head -1)
+        if [ -n "$deploy" ]; then
+            WORKLOAD_NAME=$(echo "$deploy" | cut -d'/' -f2)
+            WORKLOAD_TYPE="deployment"
+            break
+        fi
+        
+        log_info "Waiting for MinIO workload to appear... ($((retry_count+1))/$max_retries)"
         sleep 5
         retry_count=$((retry_count+1))
     done
     
-    if [ -z "$STS_NAME" ]; then
-        log_error "MinIO StatefulSet not found in namespace $MINIO_NAMESPACE after waiting"
+    if [ -z "$WORKLOAD_NAME" ]; then
+        log_error "MinIO workload (StatefulSet or Deployment) not found in namespace $MINIO_NAMESPACE"
         return 1
     fi
     
-    log_info "Found MinIO StatefulSet: $STS_NAME"
+    log_info "Found MinIO $WORKLOAD_TYPE: $WORKLOAD_NAME"
     
     # Build hostPath volumes configuration
     local disks=($MINIO_DISKS)
@@ -584,33 +597,77 @@ patch_minio_for_hostpath() {
     for i in "${!disks[@]}"; do
         local disk="${disks[$i]}"
         local vol_name="data-$i"
-        local mount_path="${disk}/minio-data"
+        
+        # In deployment mode, the volume name in the chart might be different
+        # Usually it's 'export' or 'data'. We'll try to add a new one and mount it.
+        # But for standalone mode with 1 drive, we usually replace the existing mount.
+        
+        # NOTE: For MinIO chart in standalone mode, it usually mounts 'export' to /export
+        # We need to ensure we mount our hostPath to the same location MinIO expects data.
+        # Standard MinIO docker image uses /data or /export. 
+        # The Helm chart often uses /export for standalone.
+        
+        local mount_path="/export"
+        if [ ${#disks[@]} -gt 1 ]; then
+             mount_path="/data$i" # Distributed mode usually /data{0...n}
+        fi
+        
+        # However, we configured `drivesPerNode: $VOLUME_COUNT`.
+        # If VOLUME_COUNT > 1, it's distributed.
+        
+        local host_path="${disk}/minio-data"
         
         # Add volume mount
         if [ $i -gt 0 ]; then
             VOLUME_MOUNTS="$VOLUME_MOUNTS,"
             VOLUMES="$VOLUMES,"
         fi
-        VOLUME_MOUNTS="${VOLUME_MOUNTS}{\"name\":\"${vol_name}\",\"mountPath\":\"${mount_path}\"}"
         
-        # Add hostPath volume
-        VOLUMES="${VOLUMES}{\"name\":\"${vol_name}\",\"hostPath\":{\"path\":\"${mount_path}\",\"type\":\"DirectoryOrCreate\"}}"
+        # If checking existing mounts is hard, we can just overwrite/append.
+        # But we need to know the target mount path in the container.
+        # In standalone (1 drive), it's usually /export.
+        
+        if [ ${#disks[@]} -eq 1 ]; then
+             mount_path="/export"
+             vol_name="export" # Match chart's likely volume name to overwrite or just add new
+        else
+             mount_path="/data$i"
+        fi
+        
+        VOLUME_MOUNTS="${VOLUME_MOUNTS}{\"name\":\"${vol_name}\",\"mountPath\":\"${mount_path}\"}"
+        VOLUMES="${VOLUMES}{\"name\":\"${vol_name}\",\"hostPath\":{\"path\":\"${host_path}\",\"type\":\"DirectoryOrCreate\"}}"
     done
     
     VOLUME_MOUNTS="$VOLUME_MOUNTS]"
     VOLUMES="$VOLUMES]"
     
-    # Patch StatefulSet to use hostPath
-    log_info "Patching StatefulSet with hostPath volumes..."
+    # Patch Workload to use hostPath
+    log_info "Patching $WORKLOAD_TYPE with hostPath volumes..."
     
-    if kubectl patch statefulset "$STS_NAME" -n "$MINIO_NAMESPACE" --type=json -p="[
-        {\"op\":\"remove\",\"path\":\"/spec/volumeClaimTemplates\"},
+    # We remove 'persistence' volume claim templates if STS, or emptyDir volumes if Deployment
+    # And replace/add our hostPath volumes.
+    # We also update the container mounts.
+    
+    # Construct patch based on type
+    # Using 'json' patch is precise but requires knowing the array indices.
+    # 'strategic' merge patch is easier for lists if we have keys, but replacing list is safer.
+    
+    # Let's try to overwrite volumes and volumeMounts completely for the first container.
+    
+    if kubectl patch $WORKLOAD_TYPE "$WORKLOAD_NAME" -n "$MINIO_NAMESPACE" --type=json -p="[
         {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes\",\"value\":$VOLUMES},
         {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/volumeMounts\",\"value\":$VOLUME_MOUNTS}
     ]" 2>&1; then
         log_success "MinIO configured for hostPath volumes"
     else
-        log_warn "Could not patch StatefulSet, MinIO may still work with default configuration"
+        log_warn "First patch attempt failed, trying to merge..."
+        # Fallback: try merge patch if replace failed (e.g. path didn't exist)
+         if kubectl patch $WORKLOAD_TYPE "$WORKLOAD_NAME" -n "$MINIO_NAMESPACE" --type=merge -p="{\"spec\":{\"template\":{\"spec\":{\"volumes\":$VOLUMES,\"containers\":[{\"name\":\"minio\",\"volumeMounts\":$VOLUME_MOUNTS}]}}}}" 2>&1; then
+             log_success "MinIO configured for hostPath volumes (merge)"
+         else
+             log_error "Failed to patch MinIO workload"
+             return 1
+         fi
     fi
     
     return 0

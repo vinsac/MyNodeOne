@@ -126,14 +126,8 @@ detect_available_disks() {
             continue
         fi
         
-        # Get disk model for display
-        local model=$(lsblk -d -n -o MODEL "/dev/$disk_name" 2>/dev/null | xargs)
-        if [ -z "$model" ]; then
-            model="Unknown"
-        fi
-        
-        # Add /dev/ prefix to disk path
-        available_disks+=("/dev/$disk_name:$disk_size:$disk_fstype:$model")
+        # Add /dev/ prefix to disk path (no model info to avoid duplicates)
+        available_disks+=("/dev/$disk_name:$disk_size:$disk_fstype")
     done <<< "$all_disks"
     
     echo "${available_disks[@]}"
@@ -193,14 +187,21 @@ get_minio_credentials() {
     log_success "Generated MinIO credentials for this node"
     log_info "Each MinIO instance has independent credentials (like any other service)"
     
+    # Get Tailscale IP (100.x.x.x range)
+    local node_ip=$(ip addr show tailscale0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1)
+    if [ -z "$node_ip" ]; then
+        # Fallback to first IP if Tailscale not found
+        node_ip=$(hostname -I | awk '{print $1}')
+    fi
+    
     # Save to local file
     cat > "$CREDENTIALS_FILE" <<EOF
 MinIO Credentials
 =================
 
 Node: $(hostname)
-Endpoint: http://$(hostname -I | awk '{print $1}'):9000
-Console: http://$(hostname -I | awk '{print $1}'):9001
+Endpoint: http://${node_ip}:9000
+Console: http://${node_ip}:9001
 
 Admin Credentials (unique to this node):
   Username: $MINIO_ROOT_USER
@@ -218,6 +219,15 @@ EOF
     fi
     
     log_success "Credentials saved to: $CREDENTIALS_FILE"
+    
+    # Display credentials in terminal
+    echo
+    log_info "MinIO Access Credentials:"
+    echo "  Username: $MINIO_ROOT_USER"
+    echo "  Password: $MINIO_ROOT_PASSWORD"
+    echo "  Endpoint: http://${node_ip}:9000"
+    echo "  Console:  http://${node_ip}:9001"
+    echo
 }
 
 # Install MinIO as systemd service
@@ -271,7 +281,12 @@ EOF
     if systemctl is-active --quiet minio; then
         log_success "MinIO service started successfully"
         
-        local node_ip=$(hostname -I | awk '{print $1}')
+        # Get Tailscale IP
+        local node_ip=$(ip addr show tailscale0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1)
+        if [ -z "$node_ip" ]; then
+            node_ip=$(hostname -I | awk '{print $1}')
+        fi
+        
         log_info "  API: http://${node_ip}:9000"
         log_info "  Console: http://${node_ip}:9001"
     else
@@ -333,7 +348,6 @@ main() {
         disk_count=$((disk_count + 1))
         local disk_name=$(echo "$disk_info" | cut -d: -f1)
         local disk_size=$(echo "$disk_info" | cut -d: -f2)
-        local model=$(echo "$disk_info" | cut -d: -f4)
         
         local disk_display=$(basename "$disk_name")
         echo "  $disk_count) $disk_display ($disk_size)"

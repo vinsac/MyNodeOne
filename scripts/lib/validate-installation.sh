@@ -115,7 +115,7 @@ validate_control_plane() {
     run_test "metallb pods running" "kubectl get pods -n metallb-system | grep -q Running" true
     run_test "traefik pods running" "kubectl get pods -n traefik | grep -q Running" true
     run_test "longhorn pods running" "kubectl get pods -n longhorn-system | grep -q Running" true
-    run_test "minio pods running" "kubectl get pods -n minio | grep -q Running" false
+    # MinIO is now per-node optional, not installed on control plane during bootstrap
     run_test "monitoring pods running" "kubectl get pods -n monitoring | grep -q Running" true
     run_test "argocd pods running" "kubectl get pods -n argocd | grep -q Running" true
     run_test "dashboard pods running" "kubectl get pods -n mynodeone-dashboard | grep -q Running" true

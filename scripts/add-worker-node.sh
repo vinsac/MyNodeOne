@@ -222,27 +222,47 @@ configure_kubectl_worker() {
     # Wait for K3s agent to be ready
     sleep 5
     
-    # Get cluster CA certificate from K3s agent config
+    # Get cluster CA certificate from K3s server
+    # The server-ca.crt is the certificate authority for the K3s API server
     local CA_CERT=""
-    if [ -f "/var/lib/rancher/k3s/agent/client-ca.crt" ]; then
-        CA_CERT=$(cat /var/lib/rancher/k3s/agent/client-ca.crt | base64 -w 0)
-    elif [ -f "/var/lib/rancher/k3s/agent/server-ca.crt" ]; then
-        CA_CERT=$(cat /var/lib/rancher/k3s/agent/server-ca.crt | base64 -w 0)
-    else
-        log_error "Could not find K3s CA certificate"
+    local CA_CERT_PATH="/var/lib/rancher/k3s/agent/server-ca.crt"
+    
+    if [ ! -f "$CA_CERT_PATH" ]; then
+        log_error "Could not find K3s server CA certificate at $CA_CERT_PATH"
         log_warn "kubectl will not be available on this worker node"
         return 1
     fi
     
-    # Get client certificate and key
+    CA_CERT=$(cat "$CA_CERT_PATH" | base64 -w 0)
+    
+    # Get client certificate and key for authentication
+    # Try multiple certificate locations
     local CLIENT_CERT=""
     local CLIENT_KEY=""
-    if [ -f "/var/lib/rancher/k3s/agent/client-kubelet.crt" ] && [ -f "/var/lib/rancher/k3s/agent/client-kubelet.key" ]; then
+    
+    if [ -f "/var/lib/rancher/k3s/agent/client-k3s-controller.crt" ] && [ -f "/var/lib/rancher/k3s/agent/client-k3s-controller.key" ]; then
+        CLIENT_CERT=$(cat /var/lib/rancher/k3s/agent/client-k3s-controller.crt | base64 -w 0)
+        CLIENT_KEY=$(cat /var/lib/rancher/k3s/agent/client-k3s-controller.key | base64 -w 0)
+        log_info "Using K3s controller certificates"
+    elif [ -f "/var/lib/rancher/k3s/agent/client-admin.crt" ] && [ -f "/var/lib/rancher/k3s/agent/client-admin.key" ]; then
+        CLIENT_CERT=$(cat /var/lib/rancher/k3s/agent/client-admin.crt | base64 -w 0)
+        CLIENT_KEY=$(cat /var/lib/rancher/k3s/agent/client-admin.key | base64 -w 0)
+        log_info "Using K3s admin certificates"
+    elif [ -f "/var/lib/rancher/k3s/agent/client-kubelet.crt" ] && [ -f "/var/lib/rancher/k3s/agent/client-kubelet.key" ]; then
         CLIENT_CERT=$(cat /var/lib/rancher/k3s/agent/client-kubelet.crt | base64 -w 0)
         CLIENT_KEY=$(cat /var/lib/rancher/k3s/agent/client-kubelet.key | base64 -w 0)
+        log_info "Using K3s kubelet certificates"
     else
         log_error "Could not find K3s client certificates"
-        log_warn "kubectl will not be available on this worker node"
+        log_warn "Attempted paths:"
+        log_warn "  - /var/lib/rancher/k3s/agent/client-k3s-controller.{crt,key}"
+        log_warn "  - /var/lib/rancher/k3s/agent/client-admin.{crt,key}"
+        log_warn "  - /var/lib/rancher/k3s/agent/client-kubelet.{crt,key}"
+        
+        # Try alternative: copy kubeconfig from control plane
+        log_info "Alternative: Copy kubeconfig from control plane:"
+        log_info "  scp ${CONTROL_PLANE_IP}:/etc/rancher/k3s/k3s.yaml ~/.kube/config"
+        log_info "  sed -i 's/127.0.0.1/${CONTROL_PLANE_IP}/g' ~/.kube/config"
         return 1
     fi
     

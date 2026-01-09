@@ -727,14 +727,6 @@ EOF
     log_success "Credentials saved to: $ACTUAL_HOME/mynodeone-minio-worker-credentials.txt"
 }
 
-main() {
-    log_info "===== MinIO Worker Installation ====="
-    
-    if ! check_requirements; then
-        log_error "Prerequisites check failed"
-        exit 1
-    fi
-    
 detect_available_disks() {
     # Log to stderr to not pollute stdout (which is captured)
     echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') Detecting available disks..." >&2

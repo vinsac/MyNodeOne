@@ -535,14 +535,46 @@ EOF
         log_success "MinIO API IP: $api_ip"
         log_success "MinIO Console IP: $console_ip"
         
-        # Register services in service registry if available
-        if command -v register_service &>/dev/null; then
-            register_service "minio-${node_name}" "minio-${node_name}" minio "minio-${node_name}" 9000 false || true
-            register_service "minio-console-${node_name}" "minio-console-${node_name}" minio "minio-console-${node_name}" 9001 false || true
+        # Register services in service registry
+        log_info "Registering MinIO services in cluster registry..."
+        
+        # Find service-registry.sh script
+        local registry_script=""
+        if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+            registry_script="$SCRIPT_DIR/../lib/service-registry.sh"
+        elif [ -f "$SCRIPT_DIR/../../lib/service-registry.sh" ]; then
+            registry_script="$SCRIPT_DIR/../../lib/service-registry.sh"
+        fi
+        
+        if [ -n "$registry_script" ]; then
+            # Register MinIO API service
+            bash "$registry_script" register \
+                "minio-${node_name}" "minio-${node_name}" minio "minio-${node_name}" 9000 false 2>/dev/null || \
+                log_warn "Could not register MinIO API in service registry"
             
-            log_info "Registered MinIO services for node: ${node_name}"
+            # Register MinIO Console service
+            bash "$registry_script" register \
+                "minio-console-${node_name}" "minio-console-${node_name}" minio "minio-console-${node_name}" 9001 false 2>/dev/null || \
+                log_warn "Could not register MinIO Console in service registry"
+            
+            log_success "Registered MinIO services for node: ${node_name}"
             log_info "  API: minio-${node_name}.minicloud.local:9000"
             log_info "  Console: minio-console-${node_name}.minicloud.local:9001"
+            
+            # Trigger DNS sync to update /etc/hosts on control plane
+            log_info "Updating DNS entries..."
+            local sync_dns_script=""
+            if [ -f "$SCRIPT_DIR/../../sync-dns.sh" ]; then
+                sync_dns_script="$SCRIPT_DIR/../../sync-dns.sh"
+            fi
+            
+            if [ -n "$sync_dns_script" ]; then
+                bash "$sync_dns_script" 2>/dev/null || log_warn "Could not sync DNS entries"
+                log_success "DNS entries updated on control plane"
+            fi
+        else
+            log_warn "Service registry script not found - services not registered"
+            log_warn "MinIO will be accessible via IP but not via DNS names"
         fi
     else
         log_warn "LoadBalancer IPs not assigned yet (may take a few minutes)"

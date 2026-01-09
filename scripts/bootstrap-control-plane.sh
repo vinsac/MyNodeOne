@@ -1731,15 +1731,6 @@ display_credentials() {
     fi
     echo
     
-    # Show Velero info only if installed
-    if kubectl get deployment velero -n velero &>/dev/null; then
-        echo "💾 VELERO (Backup System):"
-        echo "   Status: Installed"
-        echo "   Backup storage: Configure with MinIO after installation"
-        echo "   Configure: sudo ./scripts/storage/velero/configure-backup.sh"
-        echo
-    fi
-    
     echo "📦 LONGHORN (Storage Dashboard):"
     echo "   URL: $LONGHORN_URL (also http://longhorn.${CLUSTER_DOMAIN}.local)"
     echo "   Authentication: None (protected by Tailscale VPN)"
@@ -1951,11 +1942,6 @@ print_summary() {
     echo "   🚀 ArgoCD (GitOps Deployments):"
     echo "      URL: https://$ARGOCD_IP"
     echo "      Credentials: cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt"
-    echo
-    echo "   💾 Velero Backups:"
-    echo "      Status: Installed (configure after adding worker node)"
-    echo "      Schedule: Nightly at 2:00 AM UTC"
-    echo "      Storage: MinIO on worker node"
     echo
     echo "   📦 Longhorn UI (Block Storage):"
     echo "      URL: $LONGHORN_URL"

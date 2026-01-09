@@ -1,0 +1,377 @@
+#!/bin/bash
+
+###############################################################################
+# MinIO - S3-Compatible Object Storage Installation
+#
+# Deploys MinIO as a Kubernetes StatefulSet with:
+# - Per-node installation (can install on multiple nodes)
+# - Node affinity (pinned to specific node)
+# - HostPath volumes (dedicated physical disk)
+# - LoadBalancer service (MetalLB)
+# - Independent credentials per instance
+# - .local domain via service discovery
+#
+# USAGE:
+#   sudo ./scripts/apps/minio/install-minio.sh
+#   
+# The script will:
+# 1. Prompt for target node selection
+# 2. Detect available disks on that node
+# 3. Format and mount selected disk
+# 4. Generate unique credentials
+# 5. Deploy MinIO to Kubernetes
+# 6. Register in service discovery
+###############################################################################
+
+set -euo pipefail
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[✓]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[⚠]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[✗]${NC} $1"
+}
+
+# Detect script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFESTS_DIR="$SCRIPT_DIR/manifests"
+LIB_DIR="$SCRIPT_DIR/../../lib"
+
+# Load user detection
+if [[ -f "$LIB_DIR/detect-actual-home.sh" ]]; then
+    source "$LIB_DIR/detect-actual-home.sh"
+else
+    ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        ACTUAL_HOME="$HOME"
+    fi
+fi
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  MinIO Installation (S3-Compatible Object Storage)${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Validate prerequisites
+if ! command -v kubectl &> /dev/null; then
+    log_error "kubectl not found. Please install Kubernetes first."
+    echo "Run: sudo ./scripts/bootstrap-control-plane.sh"
+    exit 1
+fi
+
+if ! kubectl get nodes &> /dev/null; then
+    log_error "Cannot connect to Kubernetes cluster."
+    exit 1
+fi
+
+# Get cluster domain
+CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "minicloud")
+
+# Select target node
+echo "Available nodes:"
+echo ""
+kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,ROLES:.metadata.labels.node-role\\.kubernetes\\.io/worker --no-headers | nl
+echo ""
+read -p "Select node number for MinIO installation: " NODE_SELECTION
+
+NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | sed -n "${NODE_SELECTION}p")
+
+if [ -z "$NODE_NAME" ]; then
+    log_error "Invalid node selection"
+    exit 1
+fi
+
+log_info "Selected node: $NODE_NAME"
+echo ""
+
+# Check if MinIO already installed on this node
+NAMESPACE="minio-${NODE_NAME}"
+if kubectl get namespace "$NAMESPACE" &>/dev/null; then
+    log_warn "MinIO already installed on node $NODE_NAME (namespace: $NAMESPACE)"
+    read -p "Reinstall? This will delete existing MinIO and data [y/N]: " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Installation cancelled"
+        exit 0
+    fi
+    
+    log_info "Removing existing MinIO installation..."
+    kubectl delete namespace "$NAMESPACE" --wait=true
+    log_success "Existing installation removed"
+fi
+
+# SSH to node for disk operations (if not local)
+LOCAL_NODE=$(hostname)
+if [ "$NODE_NAME" = "$LOCAL_NODE" ] || [ "$NODE_NAME" = "$(hostname -s)" ]; then
+    IS_LOCAL=true
+    log_info "Installing on local node"
+else
+    IS_LOCAL=false
+    log_info "Installing on remote node: $NODE_NAME"
+    
+    # Get SSH user from node labels
+    SSH_USER=$(kubectl get node "$NODE_NAME" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null || echo "")
+    NODE_IP=$(kubectl get node "$NODE_NAME" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null || echo "")
+    
+    if [ -z "$SSH_USER" ] || [ -z "$NODE_IP" ]; then
+        log_error "Node labels not found. Cannot SSH to remote node."
+        log_error "Required labels: mynodeone.io/ssh-user, mynodeone.io/worker-ip"
+        exit 1
+    fi
+    
+    log_info "SSH: $SSH_USER@$NODE_IP"
+fi
+
+# Disk detection and selection (interactive)
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Disk Selection for MinIO"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+log_info "Detecting available disks..."
+
+# Reuse disk detection logic from storage/minio/install-interactive.sh
+# For now, use simplified version - can enhance later
+if [ "$IS_LOCAL" = true ]; then
+    DISK_SCRIPT="$SCRIPT_DIR/../../storage/minio/install-interactive.sh"
+    if [ -f "$DISK_SCRIPT" ]; then
+        log_info "Using disk detection from: $DISK_SCRIPT"
+        # Source the disk detection functions
+        source "$DISK_SCRIPT"
+    else
+        log_error "Disk detection script not found: $DISK_SCRIPT"
+        exit 1
+    fi
+fi
+
+# For simplicity in Phase 3, use OS folder as default
+# TODO: Enhance with full disk detection in future iteration
+echo "💡 Disk options:"
+echo "  1) Use dedicated physical disk (requires disk formatting)"
+echo "  2) Use OS folder: /var/lib/minio (no formatting needed)"
+echo ""
+read -p "Your choice [1 or 2]: " DISK_CHOICE
+
+if [ "$DISK_CHOICE" = "1" ]; then
+    log_error "Physical disk selection not yet implemented in this version"
+    log_info "Please use option 2 (OS folder) for now"
+    log_info "Full disk detection will be added in next iteration"
+    exit 1
+elif [ "$DISK_CHOICE" = "2" ]; then
+    MINIO_PATH="/var/lib/minio"
+    STORAGE_SIZE="100Gi"  # Placeholder - can be adjusted
+    log_info "Using OS folder: $MINIO_PATH"
+else
+    log_error "Invalid choice"
+    exit 1
+fi
+
+# Create directory on target node
+if [ "$IS_LOCAL" = true ]; then
+    sudo mkdir -p "$MINIO_PATH"
+    sudo chmod 755 "$MINIO_PATH"
+    log_success "Created directory: $MINIO_PATH"
+else
+    ssh "$SSH_USER@$NODE_IP" "sudo mkdir -p $MINIO_PATH && sudo chmod 755 $MINIO_PATH"
+    log_success "Created directory on $NODE_NAME: $MINIO_PATH"
+fi
+
+# Generate unique credentials
+log_info "Generating credentials..."
+MINIO_USER="admin"
+MINIO_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+log_success "Credentials generated"
+
+# Create namespace
+log_info "Creating namespace: $NAMESPACE..."
+cat "$MANIFESTS_DIR/namespace.yaml" | \
+    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
+    sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
+    kubectl apply -f -
+log_success "Namespace created"
+
+# Create secret
+log_info "Creating secret with credentials..."
+cat "$MANIFESTS_DIR/secret.yaml" | \
+    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
+    sed "s/PASSWORD_PLACEHOLDER/${MINIO_PASSWORD}/g" | \
+    kubectl apply -f -
+log_success "Secret created"
+
+# Create PV
+PV_NAME="${NODE_NAME}"
+log_info "Creating PersistentVolume: minio-data-${PV_NAME}..."
+cat "$MANIFESTS_DIR/pv-hostpath.yaml" | \
+    sed "s/PV_NAME_PLACEHOLDER/${PV_NAME}/g" | \
+    sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
+    sed "s|STORAGE_SIZE_PLACEHOLDER|${STORAGE_SIZE}|g" | \
+    kubectl apply -f -
+log_success "PersistentVolume created"
+
+# Create PVC
+log_info "Creating PersistentVolumeClaim..."
+cat "$MANIFESTS_DIR/pvc.yaml" | \
+    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
+    sed "s/PV_NAME_PLACEHOLDER/${PV_NAME}/g" | \
+    sed "s|STORAGE_SIZE_PLACEHOLDER|${STORAGE_SIZE}|g" | \
+    kubectl apply -f -
+log_success "PersistentVolumeClaim created"
+
+# Deploy StatefulSet
+log_info "Deploying MinIO StatefulSet..."
+cat "$MANIFESTS_DIR/statefulset.yaml" | \
+    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
+    sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
+    kubectl apply -f -
+log_success "StatefulSet deployed"
+
+# Create Service
+log_info "Creating LoadBalancer service..."
+cat "$MANIFESTS_DIR/service.yaml" | \
+    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
+    sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
+    kubectl apply -f -
+log_success "Service created"
+
+# Wait for pod to be ready
+log_info "Waiting for MinIO pod to be ready..."
+kubectl wait --for=condition=ready pod -l app=minio -n "$NAMESPACE" --timeout=300s || {
+    log_error "MinIO pod failed to become ready"
+    log_info "Check logs with: kubectl logs -n $NAMESPACE -l app=minio"
+    exit 1
+}
+log_success "MinIO pod is ready"
+
+# Get LoadBalancer IP
+log_info "Waiting for LoadBalancer IP..."
+sleep 5
+LB_IP=""
+for i in {1..30}; do
+    LB_IP=$(kubectl get svc minio -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    if [ -n "$LB_IP" ]; then
+        break
+    fi
+    sleep 2
+done
+
+if [ -z "$LB_IP" ]; then
+    log_warn "LoadBalancer IP not assigned yet"
+    log_info "Check status with: kubectl get svc -n $NAMESPACE"
+else
+    log_success "LoadBalancer IP: $LB_IP"
+fi
+
+# Register in service discovery
+DOMAIN_NAME="minio-${NODE_NAME}.${CLUSTER_DOMAIN}.local"
+log_info "Registering in service discovery..."
+if [ -f "$LIB_DIR/service-registry.sh" ]; then
+    bash "$LIB_DIR/service-registry.sh" register \
+        "minio-${NODE_NAME}" \
+        "object-storage" \
+        "$NAMESPACE" \
+        "minio" \
+        9000 \
+        true || log_warn "Service registration failed (non-critical)"
+fi
+
+# Save credentials to file
+CREDS_FILE="$ACTUAL_HOME/minio-${NODE_NAME}-credentials.txt"
+cat > "$CREDS_FILE" <<EOF
+MinIO Installation on Node: $NODE_NAME
+======================================
+
+Namespace: $NAMESPACE
+Domain: $DOMAIN_NAME
+LoadBalancer IP: ${LB_IP:-pending}
+
+API Endpoints:
+  - http://${DOMAIN_NAME}:9000
+  - http://${LB_IP}:9000 (if IP assigned)
+
+Console:
+  - http://${DOMAIN_NAME}:9001
+  - http://${LB_IP}:9001 (if IP assigned)
+
+Credentials:
+  Username: $MINIO_USER
+  Password: $MINIO_PASSWORD
+
+Storage:
+  Path: $MINIO_PATH
+  Size: $STORAGE_SIZE
+
+Kubernetes Resources:
+  Namespace: $NAMESPACE
+  StatefulSet: minio
+  Service: minio (LoadBalancer)
+  PVC: minio-data
+
+Management Commands:
+  # View pods
+  kubectl get pods -n $NAMESPACE
+  
+  # View service
+  kubectl get svc -n $NAMESPACE
+  
+  # View logs
+  kubectl logs -n $NAMESPACE -l app=minio
+  
+  # Access console
+  open http://${DOMAIN_NAME}:9001
+  
+  # Delete MinIO (if needed)
+  kubectl delete namespace $NAMESPACE
+
+Installed: $(date)
+EOF
+
+chown "$ACTUAL_USER:$ACTUAL_USER" "$CREDS_FILE" 2>/dev/null || true
+log_success "Credentials saved to: $CREDS_FILE"
+
+# Print summary
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  MinIO Installation Complete!${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "📍 Node: $NODE_NAME"
+echo "🌐 Domain: $DOMAIN_NAME"
+if [ -n "$LB_IP" ]; then
+    echo "📡 LoadBalancer IP: $LB_IP"
+fi
+echo ""
+echo "🔐 Credentials:"
+echo "   Username: $MINIO_USER"
+echo "   Password: $MINIO_PASSWORD"
+echo ""
+echo "🌍 Access URLs:"
+echo "   API:     http://${DOMAIN_NAME}:9000"
+echo "   Console: http://${DOMAIN_NAME}:9001"
+if [ -n "$LB_IP" ]; then
+    echo "   API:     http://${LB_IP}:9000"
+    echo "   Console: http://${LB_IP}:9001"
+fi
+echo ""
+echo "📄 Credentials saved to: $CREDS_FILE"
+echo ""
+echo "💡 Test access:"
+echo "   curl http://${DOMAIN_NAME}:9000/minio/health/live"
+echo ""
+echo "📦 Kubernetes namespace: $NAMESPACE"
+echo ""

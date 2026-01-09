@@ -550,15 +550,14 @@ install_longhorn() {
 
 install_minio() {
     log_info "MinIO installation (optional)..."
-    
-    # Check if MinIO install script exists
-    if [ ! -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
-        log_warn "MinIO installer not found, skipping"
-        return 0
-    fi
-    
-    # Run MinIO interactive installer (includes user prompt and disk selection)
-    bash "$SCRIPT_DIR/storage/minio/install-interactive.sh"
+    log_info "MinIO is now installed as an app (like Immich, LLM API)"
+    log_info ""
+    log_info "To install MinIO on this or any node:"
+    log_info "  sudo $SCRIPT_DIR/apps/minio/install-minio.sh"
+    log_info ""
+    log_info "MinIO can be installed multiple times on different nodes"
+    log_info "Each installation gets independent credentials and .local domain"
+    log_info ""
 }
 
 scale_longhorn_replicas() {

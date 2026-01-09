@@ -8,6 +8,9 @@
 # Called during worker node addition (add-worker-node.sh)
 ###############################################################################
 
+# Ensure KUBECONFIG is set for kubectl and helm when running as root
+export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
+
 set -euo pipefail
 
 # Colors for output

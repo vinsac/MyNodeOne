@@ -423,62 +423,362 @@ spec:
 ### Implementation Order
 
 **
-### Implementation Order
-
-**R✅commended sequence:** (CONFIRMED)
-. ⏳ Reference Longhorn disk detection/formatting code
-4 Create Veleroinstallation script
-5. ⏳ :
-  - Remove MinIO installation
-   - Add Velero installation call
-   - Add 
-6. ✅ Create branch (done: `ref:
-a  - Add tor-storage-archit with disk dtclctiof
-   - AddaLonghi noscheduliqg dusablsons above
-   -fAddbVeleoorbaak-prconfogure.sh  trigger(Longhorn node restrictions)
-4. ⏳ Tdsf ke.s MIhstallaeiIO swellar ma
-8. ⏳ Test on fresh cluster installation
-9 ⏳ Create migration guide for existing clusters
-8. ⏳ Add Velero integration (optional)
-9. ⏳ Update documentation
-10. ⏳ Merge to main after validation
-FinalClarificaion Needed
----
-stat
-
-1. Velero Backup Schedule:**
-   ##WhatNtimexfor  ightly backupS? (e.g.,2:00 AM UTC?)
-   - Reentinpolicy? (.g., keep la 7 days?)
-
-2. **Veler ItallationTmig:**
-  - Inall Veler durigconrlpneboottrap (ven wihout worker)?
-   - Or skp if n worker ode exists?
-   **Suggested:**Installdung cntol plane boostrap,cnigurebacku wen worker joins
-
-3. **MinIO Nmepac on Worker:**
-   - Ue`miio`or `minio-orkr`nameace?
-  - **Suggstd:** `minio` fosimplicty
-
-4. **Corol Plane MnIO Remov:**
-   *eRemoveorinIO enstallrocee fromdbooting p-conwrol-plani.sh in thim PR?
-   - Or keee fmr backwaed companibiliny a dldepreeate aater?
-   - **Ssggee cd:**fRemive entirelym(:** install
-
-5. **Disk Detection Reference:**
-   - Use exact same logic as Longhornws sk detecto n iq bootstrup-tontril-plaoe.nh?
-   - Locased it ln eQ 1038-1130u(disktdetoct on, fot atting, addilg ao Longhorn)- [ ] Priority of phases (can we skip Velero initially?)
-   -]**CMigratation needid:** Shoulo MinIO follos idtnttcagy atte(n?
-
-Onue thpsp 5rpo nes are confirmed,isting clusters wi f begshoimmedianyy
-- [ ] Any additional constraints or requirements
-
-Once confirmed, we will proceed with implementation following the plan above.
-
 ---
 
+## NEW IMPLEMENTATION PLAN (January 9, 2026)
+
+### Current State Analysis (from commits 1ee886b-8d8b7ff)
+
+**What We Recently Built (Systemd MinIO):**
+- ✅ MinIO as systemd service on worker nodes
+- ✅ Independent credentials per node
+- ✅ Disk detection and formatting logic
+- ✅ Tailscale IP-based access (100.x.x.x:9000)
+- ✅ Interactive installation with disk selection
+- ❌ No Kubernetes Service integration
+- ❌ No MetalLB LoadBalancer
+- ❌ No .local domain
+
+**Files Modified in Recent Work:**
+- `scripts/storage/minio/install-interactive.sh` - Systemd installation with disk detection
+- `scripts/add-worker-node.sh` - Calls systemd MinIO installer
+- Removed kubectl dependencies for MinIO
+
+### What Needs to Change
+
+**Architecture Shift:**
+```
+From: MinIO as systemd service (node-level)
+To:   MinIO as Kubernetes StatefulSet (cluster-level with node affinity)
+```
+
+**Key Differences:**
+1. Deploy MinIO as K8s workload (not systemd service)
+2. Create K8s Service with MetalLB LoadBalancer
+3. Use hostPath volumes (keep dedicated disk architecture)
+4. Store credentials in K8s Secrets (per-node, independent)
+5. Enable cluster-wide service discovery
+6. Support VPS exposure via standard routing
+
+### Implementation Steps
+
+#### Phase 1: Longhorn on Worker Nodes
+
+**1.1 Modify Worker Node Installation**
+- File: `scripts/add-worker-node.sh`
+- Keep existing `install_longhorn()` function
+- Remove `disable_longhorn_on_worker()` logic
+- Allow Longhorn to schedule on worker nodes
+- Worker disks added to Longhorn storage pool
+
+**1.2 Ensure Replica=1 Enforcement**
+- Longhorn can schedule on any node
+- PVCs created with replica=1 (no cross-node replication)
+- Pod affinity ensures pod runs where PVC is located
+
+**1.3 Disk Allocation Strategy**
+- User selects disks during installation
+- Longhorn disks: For block storage (PVCs)
+- MinIO disks: Separate, for object storage
+- Must not overlap
+
+#### Phase 2: MinIO as Kubernetes Services
+
+**2.1 Create MinIO Kubernetes Manifests**
+- New directory: `manifests/minio/`
+- Files needed:
+  - `namespace.yaml` - Per-node namespace (e.g., `minio-pc1`)
+  - `secret.yaml` - Independent credentials per node
+  - `statefulset.yaml` - MinIO deployment with node affinity
+  - `service.yaml` - LoadBalancer service (MetalLB)
+  - `pv-hostpath.yaml` - PersistentVolume using hostPath
+  - `pvc.yaml` - PersistentVolumeClaim for the PV
+
+**2.2 StatefulSet Configuration**
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: minio-<nodename>
+spec:
+  replicas: 1
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - <nodename>  # Pin to specific node
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: minio-data
+```
+
+**2.3 Service Configuration**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: minio-<nodename>
+spec:
+  type: LoadBalancer
+  loadBalancerIP: <metalb-ip>  # From pool
+  ports:
+  - name: api
+    port: 9000
+  - name: console
+    port: 9001
+```
+
+**2.4 HostPath PV Configuration**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: minio-data-<nodename>
+spec:
+  capacity:
+    storage: 18Ti
+  accessModes:
+  - ReadWriteOnce
+  hostPath:
+    path: /mnt/minio  # Dedicated physical disk
+    type: Directory
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - <nodename>
+```
+
+**2.5 Independent Credentials**
+- Each MinIO instance has unique Secret
+- Secret name: `minio-credentials` in namespace `minio-<nodename>`
+- Generated during installation (per node)
+- No shared passwords between nodes
+
+#### Phase 3: Installation Script Updates
+
+**3.1 Create New Script: `scripts/storage/minio/install-k8s-minio.sh`**
+- Interactive disk selection (reuse logic from `install-interactive.sh`)
+- Disk formatting and mounting
+- Generate unique credentials
+- Create namespace
+- Create secret with credentials
+- Deploy PV, PVC, StatefulSet, Service
+- Register service in cluster registry
+- Wait for MinIO to be ready
+- Display access information
+
+**3.2 Modify `scripts/add-worker-node.sh`**
+- Replace systemd MinIO installation
+- Call new `install-k8s-minio.sh`
+- Ensure kubectl is configured before MinIO installation
+- Update function: `install_minio()` → uses K8s deployment
+
+**3.3 Control Plane MinIO (Optional)**
+- User can optionally install MinIO on control plane
+- Same K8s architecture
+- Separate namespace: `minio-<control-plane-name>`
+- Independent credentials
+
+#### Phase 4: Service Discovery & DNS
+
+**4.1 CoreDNS / Service Registry Integration**
+- Each MinIO gets entry in service registry
+- Domain format: `minio-<nodename>.minicloud.local`
+- Example:
+  - Control plane: `minio-pc1.minicloud.local`
+  - Worker: `minio-pc2.minicloud.local`
+
+**4.2 MetalLB IP Allocation**
+- Each MinIO service gets LoadBalancer IP from pool
+- IPs from Tailscale subnet (100.x.x.x range)
+- Automatically routable within cluster
+
+**4.3 VPS Exposure**
+- MinIO can be exposed via VPS using existing routing
+- Use `setup-app-proxy.sh` or similar
+- Standard Traefik/routing configuration
+
+#### Phase 5: Migration from Systemd to K8s
+
+**5.1 Detection of Existing Systemd MinIO**
+- Check if `systemctl status minio` exists
+- If yes, prompt user:
+  - Migrate to Kubernetes deployment?
+  - Keep systemd (not recommended)?
+
+**5.2 Migration Steps (if user confirms)**
+- Backup existing MinIO data
+- Stop systemd service
+- Deploy Kubernetes MinIO
+- Restore data to new deployment
+- Remove systemd service
+- Update credentials file
+
+**5.3 Fresh Installation**
+- If no existing MinIO, proceed with K8s deployment
+- No migration needed
+
+### File Structure
+
+```
+MyNodeOne/
+├── scripts/
+│   ├── add-worker-node.sh                     [MODIFY] Use K8s MinIO
+│   ├── bootstrap-control-plane.sh             [MODIFY] Optional MinIO
+│   └── storage/
+│       ├── longhorn/
+│       │   └── install-interactive.sh         [KEEP] Already working
+│       └── minio/
+│           ├── install-interactive.sh         [DEPRECATE] Systemd version
+│           ├── install-k8s-minio.sh          [CREATE] New K8s installer
+│           └── migrate-systemd-to-k8s.sh     [CREATE] Migration helper
+├── manifests/
+│   └── minio/
+│       ├── namespace.yaml                     [CREATE] Template
+│       ├── secret.yaml                        [CREATE] Template
+│       ├── pv-hostpath.yaml                   [CREATE] Template
+│       ├── pvc.yaml                           [CREATE] Template
+│       ├── statefulset.yaml                   [CREATE] Template
+│       └── service.yaml                       [CREATE] Template
+└── docs/
+    └── architecture/
+        └── STORAGE-ARCHITECTURE-PROMPT.md     [THIS FILE] Updated
+```
+
+### Testing Checklist
+
+**Longhorn on Worker:**
+- [ ] Worker node joins cluster
+- [ ] Longhorn components run on worker
+- [ ] Worker disks added to Longhorn
+- [ ] PVC can be created on worker node
+- [ ] Pod with PVC runs on worker
+
+**MinIO on Worker:**
+- [ ] MinIO StatefulSet deployed
+- [ ] Pod runs on correct node (affinity)
+- [ ] Service gets MetalLB LoadBalancer IP
+- [ ] DNS resolves `minio-<nodename>.minicloud.local`
+- [ ] MinIO accessible via LoadBalancer IP
+- [ ] MinIO accessible via .local domain
+- [ ] Independent credentials work
+- [ ] Data stored on hostPath (dedicated disk)
+
+**Service Discovery:**
+- [ ] Other pods can access MinIO via service name
+- [ ] VPS can route to MinIO (if exposed)
+- [ ] Service registry shows MinIO entries
+
+**Migration (if applicable):**
+- [ ] Systemd MinIO data backed up
+- [ ] Kubernetes MinIO deployed
+- [ ] Data restored successfully
+- [ ] Systemd service removed
+- [ ] Access URLs updated
+
+### Implementation Priority
+
+1. **Longhorn on Worker** (Simple - already mostly working)
+2. **MinIO Kubernetes Manifests** (Core architecture)
+3. **Installation Script** (Automation)
+4. **Service Discovery** (DNS integration)
+5. **Migration Script** (For existing installations)
+6. **Documentation** (User guides)
+
+### Questions to Resolve
+
+1. **Namespace Naming:**
+   - Per-node namespace: `minio-<nodename>` (e.g., `minio-canada-pc-0001-1`)?
+   - Or single namespace with node-labeled resources: `minio`?
+   - **Recommendation:** Per-node namespace for isolation
+
+2. **MetalLB IP Pool:**
+   - Do we have enough IPs in MetalLB pool for multiple MinIO instances?
+   - Current pool size?
+   - **Action:** Verify pool has capacity
+
+3. **Credential Storage:**
+   - Kubernetes Secret per namespace?
+   - Also save to file for reference (like systemd version)?
+   - **Recommendation:** Both (Secret for apps, file for operators)
+
+4. **Control Plane MinIO:**
+   - Install by default or make optional?
+   - **Recommendation:** Optional (prompt during bootstrap)
+
+5. **Disk Selection:**
+   - Interactive during worker addition?
+   - Or automatic (use all available non-Longhorn disks)?
+   - **Recommendation:** Interactive for control
+
 ---
 
-## FINAL CONFIRMED ARCHITECTURE (January 6, 2026)
+---
+
+---
+
+## ARCHITECTURE REVISION (January 9, 2026)
+
+### New Requirements - Storage Architecture V3
+
+After implementing systemd-based MinIO (commits 1ee886b-8d8b7ff), we are revising the architecture to better support cluster-wide service discovery and VPS exposure.
+
+**Longhorn Requirements:**
+1. Install Longhorn on worker nodes during `add-worker-node.sh`
+2. Worker node disks should be added to Longhorn storage pool (shared cluster-wide)
+3. Longhorn manages block storage across all nodes (replica=1, but schedulable on any node)
+4. PVCs can be placed on control plane OR worker node
+
+**MinIO Requirements:**
+1. Individual MinIO instances running on individual nodes
+2. MinIO must NOT use Longhorn storage (uses dedicated physical disks)
+3. Each MinIO instance has independent credentials (no shared passwords)
+4. Each MinIO instance gets:
+   - Kubernetes Service with MetalLB LoadBalancer IP
+   - Cluster-local domain: `minio-<nodename>.minicloud.local`
+   - Accessible cluster-wide via service discovery
+   - Exposable to internet via VPS (using standard routing)
+5. MinIO on worker nodes can be installed as Kubernetes apps from control plane (like Immich, LLM API)
+   - Deployed as StatefulSet with node affinity
+   - Uses hostPath volumes (dedicated physical disk)
+   - Service with LoadBalancer type (MetalLB)
+
+### Architecture Comparison
+
+**Previous (Systemd-based - Commits 1ee886b-8d8b7ff):**
+- ❌ MinIO as systemd service
+- ❌ Accessed via Tailscale IP only (100.x.x.x:9000)
+- ❌ No .local domain
+- ❌ No MetalLB LoadBalancer
+- ❌ No cluster-wide service discovery
+- ✅ Independent credentials per node
+- ✅ Uses dedicated physical disks
+
+**New (Kubernetes Services - Current Goal):**
+- ✅ MinIO as Kubernetes StatefulSet
+- ✅ Each instance with MetalLB LoadBalancer IP
+- ✅ Each instance with .local domain (minio-pc1.minicloud.local)
+- ✅ Cluster-wide service discovery
+- ✅ VPS-exposable via standard routing
+- ✅ Independent credentials per instance (stored in per-node secrets)
+- ✅ Uses dedicated physical disks (hostPath volumes)
+
+---
+
+## FINAL CONFIRMED ARCHITECTURE (January 6, 2026) - DEPRECATED
 
 ### Critical Design Principles
 

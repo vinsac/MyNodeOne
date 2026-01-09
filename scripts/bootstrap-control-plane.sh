@@ -2098,7 +2098,10 @@ setup_local_dns() {
         echo
     fi
     
-    # Run DNS setup with retry
+    log_info "Setting up local DNS for .local domains..."
+    log_info "Waiting 30 seconds for LoadBalancer IPs to be assigned..."
+    sleep 30
+    
     local dns_retry=0
     local dns_max_retries=3
     local dns_success=false
@@ -2108,11 +2111,10 @@ setup_local_dns() {
             dns_success=true
             break
         else
+            log_warn "DNS setup failed (attempt $((dns_retry + 1))/$dns_max_retries)"
+            log_info "Waiting 15 more seconds for services to be ready..."
+            sleep 15
             dns_retry=$((dns_retry + 1))
-            if [ $dns_retry -lt $dns_max_retries ]; then
-                log_warn "DNS setup attempt $dns_retry failed, retrying in 5s..."
-                sleep 5
-            fi
         fi
     done
     

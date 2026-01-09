@@ -308,9 +308,13 @@ select_disks_for_minio() {
         available_disks+=("$line")
     done <<< "$available_disks_raw"
     
+    echo
+    echo -e "${BLUE}💡 Option 1: Use OS disk (no additional drives needed)${NC}"
+    echo -e "  ${BLUE}0)${NC} Use OS disk only - /var/lib/minio ${YELLOW}(no formatting)${NC}"
+    echo
+    
     if [[ ${#available_disks[@]} -eq 0 ]]; then
         log_warn "No additional dedicated disks detected"
-        log_info "MinIO will use /var/lib/minio (OS disk) as fallback"
         echo -n "Continue with OS disk? [y/N]: "
         read -r confirm
         if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -321,6 +325,7 @@ select_disks_for_minio() {
         return 0
     fi
     
+    echo -e "${BLUE}💡 Option 2: Use dedicated physical disk(s)${NC}"
     log_info "Available physical disks:"
     echo
     
@@ -334,13 +339,23 @@ select_disks_for_minio() {
     done
     
     echo
-    echo -e "  • Enter ${BLUE}1,2,3${NC} for specific disks (will be FORMATTED)"
-    echo -e "  • Enter ${BLUE}all${NC} for all available disks"
+    log_info "Your choice:"
+    echo -e "  • Enter ${BLUE}0${NC} for OS disk (no formatting)"
+    echo -e "  • Enter ${BLUE}1,2,3${NC} for specific physical disks (will be FORMATTED)"
+    echo -e "  • Enter ${BLUE}all${NC} for all physical disks above (will be FORMATTED)"
     echo
     echo -n "Your choice: "
     read -r choice
     
     local selected_indices=()
+    
+    # Handle OS disk selection
+    if [[ "$choice" == "0" ]]; then
+        log_info "Using OS disk only (no formatting required)"
+        export MINIO_DISKS="/var/lib/minio"
+        return 0
+    fi
+    
     if [[ "$choice" == "all" ]]; then
         for i in "${!available_disks[@]}"; do
             selected_indices+=($i)
@@ -538,6 +553,40 @@ install_minio_helm() {
     fi
     
     log_info "MinIO will be scheduled on node: $NODE_NAME"
+    
+    # Check if MinIO is already installed in this namespace
+    if helm list -n "$MINIO_NAMESPACE" 2>/dev/null | grep -q "^minio"; then
+        log_warn "MinIO is already installed in namespace $MINIO_NAMESPACE"
+        echo
+        echo "Existing installation detected. Options:"
+        echo "  1) Uninstall and reinstall (recommended for clean setup)"
+        echo "  2) Skip installation (keep existing)"
+        echo "  3) Cancel"
+        echo
+        echo -n "Your choice (1-3): "
+        read -r reinstall_choice
+        
+        case "$reinstall_choice" in
+            1)
+                log_info "Uninstalling existing MinIO..."
+                if helm uninstall minio -n "$MINIO_NAMESPACE" --wait --timeout=2m; then
+                    log_success "Existing MinIO uninstalled"
+                    sleep 5  # Wait for cleanup
+                else
+                    log_error "Failed to uninstall existing MinIO"
+                    return 1
+                fi
+                ;;
+            2)
+                log_info "Keeping existing MinIO installation"
+                return 0
+                ;;
+            *)
+                log_warn "Installation cancelled"
+                exit 0
+                ;;
+        esac
+    fi
     
     local disks=($MINIO_DISKS)
     local VOLUME_COUNT=${#disks[@]}

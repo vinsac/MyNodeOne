@@ -387,73 +387,31 @@ nslookup minio-canada-pc-0001-1.minicloud.local
 
 ---
 
-### Phase 5: Migration Script (COMPATIBILITY)
+### Phase 5: Remove Velero (CLEANUP)
 
-**Goal:** Migrate existing systemd MinIO to Kubernetes MinIO.
+**Goal:** Remove Velero from cluster (user doesn't need it).
 
-**File:** `scripts/storage/minio/migrate-systemd-to-k8s.sh`
+**Tasks:**
 
-**Migration Steps:**
+#### 5.1 Remove Velero from Control Plane Bootstrap
+- File: `scripts/bootstrap-control-plane.sh`
+- Remove `install_velero()` function call
+- Remove Velero-related installation scripts
 
-```bash
-#!/bin/bash
+#### 5.2 Remove Velero Installation Scripts
+- Delete: `scripts/storage/install-velero.sh` (if exists)
+- Delete: `scripts/storage/configure-velero-backup.sh` (if exists)
 
-log_info "Migrating systemd MinIO to Kubernetes..."
+#### 5.3 Remove Velero from Worker Node
+- File: `scripts/add-worker-node.sh`
+- Remove `configure_velero_backup()` function call
+- Remove Velero-related configuration
 
-# 1. Backup existing data
-backup_dir="/tmp/minio-backup-$(date +%s)"
-mkdir -p "$backup_dir"
-sudo cp -a /mnt/minio "$backup_dir/"
+#### 5.4 Documentation Cleanup
+- Update architecture docs to remove Velero references
+- Remove backup strategy based on Velero
 
-# 2. Stop systemd service
-sudo systemctl stop minio
-sudo systemctl disable minio
-
-# 3. Get existing credentials (if saved)
-if [ -f ~/minio-credentials.txt ]; then
-    # Extract credentials from file
-    EXISTING_USER=$(grep "Username:" ~/minio-credentials.txt | awk '{print $2}')
-    EXISTING_PASSWORD=$(grep "Password:" ~/minio-credentials.txt | awk '{print $2}')
-fi
-
-# 4. Deploy Kubernetes MinIO
-bash "$SCRIPT_DIR/storage/minio/install-k8s-minio.sh" --use-existing-disk
-
-# 5. Wait for pod to be ready
-kubectl wait --for=condition=ready pod -l app=minio -n minio-$(hostname) --timeout=300s
-
-# 6. Restore data (if needed - already on disk)
-log_info "Data already available at /mnt/minio"
-
-# 7. Remove systemd artifacts
-sudo rm -f /etc/systemd/system/minio.service
-sudo rm -f /usr/local/bin/minio
-sudo systemctl daemon-reload
-
-# 8. Update credentials file
-cat > ~/minio-credentials.txt <<EOF
-MinIO Kubernetes Deployment
-===========================
-Node: $(hostname)
-Namespace: minio-$(hostname)
-Endpoint: http://minio-$(hostname).minicloud.local:9000
-Console: http://minio-$(hostname).minicloud.local:9001
-LoadBalancer IP: $(kubectl get svc minio -n minio-$(hostname) -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-Credentials:
-  Username: admin
-  Password: [from K8s secret]
-
-Access via kubectl:
-  kubectl get secret minio-credentials -n minio-$(hostname) -o jsonpath='{.data.rootPassword}' | base64 -d
-
-Migrated from systemd: $(date)
-EOF
-
-log_success "Migration complete!"
-```
-
-**Estimated Time:** 3-4 hours
+**Estimated Time:** 1-2 hours
 
 ---
 
@@ -483,18 +441,19 @@ mc mb worker/test-bucket
 mc ls worker/
 ```
 
-#### 6.2 Migration from Systemd
+#### 6.2 Disk Allocation Strategy
 ```bash
-# On worker node with existing systemd MinIO
-cd ~/MyNodeOne
-sudo bash scripts/storage/minio/migrate-systemd-to-k8s.sh
+# During installation, verify disk allocation
+# Longhorn should use separate disk OR OS folder
+# MinIO should use separate disk OR OS folder
+# They should NOT overlap
 
-# Verify migration
-systemctl status minio  # Should be inactive
-kubectl get pods -n minio-<worker-name>  # Should show running pod
+# Example: 2 physical disks available
+# User selects: sda for Longhorn, sdb for MinIO
 
-# Test data persistence
-mc ls worker/  # Should show existing buckets
+# Example: No physical disks available
+# Longhorn uses: /var/lib/longhorn (OS disk)
+# MinIO uses: /var/lib/minio (OS disk)
 ```
 
 #### 6.3 Longhorn on Worker
@@ -551,7 +510,21 @@ wget -O- http://minio-<worker-name>.minicloud.local:9000/minio/health/live
 exit
 ```
 
-#### 6.5 VPS Exposure (Optional)
+#### 6.5 Control Plane MinIO (Optional)
+```bash
+# If MinIO installed on control plane
+kubectl get all -n minio-<control-plane-name>
+
+# Test access
+curl http://minio-<control-plane-name>.minicloud.local:9000/minio/health/live
+
+# Test S3 operations
+mc alias set control http://minio-<control-plane-name>.minicloud.local:9000 admin <password>
+mc mb control/test-bucket
+mc ls control/
+```
+
+#### 6.6 VPS Exposure (Optional)
 ```bash
 # Setup proxy to MinIO
 bash scripts/setup-app-proxy.sh \
@@ -577,10 +550,10 @@ curl http://<vps-ip>:9100/minio/health/live
 | 2 | MinIO Manifests | 3-4h | ⏳ Pending |
 | 3 | Installation Script | 6-8h | ⏳ Pending |
 | 4 | Service Discovery | 2-3h | ⏳ Pending |
-| 5 | Migration Script | 3-4h | ⏳ Pending |
+| 5 | Remove Velero | 1-2h | ⏳ Pending |
 | 6 | Testing | 4-5h | ⏳ Pending |
 
-**Total Estimated Time:** 19-26 hours
+**Total Estimated Time:** 15-20 hours (reduced from 19-26h)
 
 ---
 
@@ -639,24 +612,33 @@ If migration fails:
 
 ---
 
-## Questions for User
+## Decisions Made (January 9, 2026)
 
 1. **MetalLB Pool Size:**
-   - How many IPs are available in MetalLB pool?
-   - Do we need to expand the pool for multiple MinIO instances?
+   - ✅ Enough IPs available for multiple MinIO instances
+   - No pool expansion needed
 
 2. **Control Plane MinIO:**
-   - Should control plane also get K8s MinIO?
-   - Or keep it worker-only?
+   - ✅ Follow same pattern as other apps (Immich, LLM API)
+   - Optional installation from control plane
+   - Can be installed on control plane node if desired
+   - Uses same K8s architecture as worker MinIO
 
 3. **Namespace Strategy:**
-   - Per-node namespace (`minio-<nodename>`)?
-   - Or single namespace with labels?
+   - ✅ Per-node namespace: `minio-<nodename>`
+   - Easier for users to manage/remove/reinstall
 
-4. **Migration Priority:**
-   - Immediate migration of existing systemd MinIO?
-   - Or support both temporarily?
+4. **Migration:**
+   - ✅ No migration needed
+   - Fresh installation only
 
-5. **Velero Integration:**
-   - Which MinIO should Velero use for backups?
-   - Control plane MinIO (if exists) or worker MinIO?
+5. **Velero:**
+   - ✅ Remove Velero from cluster entirely
+   - User doesn't need it
+
+6. **Disk Allocation Strategy:**
+   - ✅ Both Longhorn and MinIO should:
+     - Use separate physical disks (preferred)
+     - OR use folders on OS drive if no separate disks available
+   - Interactive selection during installation
+   - Clear separation between Longhorn and MinIO storage

@@ -389,9 +389,9 @@ main() {
     log_info "Validating DNS configuration..."
     sleep 3  # Give DNS a moment to propagate
 
-    # Test key services
+    # Test key services (MinIO removed - it's now an optional app)
     DNS_VALIDATION_OK=true
-    for service in "grafana.${CLUSTER_DOMAIN}.local" "argocd.${CLUSTER_DOMAIN}.local" "minio.${CLUSTER_DOMAIN}.local"; do
+    for service in "grafana.${CLUSTER_DOMAIN}.local" "argocd.${CLUSTER_DOMAIN}.local"; do
         if getent hosts "$service" >/dev/null 2>&1; then
             echo "  ✓ $service"
         else

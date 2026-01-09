@@ -116,23 +116,215 @@ check_requirements() {
     return 0
 }
 
-    # Get current node name for affinity (works on control plane or worker)
-    local NODE_NAME=$(hostname)
+detect_available_disks() {
+    # Log to stderr to not pollute stdout (which is captured)
+    echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') Detecting available disks..." >&2
     
-    # Confirm installation node
+    # Get OS disk
+    local os_disk=$(df / | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
+    
+    # Find real block devices by scanning /dev directly
+    local real_devices=""
+    for dev in /dev/sd[a-z] /dev/nvme[0-9]n[0-9] /dev/vd[a-z]; do
+        if [ -b "$dev" ]; then
+            real_devices+="$dev "
+        fi
+    done
+    
+    # Get disk info for real devices only
+    local all_disks=""
+    for dev in $real_devices; do
+        local disk_info=$(lsblk -d -n -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT "$dev" 2>/dev/null | awk '{print $1":"$3":"$4":"$5}')
+        if [ -n "$disk_info" ]; then
+            all_disks+="$disk_info"$'\n'
+        fi
+    done
+    
+    local available_disks=()
+    
+    while IFS= read -r disk_info; do
+        [[ -z "$disk_info" ]] && continue
+        
+        local disk_name=$(echo "$disk_info" | cut -d: -f1)
+        local disk_size=$(echo "$disk_info" | cut -d: -f2)
+        local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
+        local disk_mount=$(echo "$disk_info" | cut -d: -f4)
+        
+        # Skip OS disk
+        local os_disk_base=$(basename "$os_disk")
+        if [[ "$disk_name" == "$os_disk_base" ]] || [[ "/dev/$disk_name" == "$os_disk" ]]; then
+            continue
+        fi
+        
+        # Skip already mounted disks (unless mounted at /mnt/minio)
+        if [[ -n "$disk_mount" ]]; then
+             if [[ "$disk_mount" == "/mnt/minio"* ]]; then
+                 # Already our disk, include it
+                 :
+             elif [[ "$disk_mount" == "/mnt/longhorn-disks"* ]]; then
+                 # Longhorn disk, SKIP
+                 continue
+             else
+                 # Other mount, skip
+                 continue
+             fi
+        fi
+        
+        # Skip loop/nbd/ram
+        local disk_basename=$(basename "$disk_name")
+        if [[ "$disk_basename" =~ ^loop[0-9]+ ]] || [[ "$disk_basename" =~ ^nbd[0-9]+ ]] || [[ "$disk_basename" =~ ^ram[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Skip virtual disks
+        local model=$(lsblk -n -o MODEL "/dev/$disk_name" 2>/dev/null | head -1 | xargs)
+        if [[ "$model" == "VIRTUAL-DISK" ]] || [[ "$model" == *"Virtual"* ]]; then
+            continue
+        fi
+        
+        # Skip disks smaller than 10GB
+        local size_gb=$(echo "$disk_size" | sed 's/G//' | sed 's/T/*1024/' | bc 2>/dev/null || echo "0")
+        if (( $(echo "$size_gb < 10" | bc -l 2>/dev/null || echo "0") )); then
+            continue
+        fi
+        
+        available_disks+=("$disk_name:$disk_size:$disk_fstype:$model")
+    done <<< "$all_disks"
+    
+    echo "${available_disks[@]}"
+}
+
+select_disks_for_minio() {
     echo
-    log_info "MinIO will be installed on this node: $NODE_NAME"
-    echo -n "Is this correct? [Y/n]: "
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}  MinIO Disk Selection${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    
+    local available_disks=($(detect_available_disks))
+    
+    if [[ ${#available_disks[@]} -eq 0 ]]; then
+        log_warn "No additional dedicated disks detected"
+        log_info "MinIO will use /var/lib/minio (OS disk) as fallback"
+        echo -n "Continue with OS disk? [y/N]: "
+        read -r confirm
+        if [[ ! "$confirm" =~ ^[Yy] ]]; then
+            log_warn "Installation cancelled"
+            exit 0
+        fi
+        export MINIO_DISKS="/var/lib/minio"
+        return 0
+    fi
+    
+    log_info "Available physical disks:"
+    echo
+    
+    for i in "${!available_disks[@]}"; do
+        local disk_info="${available_disks[$i]}"
+        local disk_name=$(echo "$disk_info" | cut -d: -f1)
+        local disk_size=$(echo "$disk_info" | cut -d: -f2)
+        local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
+        local disk_model=$(echo "$disk_info" | cut -d: -f4)
+        
+        echo "  $((i+1))) /dev/$disk_name ($disk_size) - $disk_model"
+    done
+    
+    echo
+    echo -e "  • Enter ${BLUE}1,2,3${NC} for specific disks (will be FORMATTED)"
+    echo -e "  • Enter ${BLUE}all${NC} for all available disks"
+    echo
+    echo -n "Your choice: "
+    read -r choice
+    
+    local selected_indices=()
+    if [[ "$choice" == "all" ]]; then
+        for i in "${!available_disks[@]}"; do
+            selected_indices+=($i)
+        done
+    else
+        IFS=',' read -ra ADDR <<< "$choice"
+        for i in "${ADDR[@]}"; do
+            # Validate input is a number
+            if ! [[ "$i" =~ ^[0-9]+$ ]]; then
+                log_error "Invalid selection: $i"
+                return 1
+            fi
+            
+            # Adjust for 0-based array index
+            local index=$((i-1))
+            
+            if [ $index -ge 0 ] && [ $index -lt ${#available_disks[@]} ]; then
+                selected_indices+=($index)
+            else
+                log_error "Invalid disk number: $i"
+                return 1
+            fi
+        done
+    fi
+    
+    if [[ ${#selected_indices[@]} -eq 0 ]]; then
+        log_error "No disks selected"
+        return 1
+    fi
+    
+    # Confirm formatting
+    echo
+    log_warn "⚠️  WARNING: Selected disks will be FORMATTED (all data lost)"
+    echo -n "Continue with formatting? [y/N]: "
     read -r confirm
-    if [[ "$confirm" =~ ^[Nn] ]]; then
-        log_warn "Installation cancelled by user"
+    if [[ ! "$confirm" =~ ^[Yy] ]]; then
+        log_warn "Installation cancelled"
         exit 0
     fi
     
-    if ! select_disks_for_minio; then
-        log_error "Disk selection failed"
-        exit 1
-    fi
+    local mounted_disks=()
+    
+    for index in "${selected_indices[@]}"; do
+        local disk_info="${available_disks[$index]}"
+        local disk_name=$(echo "$disk_info" | cut -d: -f1)
+        local device="/dev/$disk_name"
+        local mount_point="/mnt/minio/disk-${disk_name}"
+        
+        # Standardize on /mnt/minio/disk-X
+        
+        log_info "Formatting $device..."
+        
+        # Unmount if mounted
+        umount "$device"* 2>/dev/null || true
+        
+        # Wipe filesystem signatures
+        wipefs -a "$device"
+        
+        # Create partition
+        echo -e "n\np\n1\n\n\n\nw" | fdisk "$device" 2>/dev/null || true
+        partprobe "$device" 2>/dev/null || true
+        sleep 2
+        
+        local partition="${device}1"
+        if [ ! -b "$partition" ]; then
+            partition="$device" # Fallback to whole disk if partition fail
+        fi
+        
+        # Format ext4
+        mkfs.ext4 -F "$partition"
+        
+        # Mount
+        mkdir -p "$mount_point"
+        mount "$partition" "$mount_point"
+        
+        # Add to fstab
+        local uuid=$(blkid -s UUID -o value "$partition")
+        if ! grep -q "$uuid" /etc/fstab; then
+            echo "UUID=$uuid $mount_point ext4 defaults 0 0" >> /etc/fstab
+        fi
+        
+        mounted_disks+=("$mount_point")
+        log_success "Mounted $device at $mount_point"
+    done
+    
+    export MINIO_DISKS="${mounted_disks[@]}"
+    return 0
+}
 
 ensure_minio_user() {
     log_info "Ensuring MinIO user and group exist..."
@@ -543,8 +735,21 @@ main() {
         exit 1
     fi
     
-    if ! detect_available_disks; then
-        log_error "Disk detection failed"
+    # Get current node name for affinity (works on control plane or worker)
+    local NODE_NAME=$(hostname)
+    
+    # Confirm installation node
+    echo
+    log_info "MinIO will be installed on this node: $NODE_NAME"
+    echo -n "Is this correct? [Y/n]: "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Nn] ]]; then
+        log_warn "Installation cancelled by user"
+        exit 0
+    fi
+    
+    if ! select_disks_for_minio; then
+        log_error "Disk selection failed"
         exit 1
     fi
     

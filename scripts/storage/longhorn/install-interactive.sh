@@ -207,7 +207,8 @@ select_disks_for_longhorn() {
     
     if [[ "$selection" == "all" ]]; then
         for disk_info in "${available_disks[@]}"; do
-            SELECTED_DISKS+=($(echo "$disk_info" | cut -d: -f1))
+            local disk_name=$(echo "$disk_info" | cut -d: -f1)
+            SELECTED_DISKS+=("/dev/$disk_name")
         done
     else
         IFS=',' read -ra DISK_INDICES <<< "$selection"
@@ -215,7 +216,8 @@ select_disks_for_longhorn() {
             idx=$(echo "$idx" | xargs)  # trim whitespace
             if [[ "$idx" =~ ^[0-9]+$ ]] && [[ $idx -ge 1 ]] && [[ $idx -le ${#available_disks[@]} ]]; then
                 local disk_info="${available_disks[$((idx-1))]}"
-                SELECTED_DISKS+=($(echo "$disk_info" | cut -d: -f1))
+                local disk_name=$(echo "$disk_info" | cut -d: -f1)
+                SELECTED_DISKS+=("/dev/$disk_name")
             else
                 log_warn "Invalid selection: $idx"
             fi

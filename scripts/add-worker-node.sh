@@ -204,11 +204,10 @@ EOF
     log_success "Successfully joined MyNodeOne cluster!"
 }
 
-# Configure kubectl on worker node
-configure_kubectl_worker() {
-    log_info "Configuring kubectl on worker node..."
-    
-    # K3s agent nodes don't create /etc/rancher/k3s/k3s.yaml (only server nodes do)
+# Configure kubectl on worker node (NOT NEEDED - MinIO uses systemd service now)
+# K3s agents don't create /etc/rancher/k3s/k3s.yaml, so we generate one manually
+# This function is kept for reference but not called anymore
+configure_kubectl_worker_DISABLED() {
     # We need to generate kubeconfig manually for worker nodes
     
     local KUBECONFIG_DEST="$ACTUAL_HOME/.kube/config"

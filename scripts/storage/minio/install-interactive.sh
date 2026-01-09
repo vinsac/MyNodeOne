@@ -1,10 +1,10 @@
 #!/bin/bash
 
 ###############################################################################
-# Interactive MinIO Installation Script (Standalone Mode)
+# Interactive MinIO Installation Script
 #
 # Features:
-# - Standalone MinIO per node (NOT distributed)
+# - S3-compatible object storage for the cluster
 # - Node-specific DNS endpoints (minio-NODENAME.minicloud.local)
 # - Shared admin credentials across all nodes
 # - Interactive disk selection
@@ -645,13 +645,13 @@ register_in_node_registry() {
 main() {
     echo
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  MinIO Interactive Installation (Standalone Mode)${NC}"
+    echo -e "${BLUE}  MinIO Interactive Installation${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
     
-    log_info "MinIO provides S3-compatible object storage"
-    log_info "Mode: Standalone (NOT distributed)"
-    log_info "Each node runs its own independent MinIO instance"
+    log_info "MinIO provides S3-compatible object storage for the cluster"
+    log_info "Each node can run its own MinIO instance with shared credentials"
+    log_info "Useful for backups, model storage, and general S3 storage needs"
     echo
     
     # Check if running as root
@@ -694,7 +694,7 @@ main() {
     echo -e "${GREEN}  MinIO Installation Complete!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
-    log_success "MinIO is running in standalone mode"
+    log_success "MinIO is running and ready to serve S3 storage"
     echo
     log_info "Endpoints:"
     echo "  API:     http://$MINIO_ENDPOINT"

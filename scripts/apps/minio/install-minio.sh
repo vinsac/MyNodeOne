@@ -144,52 +144,179 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  Disk Selection for MinIO"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-log_info "Detecting available disks..."
 
-# Reuse disk detection logic from storage/minio/install-interactive.sh
-# For now, use simplified version - can enhance later
-if [ "$IS_LOCAL" = true ]; then
-    DISK_SCRIPT="$SCRIPT_DIR/../../storage/minio/install-interactive.sh"
-    if [ -f "$DISK_SCRIPT" ]; then
-        log_info "Using disk detection from: $DISK_SCRIPT"
-        # Source the disk detection functions
-        source "$DISK_SCRIPT"
+detect_available_disks() {
+    local node_cmd_prefix="$1"
+    
+    # Detect OS disk
+    local os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/$" | awk '{print $1}' | sed 's/[0-9]*$//' | head -1)
+    if [ -z "$os_disk" ]; then
+        os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/boot" | awk '{print $1}' | sed 's/[0-9]*$//' | head -1)
+    fi
+    os_disk="/dev/$os_disk"
+    
+    # Get Longhorn disks
+    local longhorn_disks=$(kubectl get nodes.longhorn.io -n longhorn-system "$NODE_NAME" -o jsonpath='{range .spec.disks[*]}{.path}{"\n"}{end}' 2>/dev/null || echo "")
+    
+    # Detect physical disks
+    local real_devices=$($node_cmd_prefix lsblk -d -n -o NAME,TYPE | grep disk | awk '{print "/dev/" $1}')
+    
+    local all_disks=""
+    for dev in $real_devices; do
+        local dev_name=$(basename "$dev")
+        local disk_info=$($node_cmd_prefix lsblk -d -n -o NAME,SIZE,FSTYPE "$dev" 2>/dev/null | grep -w "$dev_name" | head -1 | awk '{print $1":"$2":"$3}')
+        if [ -n "$disk_info" ]; then
+            all_disks+="$disk_info"$'\n'
+        fi
+    done
+    
+    local available_disks=()
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local disk_name=$(echo "$line" | cut -d: -f1)
+        local disk_size=$(echo "$line" | cut -d: -f2)
+        local disk_fstype=$(echo "$line" | cut -d: -f3)
+        
+        # Skip OS disk
+        local os_disk_base=$(basename "$os_disk")
+        if [[ "$disk_name" == "$os_disk_base" ]] || [[ "/dev/$disk_name" == "$os_disk" ]]; then
+            continue
+        fi
+        
+        # Skip Longhorn disks
+        local is_longhorn=false
+        while IFS= read -r lh_disk; do
+            [[ -z "$lh_disk" ]] && continue
+            local lh_disk_base=$(basename "$lh_disk")
+            if [[ "$disk_name" == "$lh_disk_base" ]] || [[ "/dev/$disk_name" == "$lh_disk" ]]; then
+                is_longhorn=true
+                break
+            fi
+        done <<< "$longhorn_disks"
+        
+        if [ "$is_longhorn" = true ]; then
+            continue
+        fi
+        
+        available_disks+=("/dev/$disk_name:$disk_size:$disk_fstype")
+    done <<< "$all_disks"
+    
+    echo "${available_disks[@]}"
+}
+
+format_and_mount_disk() {
+    local disk="$1"
+    local mount_path="$2"
+    local node_cmd_prefix="$3"
+    
+    log_info "Formatting and mounting $disk..."
+    
+    # Unmount if already mounted
+    $node_cmd_prefix umount "$disk"* 2>/dev/null || true
+    
+    # Wipe existing filesystem signatures
+    $node_cmd_prefix wipefs -a "$disk" &>/dev/null || true
+    
+    # Create partition
+    log_info "Creating partition on $disk..."
+    $node_cmd_prefix parted -s "$disk" mklabel gpt
+    $node_cmd_prefix parted -s "$disk" mkpart primary ext4 0% 100%
+    $node_cmd_prefix sleep 2
+    
+    # Determine partition name
+    local partition
+    if [[ "$disk" =~ nvme ]] || [[ "$disk" =~ mmcblk ]]; then
+        partition="${disk}p1"
     else
-        log_error "Disk detection script not found: $DISK_SCRIPT"
+        partition="${disk}1"
+    fi
+    
+    # Format partition
+    log_info "Formatting $partition..."
+    $node_cmd_prefix mkfs.ext4 -F "$partition"
+    
+    # Create mount point
+    $node_cmd_prefix mkdir -p "$mount_path"
+    
+    # Mount partition
+    log_info "Mounting $partition to $mount_path..."
+    $node_cmd_prefix mount "$partition" "$mount_path"
+    
+    # Add to fstab
+    local uuid=$($node_cmd_prefix blkid -s UUID -o value "$partition")
+    $node_cmd_prefix "grep -q '$uuid' /etc/fstab || echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /etc/fstab"
+    
+    log_success "Disk mounted at $mount_path"
+}
+
+# Detect disks on target node
+if [ "$IS_LOCAL" = true ]; then
+    NODE_CMD_PREFIX="sudo"
+else
+    NODE_CMD_PREFIX="ssh $SSH_USER@$NODE_IP sudo"
+fi
+
+log_info "Detecting available disks on $NODE_NAME..."
+available_disks=($(detect_available_disks "$NODE_CMD_PREFIX"))
+
+echo ""
+echo "💡 Disk options:"
+echo "  0) Use OS folder: /var/lib/minio (no formatting needed)"
+
+if [ ${#available_disks[@]} -gt 0 ]; then
+    echo ""
+    echo "Available physical disks (excluding OS and Longhorn):"
+    disk_count=0
+    for disk_info in "${available_disks[@]}"; do
+        disk_count=$((disk_count + 1))
+        local disk_name=$(echo "$disk_info" | cut -d: -f1)
+        local disk_size=$(echo "$disk_info" | cut -d: -f2)
+        echo "  $disk_count) $(basename $disk_name) ($disk_size)"
+    done
+else
+    echo ""
+    log_warn "No additional physical disks detected (only OS folder available)"
+fi
+
+echo ""
+read -p "Select disk [0-${#available_disks[@]}]: " DISK_CHOICE
+
+if [ "$DISK_CHOICE" = "0" ]; then
+    MINIO_PATH="/var/lib/minio"
+    STORAGE_SIZE="100Gi"
+    log_info "Using OS folder: $MINIO_PATH"
+    
+    # Create directory on target node
+    if [ "$IS_LOCAL" = true ]; then
+        sudo mkdir -p "$MINIO_PATH"
+        sudo chmod 755 "$MINIO_PATH"
+    else
+        ssh "$SSH_USER@$NODE_IP" "sudo mkdir -p $MINIO_PATH && sudo chmod 755 $MINIO_PATH"
+    fi
+    log_success "Created directory: $MINIO_PATH"
+elif [[ "$DISK_CHOICE" =~ ^[0-9]+$ ]] && [[ $DISK_CHOICE -ge 1 ]] && [[ $DISK_CHOICE -le ${#available_disks[@]} ]]; then
+    SELECTED_DISK_INFO="${available_disks[$((DISK_CHOICE-1))]}"
+    SELECTED_DISK=$(echo "$SELECTED_DISK_INFO" | cut -d: -f1)
+    DISK_SIZE_RAW=$(echo "$SELECTED_DISK_INFO" | cut -d: -f2)
+    
+    log_warn "⚠️  WARNING: Disk $SELECTED_DISK will be FORMATTED (all data will be lost)"
+    echo ""
+    read -p "Continue with formatting? [y/N]: " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_error "Installation cancelled"
         exit 1
     fi
-fi
-
-# For simplicity in Phase 3, use OS folder as default
-# TODO: Enhance with full disk detection in future iteration
-echo "💡 Disk options:"
-echo "  1) Use dedicated physical disk (requires disk formatting)"
-echo "  2) Use OS folder: /var/lib/minio (no formatting needed)"
-echo ""
-read -p "Your choice [1 or 2]: " DISK_CHOICE
-
-if [ "$DISK_CHOICE" = "1" ]; then
-    log_error "Physical disk selection not yet implemented in this version"
-    log_info "Please use option 2 (OS folder) for now"
-    log_info "Full disk detection will be added in next iteration"
-    exit 1
-elif [ "$DISK_CHOICE" = "2" ]; then
-    MINIO_PATH="/var/lib/minio"
-    STORAGE_SIZE="100Gi"  # Placeholder - can be adjusted
-    log_info "Using OS folder: $MINIO_PATH"
+    
+    MINIO_PATH="/mnt/minio"
+    
+    # Convert size to Kubernetes format (e.g., 18T -> 18Ti)
+    STORAGE_SIZE=$(echo "$DISK_SIZE_RAW" | sed 's/T$/Ti/; s/G$/Gi/')
+    
+    # Format and mount on target node
+    format_and_mount_disk "$SELECTED_DISK" "$MINIO_PATH" "$NODE_CMD_PREFIX"
 else
-    log_error "Invalid choice"
+    log_error "Invalid selection"
     exit 1
-fi
-
-# Create directory on target node
-if [ "$IS_LOCAL" = true ]; then
-    sudo mkdir -p "$MINIO_PATH"
-    sudo chmod 755 "$MINIO_PATH"
-    log_success "Created directory: $MINIO_PATH"
-else
-    ssh "$SSH_USER@$NODE_IP" "sudo mkdir -p $MINIO_PATH && sudo chmod 755 $MINIO_PATH"
-    log_success "Created directory on $NODE_NAME: $MINIO_PATH"
 fi
 
 # Generate unique credentials

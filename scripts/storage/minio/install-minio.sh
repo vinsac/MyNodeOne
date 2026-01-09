@@ -518,6 +518,9 @@ create_minio_secret() {
     log_info "Using namespace: $MINIO_NAMESPACE"
     kubectl create namespace "$MINIO_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
     
+    # Set pod-security label to allow hostPath volumes
+    kubectl label namespace "$MINIO_NAMESPACE" pod-security.kubernetes.io/enforce=privileged --overwrite
+    
     if kubectl create secret generic minio-credentials \
         --from-literal=rootUser="$MINIO_ROOT_USER" \
         --from-literal=rootPassword="$MINIO_ROOT_PASSWORD" \

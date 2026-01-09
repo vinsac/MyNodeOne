@@ -419,9 +419,18 @@ if [ ! -b \"\$partition\" ]; then
     partition='${device}'
 fi
 mkfs.ext4 -F \"\$partition\"
-# Set reserved blocks to 250GB max (same as Longhorn strategy)
-# Calculate 250GB in blocks (250 * 1024^3 / 4096)
-tune2fs -r 65536000 \"\$partition\"
+# Set reserved blocks using Longhorn's strategy:
+# >1TB: min(5%, 250GB), <1TB: 10%
+partition_size=\$(blockdev --getsize64 \"\$partition\")
+if [ \$partition_size -gt 1099511627776 ]; then
+    # >1TB: 5% or 250GB, whichever is smaller
+    reserved_bytes=\$(awk \"BEGIN {reserved = \$partition_size * 0.05; if (reserved > 268435456000) reserved = 268435456000; printf \\\"%.0f\\\", reserved}\")
+else
+    # <1TB: 10%
+    reserved_bytes=\$(awk \"BEGIN {printf \\\"%.0f\\\", (\$partition_size * 0.10)}\")
+fi
+reserved_blocks=\$(awk \"BEGIN {printf \\\"%.0f\\\", (\$reserved_bytes / 4096)}\")
+tune2fs -r \$reserved_blocks \"\$partition\"
 mkdir -p ${mount_point}
 mount \"\$partition\" ${mount_point}
 uuid=\$(blkid -s UUID -o value \"\$partition\")

@@ -74,8 +74,22 @@ detect_available_disks() {
     # Get Longhorn disks
     local longhorn_disks=$(mount | grep '/mnt/longhorn-disks' | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//' | sort -u)
     
-    # Find all block devices
-    local all_disks=$(lsblk -d -n -p -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT | grep 'disk' | awk '{print $1":"$3":"$4":"$5}')
+    # Find real block devices by scanning /dev directly (avoid lsblk weirdness with symlinks)
+    local real_devices=""
+    for dev in /dev/sd[a-z] /dev/nvme[0-9]n[0-9] /dev/vd[a-z]; do
+        if [ -b "$dev" ]; then
+            real_devices+="$dev "
+        fi
+    done
+    
+    # Get disk info for real devices only
+    local all_disks=""
+    for dev in $real_devices; do
+        local disk_info=$(lsblk -d -n -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT "$dev" 2>/dev/null | awk '{print $1":"$3":"$4":"$5}')
+        if [ -n "$disk_info" ]; then
+            all_disks+="$disk_info"$'\n'
+        fi
+    done
     
     local available_disks=()
     
@@ -87,8 +101,9 @@ detect_available_disks() {
         local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
         local disk_mount=$(echo "$disk_info" | cut -d: -f4)
         
-        # Skip OS disk
-        if [[ "$disk_name" == "$os_disk" ]]; then
+        # Skip OS disk (compare base device names)
+        local os_disk_base=$(basename "$os_disk")
+        if [[ "$disk_name" == "$os_disk_base" ]] || [[ "/dev/$disk_name" == "$os_disk" ]]; then
             continue
         fi
         
@@ -96,7 +111,8 @@ detect_available_disks() {
         local is_longhorn=false
         while IFS= read -r lh_disk; do
             [[ -z "$lh_disk" ]] && continue
-            if [[ "$disk_name" == "$lh_disk" ]]; then
+            local lh_disk_base=$(basename "$lh_disk")
+            if [[ "$disk_name" == "$lh_disk_base" ]] || [[ "/dev/$disk_name" == "$lh_disk" ]]; then
                 is_longhorn=true
                 break
             fi
@@ -130,7 +146,7 @@ detect_available_disks() {
         fi
         
         # Get disk model for display
-        available_disks+=("$disk_name:$disk_size:$disk_fstype:$model")
+        available_disks+=("/dev/$disk_name:$disk_size:$disk_fstype:$model")
     done <<< "$all_disks"
     
     echo "${available_disks[@]}"
@@ -286,14 +302,38 @@ format_and_mount_disk() {
 get_minio_credentials() {
     log_info "Configuring MinIO credentials..."
     
-    # Generate unique credentials for this MinIO instance
-    # Each node has its own standalone MinIO with independent credentials
-    log_info "Generating credentials for this MinIO instance"
-    MINIO_ROOT_USER="admin"
-    MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+    # Check if credentials already exist in Kubernetes
+    # Use sudo kubectl if running as root (worker node scenario)
+    local KUBECTL_CMD="kubectl"
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        KUBECTL_CMD="sudo -u $SUDO_USER kubectl"
+    fi
     
-    log_success "Generated MinIO credentials"
-    log_info "Note: Each MinIO instance has independent credentials"
+    if $KUBECTL_CMD get secret minio-credentials -n minio &>/dev/null; then
+        log_info "Found existing MinIO credentials in Kubernetes"
+        MINIO_ROOT_USER=$($KUBECTL_CMD get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' | base64 -d)
+        MINIO_ROOT_PASSWORD=$($KUBECTL_CMD get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' | base64 -d)
+        log_success "Using shared credentials from cluster"
+    else
+        log_info "No existing credentials found - generating new shared credentials"
+        log_warn "These credentials will be shared across ALL MinIO instances in the cluster"
+        MINIO_ROOT_USER="admin"
+        MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        
+        # Create namespace
+        $KUBECTL_CMD create namespace minio --dry-run=client -o yaml | $KUBECTL_CMD apply -f -
+        
+        # Store in Kubernetes secret (persists across MinIO uninstall/reinstall)
+        $KUBECTL_CMD create secret generic minio-credentials \
+            -n minio \
+            --from-literal=rootUser="$MINIO_ROOT_USER" \
+            --from-literal=rootPassword="$MINIO_ROOT_PASSWORD" \
+            --dry-run=client -o yaml | $KUBECTL_CMD apply -f -
+        
+        log_success "Generated and stored new shared credentials in Kubernetes"
+        log_info "Credentials persist even if MinIO is uninstalled"
+        log_info "To reset credentials: $KUBECTL_CMD delete secret minio-credentials -n minio"
+    fi
     
     # Save to local file for user reference
     cat > "$CREDENTIALS_FILE" <<EOF

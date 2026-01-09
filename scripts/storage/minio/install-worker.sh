@@ -735,7 +735,8 @@ register_minio_services() {
         
         if [[ -z "$cluster_domain" ]]; then
              # Try to guess from /etc/resolv.conf (look for search svc.cluster.local)
-             cluster_domain=$(grep '^search' /etc/resolv.conf | grep -o 'svc\.[^ ]*' | sed 's/^svc\.//' | head -1)
+             # Use || true to prevent exit if grep finds nothing (set -e active)
+             cluster_domain=$(grep '^search' /etc/resolv.conf 2>/dev/null | grep -o 'svc\.[^ ]*' | sed 's/^svc\.//' | head -1 || true)
         fi
         
         if [[ -z "$cluster_domain" ]]; then
@@ -1043,16 +1044,23 @@ main() {
         exit 1
     fi
     
-    # Get current node name for affinity (works on control plane or worker)
+    # Get current node name for affinity
     local NODE_NAME=$(hostname)
     
-    # Confirm installation node
+    # Show cluster context
     echo
+    log_info "Cluster Nodes:"
+    kubectl get nodes -o wide || true
+    echo
+    
+    # Confirm installation node
     log_info "MinIO will be installed LOCALLY on this node: $NODE_NAME"
-    echo -n "Is this correct? [Y/n]: "
+    log_warn "NOTE: This script performs local disk formatting and must be run on the target node."
+    
+    echo -n "Is this the correct node? [Y/n]: "
     read -r confirm
     if [[ "$confirm" =~ ^[Nn] ]]; then
-        log_warn "Installation cancelled by user"
+        log_warn "Installation cancelled. Please SSH to the desired node and run this script there."
         exit 0
     fi
     
@@ -1096,14 +1104,32 @@ main() {
     fi
     
     # Register MinIO services for DNS (Do this BEFORE saving credentials so we can use the DNS names)
+    # Use set +e to ensure script doesn't exit if registration fails
+    set +e
     register_minio_services
+    set -e
     
     save_credentials
     
+    # Print credentials to screen
+    echo
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  MinIO Installation Successful${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    if [ -f "$ACTUAL_HOME/mynodeone-minio-worker-credentials.txt" ]; then
+        cat "$ACTUAL_HOME/mynodeone-minio-worker-credentials.txt"
+    else
+        log_warn "Credential file not found, printing known details:"
+        echo "Root User: $MINIO_ROOT_USER"
+        echo "Root Password: $MINIO_ROOT_PASSWORD"
+    fi
+    echo
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
     echo
     log_success "===== MinIO Worker Installation Complete ====="
-    log_info "MinIO is running on worker node with local disk storage"
-    log_info "Credentials saved to: ~/mynodeone-minio-worker-credentials.txt"
+    log_info "MinIO is running on node $NODE_NAME with local disk storage"
 }
 
 main "$@"

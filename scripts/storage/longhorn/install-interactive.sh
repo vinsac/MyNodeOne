@@ -97,8 +97,9 @@ detect_available_disks() {
         local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
         local disk_mount=$(echo "$disk_info" | cut -d: -f4)
         
-        # Skip OS disk
-        if [[ "$disk_name" == "$os_disk" ]]; then
+        # Skip OS disk (compare base device names)
+        local os_disk_base=$(basename "$os_disk")
+        if [[ "$disk_name" == "$os_disk_base" ]] || [[ "/dev/$disk_name" == "$os_disk" ]]; then
             continue
         fi
         

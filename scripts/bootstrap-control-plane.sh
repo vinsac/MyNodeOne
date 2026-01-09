@@ -1071,18 +1071,6 @@ install_longhorn() {
     fi
 }
 
-install_minio() {
-    log_info "MinIO installation (optional)..."
-    
-    # Use new interactive installation script
-    if [ -f "$SCRIPT_DIR/storage/minio/install-interactive.sh" ]; then
-        bash "$SCRIPT_DIR/storage/minio/install-interactive.sh" || log_info "MinIO installation skipped or failed"
-    else
-        log_warn "MinIO installation script not found: $SCRIPT_DIR/storage/minio/install-interactive.sh"
-        log_info "Skipping MinIO installation"
-    fi
-}
-
 install_metallb() {
     log_info "Installing MetalLB load balancer..."
     
@@ -1334,6 +1322,19 @@ EOF
     log_success "Monitoring stack installed"
     log_warn "Grafana credentials saved to $ACTUAL_HOME/mynodeone-grafana-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file!"
+}
+
+install_minio() {
+    log_info "MinIO (S3-compatible object storage)..."
+    log_info "MinIO is now installed as an app (like Immich, LLM API)"
+    log_info ""
+    log_info "To install MinIO on this or any node:"
+    log_info "  sudo $SCRIPT_DIR/apps/minio/install-minio.sh"
+    log_info ""
+    log_info "MinIO can be installed multiple times on different nodes"
+    log_info "Each installation gets independent credentials and .local domain"
+    log_info ""
+    log_info "Skipping automatic installation - install manually if needed"
 }
 
 install_argocd() {

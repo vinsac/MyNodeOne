@@ -121,8 +121,12 @@ detect_available_disks() {
     
     local MOUNTED_DISKS=()
     
-    # Use same pattern as Longhorn disk detection
-    # Check if user has mounted disks from installation session
+    # Check for MinIO-specific mount point first
+    if [ -d "/mnt/minio" ] && mountpoint -q "/mnt/minio" 2>/dev/null; then
+        MOUNTED_DISKS+=("/mnt/minio")
+    fi
+    
+    # Also check Longhorn disks as fallback
     if [ -d "/mnt/longhorn-disks" ]; then
         # Find all mounted disks
         while IFS= read -r disk_path; do
@@ -272,14 +276,14 @@ install_minio_helm() {
         log_warn "Helm repo update timed out, but continuing..."
     fi
     
-    # Get node name for affinity
-    local NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    # Get current node name for affinity (works on control plane or worker)
+    local NODE_NAME=$(hostname)
     
     if [ -z "$NODE_NAME" ]; then
-        log_warn "Could not detect worker node name, MinIO may schedule on any node"
+        log_warn "Could not detect node name, MinIO may schedule on any node"
         NODE_NAME=""
     else
-        log_info "MinIO will be scheduled on worker node: $NODE_NAME"
+        log_info "MinIO will be scheduled on node: $NODE_NAME"
     fi
     
     # Build volume paths for MinIO
@@ -471,28 +475,39 @@ verify_minio_installation() {
 register_minio_services() {
     log_info "Registering MinIO services for DNS..."
     
-    # Source service registry functions if available
+    # Check if service registry script exists
     local REGISTRY_SCRIPT="$SCRIPT_DIR/../../lib/service-registry.sh"
     if [ -f "$REGISTRY_SCRIPT" ]; then
-        source "$REGISTRY_SCRIPT"
-        
         # Get node name from hostname
         local node_name=$(hostname)
         
-        # Get cluster domain
-        local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "cluster")
+        # Get cluster domain - prefer env var (set by bootstrap), fallback to ConfigMap
+        local cluster_domain="${CLUSTER_DOMAIN:-}"
+        if [[ -z "$cluster_domain" ]]; then
+            cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "cluster")
+        fi
         
         # Register ONLY node-specific services (no generic aliases)
-        if register_service "minio-${node_name}" "minio-${node_name}" "minio" "minio-${node_name}" "9000" "false" 2>/dev/null; then
+        # Use CLI syntax: bash service-registry.sh register <name> <subdomain> <namespace> <service> <port> <public>
+        if bash "$REGISTRY_SCRIPT" register \
+            "minio-${node_name}" "minio-${node_name}" "minio" "minio" "9000" "false" 2>/dev/null; then
             log_success "MinIO API registered: minio-${node_name}.${cluster_domain}.local:9000"
         else
             log_warn "Could not register MinIO API (DNS may not work)"
         fi
         
-        if register_service "minio-console-${node_name}" "minio-console-${node_name}" "minio" "minio-console-${node_name}" "9001" "false" 2>/dev/null; then
+        if bash "$REGISTRY_SCRIPT" register \
+            "minio-console-${node_name}" "minio-console-${node_name}" "minio" "minio-console" "9001" "false" 2>/dev/null; then
             log_success "MinIO Console registered: minio-console-${node_name}.${cluster_domain}.local:9001"
         else
             log_warn "Could not register MinIO Console (DNS may not work)"
+        fi
+        
+        # Trigger DNS sync if available
+        local DNS_SYNC_SCRIPT="$SCRIPT_DIR/../../sync-dns.sh"
+        if [[ -f "$DNS_SYNC_SCRIPT" ]]; then
+            log_info "Triggering DNS sync..."
+            bash "$DNS_SYNC_SCRIPT" 2>/dev/null || log_warn "DNS sync failed"
         fi
     else
         log_warn "Service registry not found, skipping DNS registration"

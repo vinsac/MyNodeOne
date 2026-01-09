@@ -199,5 +199,8 @@ log_info "  Failed: $FAILED_COUNT"
 echo
 log_info "Longhorn will now rebuild replicas on balanced disks."
 log_info "This process may take several minutes to hours depending on data size."
-log_info "Monitor progress in Longhorn UI: http://longhorn.minicloud.local"
+
+# Get cluster domain for UI URL
+CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "cluster")
+log_info "Monitor progress in Longhorn UI: http://longhorn.${CLUSTER_DOMAIN}.local"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

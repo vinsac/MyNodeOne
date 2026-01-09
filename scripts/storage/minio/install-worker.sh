@@ -476,15 +476,18 @@ register_minio_services() {
         # Get node name from hostname
         local node_name=$(hostname)
         
+        # Get cluster domain
+        local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "cluster")
+        
         # Register ONLY node-specific services (no generic aliases)
         if register_service "minio-${node_name}" "minio-${node_name}" "minio" "minio-${node_name}" "9000" "false" 2>/dev/null; then
-            log_success "MinIO API registered: minio-${node_name}.minicloud.local:9000"
+            log_success "MinIO API registered: minio-${node_name}.${cluster_domain}.local:9000"
         else
             log_warn "Could not register MinIO API (DNS may not work)"
         fi
         
         if register_service "minio-console-${node_name}" "minio-console-${node_name}" "minio" "minio-console-${node_name}" "9001" "false" 2>/dev/null; then
-            log_success "MinIO Console registered: minio-console-${node_name}.minicloud.local:9001"
+            log_success "MinIO Console registered: minio-console-${node_name}.${cluster_domain}.local:9001"
         else
             log_warn "Could not register MinIO Console (DNS may not work)"
         fi

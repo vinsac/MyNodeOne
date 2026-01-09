@@ -490,6 +490,12 @@ install_minio_helm() {
     # Calculate total storage size
     local TOTAL_SIZE=$(df -h "${disks[@]}" | tail -${#disks[@]} | awk '{sum+=$2} END {print sum"Gi"}')
     
+    # Check if PriorityClass exists
+    local PRIORITY_CLASS=""
+    if kubectl get priorityclass mynodeone-infrastructure &>/dev/null; then
+        PRIORITY_CLASS="priorityClassName: mynodeone-infrastructure"
+    fi
+
     # Install MinIO with hostPath volumes
     log_info "Installing MinIO (this may take 2-3 minutes)..."
     
@@ -513,7 +519,11 @@ resources:
     cpu: 500m
   limits:
     memory: 32Gi
-priorityClassName: mynodeone-infrastructure
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+$PRIORITY_CLASS
 EOF
 
     # Add node affinity if worker node detected

@@ -1229,59 +1229,7 @@ install_traefik() {
     log_success "Traefik installed"
 }
 
-install_velero() {
-    echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Velero (Cluster Backup System) - Optional"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    echo "Velero backs up Kubernetes cluster configuration (not app data)."
-    echo
-    echo "What Velero backs up:"
-    echo "  Cluster configuration (ConfigMaps, Secrets, RBAC)"
-    echo "  Kubernetes manifests (Deployments, Services, etc.)"
-    echo "  Namespace-level snapshots for testing/migration"
-    echo
-    echo "What Velero does NOT backup:"
-    echo "  Application data inside PVCs (use app-level backups)"
-    echo "  Database contents (use pg_dump, mysqldump, etc.)"
-    echo "  Files in volumes (use rsync, rclone to MinIO)"
-    echo
-    echo "Recommended for:"
-    echo "  Production clusters requiring disaster recovery"
-    echo "  Clusters with compliance requirements"
-    echo "  Migration/testing scenarios"
-    echo
-    echo "NOT needed for:"
-    echo "  Home labs or dev clusters"
-    echo "  Clusters using app-level backups"
-    echo "  GitOps-managed clusters (ArgoCD handles manifests)"
-    echo
-    read -p "Install Velero? (y/N): " -n 1 -r
-    echo
-    
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Skipping Velero installation"
-        log_info "You can install it later with: sudo ./scripts/storage/velero/install.sh"
-        return 0
-    fi
-    
-    log_info "Installing Velero backup system..."
-    
-    # Call modular Velero installation script
-    if [ -f "$SCRIPT_DIR/storage/velero/install.sh" ]; then
-        if bash "$SCRIPT_DIR/storage/velero/install.sh"; then
-            log_success "Velero installed successfully"
-            log_info "Backup storage configured to use MinIO"
-        else
-            log_error "Velero installation failed"
-            log_warn "Backups will not be available until Velero is installed"
-        fi
-    else
-        log_error "Velero installation script not found: $SCRIPT_DIR/storage/install-velero.sh"
-        log_warn "Skipping Velero installation"
-    fi
-}
+# Velero removed - user doesn't need automated cluster backups
 
 install_monitoring() {
     log_info "Installing monitoring stack (Prometheus, Grafana, Loki)..."
@@ -2445,7 +2393,6 @@ main() {
     install_traefik
     install_longhorn  # Interactive Longhorn installation
     install_minio     # Interactive MinIO installation (optional)
-    install_velero
     install_monitoring
     install_argocd
     deploy_dashboard

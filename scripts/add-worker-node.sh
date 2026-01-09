@@ -589,42 +589,6 @@ scale_longhorn_replicas() {
     fi
 }
 
-configure_velero_backup() {
-    log_info "Configuring Velero backup to use MinIO..."
-    
-    # Check if Velero is installed
-    if ! kubectl get deployment velero -n velero &> /dev/null; then
-        log_warn "Velero not found on control plane"
-        log_warn "Backups will not be configured"
-        log_warn "Install Velero on control plane first"
-        return 0
-    fi
-    
-    # Check if MinIO is running
-    if ! kubectl get svc minio -n minio &> /dev/null; then
-        log_warn "MinIO not found, skipping Velero backup configuration"
-        log_warn "Run this after MinIO is installed:"
-        log_warn "  sudo $SCRIPT_DIR/storage/velero/configure-backup.sh"
-        return 0
-    fi
-    
-    # Call modular Velero backup configuration script
-    if [ -f "$SCRIPT_DIR/storage/velero/configure-backup.sh" ]; then
-        if bash "$SCRIPT_DIR/storage/velero/configure-backup.sh"; then
-            log_success "Velero backup configured successfully"
-            log_info "Nightly backups scheduled: 2:00 AM UTC"
-            log_info "Retention: 6 months"
-        else
-            log_error "Velero backup configuration failed"
-            log_warn "You can configure manually later:"
-            log_warn "  sudo $SCRIPT_DIR/storage/velero/configure-backup.sh"
-        fi
-    else
-        log_error "Velero backup configuration script not found: $SCRIPT_DIR/storage/velero/configure-backup.sh"
-        log_warn "Skipping Velero backup configuration"
-    fi
-}
-
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MyNodeOne Worker Node Addition"
@@ -646,7 +610,6 @@ main() {
     label_node
     install_longhorn  # Interactive Longhorn installation (same as control plane)
     install_minio     # Interactive MinIO installation (optional, standalone)
-    configure_velero_backup  # Configure Velero to backup to MinIO
     install_node_agent
     
     # Run validation tests

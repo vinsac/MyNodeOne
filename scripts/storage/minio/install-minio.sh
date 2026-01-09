@@ -404,12 +404,14 @@ select_disks_for_minio() {
         
         log_info "Formatting $device on $TARGET_NODE..."
         
-        # Create format script
+        # Create format script (use GPT for disks >2TB)
         local format_script="
 set -e
 umount ${device}* 2>/dev/null || true
 wipefs -a ${device}
-echo -e 'n\np\n1\n\n\n\nw' | fdisk ${device} 2>/dev/null || true
+# Use parted with GPT for large disks (>2TB)
+parted -s ${device} mklabel gpt
+parted -s ${device} mkpart primary ext4 0% 100%
 partprobe ${device} 2>/dev/null || true
 sleep 2
 partition='${device}1'

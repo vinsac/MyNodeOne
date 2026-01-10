@@ -189,16 +189,25 @@ select_target_node() {
         # Get SSH username from node label (set during worker node join)
         TARGET_USER=$(kubectl get node "$TARGET_NODE" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
         
-        # Fallback to SUDO_USER or root if label not found
+        # If label not found, prompt user to set it or provide username
         if [ -z "$TARGET_USER" ]; then
             log_warn "mynodeone.io/ssh-user label not found on node $TARGET_NODE"
-            if [ -n "${SUDO_USER:-}" ]; then
-                TARGET_USER="$SUDO_USER"
-                log_info "Using current user: $TARGET_USER"
-            else
-                TARGET_USER="root"
-                log_info "Using root user"
+            echo ""
+            log_info "To fix this, you can either:"
+            log_info "  1. Update the node label (recommended):"
+            log_info "     kubectl label node $TARGET_NODE mynodeone.io/ssh-user=<username> --overwrite"
+            log_info ""
+            log_info "  2. Enter the SSH username now (temporary - label won't be updated)"
+            echo ""
+            echo -n "Enter SSH username for $TARGET_NODE: "
+            read TARGET_USER
+            
+            if [ -z "$TARGET_USER" ]; then
+                log_error "SSH username is required"
+                return 1
             fi
+            
+            log_info "Using SSH username: $TARGET_USER"
         fi
         
         log_info "Target: $TARGET_USER@$node_ip"

@@ -212,8 +212,22 @@ sync_registry() {
                     # Node-specific MinIO console: minio-console-canada-pc-0001 -> minio-console-canada-pc-0001
                     subdomain="$name"
                     ;;
+                minio-console)
+                    # MinIO console without node suffix - derive from namespace
+                    # namespace: minio-canada-pc-0001 -> registry key: minio-console-canada-pc-0001
+                    local node_suffix="${namespace#minio-}"
+                    name="minio-console-${node_suffix}"
+                    subdomain="$name"
+                    ;;
                 minio-*)
                     # Node-specific MinIO API: minio-canada-pc-0001 -> minio-canada-pc-0001
+                    subdomain="$name"
+                    ;;
+                minio)
+                    # MinIO API without node suffix - derive from namespace
+                    # namespace: minio-canada-pc-0001 -> registry key: minio-canada-pc-0001
+                    local node_suffix="${namespace#minio-}"
+                    name="minio-${node_suffix}"
                     subdomain="$name"
                     ;;
                 longhorn-frontend)

@@ -204,17 +204,78 @@ if [ $? -eq 0 ]; then
         return 1
     }
     
-    # 1. Register in Sync Controller Registry
+    # 1. Collect VPS Metadata
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Step 1: Sync Controller Registration"
+    echo "Step 1: Collecting VPS Metadata"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
-    if ! retry_command "Registering in sync controller" \
-        sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/lib/sync-controller.sh" register vps_nodes \
-        "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
-        REGISTRATION_FAILED=true
-        echo "❌ Failed to register in sync controller"
-        echo "   Manual registration: sudo $SCRIPT_DIR/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+    echo "ℹ Collecting comprehensive metadata from VPS..."
+    VPS_METADATA_JSON=""
+    
+    if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
+        "test -f ~/mynodeone/scripts/lib/collect-vps-metadata.sh" 2>/dev/null; then
+        
+        VPS_METADATA_JSON=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
+            "sudo bash ~/mynodeone/scripts/lib/collect-vps-metadata.sh json" 2>/dev/null || echo "")
+        
+        if [ -n "$VPS_METADATA_JSON" ]; then
+            echo "✅ Metadata collected successfully"
+            echo ""
+            echo "Collected metadata:"
+            echo "$VPS_METADATA_JSON" | jq -C '.' || echo "$VPS_METADATA_JSON"
+        else
+            echo "⚠ Failed to collect metadata, will use basic registration"
+        fi
+    else
+        echo "⚠ Metadata collector not found on VPS, will use basic registration"
+    fi
+    echo
+    
+    # 2. Register in Sync Controller Registry with Enhanced Metadata
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Step 2: Enhanced VPS Registration"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Source the registry manager to use enhanced registration
+    source "$SCRIPT_DIR/lib/node-registry-manager.sh"
+    
+    if [ -n "$VPS_METADATA_JSON" ]; then
+        # Use enhanced registration with metadata
+        echo "ℹ Registering VPS with comprehensive metadata..."
+        if register_vps_node \
+            --name "$VPS_NODE_NAME" \
+            --tailscale-ip "$VPS_TAILSCALE_IP" \
+            --public-ip "$VPS_PUBLIC_IP" \
+            --ssh-user "$VPS_SSH_USER" \
+            --location "$VPS_LOCATION" \
+            --provider "unknown" \
+            --metadata-json "$VPS_METADATA_JSON"; then
+            echo "✅ VPS registered with comprehensive metadata"
+        else
+            REGISTRATION_FAILED=true
+            echo "❌ Failed to register VPS with metadata"
+            echo "   Falling back to basic registration..."
+            
+            # Fallback to basic registration
+            if retry_command "Basic VPS registration" \
+                sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/lib/sync-controller.sh" register vps_nodes \
+                "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
+                echo "✅ Basic registration succeeded"
+            else
+                echo "❌ Basic registration also failed"
+                echo "   Manual registration: sudo $SCRIPT_DIR/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+            fi
+        fi
+    else
+        # Use basic registration (legacy)
+        echo "ℹ Using basic registration (no metadata available)..."
+        if ! retry_command "Registering in sync controller" \
+            sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/lib/sync-controller.sh" register vps_nodes \
+            "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
+            REGISTRATION_FAILED=true
+            echo "❌ Failed to register in sync controller"
+            echo "   Manual registration: sudo $SCRIPT_DIR/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+        fi
     fi
     echo
     

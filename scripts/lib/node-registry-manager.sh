@@ -983,6 +983,322 @@ EOF
     esac
 }
 
+# Register or update a VPS edge node with comprehensive metadata
+# Usage: register_vps_node --name <name> --tailscale-ip <ip> --public-ip <ip> [options]
+register_vps_node() {
+    local node_name=""
+    local tailscale_ip=""
+    local public_ip=""
+    local ssh_user=""
+    local location=""
+    local provider=""
+    local webhook_port="8080"
+    local repo_path=""
+    local metadata_json=""
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --name)
+                node_name="$2"
+                shift 2
+                ;;
+            --tailscale-ip)
+                tailscale_ip="$2"
+                shift 2
+                ;;
+            --public-ip)
+                public_ip="$2"
+                shift 2
+                ;;
+            --ssh-user)
+                ssh_user="$2"
+                shift 2
+                ;;
+            --location)
+                location="$2"
+                shift 2
+                ;;
+            --provider)
+                provider="$2"
+                shift 2
+                ;;
+            --webhook-port)
+                webhook_port="$2"
+                shift 2
+                ;;
+            --repo-path)
+                repo_path="$2"
+                shift 2
+                ;;
+            --metadata-json)
+                metadata_json="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+    
+    # VALIDATION: Required fields
+    if [[ -z "$node_name" ]]; then
+        log_error "Node name is required (--name)"
+        return 1
+    fi
+    
+    if [[ -z "$tailscale_ip" ]]; then
+        log_error "Tailscale IP is required (--tailscale-ip)"
+        return 1
+    fi
+    
+    if [[ -z "$public_ip" ]]; then
+        log_warn "Public IP not provided, using 'unknown'"
+        public_ip="unknown"
+    fi
+    
+    # Auto-detect SSH user if not provided
+    if [[ -z "$ssh_user" ]]; then
+        ssh_user=$(detect_ssh_user "$tailscale_ip" 2>/dev/null || echo "root")
+        log_info "Auto-detected SSH user: $ssh_user"
+    fi
+    
+    log_info "Registering VPS node: $node_name ($tailscale_ip)"
+    
+    # Sync from ConfigMap first
+    sync_from_configmap || return 1
+    
+    # If metadata JSON is provided, use it; otherwise create basic metadata
+    local hardware_json
+    local traefik_json
+    local installation_json
+    
+    if [[ -n "$metadata_json" ]]; then
+        # Extract components from provided metadata
+        hardware_json=$(echo "$metadata_json" | jq -c '.hardware // {}')
+        traefik_json=$(echo "$metadata_json" | jq -c '.traefik // {}')
+        installation_json=$(echo "$metadata_json" | jq -c '.installation // {}')
+        
+        # Extract location and provider if not provided
+        if [[ -z "$location" ]]; then
+            location=$(echo "$metadata_json" | jq -r '.location // "unknown"')
+        fi
+        if [[ -z "$provider" ]]; then
+            provider=$(echo "$metadata_json" | jq -r '.provider // "unknown"')
+        fi
+    else
+        # Create default metadata
+        hardware_json='{"cpu":"Unknown","ram":"Unknown","disk":"Unknown","os":"Unknown"}'
+        traefik_json='{"enabled":false,"version":"unknown"}'
+        installation_json='{"docker_version":"unknown","mynodeone_version":"1.5.0"}'
+        
+        if [[ -z "$location" ]]; then
+            location="unknown"
+        fi
+        if [[ -z "$provider" ]]; then
+            provider="unknown"
+        fi
+    fi
+    
+    # Build VPS node entry with comprehensive metadata
+    local node_entry=$(jq -n \
+        --arg name "$node_name" \
+        --arg tailscale_ip "$tailscale_ip" \
+        --arg public_ip "$public_ip" \
+        --arg ssh_user "$ssh_user" \
+        --arg location "$location" \
+        --arg provider "$provider" \
+        --argjson webhook_port "$webhook_port" \
+        --arg repo_path "$repo_path" \
+        --argjson hardware "$hardware_json" \
+        --argjson traefik "$traefik_json" \
+        --argjson installation "$installation_json" \
+        --arg timestamp "$(date -Iseconds)" \
+        '{
+            name: $name,
+            ip: $tailscale_ip,
+            tailscale_ip: $tailscale_ip,
+            tailscale_hostname: ($tailscale_ip + ".tailscale.net"),
+            public_ip: $public_ip,
+            ssh_user: $ssh_user,
+            webhook_port: $webhook_port,
+            repo_path: $repo_path,
+            role: "edge",
+            location: $location,
+            provider: $provider,
+            hardware: $hardware,
+            traefik: $traefik,
+            installation: $installation,
+            registered: $timestamp,
+            last_sync: null,
+            last_updated: $timestamp,
+            status: "active"
+        }')
+    
+    # Remove existing entry for this IP if present
+    local updated_registry=$(jq \
+        --arg ip "$tailscale_ip" \
+        --argjson entry "$node_entry" \
+        'del(.vps_nodes[] | select(.ip == $ip or .tailscale_ip == $ip)) | .vps_nodes += [$entry]' \
+        "$LOCAL_CACHE")
+    
+    # VALIDATION: Verify jq succeeded
+    if ! echo "$updated_registry" | jq empty 2>/dev/null; then
+        log_error "Failed to update registry with VPS node"
+        return 1
+    fi
+    
+    # Save updated registry to local cache
+    echo "$updated_registry" | jq '.' > "$LOCAL_CACHE"
+    
+    # VALIDATION: Verify node was added
+    local verify_node=$(jq -r \
+        --arg ip "$tailscale_ip" \
+        '.vps_nodes[] | select(.ip == $ip or .tailscale_ip == $ip) | .name' \
+        "$LOCAL_CACHE")
+    
+    if [[ "$verify_node" != "$node_name" ]]; then
+        log_error "VPS node registration validation failed"
+        return 1
+    fi
+    
+    # Sync to ConfigMap
+    sync_to_configmap || return 1
+    
+    # FINAL VALIDATION: Read back from ConfigMap to confirm
+    sync_from_configmap || return 1
+    local final_verify=$(jq -r \
+        --arg ip "$tailscale_ip" \
+        '.vps_nodes[] | select(.ip == $ip or .tailscale_ip == $ip) | .name' \
+        "$LOCAL_CACHE")
+    
+    if [[ "$final_verify" != "$node_name" ]]; then
+        log_error "Final validation failed - VPS node not in ConfigMap"
+        return 1
+    fi
+    
+    log_success "Registered VPS node: $node_name"
+    log_success "  Tailscale IP: $tailscale_ip"
+    log_success "  Public IP: $public_ip"
+    log_success "  Location: $location"
+    log_success "  Provider: $provider"
+    log_success "✓ Validated in ConfigMap"
+    return 0
+}
+
+# Update VPS node metadata (for post-installation updates)
+# Usage: update_vps_metadata --name <name> --metadata-json <json>
+update_vps_metadata() {
+    local node_name=""
+    local metadata_json=""
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --name)
+                node_name="$2"
+                shift 2
+                ;;
+            --metadata-json)
+                metadata_json="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+    
+    # VALIDATION
+    if [[ -z "$node_name" ]]; then
+        log_error "Node name is required (--name)"
+        return 1
+    fi
+    
+    if [[ -z "$metadata_json" ]]; then
+        log_error "Metadata JSON is required (--metadata-json)"
+        return 1
+    fi
+    
+    log_info "Updating VPS node metadata: $node_name"
+    
+    # Sync from ConfigMap first
+    sync_from_configmap || return 1
+    
+    # Check if node exists
+    local node_exists=$(jq -r \
+        --arg name "$node_name" \
+        '.vps_nodes[] | select(.name == $name) | .name' \
+        "$LOCAL_CACHE")
+    
+    if [[ "$node_exists" != "$node_name" ]]; then
+        log_error "VPS node not found: $node_name"
+        return 1
+    fi
+    
+    # Extract metadata components
+    local hardware=$(echo "$metadata_json" | jq -c '.hardware // {}')
+    local traefik=$(echo "$metadata_json" | jq -c '.traefik // {}')
+    local installation=$(echo "$metadata_json" | jq -c '.installation // {}')
+    local location=$(echo "$metadata_json" | jq -r '.location // empty')
+    local provider=$(echo "$metadata_json" | jq -r '.provider // empty')
+    local public_ip=$(echo "$metadata_json" | jq -r '.public_ip // empty')
+    
+    # Update node entry
+    local updated_registry=$(jq \
+        --arg name "$node_name" \
+        --argjson hardware "$hardware" \
+        --argjson traefik "$traefik" \
+        --argjson installation "$installation" \
+        --arg timestamp "$(date -Iseconds)" \
+        '(.vps_nodes[] | select(.name == $name)) |= (
+            .hardware = $hardware |
+            .traefik = $traefik |
+            .installation = $installation |
+            .last_updated = $timestamp
+        )' \
+        "$LOCAL_CACHE")
+    
+    # Update optional fields if provided
+    if [[ -n "$location" ]]; then
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg name "$node_name" \
+            --arg location "$location" \
+            '(.vps_nodes[] | select(.name == $name)).location = $location')
+    fi
+    
+    if [[ -n "$provider" ]]; then
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg name "$node_name" \
+            --arg provider "$provider" \
+            '(.vps_nodes[] | select(.name == $name)).provider = $provider')
+    fi
+    
+    if [[ -n "$public_ip" ]]; then
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg name "$node_name" \
+            --arg public_ip "$public_ip" \
+            '(.vps_nodes[] | select(.name == $name)).public_ip = $public_ip')
+    fi
+    
+    # VALIDATION: Verify jq succeeded
+    if ! echo "$updated_registry" | jq empty 2>/dev/null; then
+        log_error "Failed to update VPS metadata"
+        return 1
+    fi
+    
+    # Save updated registry to local cache
+    echo "$updated_registry" | jq '.' > "$LOCAL_CACHE"
+    
+    # Sync to ConfigMap
+    sync_to_configmap || return 1
+    
+    log_success "Updated VPS node metadata: $node_name"
+    return 0
+}
+
 # Only run main if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"

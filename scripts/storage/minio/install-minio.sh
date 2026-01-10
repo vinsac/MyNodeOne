@@ -186,11 +186,19 @@ select_target_node() {
             return 1
         fi
         
-        # Determine remote user (assume same as current user or root)
-        if [ -n "${SUDO_USER:-}" ]; then
-            TARGET_USER="$SUDO_USER"
-        else
-            TARGET_USER="root"
+        # Get SSH username from node label (set during worker node join)
+        TARGET_USER=$(kubectl get node "$TARGET_NODE" -o jsonpath='{.metadata.labels.mynodeone\.io/ssh-user}' 2>/dev/null)
+        
+        # Fallback to SUDO_USER or root if label not found
+        if [ -z "$TARGET_USER" ]; then
+            log_warn "mynodeone.io/ssh-user label not found on node $TARGET_NODE"
+            if [ -n "${SUDO_USER:-}" ]; then
+                TARGET_USER="$SUDO_USER"
+                log_info "Using current user: $TARGET_USER"
+            else
+                TARGET_USER="root"
+                log_info "Using root user"
+            fi
         fi
         
         log_info "Target: $TARGET_USER@$node_ip"

@@ -119,6 +119,10 @@ sync_registry() {
     
     init_registry
     
+    # Get current registry to preserve existing public flags
+    local registry=$(kubectl get configmap -n kube-system service-registry \
+        -o jsonpath='{.data.services\.json}' 2>/dev/null || echo '{}')
+    
     # Get all LoadBalancer services
     local services=$(kubectl get svc --all-namespaces \
         -o json | jq -r '

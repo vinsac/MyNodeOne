@@ -347,7 +347,7 @@ if [ $? -eq 0 ]; then
         echo
         echo "Next steps:"
         echo "  1. Make apps public: sudo ./scripts/manage-app-visibility.sh"
-        echo "  2. Check VPS status: sudo ./scripts/lib/sync-controller.sh list"
+        echo "  2. Check node status: sudo mynodeone-node-agent status"
         echo "  3. View Traefik dashboard: https://traefik.$VPS_DOMAIN"
         echo
     else

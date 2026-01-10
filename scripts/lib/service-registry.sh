@@ -280,16 +280,17 @@ cleanup_stale_entries() {
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
         
-        # Get namespace from registry entry
+        # Get namespace and service name from registry entry
         local namespace=$(echo "$registry" | jq -r --arg name "$name" '.[$name].namespace // empty' 2>/dev/null)
+        local service=$(echo "$registry" | jq -r --arg name "$name" '.[$name].service // empty' 2>/dev/null)
         
-        if [[ -z "$namespace" ]]; then
+        if [[ -z "$namespace" ]] || [[ -z "$service" ]]; then
             continue
         fi
         
-        # Check if service still exists in cluster
-        if ! kubectl get svc -n "$namespace" "$name" &>/dev/null; then
-            log_info "Removing stale entry: $name (namespace $namespace no longer exists)"
+        # Check if service still exists in cluster (use actual service name, not registry key)
+        if ! kubectl get svc -n "$namespace" "$service" &>/dev/null; then
+            log_info "Removing stale entry: $name (service $namespace/$service no longer exists)"
             new_registry=$(echo "$new_registry" | jq --arg name "$name" 'del(.[$name])')
             ((removed++))
         fi

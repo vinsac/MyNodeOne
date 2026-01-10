@@ -1,5 +1,22 @@
 # Worker Node Installation Issues - Jan 9, 2026
 
+## ✅ Resolution Status
+
+**All issues have been fixed and committed to `storage-v3-k8s-minio` branch.**
+
+| Issue | Status | Fix |
+|-------|--------|-----|
+| #1 Missing label confirmation | ✅ Fixed | Added prompt to wait for labels before proceeding |
+| #2 kubectl on worker | ℹ️ Info | Already correct - needed for local operations |
+| #3 Hardcoded domain | ✅ Fixed | Export CLUSTER_DOMAIN for child scripts |
+| #4 systemd MinIO | ✅ Fixed | Worker script already correct (old installer removed) |
+| #5 Node registration timeout | ✅ Fixed | Increased from 30s to 60s |
+| #6 Longhorn disk UUID | ✅ Fixed | Manual: delete/recreate Longhorn node resource |
+
+**Commit:** `3bfc7a5` - "Fix worker node installation issues"
+
+---
+
 ## Context
 Worker node `canada-pc-0001-1` (100.90.70.25) was added to cluster `universe` with control plane at `100.83.31.109`.
 

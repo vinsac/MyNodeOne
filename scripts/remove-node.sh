@@ -147,17 +147,36 @@ list_all_nodes() {
     local i=1
     declare -g -A NODE_MAP
     
-    # Management Laptops
+    # Management Laptops (exclude control-plane nodes)
     local laptop_count=$(echo "$registry" | jq '.management_laptops | length')
     if [[ "$laptop_count" -gt 0 ]]; then
-        echo -e "${CYAN}Management Laptops:${NC}"
+        local has_laptops=false
         while IFS='|' read -r name ip status last_seen; do
             [[ -z "$name" ]] && continue
+            
+            # Check if this node is also a control-plane in cluster_nodes
+            local is_control_plane=$(echo "$registry" | jq -r \
+                --arg name "$name" \
+                '.cluster_nodes[] | select(.name == $name and .role == "control-plane") | .name' 2>/dev/null)
+            
+            # Skip control-plane nodes
+            if [[ -n "$is_control_plane" ]]; then
+                continue
+            fi
+            
+            if [[ "$has_laptops" == "false" ]]; then
+                echo -e "${CYAN}Management Laptops:${NC}"
+                has_laptops=true
+            fi
+            
             echo "  $i) $name (IP: $ip, Status: $status)"
             NODE_MAP[$i]="management_laptops|$name|$ip"
             ((i++))
         done < <(echo "$registry" | jq -r '.management_laptops[] | "\(.name // "unknown")|\(.ip)|\(.status // "unknown")|\(.last_sync // "never")"')
-        echo
+        
+        if [[ "$has_laptops" == "true" ]]; then
+            echo
+        fi
     fi
     
     # VPS Nodes
@@ -173,16 +192,16 @@ list_all_nodes() {
         echo
     fi
     
-    # Worker Nodes
-    local worker_count=$(echo "$registry" | jq '.worker_nodes | length')
-    if [[ "$worker_count" -gt 0 ]]; then
+    # Worker Nodes from cluster_nodes (exclude control-plane)
+    local cluster_worker_count=$(echo "$registry" | jq '[.cluster_nodes[] | select(.role == "worker")] | length')
+    if [[ "$cluster_worker_count" -gt 0 ]]; then
         echo -e "${CYAN}Worker Nodes:${NC}"
-        while IFS='|' read -r name ip status last_seen; do
+        while IFS='|' read -r name ip role status; do
             [[ -z "$name" ]] && continue
-            echo "  $i) $name (IP: $ip, Status: $status)"
-            NODE_MAP[$i]="worker_nodes|$name|$ip"
+            echo "  $i) $name (IP: $ip, Role: $role, Status: $status)"
+            NODE_MAP[$i]="cluster_nodes|$name|$ip"
             ((i++))
-        done < <(echo "$registry" | jq -r '.worker_nodes[] | "\(.name // "unknown")|\(.ip)|\(.status // "unknown")|\(.last_sync // "never")"')
+        done < <(echo "$registry" | jq -r '.cluster_nodes[] | select(.role == "worker") | "\(.name // "unknown")|\(.tailscale_ip // .ip)|\(.role)|\(.status // "unknown")"')
         echo
     fi
     
@@ -209,32 +228,96 @@ find_node() {
     
     # Try to find by name first
     if [[ -n "$search_name" ]]; then
-        for type in management_laptops vps_nodes worker_nodes; do
-            local found=$(echo "$registry" | jq -r \
-                --arg type "$type" \
-                --arg name "$search_name" \
-                '.[$type][] | select(.name == $name) | "\($type)|\(.name)|\(.ip)"' 2>/dev/null)
+        # Check management_laptops (exclude control-plane)
+        local found=$(echo "$registry" | jq -r \
+            --arg name "$search_name" \
+            '.management_laptops[] | select(.name == $name) | "\(.name)|\(.ip)"' 2>/dev/null)
+        
+        if [[ -n "$found" ]]; then
+            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
             
-            if [[ -n "$found" ]]; then
-                IFS='|' read -r NODE_TYPE NODE_NAME NODE_IP <<< "$found"
-                return 0
+            # Check if it's a control-plane node
+            local is_control_plane=$(echo "$registry" | jq -r \
+                --arg name "$NODE_NAME" \
+                '.cluster_nodes[] | select(.name == $name and .role == "control-plane") | .name' 2>/dev/null)
+            
+            if [[ -n "$is_control_plane" ]]; then
+                log_error "Cannot remove control-plane node: $NODE_NAME"
+                exit 1
             fi
-        done
+            
+            NODE_TYPE="management_laptops"
+            return 0
+        fi
+        
+        # Check vps_nodes
+        found=$(echo "$registry" | jq -r \
+            --arg name "$search_name" \
+            '.vps_nodes[] | select(.name == $name) | "\(.name)|\(.ip)"' 2>/dev/null)
+        
+        if [[ -n "$found" ]]; then
+            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
+            NODE_TYPE="vps_nodes"
+            return 0
+        fi
+        
+        # Check cluster_nodes (workers only)
+        found=$(echo "$registry" | jq -r \
+            --arg name "$search_name" \
+            '.cluster_nodes[] | select(.name == $name and .role == "worker") | "\(.name)|\(.tailscale_ip // .ip)"' 2>/dev/null)
+        
+        if [[ -n "$found" ]]; then
+            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
+            NODE_TYPE="cluster_nodes"
+            return 0
+        fi
     fi
     
     # Try to find by IP
     if [[ -n "$search_ip" ]]; then
-        for type in management_laptops vps_nodes worker_nodes; do
-            local found=$(echo "$registry" | jq -r \
-                --arg type "$type" \
-                --arg ip "$search_ip" \
-                '.[$type][] | select(.ip == $ip) | "\($type)|\(.name)|\(.ip)"' 2>/dev/null)
+        # Check management_laptops (exclude control-plane)
+        local found=$(echo "$registry" | jq -r \
+            --arg ip "$search_ip" \
+            '.management_laptops[] | select(.ip == $ip) | "\(.name)|\(.ip)"' 2>/dev/null)
+        
+        if [[ -n "$found" ]]; then
+            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
             
-            if [[ -n "$found" ]]; then
-                IFS='|' read -r NODE_TYPE NODE_NAME NODE_IP <<< "$found"
-                return 0
+            # Check if it's a control-plane node
+            local is_control_plane=$(echo "$registry" | jq -r \
+                --arg name "$NODE_NAME" \
+                '.cluster_nodes[] | select(.name == $name and .role == "control-plane") | .name' 2>/dev/null)
+            
+            if [[ -n "$is_control_plane" ]]; then
+                log_error "Cannot remove control-plane node: $NODE_NAME"
+                exit 1
             fi
-        done
+            
+            NODE_TYPE="management_laptops"
+            return 0
+        fi
+        
+        # Check vps_nodes
+        found=$(echo "$registry" | jq -r \
+            --arg ip "$search_ip" \
+            '.vps_nodes[] | select(.ip == $ip) | "\(.name)|\(.ip)"' 2>/dev/null)
+        
+        if [[ -n "$found" ]]; then
+            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
+            NODE_TYPE="vps_nodes"
+            return 0
+        fi
+        
+        # Check cluster_nodes (workers only)
+        found=$(echo "$registry" | jq -r \
+            --arg ip "$search_ip" \
+            '.cluster_nodes[] | select((.tailscale_ip // .ip) == $ip and .role == "worker") | "\(.name)|\(.tailscale_ip // .ip)"' 2>/dev/null)
+        
+        if [[ -n "$found" ]]; then
+            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
+            NODE_TYPE="cluster_nodes"
+            return 0
+        fi
     fi
     
     return 1
@@ -251,11 +334,21 @@ remove_from_registry() {
     # Get current registry
     local registry=$(get_registry)
     
-    # Remove node from array
-    local updated_registry=$(echo "$registry" | jq \
-        --arg type "$type" \
-        --arg name "$name" \
-        'if .[$type] then .[$type] |= map(select(.name != $name)) else . end')
+    # Remove node from appropriate array(s)
+    local updated_registry="$registry"
+    
+    if [[ "$type" == "cluster_nodes" ]]; then
+        # Remove from cluster_nodes array
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg name "$name" \
+            '.cluster_nodes |= map(select(.name != $name))')
+    else
+        # Remove from specified array (management_laptops, vps_nodes)
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg type "$type" \
+            --arg name "$name" \
+            'if .[$type] then .[$type] |= map(select(.name != $name)) else . end')
+    fi
     
     # Update metadata
     updated_registry=$(echo "$updated_registry" | jq \
@@ -305,8 +398,9 @@ clean_local_config() {
         management_laptops)
             log_info "No local configuration files to clean for management laptops"
             ;;
-        worker_nodes)
-            log_info "No local configuration files to clean for worker nodes"
+        cluster_nodes)
+            log_info "No local configuration files to clean for cluster nodes"
+            log_warn "Remember to also run: kubectl delete node $name"
             ;;
     esac
 }

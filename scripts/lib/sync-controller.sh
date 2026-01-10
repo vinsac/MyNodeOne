@@ -501,6 +501,19 @@ periodic_reconciliation() {
             echo ""
         fi
         
+        # Sync service registry (cleanup stale entries, discover new services)
+        log_info "Syncing service registry..."
+        if [[ -f "$SCRIPT_DIR/service-registry.sh" ]]; then
+            if bash "$SCRIPT_DIR/service-registry.sh" sync 2>&1 | grep -q "Synced"; then
+                log_success "Service registry synced"
+            else
+                log_warn "Service registry sync had issues (non-critical)"
+            fi
+        else
+            log_warn "Service registry script not found (skipping)"
+        fi
+        echo ""
+        
         # Run full sync (will retry pending nodes)
         if push_sync_all; then
             log_success "Reconciliation completed successfully"

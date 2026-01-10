@@ -81,7 +81,17 @@ init_registry() {
         return 0
     fi
     
-    # Create empty registry ConfigMap
+    # Create empty registry ConfigMap with documented structure
+    # 
+    # Registry Design:
+    # - management_laptops: External dev/admin machines (SSH sync for DNS/config)
+    # - vps_nodes: External VPS for public routing (SSH sync for Traefik routes)
+    # - worker_nodes: External workers (non-Kubernetes, reserved for future use)
+    # - cluster_nodes: Kubernetes cluster members (control-plane + workers)
+    #
+    # Note: Kubernetes workers are stored in cluster_nodes, NOT worker_nodes.
+    # The worker_nodes array is reserved for external workers that are NOT part
+    # of the Kubernetes cluster (e.g., Docker Swarm, Nomad, or standalone workers).
     local empty_registry='{
   "management_laptops": [],
   "vps_nodes": [],

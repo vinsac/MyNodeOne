@@ -493,6 +493,9 @@ chmod 755 /mnt/minio
 mkdir -p "$MOUNT_POINT"
 mount "$partition" "$MOUNT_POINT"
 
+# Set ownership on mount point so minio user can create subdirectories
+chmod 755 "$MOUNT_POINT"
+
 # Add to fstab
 uuid=$(blkid -s UUID -o value "$partition")
 if ! grep -q "$uuid" /etc/fstab; then
@@ -576,9 +579,17 @@ chown -R ${MINIO_USER}:${MINIO_GROUP} $MINIO_DATA_DIR
 chmod -R 755 $MINIO_DATA_DIR
 "
         
-        if ! exec_cmd "$dir_script"; then
-            log_error "Failed to prepare directory: $MINIO_DATA_DIR"
-            return 1
+        # Execute with sudo (required for directory creation on mounted disk)
+        if [ "$REMOTE_EXEC" = true ]; then
+            if ! ssh $SSH_OPTS "$TARGET_USER@$TARGET_NODE" "sudo bash -c '$dir_script'"; then
+                log_error "Failed to prepare directory: $MINIO_DATA_DIR"
+                return 1
+            fi
+        else
+            if ! sudo bash -c "$dir_script"; then
+                log_error "Failed to prepare directory: $MINIO_DATA_DIR"
+                return 1
+            fi
         fi
         
         log_success "Prepared: $MINIO_DATA_DIR"

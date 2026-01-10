@@ -574,20 +574,37 @@ prepare_minio_directories() {
         log_info "Creating directory: $MINIO_DATA_DIR"
         
         local dir_script="
+set -x  # Enable debug output
+echo '=== Directory Preparation Debug ==='
+echo 'Target directory: $MINIO_DATA_DIR'
+echo 'MinIO user: ${MINIO_USER}:${MINIO_GROUP}'
+echo ''
+echo 'Before creation:'
+ls -la \$(dirname $MINIO_DATA_DIR) || true
+echo ''
 mkdir -p $MINIO_DATA_DIR
+echo 'After mkdir:'
+ls -la \$(dirname $MINIO_DATA_DIR) || true
+ls -la $MINIO_DATA_DIR || true
+echo ''
 chown -R ${MINIO_USER}:${MINIO_GROUP} $MINIO_DATA_DIR
 chmod -R 755 $MINIO_DATA_DIR
+echo 'After chown/chmod:'
+ls -la $MINIO_DATA_DIR || true
+echo '=== End Debug ==='
 "
         
         # Execute with sudo (required for directory creation on mounted disk)
         if [ "$REMOTE_EXEC" = true ]; then
             if ! ssh $SSH_OPTS "$TARGET_USER@$TARGET_NODE" "sudo bash -c '$dir_script'"; then
                 log_error "Failed to prepare directory: $MINIO_DATA_DIR"
+                log_error "Check permissions on mount point: $disk"
                 return 1
             fi
         else
             if ! sudo bash -c "$dir_script"; then
                 log_error "Failed to prepare directory: $MINIO_DATA_DIR"
+                log_error "Check permissions on mount point: $disk"
                 return 1
             fi
         fi
@@ -617,16 +634,26 @@ create_minio_secret() {
     log_info "Creating MinIO Kubernetes secret..."
     
     # Get actual node name from Kubernetes
-    local NODE_NAME=$(kubectl get node -o jsonpath="{.items[?(@.status.addresses[?(@.address=='$TARGET_NODE')])].metadata.name}" 2>/dev/null)
+    # TARGET_NODE is already the node name (not IP) from node selection
+    local NODE_NAME="$TARGET_NODE"
     
-    if [ -z "$NODE_NAME" ]; then
-        # Fallback: TARGET_NODE might already be the node name
-        NODE_NAME="$TARGET_NODE"
+    # Sanitize namespace name: Kubernetes doesn't allow dots, uppercase, or special chars
+    # Replace dots with hyphens, convert to lowercase
+    local SANITIZED_NAME=$(echo "$NODE_NAME" | tr '.' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+    
+    export MINIO_NAMESPACE="minio-$SANITIZED_NAME"
+    
+    log_info "Node name: $NODE_NAME"
+    log_info "Sanitized namespace: $MINIO_NAMESPACE"
+    
+    # Validate namespace name (must be DNS-1123 label)
+    if [[ ! "$MINIO_NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+        log_error "Invalid namespace name: $MINIO_NAMESPACE"
+        log_error "Namespace must contain only lowercase alphanumeric characters or '-'"
+        return 1
     fi
     
-    export MINIO_NAMESPACE="minio-$NODE_NAME"
-    
-    log_info "Using namespace: $MINIO_NAMESPACE"
+    log_info "Creating namespace: $MINIO_NAMESPACE"
     kubectl create namespace "$MINIO_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
     
     # Set pod-security label to allow hostPath volumes

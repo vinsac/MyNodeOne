@@ -248,8 +248,11 @@ sync_registry() {
             esac
         fi
         
-        # Register service
-        if register_service "$name" "$subdomain" "$namespace" "$name" "$port" "false" 2>&1 | grep -q "Registered"; then
+        # Check if service already exists and preserve its public flag
+        local existing_public=$(echo "$registry" | jq -r --arg name "$name" '.[$name].public // false' 2>/dev/null)
+        
+        # Register service (preserve existing public flag)
+        if register_service "$name" "$subdomain" "$namespace" "$name" "$port" "$existing_public" 2>&1 | grep -q "Registered"; then
             ((count++))
         else
             log_info "Failed to register $namespace/$name"

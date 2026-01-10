@@ -256,11 +256,11 @@ validate_worker_node() {
     # Wait for node registration
     log_info "Checking node registration..."
     local node_name=$(hostname)
-    local max_wait=30
+    local max_wait=60
     local waited=0
     
     while [ $waited -lt $max_wait ]; do
-        if kubectl get nodes 2>/dev/null | grep -q "$node_name"; then
+        if kubectl get node "$node_name" &>/dev/null; then
             log_success "Node '$node_name' is registered in cluster"
             break
         fi

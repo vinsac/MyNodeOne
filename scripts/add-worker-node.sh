@@ -42,6 +42,10 @@ fi
 
 source "$CONFIG_FILE"
 
+# Export cluster configuration for child scripts
+export CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-}"
+export CLUSTER_NAME="${CLUSTER_NAME:-}"
+
 # K3s version
 K3S_VERSION="v1.28.5+k3s1"
 
@@ -323,6 +327,22 @@ label_node() {
     
     # Generate one-liner label command
     LABEL_CMD="kubectl label node $NODE_NAME node-role.kubernetes.io/worker=true mynodeone.io/location=${NODE_LOCATION} mynodeone.io/storage=true mynodeone.io/worker-ip=${TAILSCALE_IP} mynodeone.io/ssh-user=${SSH_USERNAME} --overwrite"
+    
+    log_info "Run this command on the control plane:"
+    echo "  $LABEL_CMD"
+    echo ""
+    echo -e "${YELLOW}⚠️  IMPORTANT: Apply the labels on control plane before continuing!${NC}"
+    echo ""
+    echo -n "Have you applied the labels on the control plane? [y/N]: "
+    read -r labels_applied
+    
+    if [[ ! "$labels_applied" =~ ^[Yy] ]]; then
+        log_warn "Please apply the labels on control plane and run this script again"
+        log_info "Labels saved to: $ACTUAL_HOME/mynodeone-node-labels.txt"
+        exit 0
+    fi
+    
+    log_success "Labels confirmed - proceeding with installation"
     
     cat > "$ACTUAL_HOME/mynodeone-node-labels.txt" <<EOF
 # Apply node labels on the control plane:

@@ -943,18 +943,26 @@ register_minio_services() {
             cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "atomcloud.local")
         fi
         
+        log_info "Registering MinIO API service..."
         if bash "$REGISTRY_SCRIPT" register \
-            "minio-${node_name}" "minio-${node_name}" "$MINIO_NAMESPACE" "minio" "9000" "false" 2>/dev/null; then
+            "minio-${node_name}" "minio-${node_name}" "$MINIO_NAMESPACE" "minio" "9000" "false"; then
             log_success "MinIO API registered: minio-${node_name}.${cluster_domain}.local:9000"
         else
-            log_warn "Could not register MinIO API (DNS may not work)"
+            log_error "Failed to register MinIO API service"
+            log_error "Service will not appear in manage-app-visibility.sh"
+            log_error "To register manually: sudo bash scripts/lib/service-registry.sh register minio-${node_name} minio-${node_name} $MINIO_NAMESPACE minio 9000 false"
+            return 1
         fi
         
+        log_info "Registering MinIO Console service..."
         if bash "$REGISTRY_SCRIPT" register \
-            "minio-console-${node_name}" "minio-console-${node_name}" "$MINIO_NAMESPACE" "minio-console" "9001" "false" 2>/dev/null; then
+            "minio-console-${node_name}" "minio-console-${node_name}" "$MINIO_NAMESPACE" "minio-console" "9001" "false"; then
             log_success "MinIO Console registered: minio-console-${node_name}.${cluster_domain}.local:9001"
         else
-            log_warn "Could not register MinIO Console (DNS may not work)"
+            log_error "Failed to register MinIO Console service"
+            log_error "Service will not appear in manage-app-visibility.sh"
+            log_error "To register manually: sudo bash scripts/lib/service-registry.sh register minio-console-${node_name} minio-console-${node_name} $MINIO_NAMESPACE minio-console 9001 false"
+            return 1
         fi
         
         local DNS_SYNC_SCRIPT="$SCRIPT_DIR/../../sync-dns.sh"

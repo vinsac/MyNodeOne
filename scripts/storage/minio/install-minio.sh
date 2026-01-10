@@ -34,7 +34,8 @@ MINIO_GID=1000
 
 # Execution context
 REMOTE_EXEC=false
-TARGET_NODE=""
+TARGET_NODE=""  # Will be set to IP for SSH in remote mode
+TARGET_NODE_NAME=""  # Preserves original node name for K8s operations
 TARGET_USER=""
 SSH_OPTS=""
 
@@ -169,6 +170,10 @@ select_target_node() {
     
     TARGET_NODE="${nodes[$((choice-1))]}"
     
+    # Preserve node name for Kubernetes operations (namespace, labels, etc.)
+    TARGET_NODE_NAME="$TARGET_NODE"
+    export TARGET_NODE_NAME
+    
     # Determine if remote execution is needed
     local current_node=$(hostname)
     if [ "$TARGET_NODE" = "$current_node" ]; then
@@ -229,7 +234,7 @@ select_target_node() {
             return 1
         fi
         
-        # Update TARGET_NODE to use IP for SSH
+        # Update TARGET_NODE to use IP for SSH (TARGET_NODE_NAME preserves original)
         TARGET_NODE="$node_ip"
         
         log_success "SSH connection established"
@@ -633,9 +638,8 @@ generate_minio_credentials() {
 create_minio_secret() {
     log_info "Creating MinIO Kubernetes secret..."
     
-    # Get actual node name from Kubernetes
-    # TARGET_NODE is already the node name (not IP) from node selection
-    local NODE_NAME="$TARGET_NODE"
+    # Use preserved node name (TARGET_NODE may be IP in remote mode)
+    local NODE_NAME="$TARGET_NODE_NAME"
     
     # Sanitize namespace name: Kubernetes doesn't allow dots, uppercase, or special chars
     # Replace dots with hyphens, convert to lowercase

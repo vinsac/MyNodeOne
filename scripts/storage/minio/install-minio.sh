@@ -690,11 +690,12 @@ install_minio_helm() {
         log_warn "Helm repo update timed out, but continuing..."
     fi
     
-    # Get actual node name from Kubernetes
-    local NODE_NAME=$(kubectl get node -o jsonpath="{.items[?(@.status.addresses[?(@.address=='$TARGET_NODE')])].metadata.name}" 2>/dev/null)
+    # Use preserved node name (TARGET_NODE may be IP in remote mode)
+    local NODE_NAME="$TARGET_NODE_NAME"
     
     if [ -z "$NODE_NAME" ]; then
-        NODE_NAME="$TARGET_NODE"
+        log_error "Node name not set - this should not happen"
+        return 1
     fi
     
     log_info "MinIO will be scheduled on node: $NODE_NAME"

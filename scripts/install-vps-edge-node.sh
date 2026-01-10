@@ -347,7 +347,7 @@ if [ $? -eq 0 ]; then
         echo
         echo "Next steps:"
         echo "  1. Make apps public: sudo ./scripts/manage-app-visibility.sh"
-        echo "  2. Check node status: sudo mynodeone-node-agent status"
+        echo "  2. Check cluster nodes: sudo ./scripts/nodes-status.sh"
         echo
     else
         echo "⚠ VPS registration completed with warnings"

@@ -487,6 +487,9 @@ tune2fs -r $reserved_blocks "$partition"
 
 # Mount partition
 echo "Mounting $partition at $MOUNT_POINT..."
+# Ensure parent directory exists with proper permissions
+mkdir -p /mnt/minio
+chmod 755 /mnt/minio
 mkdir -p "$MOUNT_POINT"
 mount "$partition" "$MOUNT_POINT"
 

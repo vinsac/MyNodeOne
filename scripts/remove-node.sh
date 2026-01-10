@@ -131,7 +131,26 @@ EOF
     esac
 done
 
-# Get registry
+# Get Config API settings
+API_PORT="${API_PORT:-8443}"
+CONTROL_PLANE_IP=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
+API_TOKEN=""
+if [[ -f /etc/mynodeone/api-token ]]; then
+    API_TOKEN=$(cat /etc/mynodeone/api-token 2>/dev/null)
+fi
+
+# Fetch nodes from Config API
+fetch_nodes() {
+    local url="http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/nodes"
+    
+    if [[ -n "$API_TOKEN" ]]; then
+        curl -s -H "X-API-Token: $API_TOKEN" "$url" 2>/dev/null
+    else
+        curl -s "$url" 2>/dev/null
+    fi
+}
+
+# Get registry (legacy function for compatibility)
 get_registry() {
     kubectl get configmap sync-controller-registry -n kube-system \
         -o jsonpath='{.data.registry\.json}' 2>/dev/null || echo '{}'
@@ -139,7 +158,23 @@ get_registry() {
 
 # List all nodes
 list_all_nodes() {
-    local registry=$(get_registry)
+    # Check if Config API is running
+    if ! curl -s -o /dev/null -w "%{http_code}" "http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/health" 2>/dev/null | grep -q "200"; then
+        log_error "Config API Server is not running"
+        echo
+        echo "Start it with:"
+        echo "  sudo systemctl start mynodeone-config-api"
+        echo
+        exit 1
+    fi
+    
+    # Fetch nodes from Config API
+    local response=$(fetch_nodes)
+    
+    if [[ -z "$response" ]]; then
+        log_error "No nodes found in registry"
+        exit 1
+    fi
     
     echo "Available nodes:"
     echo
@@ -147,69 +182,61 @@ list_all_nodes() {
     local i=1
     declare -g -A NODE_MAP
     
-    # Management Laptops (exclude control-plane nodes)
-    local laptop_count=$(echo "$registry" | jq '.management_laptops | length')
-    if [[ "$laptop_count" -gt 0 ]]; then
-        local has_laptops=false
-        while IFS='|' read -r name ip status last_seen; do
-            [[ -z "$name" ]] && continue
-            
-            # Check if this node is also a control-plane in cluster_nodes
-            local is_control_plane=$(echo "$registry" | jq -r \
-                --arg name "$name" \
-                '.cluster_nodes[] | select(.name == $name and .role == "control-plane") | .name' 2>/dev/null)
-            
-            # Skip control-plane nodes
-            if [[ -n "$is_control_plane" ]]; then
-                continue
-            fi
-            
-            if [[ "$has_laptops" == "false" ]]; then
-                echo -e "${CYAN}Management Laptops:${NC}"
-                has_laptops=true
-            fi
-            
-            echo "  $i) $name (IP: $ip, Status: $status)"
-            NODE_MAP[$i]="management_laptops|$name|$ip"
-            ((i++))
-        done < <(echo "$registry" | jq -r '.management_laptops[] | "\(.name // "unknown")|\(.ip)|\(.status // "unknown")|\(.last_sync // "never")"')
+    # Get control plane name from ConfigMap to exclude it
+    local registry=$(get_registry)
+    local control_plane_name=$(echo "$registry" | jq -r '.cluster_nodes[] | select(.role == "control-plane") | .name' 2>/dev/null | head -1)
+    
+    # Group nodes by type
+    local has_laptops=false
+    local has_vps=false
+    local has_workers=false
+    
+    # Parse nodes and group by type (use process substitution to avoid subshell)
+    while IFS='|' read -r name type ip status; do
+        [[ -z "$name" ]] && continue
         
-        if [[ "$has_laptops" == "true" ]]; then
-            echo
+        # Skip control-plane node
+        if [[ "$name" == "$control_plane_name" ]]; then
+            continue
         fi
-    fi
-    
-    # VPS Nodes
-    local vps_count=$(echo "$registry" | jq '.vps_nodes | length')
-    if [[ "$vps_count" -gt 0 ]]; then
-        echo -e "${CYAN}VPS Edge Nodes:${NC}"
-        while IFS='|' read -r name ip status last_seen; do
-            [[ -z "$name" ]] && continue
-            echo "  $i) $name (IP: $ip, Status: $status)"
-            NODE_MAP[$i]="vps_nodes|$name|$ip"
-            ((i++))
-        done < <(echo "$registry" | jq -r '.vps_nodes[] | "\(.name // "unknown")|\(.ip)|\(.status // "unknown")|\(.last_sync // "never")"')
-        echo
-    fi
-    
-    # Worker Nodes from cluster_nodes (exclude control-plane)
-    local cluster_worker_count=$(echo "$registry" | jq '[.cluster_nodes[] | select(.role == "worker")] | length')
-    if [[ "$cluster_worker_count" -gt 0 ]]; then
-        echo -e "${CYAN}Worker Nodes:${NC}"
-        while IFS='|' read -r name ip role status; do
-            [[ -z "$name" ]] && continue
-            echo "  $i) $name (IP: $ip, Role: $role, Status: $status)"
-            NODE_MAP[$i]="cluster_nodes|$name|$ip"
-            ((i++))
-        done < <(echo "$registry" | jq -r '.cluster_nodes[] | select(.role == "worker") | "\(.name // "unknown")|\(.tailscale_ip // .ip)|\(.role)|\(.status // "unknown")"')
-        echo
-    fi
+        
+        case "$type" in
+            laptop)
+                if [[ "$has_laptops" == "false" ]]; then
+                    echo -e "${CYAN}Management Laptops:${NC}"
+                    has_laptops=true
+                fi
+                echo "  $i) $name (IP: $ip, Status: $status)"
+                NODE_MAP[$i]="laptop|$name|$ip"
+                ((i++))
+                ;;
+            vps)
+                if [[ "$has_vps" == "false" ]]; then
+                    echo -e "${CYAN}VPS Edge Nodes:${NC}"
+                    has_vps=true
+                fi
+                echo "  $i) $name (IP: $ip, Status: $status)"
+                NODE_MAP[$i]="vps|$name|$ip"
+                ((i++))
+                ;;
+            worker)
+                if [[ "$has_workers" == "false" ]]; then
+                    echo -e "${CYAN}Worker Nodes:${NC}"
+                    has_workers=true
+                fi
+                echo "  $i) $name (IP: $ip, Status: $status)"
+                NODE_MAP[$i]="worker|$name|$ip"
+                ((i++))
+                ;;
+        esac
+    done < <(echo "$response" | jq -r '.nodes[] | "\(.name)|\(.type)|\(.ip)|\(.status)"' 2>/dev/null)
     
     if [[ $i -eq 1 ]]; then
-        log_error "No nodes found in registry"
+        log_error "No removable nodes found"
         exit 1
     fi
     
+    echo
     read -p "Select node to remove (number): " selection
     
     if [[ ! "$selection" =~ ^[0-9]+$ ]] || [[ -z "${NODE_MAP[$selection]:-}" ]]; then
@@ -222,100 +249,59 @@ list_all_nodes() {
 
 # Find node by name or IP
 find_node() {
-    local registry=$(get_registry)
     local search_name="$1"
     local search_ip="$2"
     
+    # Check if Config API is running
+    if ! curl -s -o /dev/null -w "%{http_code}" "http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/health" 2>/dev/null | grep -q "200"; then
+        log_error "Config API Server is not running"
+        exit 1
+    fi
+    
+    # Fetch nodes from Config API
+    local response=$(fetch_nodes)
+    
+    if [[ -z "$response" ]]; then
+        return 1
+    fi
+    
+    # Get control plane name from ConfigMap to exclude it
+    local registry=$(get_registry)
+    local control_plane_name=$(echo "$registry" | jq -r '.cluster_nodes[] | select(.role == "control-plane") | .name' 2>/dev/null | head -1)
+    
     # Try to find by name first
     if [[ -n "$search_name" ]]; then
-        # Check management_laptops (exclude control-plane)
-        local found=$(echo "$registry" | jq -r \
-            --arg name "$search_name" \
-            '.management_laptops[] | select(.name == $name) | "\(.name)|\(.ip)"' 2>/dev/null)
-        
-        if [[ -n "$found" ]]; then
-            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
-            
-            # Check if it's a control-plane node
-            local is_control_plane=$(echo "$registry" | jq -r \
-                --arg name "$NODE_NAME" \
-                '.cluster_nodes[] | select(.name == $name and .role == "control-plane") | .name' 2>/dev/null)
-            
-            if [[ -n "$is_control_plane" ]]; then
-                log_error "Cannot remove control-plane node: $NODE_NAME"
-                exit 1
-            fi
-            
-            NODE_TYPE="management_laptops"
-            return 0
+        # Check if it's the control-plane node
+        if [[ "$search_name" == "$control_plane_name" ]]; then
+            log_error "Cannot remove control-plane node: $search_name"
+            exit 1
         fi
         
-        # Check vps_nodes
-        found=$(echo "$registry" | jq -r \
+        local found=$(echo "$response" | jq -r \
             --arg name "$search_name" \
-            '.vps_nodes[] | select(.name == $name) | "\(.name)|\(.ip)"' 2>/dev/null)
+            '.nodes[] | select(.name == $name) | "\(.name)|\(.type)|\(.ip)"' 2>/dev/null)
         
         if [[ -n "$found" ]]; then
-            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
-            NODE_TYPE="vps_nodes"
-            return 0
-        fi
-        
-        # Check cluster_nodes (workers only)
-        found=$(echo "$registry" | jq -r \
-            --arg name "$search_name" \
-            '.cluster_nodes[] | select(.name == $name and .role == "worker") | "\(.name)|\(.tailscale_ip // .ip)"' 2>/dev/null)
-        
-        if [[ -n "$found" ]]; then
-            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
-            NODE_TYPE="cluster_nodes"
+            IFS='|' read -r NODE_NAME NODE_TYPE NODE_IP <<< "$found"
             return 0
         fi
     fi
     
     # Try to find by IP
     if [[ -n "$search_ip" ]]; then
-        # Check management_laptops (exclude control-plane)
-        local found=$(echo "$registry" | jq -r \
+        local found=$(echo "$response" | jq -r \
             --arg ip "$search_ip" \
-            '.management_laptops[] | select(.ip == $ip) | "\(.name)|\(.ip)"' 2>/dev/null)
+            '.nodes[] | select(.ip == $ip) | "\(.name)|\(.type)|\(.ip)"' 2>/dev/null)
         
         if [[ -n "$found" ]]; then
-            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
+            IFS='|' read -r NODE_NAME NODE_TYPE NODE_IP <<< "$found"
             
-            # Check if it's a control-plane node
-            local is_control_plane=$(echo "$registry" | jq -r \
-                --arg name "$NODE_NAME" \
-                '.cluster_nodes[] | select(.name == $name and .role == "control-plane") | .name' 2>/dev/null)
-            
-            if [[ -n "$is_control_plane" ]]; then
+            # Check if it's the control-plane node
+            if [[ "$NODE_NAME" == "$control_plane_name" ]]; then
                 log_error "Cannot remove control-plane node: $NODE_NAME"
                 exit 1
             fi
             
-            NODE_TYPE="management_laptops"
-            return 0
-        fi
-        
-        # Check vps_nodes
-        found=$(echo "$registry" | jq -r \
-            --arg ip "$search_ip" \
-            '.vps_nodes[] | select(.ip == $ip) | "\(.name)|\(.ip)"' 2>/dev/null)
-        
-        if [[ -n "$found" ]]; then
-            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
-            NODE_TYPE="vps_nodes"
-            return 0
-        fi
-        
-        # Check cluster_nodes (workers only)
-        found=$(echo "$registry" | jq -r \
-            --arg ip "$search_ip" \
-            '.cluster_nodes[] | select((.tailscale_ip // .ip) == $ip and .role == "worker") | "\(.name)|\(.tailscale_ip // .ip)"' 2>/dev/null)
-        
-        if [[ -n "$found" ]]; then
-            IFS='|' read -r NODE_NAME NODE_IP <<< "$found"
-            NODE_TYPE="cluster_nodes"
             return 0
         fi
     fi
@@ -329,40 +315,62 @@ remove_from_registry() {
     local name="$2"
     local ip="$3"
     
-    log_info "Removing $name from registry..."
+    log_info "Removing $name from Config API registry..."
     
-    # Get current registry
-    local registry=$(get_registry)
+    # Remove from Config API
+    local url="http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/nodes/${name}"
+    local response
     
-    # Remove node from appropriate array(s)
-    local updated_registry="$registry"
-    
-    if [[ "$type" == "cluster_nodes" ]]; then
-        # Remove from cluster_nodes array
-        updated_registry=$(echo "$updated_registry" | jq \
-            --arg name "$name" \
-            '.cluster_nodes |= map(select(.name != $name))')
+    if [[ -n "$API_TOKEN" ]]; then
+        response=$(curl -s -X DELETE -H "X-API-Token: $API_TOKEN" "$url" 2>/dev/null)
     else
-        # Remove from specified array (management_laptops, vps_nodes)
-        updated_registry=$(echo "$updated_registry" | jq \
-            --arg type "$type" \
-            --arg name "$name" \
-            'if .[$type] then .[$type] |= map(select(.name != $name)) else . end')
+        response=$(curl -s -X DELETE "$url" 2>/dev/null)
     fi
     
-    # Update metadata
-    updated_registry=$(echo "$updated_registry" | jq \
-        --arg timestamp "$(date -Iseconds)" \
-        --arg updated_by "$(whoami)@$(hostname)" \
-        '.metadata.last_updated = $timestamp | .metadata.updated_by = $updated_by')
+    if echo "$response" | jq -e '.status == "removed"' &>/dev/null; then
+        log_success "Removed from Config API registry"
+    else
+        log_error "Failed to remove from Config API: $response"
+        return 1
+    fi
     
-    # Update ConfigMap
-    kubectl patch configmap sync-controller-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"registry.json\":\"$(echo "$updated_registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+    # Also remove from ConfigMap if present
+    log_info "Removing $name from ConfigMap registry..."
+    local registry=$(get_registry)
     
-    log_success "Removed from registry"
+    # Check if node exists in ConfigMap
+    local in_configmap=false
+    if echo "$registry" | jq -e ".management_laptops[]? | select(.name == \"$name\")" &>/dev/null || \
+       echo "$registry" | jq -e ".vps_nodes[]? | select(.name == \"$name\")" &>/dev/null || \
+       echo "$registry" | jq -e ".cluster_nodes[]? | select(.name == \"$name\")" &>/dev/null; then
+        in_configmap=true
+    fi
+    
+    if [[ "$in_configmap" == "true" ]]; then
+        # Remove from all arrays in ConfigMap
+        local updated_registry="$registry"
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg name "$name" \
+            '.management_laptops |= map(select(.name != $name)) |
+             .vps_nodes |= map(select(.name != $name)) |
+             .cluster_nodes |= map(select(.name != $name))')
+        
+        # Update metadata
+        updated_registry=$(echo "$updated_registry" | jq \
+            --arg timestamp "$(date -Iseconds)" \
+            --arg updated_by "$(whoami)@$(hostname)" \
+            '.metadata.last_updated = $timestamp | .metadata.updated_by = $updated_by')
+        
+        # Update ConfigMap
+        kubectl patch configmap sync-controller-registry \
+            -n kube-system \
+            --type merge \
+            -p "{\"data\":{\"registry.json\":\"$(echo "$updated_registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
+        
+        log_success "Removed from ConfigMap registry"
+    else
+        log_info "Node not found in ConfigMap (already clean)"
+    fi
 }
 
 # Clean SSH known_hosts
@@ -387,7 +395,7 @@ clean_local_config() {
     local name="$2"
     
     case "$type" in
-        vps_nodes)
+        vps)
             local vps_config="$ACTUAL_HOME/.mynodeone/vps-nodes/$name"
             if [[ -d "$vps_config" ]]; then
                 log_info "Removing VPS configuration files..."
@@ -395,11 +403,11 @@ clean_local_config() {
                 log_success "Deleted $vps_config"
             fi
             ;;
-        management_laptops)
+        laptop)
             log_info "No local configuration files to clean for management laptops"
             ;;
-        cluster_nodes)
-            log_info "No local configuration files to clean for cluster nodes"
+        worker)
+            log_info "No local configuration files to clean for worker nodes"
             log_warn "Remember to also run: kubectl delete node $name"
             ;;
     esac

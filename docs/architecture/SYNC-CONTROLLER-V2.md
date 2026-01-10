@@ -15,8 +15,9 @@ This document describes the redesigned sync controller that uses HTTP-based pull
 │   │  (mynodeone-config-api)│        │  (mynodeone-sync-controller)        │ │
 │   │                        │        │                                     │ │
 │   │  • Serves config       │◄───────│  • Watches service-registry         │ │
-│   │  • Receives heartbeats │        │  • Checks which nodes are online    │ │
-│   │  • Tracks node status  │        │  • Pushes via SSH if node offline   │ │
+│   │  • Receives heartbeats │        │  • Syncs service-registry (hourly)  │ │
+│   │  • Tracks node status  │        │  • Checks which nodes are online    │ │
+│   │                        │        │  • Pushes via SSH if node offline   │ │
 │   └────────────────────────┘        └─────────────────────────────────────┘ │
 │             ▲                                        │                       │
 └─────────────┼────────────────────────────────────────┼───────────────────────┘
@@ -37,7 +38,7 @@ This document describes the redesigned sync controller that uses HTTP-based pull
 | Node Type | Services | Purpose |
 |-----------|----------|---------|
 | **Control Plane** | `mynodeone-config-api` | Serves config, tracks heartbeats |
-| **Control Plane** | `mynodeone-sync-controller` | SSH fallback when Node Agent fails |
+| **Control Plane** | `mynodeone-sync-controller` | SSH fallback when Node Agent fails, syncs service-registry hourly |
 | **VPS/Laptop/Worker** | `mynodeone-node-agent` | Pulls config, sends heartbeats |
 
 ### How It Works
@@ -45,7 +46,12 @@ This document describes the redesigned sync controller that uses HTTP-based pull
 1. **Node Agent polls** control plane every 60 seconds for config updates
 2. **Node Agent sends heartbeat** to report online status
 3. **Config API tracks** which nodes are online/stale/offline
-4. **When config changes** (app install/uninstall), sync-controller:
+4. **Sync-controller runs periodic reconciliation** (every 1 hour):
+   - Syncs service-registry (cleanup stale entries, discover new services)
+   - Checks which nodes have active Node Agent (via Config API)
+   - Skips SSH for online nodes (Node Agent will pull)
+   - Uses SSH push for stale/offline nodes
+5. **When config changes** (app install/uninstall), sync-controller:
    - Checks which nodes have active Node Agent (via Config API)
    - Skips SSH for online nodes (Node Agent will pull)
    - Uses SSH push for stale/offline nodes
@@ -380,6 +386,66 @@ Check node heartbeat status via Config API
 All node types install both mechanisms during setup:
 - **Control Plane:** Config API Server + SSH Sync Controller
 - **VPS/Worker/Laptop:** Node Agent (SSH access preserved as fallback)
+
+---
+
+## Service Registry Sync
+
+The sync-controller daemon includes automatic service-registry synchronization as part of its periodic reconciliation loop.
+
+### What It Does
+
+Every hour (configurable), the sync-controller automatically:
+
+1. **Discovers new LoadBalancer services** - Auto-registers services that were installed
+2. **Cleans up stale entries** - Removes services from deleted namespaces
+3. **Updates service-registry ConfigMap** - Keeps registry in sync with cluster state
+4. **Maintains manage-app-visibility.sh accuracy** - Ensures service list is current
+
+### Why This Matters
+
+When you delete a namespace with services:
+- Kubernetes deletes the services ✅
+- **service-registry ConfigMap is NOT automatically updated** ❌
+- Without periodic sync, stale entries remain in `manage-app-visibility.sh`
+
+The periodic sync ensures the service-registry stays in sync with the actual cluster state.
+
+### Implementation
+
+The sync runs as part of the `periodic_reconciliation` function in `sync-controller.sh`:
+
+```bash
+# Sync service registry (cleanup stale entries, discover new services)
+log_info "Syncing service registry..."
+if [[ -f "$SCRIPT_DIR/service-registry.sh" ]]; then
+    if bash "$SCRIPT_DIR/service-registry.sh" sync 2>&1 | grep -q "Synced"; then
+        log_success "Service registry synced"
+    else
+        log_warn "Service registry sync had issues (non-critical)"
+    fi
+fi
+```
+
+### Configuration
+
+The sync interval is controlled by the reconciliation interval (default: 1 hour):
+
+```bash
+# Start daemon with 1-hour reconciliation (includes service-registry sync)
+sudo systemctl start mynodeone-sync-controller
+
+# Or manually specify interval
+/home/vinaysachdeva1/MyNodeOne/scripts/lib/sync-controller.sh daemon 2  # 2 hours
+```
+
+### Manual Sync
+
+If you need to sync immediately (e.g., after deleting namespaces):
+
+```bash
+sudo bash /home/vinaysachdeva1/MyNodeOne/scripts/lib/service-registry.sh sync
+```
 
 ---
 

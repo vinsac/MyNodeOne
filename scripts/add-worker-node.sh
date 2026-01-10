@@ -631,23 +631,17 @@ main() {
     setup_model_directories  # Create model storage for LLM API
     
     # Label node and wait for confirmation from control plane
-    # This MUST happen before Longhorn installation and validation
+    # This MUST happen before kubectl/Longhorn installation
     label_node
     
+    # Configure kubectl - REQUIRED for Longhorn disk configuration
+    # Must run after labels are applied on control plane
+    configure_kubectl_worker
+    
     # Install storage and services
-    install_longhorn  # Interactive Longhorn installation (formats/mounts disks)
+    install_longhorn  # Interactive Longhorn installation (formats/mounts disks, adds to cluster)
     install_minio     # Shows instructions for K8s-based installation from control plane
     install_node_agent  # Starts heartbeat to control plane
-    
-    # Optional: Configure kubectl for admin troubleshooting
-    # Note: Not required for normal operations - node-agent provides health monitoring
-    echo
-    log_info "kubectl setup (optional for troubleshooting):"
-    log_info "  Worker nodes use node-agent for health monitoring and config sync"
-    log_info "  kubectl is only needed for manual debugging from this node"
-    log_info "  To set up kubectl: scp control-plane:/etc/rancher/k3s/k3s.yaml ~/.kube/config"
-    log_info "  Then edit ~/.kube/config to replace 127.0.0.1 with control plane IP"
-    echo
     
     # Run validation tests (after labels are confirmed applied)
     echo

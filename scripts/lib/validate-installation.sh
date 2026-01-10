@@ -252,41 +252,49 @@ validate_worker_node() {
     # Core services
     run_test "K3s agent service running" "systemctl is-active k3s-agent" true
     
-    # Node agent (provides health monitoring without kubectl)
+    # kubectl is REQUIRED for Longhorn disk configuration
+    run_test "kubectl installed" "command -v kubectl" true
+    
+    # Wait for node registration
+    log_info "Checking node registration..."
+    local node_name=$(hostname)
+    local max_wait=60
+    local waited=0
+    
+    while [ $waited -lt $max_wait ]; do
+        if kubectl get node "$node_name" &>/dev/null; then
+            log_success "Node '$node_name' is registered in cluster"
+            break
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    
+    if [ $waited -ge $max_wait ]; then
+        log_error "Node not registered after ${max_wait}s"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    fi
+    
+    # Node status
+    run_test "Node is Ready" "kubectl get nodes $node_name | grep -w Ready" true
+    
+    # Longhorn components
+    run_test "Longhorn components running" "kubectl get pods -n longhorn-system --field-selector spec.nodeName=$node_name | grep -q Running" false
+    
+    # Check if Longhorn disks configured on this node
+    if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null 2>&1; then
+        log_success "Longhorn node resource exists"
+        local disk_count=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | jq '.spec.disks | length' 2>/dev/null || echo "0")
+        log_info "Longhorn disks configured: $disk_count"
+    else
+        log_info "Longhorn node resource not yet created (may still be initializing)"
+    fi
+    
+    # Node agent (provides health monitoring)
     run_test "Node agent service running" "systemctl is-active mynodeone-node-agent" false
     
-    # Check if kubectl is configured (optional for troubleshooting)
-    log_info "Checking kubectl configuration (optional)..."
-    if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null 2>&1; then
-        log_success "kubectl is configured and working"
-        
-        local node_name=$(hostname)
-        
-        # If kubectl works, show additional cluster info
-        if kubectl get node "$node_name" &>/dev/null 2>&1; then
-            log_success "Node '$node_name' is registered in cluster"
-            
-            if kubectl get nodes "$node_name" | grep -qw Ready; then
-                log_success "Node is Ready"
-            else
-                log_warn "Node exists but not Ready yet"
-            fi
-            
-            # Check Longhorn components
-            if kubectl get pods -n longhorn-system --field-selector spec.nodeName="$node_name" 2>/dev/null | grep -q Running; then
-                log_success "Longhorn components running on this node"
-            else
-                log_info "Longhorn components not yet running (may still be starting)"
-            fi
-        else
-            log_info "Node not yet registered in cluster (labels may not be applied yet)"
-        fi
-    else
-        log_info "kubectl not configured (not required - node-agent provides monitoring)"
-        log_info "To set up kubectl for troubleshooting:"
-        log_info "  scp control-plane:/etc/rancher/k3s/k3s.yaml ~/.kube/config"
-        log_info "  sed -i 's/127.0.0.1/<CONTROL_PLANE_IP>/g' ~/.kube/config"
-    fi
+    # Cluster connectivity
+    run_test "Can reach control plane" "kubectl get nodes -o wide" true
     
     echo
 }

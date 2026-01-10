@@ -930,17 +930,23 @@ sudo systemctl restart mynodeone-node-agent
 
 ## kubectl Configuration on Worker Nodes
 
-**Important:** Worker nodes are automatically configured with kubectl access during the join process. This is required for:
-- **MinIO shared credentials**: Workers read admin credentials from Kubernetes secrets
-- **Service registration**: Workers register their MinIO endpoints in the cluster
-- **Storage coordination**: Workers can query cluster state for storage configuration
+**Important:** Worker nodes are automatically configured with kubectl access during the join process. This is **REQUIRED** for:
+- **Longhorn disk configuration**: Adding worker disks to the Longhorn storage pool
+- **Longhorn disk optimization**: Fixing UUID mismatches and optimizing disk reservations
+- **Storage coordination**: Querying cluster state for storage configuration
+- **MinIO shared credentials**: Reading admin credentials from Kubernetes secrets (if using K8s-based MinIO)
+- **Service registration**: Registering MinIO endpoints in the cluster
 
 The installation script automatically:
-1. Copies K3s kubeconfig from `/etc/rancher/k3s/k3s.yaml` to `~/.kube/config`
-2. Sets correct permissions and ownership
-3. Verifies kubectl access to the cluster
+1. Waits for node labels to be applied on control plane
+2. Generates kubeconfig using K3s agent certificates
+3. Creates `~/.kube/config` with proper permissions
+4. Verifies kubectl access to the cluster
+5. Proceeds with Longhorn installation (which requires kubectl to add disks)
 
-**Note:** Worker nodes have read access to cluster resources but cannot modify control plane components.
+**Critical:** kubectl setup happens **after** you apply node labels on the control plane and **before** Longhorn installation. Without kubectl, Longhorn disks will not be added to the cluster.
+
+**Note:** Worker nodes have read/write access to their own Longhorn node resources but cannot modify control plane components.
 
 ---
 

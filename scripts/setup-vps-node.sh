@@ -415,7 +415,3 @@ echo "  2. Check logs: docker logs traefik"
 echo "  3. Point DNS to this VPS: ${VPS_PUBLIC_IP:-your-vps-ip}"
 echo "  4. Check node status: sudo mynodeone-node-agent status"
 echo
-if [ -n "${VPS_DOMAIN:-}" ]; then
-    echo "Traefik dashboard: https://traefik.${VPS_DOMAIN}"
-fi
-echo

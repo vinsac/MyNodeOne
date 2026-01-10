@@ -131,6 +131,21 @@ cmd_create() {
 
 # List API keys
 cmd_list() {
+    local show_full=false
+    
+    # Check for --full flag
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --full)
+                show_full=true
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
     echo ""
     echo -e "${BLUE}API Keys${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -143,8 +158,15 @@ cmd_list() {
         return
     fi
     
-    printf "%-30s %-20s %-25s %-12s %-8s\n" "API KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [ "$show_full" = true ]; then
+        # Show full keys - wider column
+        printf "%-50s %-20s %-25s %-12s %-8s\n" "API KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    else
+        # Show masked keys
+        printf "%-30s %-20s %-25s %-12s %-8s\n" "API KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    fi
     
     echo "$keys" | while read key; do
         local api_key="${key#apikey:}"
@@ -157,14 +179,23 @@ cmd_list() {
             local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
             local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
             
-            # Mask the key
-            local masked_key="${api_key:0:20}...${api_key: -4}"
-            
-            printf "%-30s %-20s %-25s %-12s %-8s\n" "$masked_key" "${name:0:20}" "${scopes:0:25}" "$tokens" "$rpm"
+            if [ "$show_full" = true ]; then
+                # Show full key
+                printf "%-50s %-20s %-25s %-12s %-8s\n" "$api_key" "${name:0:20}" "${scopes:0:25}" "$tokens" "$rpm"
+            else
+                # Mask the key
+                local masked_key="${api_key:0:20}...${api_key: -4}"
+                printf "%-30s %-20s %-25s %-12s %-8s\n" "$masked_key" "${name:0:20}" "${scopes:0:25}" "$tokens" "$rpm"
+            fi
         fi
     done
     
     echo ""
+    
+    if [ "$show_full" = false ]; then
+        echo -e "${YELLOW}Tip: Use 'list --full' to show complete API keys${NC}"
+        echo ""
+    fi
 }
 
 # Show API key details

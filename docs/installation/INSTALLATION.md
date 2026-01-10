@@ -1363,5 +1363,12 @@ kubectl get nodes.longhorn.io -n longhorn-system
 
 **Installation complete! Welcome to MyNodeOne!**
 
-**Next:** See [POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md) for immediate next steps.
+**Next Steps:**
+- [POST_INSTALLATION_GUIDE.md](POST_INSTALLATION_GUIDE.md) - Immediate next steps after installation
+- [Node Management Guide](../operations/NODE-MANAGEMENT.md) - Adding, removing, and managing nodes
+
+**See Also:**
+- [Node Management Guide](../operations/NODE-MANAGEMENT.md) - Comprehensive guide for managing all node types
+- [Uninstall Guide](UNINSTALL.md) - Complete uninstallation instructions
+- [Admin Guide](../guides/ADMIN-GUIDE.md) - Cluster administration
 

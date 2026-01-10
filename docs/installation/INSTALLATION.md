@@ -1210,11 +1210,24 @@ The installer creates a file with commands to label your worker node. Run these 
 
 ```bash
 # ON CONTROL PLANE:
-# The worker machine will show you these commands, or run:
-kubectl label node worker-01 node-role.kubernetes.io/worker=true --overwrite
-kubectl label node worker-01 mynodeone.io/storage=true --overwrite
+# The worker machine will show you these commands, or check ~/mynodeone-node-labels.txt on the worker
+# Apply all labels in one command:
+kubectl label node <NODE_NAME> \
+  node-role.kubernetes.io/worker=true \
+  mynodeone.io/location=<LOCATION> \
+  mynodeone.io/storage=true \
+  mynodeone.io/worker-ip=<TAILSCALE_IP> \
+  mynodeone.io/ssh-user=<SSH_USERNAME> \
+  --overwrite
 
-# Replace 'worker-01' with your actual node name
+# Example:
+# kubectl label node canada-pc-0001-1 \
+#   node-role.kubernetes.io/worker=true \
+#   mynodeone.io/location=home \
+#   mynodeone.io/storage=true \
+#   mynodeone.io/worker-ip=100.90.70.25 \
+#   mynodeone.io/ssh-user=vinaysachdeva \
+#   --overwrite
 ```
 
 ### Step 4: Verify Worker Node is Ready

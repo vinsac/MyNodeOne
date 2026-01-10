@@ -424,6 +424,64 @@ add_additional_disks() {
     log_success "Additional disks configured"
 }
 
+# Fix disk UUID mismatches (when disks are reformatted)
+fix_disk_uuid_mismatches() {
+    log_info "Checking for disk UUID mismatches..."
+    
+    # Wait for Longhorn to detect disks
+    sleep 5
+    
+    # Check if kubectl is available
+    if ! kubectl get nodes &>/dev/null; then
+        log_info "kubectl not available - UUID mismatch check skipped"
+        return 0
+    fi
+    
+    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [[ -z "$node_name" ]]; then
+        log_warn "Could not detect node name, skipping UUID mismatch check"
+        return 0
+    fi
+    
+    # Check if Longhorn node exists
+    if ! kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
+        log_info "Longhorn node not yet created, skipping UUID check"
+        return 0
+    fi
+    
+    # Check for UUID mismatch errors
+    local has_mismatch=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | \
+        jq -r '.status.diskStatus // {} | to_entries[] | select(.value.conditions[]?.reason == "DiskFilesystemChanged") | .key' | head -1)
+    
+    if [[ -n "$has_mismatch" ]]; then
+        log_warn "Detected disk UUID mismatch (disk was reformatted)"
+        log_info "Recreating Longhorn node resource to fix UUID mismatch..."
+        
+        # Delete the Longhorn node resource (it will be auto-recreated)
+        kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null || true
+        
+        # Wait for Longhorn to recreate the node
+        log_info "Waiting for Longhorn to recreate node resource..."
+        local max_wait=30
+        local waited=0
+        while [ $waited -lt $max_wait ]; do
+            if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
+                log_success "Longhorn node recreated successfully"
+                sleep 5  # Give it time to initialize
+                return 0
+            fi
+            sleep 2
+            waited=$((waited + 2))
+        done
+        
+        log_warn "Longhorn node not recreated within ${max_wait}s, continuing anyway"
+    else
+        log_success "No disk UUID mismatches detected"
+    fi
+    
+    return 0
+}
+
 # Fix disk reservations (reduce from default 30% to optimal 5-10%)
 fix_disk_reservations() {
     log_info "Optimizing disk reservations..."
@@ -577,6 +635,9 @@ main() {
     
     # Add additional disks
     add_additional_disks
+    
+    # Fix disk UUID mismatches (if disks were reformatted)
+    fix_disk_uuid_mismatches
     
     # Fix disk reservations (reduce from default 30% to 5% for large disks)
     fix_disk_reservations

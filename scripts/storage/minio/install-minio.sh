@@ -421,76 +421,111 @@ select_disks_for_minio() {
         
         log_info "Formatting $device on $TARGET_NODE..."
         
-        # Create format script (use GPT for disks >2TB)
-        # Note: This entire script will be run with sudo on remote node
-        local format_script="
+        # Create format script in temp file to avoid shell escaping issues
+        local temp_script="/tmp/minio-format-${disk_name}.sh"
+        
+        cat > "$temp_script" <<'EOFSCRIPT'
+#!/bin/bash
 set -e
 
-# Comprehensive disk cleanup
-echo 'Cleaning up $device...'
+DEVICE="$1"
+MOUNT_POINT="$2"
+
+echo "Cleaning up $DEVICE..."
 
 # Kill any processes using the disk
-fuser -km ${device}* 2>/dev/null || true
+fuser -km ${DEVICE}* 2>/dev/null || true
 sleep 1
 
 # Disable swap if disk is used for swap
-swapoff ${device}* 2>/dev/null || true
+swapoff ${DEVICE}* 2>/dev/null || true
 
 # Remove any device mapper mappings
-for dm in \$(ls /dev/mapper/ 2>/dev/null | grep -E '$(basename ${device})'); do
-    dmsetup remove \$dm 2>/dev/null || true
+for dm in $(ls /dev/mapper/ 2>/dev/null | grep -E "$(basename ${DEVICE})"); do
+    dmsetup remove $dm 2>/dev/null || true
 done
 
 # Force unmount all partitions
-for part in ${device}*; do
-    [ -b "\$part" ] && umount -f \$part 2>/dev/null || true
+for part in ${DEVICE}*; do
+    [ -b "$part" ] && umount -f $part 2>/dev/null || true
 done
 sleep 1
 
 # Wipe filesystem signatures
-wipefs -a -f ${device} 2>/dev/null || wipefs -a ${device}
+echo "Wiping $DEVICE..."
+wipefs -a -f ${DEVICE} 2>/dev/null || wipefs -a ${DEVICE}
+
 # Use parted with GPT for large disks (>2TB)
-parted -s ${device} mklabel gpt
-parted -s ${device} mkpart primary ext4 0% 100%
-partprobe ${device} 2>/dev/null || true
+echo "Creating partition on $DEVICE..."
+parted -s ${DEVICE} mklabel gpt
+parted -s ${DEVICE} mkpart primary ext4 0% 100%
+partprobe ${DEVICE} 2>/dev/null || true
 sleep 2
-partition='${device}1'
-if [ ! -b \"\$partition\" ]; then
-    partition='${device}'
+
+# Determine partition name
+partition="${DEVICE}1"
+if [ ! -b "$partition" ]; then
+    partition="${DEVICE}"
 fi
-mkfs.ext4 -F \"\$partition\"
-# Set reserved blocks using Longhorn's strategy:
-# >1TB: min(5%, 250GB), <1TB: 10%
-partition_size=\$(blockdev --getsize64 \"\$partition\")
-if [ \$partition_size -gt 1099511627776 ]; then
+
+echo "Formatting $partition..."
+mkfs.ext4 -F "$partition"
+
+# Set reserved blocks using Longhorn's strategy: >1TB: min(5%, 250GB), <1TB: 10%
+partition_size=$(blockdev --getsize64 "$partition")
+if [ $partition_size -gt 1099511627776 ]; then
     # >1TB: 5% or 250GB, whichever is smaller
-    reserved_bytes=\$(awk \"BEGIN {reserved = \$partition_size * 0.05; if (reserved > 268435456000) reserved = 268435456000; printf \\\"%.0f\\\", reserved}\")
+    reserved_bytes=$(awk "BEGIN {reserved = $partition_size * 0.05; if (reserved > 268435456000) reserved = 268435456000; printf \"%.0f\", reserved}")
 else
     # <1TB: 10%
-    reserved_bytes=\$(awk \"BEGIN {printf \\\"%.0f\\\", (\$partition_size * 0.10)}\")
+    reserved_bytes=$(awk "BEGIN {printf \"%.0f\", ($partition_size * 0.10)}")
 fi
-reserved_blocks=\$(awk \"BEGIN {printf \\\"%.0f\\\", (\$reserved_bytes / 4096)}\")
-tune2fs -r \$reserved_blocks \"\$partition\"
-mkdir -p ${mount_point}
-mount \"\$partition\" ${mount_point}
-uuid=\$(blkid -s UUID -o value \"\$partition\")
-if ! grep -q \"\$uuid\" /etc/fstab; then
-    echo \"UUID=\$uuid ${mount_point} ext4 defaults 0 0\" >> /etc/fstab
+reserved_blocks=$(awk "BEGIN {printf \"%.0f\", ($reserved_bytes / 4096)}")
+
+echo "Setting reserved blocks: $reserved_blocks"
+tune2fs -r $reserved_blocks "$partition"
+
+# Mount partition
+echo "Mounting $partition at $MOUNT_POINT..."
+mkdir -p "$MOUNT_POINT"
+mount "$partition" "$MOUNT_POINT"
+
+# Add to fstab
+uuid=$(blkid -s UUID -o value "$partition")
+if ! grep -q "$uuid" /etc/fstab; then
+    echo "UUID=$uuid $MOUNT_POINT ext4 defaults 0 0" >> /etc/fstab
 fi
-echo ${mount_point}
-"
+
+echo "$MOUNT_POINT"
+EOFSCRIPT
         
-        # Execute format script with sudo (required for disk operations)
+        chmod +x "$temp_script"
+        
+        # Copy script to remote node if needed
         if [ "$REMOTE_EXEC" = true ]; then
-            if ! ssh $SSH_OPTS "$TARGET_USER@$TARGET_NODE" "sudo bash -c '$format_script'"; then
-                log_error "Failed to format $device"
-                return 1
-            fi
+            scp $SSH_OPTS "$temp_script" "$TARGET_USER@$TARGET_NODE:$temp_script" >/dev/null
+        fi
+        
+        # Execute format script with sudo
+        local result
+        if [ "$REMOTE_EXEC" = true ]; then
+            result=$(ssh $SSH_OPTS "$TARGET_USER@$TARGET_NODE" "sudo bash $temp_script '$device' '$mount_point' 2>&1")
         else
-            if ! sudo bash -c "$format_script"; then
-                log_error "Failed to format $device"
-                return 1
-            fi
+            result=$(sudo bash "$temp_script" "$device" "$mount_point" 2>&1)
+        fi
+        
+        local exit_code=$?
+        
+        # Cleanup temp script
+        rm -f "$temp_script"
+        if [ "$REMOTE_EXEC" = true ]; then
+            ssh $SSH_OPTS "$TARGET_USER@$TARGET_NODE" "rm -f $temp_script" 2>/dev/null || true
+        fi
+        
+        if [ $exit_code -ne 0 ]; then
+            log_error "Failed to format $device"
+            echo "$result"
+            return 1
         fi
         
         mounted_disks+=("$mount_point")

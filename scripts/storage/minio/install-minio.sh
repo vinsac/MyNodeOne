@@ -422,10 +422,33 @@ select_disks_for_minio() {
         log_info "Formatting $device on $TARGET_NODE..."
         
         # Create format script (use GPT for disks >2TB)
+        # Note: This entire script will be run with sudo on remote node
         local format_script="
 set -e
-umount ${device}* 2>/dev/null || true
-wipefs -a ${device}
+
+# Comprehensive disk cleanup
+echo 'Cleaning up $device...'
+
+# Kill any processes using the disk
+fuser -km ${device}* 2>/dev/null || true
+sleep 1
+
+# Disable swap if disk is used for swap
+swapoff ${device}* 2>/dev/null || true
+
+# Remove any device mapper mappings
+for dm in \$(ls /dev/mapper/ 2>/dev/null | grep -E '$(basename ${device})'); do
+    dmsetup remove \$dm 2>/dev/null || true
+done
+
+# Force unmount all partitions
+for part in ${device}*; do
+    [ -b "\$part" ] && umount -f \$part 2>/dev/null || true
+done
+sleep 1
+
+# Wipe filesystem signatures
+wipefs -a -f ${device} 2>/dev/null || wipefs -a ${device}
 # Use parted with GPT for large disks (>2TB)
 parted -s ${device} mklabel gpt
 parted -s ${device} mkpart primary ext4 0% 100%
@@ -457,9 +480,17 @@ fi
 echo ${mount_point}
 "
         
-        if ! exec_cmd "$format_script"; then
-            log_error "Failed to format $device"
-            return 1
+        # Execute format script with sudo (required for disk operations)
+        if [ "$REMOTE_EXEC" = true ]; then
+            if ! ssh $SSH_OPTS "$TARGET_USER@$TARGET_NODE" "sudo bash -c '$format_script'"; then
+                log_error "Failed to format $device"
+                return 1
+            fi
+        else
+            if ! sudo bash -c "$format_script"; then
+                log_error "Failed to format $device"
+                return 1
+            fi
         fi
         
         mounted_disks+=("$mount_point")

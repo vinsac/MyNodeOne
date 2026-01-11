@@ -995,7 +995,7 @@ save_credentials() {
         return 1
     fi
     
-    local CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-atomcloud.local}"
+    local CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
     local MINIO_DNS="minio-${NODE_NAME}.${CLUSTER_DOMAIN}"
     local CONSOLE_DNS="minio-console-${NODE_NAME}.${CLUSTER_DOMAIN}"
     

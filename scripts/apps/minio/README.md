@@ -20,7 +20,7 @@ MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 
 ✅ **Cluster-Wide Access**
 - LoadBalancer IP from MetalLB
-- `.local` domain: `minio-<nodename>.minicloud.local`
+- `.local` domain: `minio-<nodename>.mynodeone.local`
 - Accessible from anywhere in cluster
 - Can be exposed via VPS
 
@@ -64,7 +64,7 @@ sudo ./scripts/apps/minio/install-minio.sh
 
 Result:
 - Namespace: `minio-canada-pc-0001-1`
-- Domain: `minio-canada-pc-0001-1.minicloud.local`
+- Domain: `minio-canada-pc-0001-1.mynodeone.local`
 - Credentials: Saved to `~/minio-canada-pc-0001-1-credentials.txt`
 
 ### Example: Install on Control Plane
@@ -78,7 +78,7 @@ sudo ./scripts/apps/minio/install-minio.sh
 
 Result:
 - Namespace: `minio-canada-pc-0001`
-- Domain: `minio-canada-pc-0001.minicloud.local`
+- Domain: `minio-canada-pc-0001.mynodeone.local`
 - Credentials: Saved to `~/minio-canada-pc-0001-credentials.txt`
 
 ## Access
@@ -87,10 +87,10 @@ Result:
 
 ```bash
 # API endpoint
-curl http://minio-<nodename>.minicloud.local:9000/minio/health/live
+curl http://minio-<nodename>.mynodeone.local:9000/minio/health/live
 
 # Console (web UI)
-open http://minio-<nodename>.minicloud.local:9001
+open http://minio-<nodename>.mynodeone.local:9001
 ```
 
 ### Via LoadBalancer IP

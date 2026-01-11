@@ -906,7 +906,7 @@ curl -X POST https://llmapi.curiios.com/v1/chat/completions \
 ```
 
 **Rule:**
-- **Local domain** (`*.minicloud.local`, `*.cluster.local`): Use `http://`
+- **Local domain** (`*.mynodeone.local`, `*.cluster.local`): Use `http://`
 - **Public domain** (`*.yourdomain.com`): Use `https://`
 
 ---

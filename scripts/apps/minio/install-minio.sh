@@ -72,7 +72,7 @@ echo ""
 # Validate prerequisites
 if ! command -v kubectl &> /dev/null; then
     log_error "kubectl not found. Please install Kubernetes first."
-    echo "Run: sudo ./scripts/bootstrap-control-plane.sh"
+    echo "Run: sudo ./scripts/installation/bootstrap-control-plane.sh"
     exit 1
 fi
 

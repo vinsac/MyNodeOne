@@ -41,7 +41,7 @@
 
 **Changes Needed:**
 
-**File:** `scripts/add-worker-node.sh`
+**File:** `scripts/nodes/add-worker-node.sh`
 - Remove any `disable_longhorn_on_worker()` calls
 - Ensure `install_longhorn()` is called during worker setup
 - Verify Longhorn adds worker disks to storage pool
@@ -394,7 +394,7 @@ nslookup minio-canada-pc-0001-1.mynodeone.local
 **Tasks:**
 
 #### 5.1 Remove Velero from Control Plane Bootstrap
-- File: `scripts/bootstrap-control-plane.sh`
+- File: `scripts/installation/bootstrap-control-plane.sh`
 - Remove `install_velero()` function call
 - Remove Velero-related installation scripts
 
@@ -403,7 +403,7 @@ nslookup minio-canada-pc-0001-1.mynodeone.local
 - Delete: `scripts/storage/configure-velero-backup.sh` (if exists)
 
 #### 5.3 Remove Velero from Worker Node
-- File: `scripts/add-worker-node.sh`
+- File: `scripts/nodes/add-worker-node.sh`
 - Remove `configure_velero_backup()` function call
 - Remove Velero-related configuration
 
@@ -425,7 +425,7 @@ nslookup minio-canada-pc-0001-1.mynodeone.local
 cd ~/MyNodeOne
 
 # Add worker node (with MinIO)
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 # Select "yes" for MinIO
 # Select disk for MinIO (separate from Longhorn)
 
@@ -527,7 +527,7 @@ mc ls control/
 #### 6.6 VPS Exposure (Optional)
 ```bash
 # Setup proxy to MinIO
-bash scripts/setup-app-proxy.sh \
+bash scripts/setup/setup-app-proxy.sh \
   --app-name minio-worker \
   --service-namespace minio-<worker-name> \
   --service-name minio \

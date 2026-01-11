@@ -303,20 +303,20 @@ kubectl get configmap sync-controller-registry -n kube-system \
 
 ```bash
 # Management laptop
-sudo ./scripts/setup-management-laptop.sh
+sudo ./scripts/setup/setup-management-laptop.sh
 
 # VPS node
-sudo ./scripts/install-vps-edge-node.sh
+sudo ./scripts/installation/install-vps-edge-node.sh
 
 # Worker node (Kubernetes)
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 ```
 
 ### **Remove Node**
 
 ```bash
 # Any node type
-sudo ./scripts/remove-node.sh <node-name>
+sudo ./scripts/nodes/remove-node.sh <node-name>
 
 # Kubernetes worker (also remove from k8s)
 kubectl delete node <node-name>
@@ -326,7 +326,7 @@ kubectl delete node <node-name>
 
 ```bash
 # All nodes (from Config API)
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 
 # Kubernetes nodes only
 kubectl get nodes

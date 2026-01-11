@@ -61,7 +61,7 @@ The previous installation flow had a confusing double-prompt for disk selection:
 
 ## Changes Made
 
-### 1. Removed OLD Disk Selection from `scripts/install-mynodeone.sh`
+### 1. Removed OLD Disk Selection from `scripts/installation/install-mynodeone.sh`
 
 **Before (lines 1462-1524):**
 ```bash
@@ -405,9 +405,9 @@ main() {
 
 ### ✅ Syntax Validation
 ```bash
-bash -n scripts/install-mynodeone.sh                              ✓
-bash -n scripts/interactive-setup.sh                   ✓
-bash -n scripts/bootstrap-control-plane.sh             ✓
+bash -n scripts/installation/install-mynodeone.sh                              ✓
+bash -n scripts/installation/interactive-setup.sh                   ✓
+bash -n scripts/installation/bootstrap-control-plane.sh             ✓
 bash -n scripts/storage/longhorn/install-interactive.sh ✓
 bash -n scripts/storage/minio/install-interactive.sh   ✓
 ```
@@ -416,7 +416,7 @@ bash -n scripts/storage/minio/install-interactive.sh   ✓
 
 1. **Test with 2 separate drives:**
    ```bash
-   sudo ./scripts/install-mynodeone.sh
+   sudo ./scripts/installation/install-mynodeone.sh
    # Select drive 1 for Longhorn
    # Select drive 2 for MinIO
    # Verify both installed correctly
@@ -424,7 +424,7 @@ bash -n scripts/storage/minio/install-interactive.sh   ✓
 
 2. **Test with 1 drive:**
    ```bash
-   sudo ./scripts/install-mynodeone.sh
+   sudo ./scripts/installation/install-mynodeone.sh
    # Select drive for Longhorn
    # Skip MinIO or use OS disk
    # Verify Longhorn works
@@ -432,7 +432,7 @@ bash -n scripts/storage/minio/install-interactive.sh   ✓
 
 3. **Test with no separate drives:**
    ```bash
-   sudo ./scripts/install-mynodeone.sh
+   sudo ./scripts/installation/install-mynodeone.sh
    # Longhorn: Skip disk setup → uses /var/lib/longhorn
    # MinIO: Skip → not installed
    # Verify OS disk storage works
@@ -440,7 +440,7 @@ bash -n scripts/storage/minio/install-interactive.sh   ✓
 
 4. **Test worker node:**
    ```bash
-   sudo ./scripts/install-mynodeone.sh
+   sudo ./scripts/installation/install-mynodeone.sh
    # Select worker node type
    # Verify Longhorn installer runs on worker too
    # Verify MinIO optional on worker
@@ -487,7 +487,7 @@ bash -n scripts/storage/minio/install-interactive.sh   ✓
 
 ## Files Modified
 
-1. **`scripts/install-mynodeone.sh`**
+1. **`scripts/installation/install-mynodeone.sh`**
    - Removed lines 1462-1524 (OLD disk detection/setup)
    - Added clear storage info message (lines 1463-1468)
    - Updated header comments

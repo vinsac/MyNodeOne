@@ -38,7 +38,7 @@ sudo k3s agent --server https://... --token ...
 
 Or use the helper script:
 ```bash
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 ```
 
 For detailed instructions, see [Worker Node Installation](../installation/INSTALLATION.md#section-4-worker-node-installation).
@@ -189,7 +189,7 @@ After reboot, these services start automatically:
 If using external USB drives for storage, run this fix once to ensure proper boot order:
 
 ```bash
-sudo ./scripts/fix-usb-disk-boot.sh
+sudo ./scripts/utils/fix-usb-disk-boot.sh
 ```
 
 This ensures K3s waits for USB drives to be detected and mounted before starting.

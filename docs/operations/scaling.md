@@ -30,7 +30,7 @@ sudo tailscale up
 # On your second machine (worker node)
 git clone <mynodeone-repo-url>
 cd mynodeone
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 ```
 
 The script will:
@@ -86,7 +86,7 @@ Same process as node-002!
 
 ```bash
 # On your third machine
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 
 # On control plane
 kubectl label node node-003 node-role.kubernetes.io/worker=true
@@ -274,7 +274,7 @@ Add more Contabo VPS or other providers:
 # On new VPS
 git clone <mynodeone-repo>
 cd mynodeone
-sudo ./scripts/setup-edge-node.sh
+sudo ./scripts/setup/setup-edge-node.sh
 ```
 
 ### DNS Load Balancing

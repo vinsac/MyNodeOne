@@ -29,7 +29,7 @@ Before opening an issue, check if it already exists. Include:
 Before submitting, test your changes:
 ```bash
 # Test on a clean Ubuntu 24.04 system
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 ```
 
 ## Pull Requests

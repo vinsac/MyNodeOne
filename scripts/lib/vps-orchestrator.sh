@@ -429,7 +429,7 @@ orchestrate_vps_installation() {
     # Step 7: Set proper permissions on VPS
     print_info "Setting proper permissions on VPS..."
     execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod 600 $remote_home/.mynodeone/config.env" || return 1
-    execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/install-mynodeone.sh" || return 1
+    execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/installation/install-mynodeone.sh" || return 1
     execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/*.sh" || return 1
     execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/lib/*.sh" 2>/dev/null || true
     echo
@@ -443,13 +443,13 @@ orchestrate_vps_installation() {
     echo
     
     local ssh_key="$ACTUAL_HOME/.ssh/mynodeone_vps_installer"
-    if ! sudo -u "$ACTUAL_USER" ssh -i "$ssh_key" -t "$vps_user@$vps_tailscale_ip" "cd $remote_mynodeone && sudo ./scripts/install-mynodeone.sh --config-file $remote_home/.mynodeone/config.env"; then
+    if ! sudo -u "$ACTUAL_USER" ssh -i "$ssh_key" -t "$vps_user@$vps_tailscale_ip" "cd $remote_mynodeone && sudo ./scripts/installation/install-mynodeone.sh --config-file $remote_home/.mynodeone/config.env"; then
         print_error "VPS installation failed"
         echo
         echo "Troubleshooting:"
         echo "  1. SSH into VPS: ssh $vps_user@$vps_tailscale_ip"
         echo "  2. Check logs: journalctl -xe"
-        echo "  3. Re-run manually: cd $remote_mynodeone && sudo ./scripts/install-mynodeone.sh --config-file $remote_home/.mynodeone/config.env"
+        echo "  3. Re-run manually: cd $remote_mynodeone && sudo ./scripts/installation/install-mynodeone.sh --config-file $remote_home/.mynodeone/config.env"
         return 1
     fi
     

@@ -69,7 +69,7 @@ Nodes automatically register via the Node Agent heartbeat system. Check status:
 
 ```bash
 # View all nodes and their sync status (requires sudo)
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 ```
 
 > **Note:** The Node Agent (HTTP-based sync) is the primary mechanism. Each node pulls config from the control plane and sends heartbeats. SSH-based sync is only used as a fallback if the Node Agent is not working on a node.
@@ -226,7 +226,7 @@ sudo ./scripts/lib/sync-controller.sh push
 sudo ./scripts/sync-dns.sh
 
 # On VPS
-sudo ./scripts/sync-vps-routes.sh
+sudo ./scripts/vps/sync-vps-routes.sh
 ```
 
 ---
@@ -307,7 +307,7 @@ sudo ./scripts/lib/multi-domain-registry.sh show  # View config
 sudo ./scripts/sync-dns.sh                        # Manual sync
 
 # VPS
-sudo ./scripts/sync-vps-routes.sh                 # Manual sync
+sudo ./scripts/vps/sync-vps-routes.sh                 # Manual sync
 ```
 
 ---

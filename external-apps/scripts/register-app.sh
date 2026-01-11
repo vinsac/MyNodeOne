@@ -270,13 +270,13 @@ if [[ "$MAKE_PUBLIC" == "true" ]]; then
     echo "🌐 Public Access:"
     echo "   Your app is marked as public"
     echo "   Configure domain routing with:"
-    echo "   sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
+    echo "   sudo $PROJECT_ROOT/scripts/operations/manage-app-visibility.sh"
     echo ""
 else
     echo "🔒 Private Access:"
     echo "   Your app is currently private (local network only)"
     echo "   To enable public access, run:"
-    echo "   sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
+    echo "   sudo $PROJECT_ROOT/scripts/operations/manage-app-visibility.sh"
     echo ""
 fi
 

@@ -191,7 +191,7 @@ To make Mattermost accessible from the internet:
 
 ### **1. Configure Domain**
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 ### **2. Select Mattermost**

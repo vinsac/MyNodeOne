@@ -158,14 +158,14 @@ cd MyNodeOne
 # After:  username@computername:~/MyNodeOne$
 ```
 
-### 5. `sudo ./scripts/install-mynodeone.sh`
+### 5. `sudo ./scripts/installation/install-mynodeone.sh`
 
 **What it does:** Runs the main MyNodeOne installer  
 **Time:** 30-45 minutes  
 **Interactive:** Will ask you questions - read and answer them
 
 ```bash
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 # This starts the installation wizard
 # You'll see a welcome screen and prompts
 ```
@@ -292,7 +292,7 @@ Here's how long each step typically takes:
 | **apt install git** | 30 sec - 2 min | Downloads and installs git |
 | **git clone** | 5-30 seconds | Downloads MyNodeOne code |
 | **cd MyNodeOne** | Instant | Changes to MyNodeOne folder |
-| **./scripts/install-mynodeone.sh** | 30-45 minutes | Interactive installation |
+| **./scripts/installation/install-mynodeone.sh** | 30-45 minutes | Interactive installation |
 
 **Total time:** Plan for 1 hour start to finish
 

@@ -56,7 +56,7 @@ When you install a VPS edge node using the orchestrated installation flow, metad
 
 ```bash
 # From control plane
-sudo ./scripts/install-vps-edge-node.sh \
+sudo ./scripts/installation/install-vps-edge-node.sh \
   --name vps-edge-0001 \
   --ip 100.99.197.116 \
   --user sammy \
@@ -81,7 +81,7 @@ Run this command on the VPS to update its own metadata:
 
 ```bash
 # On the VPS
-sudo ./scripts/update-vps-metadata.sh
+sudo ./scripts/nodes/update-vps-metadata.sh
 ```
 
 This will:
@@ -95,7 +95,7 @@ Run this command on the control plane to update a remote VPS:
 
 ```bash
 # On control plane
-sudo ./scripts/update-vps-metadata.sh --name vps-edge-0001 --ip 100.99.197.116
+sudo ./scripts/nodes/update-vps-metadata.sh --name vps-edge-0001 --ip 100.99.197.116
 ```
 
 This will:
@@ -196,7 +196,7 @@ Set up automatic metadata updates on the VPS:
 sudo crontab -e
 
 # Add this line to update metadata daily at 3 AM
-0 3 * * * /home/sammy/mynodeone/scripts/update-vps-metadata.sh >> /var/log/mynodeone-metadata-update.log 2>&1
+0 3 * * * /home/sammy/mynodeone/scripts/nodes/update-vps-metadata.sh >> /var/log/mynodeone-metadata-update.log 2>&1
 ```
 
 ### Automatic Updates via Node Agent
@@ -274,7 +274,7 @@ If you have VPS nodes registered with the old basic registration (without compre
 
 ```bash
 # Update existing VPS with comprehensive metadata
-sudo ./scripts/update-vps-metadata.sh --name vps-edge-0001 --ip 100.99.197.116
+sudo ./scripts/nodes/update-vps-metadata.sh --name vps-edge-0001 --ip 100.99.197.116
 ```
 
 This will:

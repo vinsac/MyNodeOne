@@ -189,7 +189,7 @@ ls
 
 ```bash
 # Run the installer
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 ```
 
 **Interactive prompts:**
@@ -223,7 +223,7 @@ Next steps:
 
 ```bash
 cd ~/MyNodeOne
-sudo ./scripts/enable-security-hardening.sh
+sudo ./scripts/setup/enable-security-hardening.sh
 ```
 
 **This enables:**
@@ -287,7 +287,7 @@ The installation automatically configures passwordless sudo for your user. This 
 
 If for any reason it wasn't configured, run:
 ```bash
-sudo ./scripts/setup-control-plane-sudo.sh
+sudo ./scripts/setup/setup-control-plane-sudo.sh
 ```
 
 **Next Steps - Choose What You Need:**
@@ -443,7 +443,7 @@ Fast, non-interactive installation with all parameters in one command:
 # ON YOUR CONTROL PLANE:
 cd ~/MyNodeOne
 
-sudo ./scripts/install-vps-edge-node.sh \
+sudo ./scripts/installation/install-vps-edge-node.sh \
   --name "vps-edge-01" \
   --ip "100.80.255.123" \
   --user "sammy" \
@@ -469,7 +469,7 @@ Step-by-step with prompts:
 ```bash
 # ON YOUR CONTROL PLANE:
 cd ~/MyNodeOne
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 ```
 
 When prompted:
@@ -566,14 +566,14 @@ Use the `manage-app-visibility.sh` script to expose services:
 cd ~/MyNodeOne
 
 # Make demo app public
-sudo ./scripts/manage-app-visibility.sh public demo yourdomain.com YOUR_VPS_TAILSCALE_IP
+sudo ./scripts/operations/manage-app-visibility.sh public demo yourdomain.com YOUR_VPS_TAILSCALE_IP
 
 # Make LLM chat public (Open WebUI)
-sudo ./scripts/manage-app-visibility.sh public open-webui yourdomain.com YOUR_VPS_TAILSCALE_IP
+sudo ./scripts/operations/manage-app-visibility.sh public open-webui yourdomain.com YOUR_VPS_TAILSCALE_IP
 
 # Example with actual values:
-sudo ./scripts/manage-app-visibility.sh public demo example.com 100.80.255.123
-sudo ./scripts/manage-app-visibility.sh public open-webui example.com 100.80.255.123
+sudo ./scripts/operations/manage-app-visibility.sh public demo example.com 100.80.255.123
+sudo ./scripts/operations/manage-app-visibility.sh public open-webui example.com 100.80.255.123
 ```
 
 In these commands:
@@ -586,7 +586,7 @@ In these commands:
 You can also run the script with no arguments to use the interactive wizard:
 
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 The wizard lets you choose the app, domains, and VPS nodes from menus instead of passing them on the command line.
@@ -614,7 +614,7 @@ The sync system automatically propagates configuration changes to all nodes:
 
 - **When you deploy/remove apps**: Service registry is updated
 - **When you make services public**: Configuration is pushed to VPS
-- **Check node status**: `./scripts/nodes-status.sh`
+- **Check node status**: `./scripts/nodes/nodes-status.sh`
 
 **How it works:**
 1. Control plane maintains service registry in Kubernetes ConfigMap
@@ -626,7 +626,7 @@ The sync system automatically propagates configuration changes to all nodes:
 **Node status:**
 ```bash
 # View all nodes and their sync status (requires sudo to read API token)
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 ```
 
 ---
@@ -696,7 +696,7 @@ git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
 # Run installation:
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 # Select Option 4: Management Workstation
 ```
 
@@ -737,12 +737,12 @@ sudo ./scripts/install-mynodeone.sh
 ```bash
 # On management laptop (run from MyNodeOne directory):
 cd ~/MyNodeOne
-./scripts/setup-management-laptop-ssh.sh \
+./scripts/setup/setup-management-laptop-ssh.sh \
     <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
     <laptop-user> LAPTOP_TAILSCALE_IP
 
 # Example:
-./scripts/setup-management-laptop-ssh.sh \
+./scripts/setup/setup-management-laptop-ssh.sh \
     your-username 100.115.64.91 \
     your-username 100.120.243.100
 ```
@@ -858,7 +858,7 @@ sudo -n echo "Works"
 ```bash
 # On laptop:
 cd ~/MyNodeOne
-./scripts/setup-management-laptop-ssh.sh \
+./scripts/setup/setup-management-laptop-ssh.sh \
     <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
     <laptop-user> LAPTOP_TAILSCALE_IP
 
@@ -876,7 +876,7 @@ cd ~/MyNodeOne
 ```bash
 # 1. Check if laptop is registered and online
 # On control plane (requires sudo):
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 # Should show your laptop with status "online"
 
 # 2. Check if Node Agent service is running
@@ -1175,7 +1175,7 @@ ls
 
 ```bash
 # Run the installer
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 ```
 
 **Interactive prompts:**
@@ -1249,7 +1249,7 @@ sudo kubectl get nodes -o wide
 # Shows IPs, roles, versions
 
 # Verify Node Agent is running
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 # Should show worker node as "online"
 ```
 

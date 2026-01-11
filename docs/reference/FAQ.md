@@ -28,7 +28,7 @@ MyNodeOne includes several built-in security measures, but you are responsible f
 
 **Optional Hardening (One Command):**
 ```bash
-sudo ./scripts/enable-security-hardening.sh
+sudo ./scripts/setup/enable-security-hardening.sh
 ```
 
 Enables:
@@ -671,7 +671,7 @@ MyNodeOne uses a **two-tier sync system**:
 
 ```bash
 # On control plane (requires sudo to read API token)
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 ```
 
 This shows all nodes with their status (online/stale/offline), last heartbeat time, and config version.
@@ -684,7 +684,7 @@ kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 kubectl delete node <node-name>
 
 # Remove from sync controller registry
-sudo ./scripts/nodes-status.sh remove <node-name>
+sudo ./scripts/nodes/nodes-status.sh remove <node-name>
 ```
 
 ### What happens if a node goes offline?
@@ -713,7 +713,7 @@ sudo ./scripts/nodes-status.sh remove <node-name>
 
 **Optional Hardening (Run after install):**
 ```bash
-sudo ./scripts/enable-security-hardening.sh
+sudo ./scripts/setup/enable-security-hardening.sh
 ```
 
 Adds:
@@ -772,7 +772,7 @@ Add a second node when:
 
 ```bash
 # On new node
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 ```
 
 That's it! The script handles everything.

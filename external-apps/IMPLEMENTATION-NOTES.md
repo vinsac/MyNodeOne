@@ -135,7 +135,7 @@ cd ../external-apps/mysaas
 bash scripts/deploy.sh
 
 # Make public
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 ```
 
 ## Example Use Cases

@@ -70,7 +70,7 @@ dig vote.example.com
 
 **Run this on control plane:**
 ```bash
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 ```
 
 **What it does:**
@@ -282,7 +282,7 @@ bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
 
 ### **Public Access Command:**
 ```bash
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 ```
 
 ### **Check App Status:**
@@ -330,7 +330,7 @@ sudo docker logs traefik 2>&1 | grep curiios
 
 **Re-run visibility:**
 ```bash
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 ```
 
 ### **SSL certificate not working**

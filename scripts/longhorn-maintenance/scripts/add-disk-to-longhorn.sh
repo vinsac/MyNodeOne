@@ -46,7 +46,7 @@ fi
 
 # Check if Longhorn is installed
 if ! kubectl get namespace longhorn-system &> /dev/null; then
-    log_error "Longhorn is not installed. Install it first with ./scripts/bootstrap-control-plane.sh"
+    log_error "Longhorn is not installed. Install it first with ./scripts/installation/bootstrap-control-plane.sh"
     exit 1
 fi
 

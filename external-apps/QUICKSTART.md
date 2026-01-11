@@ -109,7 +109,7 @@ bash /path/to/MyNodeOne/scripts/lib/register-external-app.sh \
 
 ```bash
 # Interactive setup
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 
 # Manual
 bash /path/to/MyNodeOne/scripts/lib/multi-domain-registry.sh \

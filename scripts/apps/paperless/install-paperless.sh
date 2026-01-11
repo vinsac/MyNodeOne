@@ -471,7 +471,7 @@ echo "  • Android: Paperless Mobile (Play Store)"
 echo ""
 echo "🌐 Public Access:"
 echo "  To make Paperless accessible from the internet:"
-echo "  sudo ./scripts/manage-app-visibility.sh"
+echo "  sudo ./scripts/operations/manage-app-visibility.sh"
 echo ""
 
 # Call post-install routing script

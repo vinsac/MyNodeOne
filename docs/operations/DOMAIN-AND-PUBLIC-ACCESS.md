@@ -68,7 +68,7 @@ The app will automatically be configured for public access with SSL.
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 This interactive script lets you:
@@ -80,7 +80,7 @@ This interactive script lets you:
 ### Example: Making Immich Public
 
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 
 # Select: immich
 # Action: Make public
@@ -160,7 +160,7 @@ cd /etc/traefik && docker compose restart
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 # Select: List all apps
 ```
 

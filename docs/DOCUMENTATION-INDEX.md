@@ -9,7 +9,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Get Started
 - **"I'm brand new"** → [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
 - **"Quick overview"** → [README.md](../../README.md)
-- **"Install now"** → Run `sudo ./scripts/install-mynodeone.sh`
+- **"Install now"** → Run `sudo ./scripts/installation/install-mynodeone.sh`
 - **"Step-by-step guide"** → [INSTALLATION.md](../installation/INSTALLATION.md)
 
 ### Understand MyNodeOne
@@ -22,7 +22,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 - **"How do I manage it?"** → [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
 - **"Deploy an app"** → Check `manifests/examples/`
 - **"Deploy my own app"** → [external-apps/](../external-apps/) - One command deployment
-- **"Check cluster health"** → Run `./scripts/cluster-status.sh`
+- **"Check cluster health"** → Run `./scripts/operations/cluster-status.sh`
 - **"Add more nodes"** → [scaling.md](../operations/scaling.md)
 
 ### Troubleshooting
@@ -91,7 +91,7 @@ mynodeone/
 3. [README.md](../../README.md) - 5 min
 4. [INSTALLATION.md](../installation/INSTALLATION.md) - 20 min
 5. [FAQ.md](FAQ.md) - Common questions and scenarios
-6. Install: `sudo ./scripts/install-mynodeone.sh`
+6. Install: `sudo ./scripts/installation/install-mynodeone.sh`
 7. [POST_INSTALLATION_GUIDE.md](../installation/POST_INSTALLATION_GUIDE.md) - After install
 8. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Daily operations
 
@@ -99,14 +99,14 @@ mynodeone/
 1. [README.md](../../README.md) - 5 min
 2. [INSTALLATION.md](../installation/INSTALLATION.md) - 10 min
 3. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - 15 min
-4. Install: `sudo ./scripts/install-mynodeone.sh`
+4. Install: `sudo ./scripts/installation/install-mynodeone.sh`
 5. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Reference
 6. [scaling.md](../operations/scaling.md) - When ready to grow
 
 ### Advanced (Kubernetes experience)
 1. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Technical design
 2. [REPO-STRUCTURE.md](REPO-STRUCTURE.md) - Repository layout
-3. Install: `sudo ./scripts/install-mynodeone.sh`
+3. Install: `sudo ./scripts/installation/install-mynodeone.sh`
 4. Explore: `manifests/` and `scripts/`
 5. [dev-docs/](dev-docs/) - Developer documentation
 6. [CONTRIBUTING.md](CONTRIBUTING.md) - Help improve
@@ -116,10 +116,10 @@ mynodeone/
 ## Find Specific Topics
 
 ### Installation & Setup
-- Main installer: `scripts/install-mynodeone.sh`
+- Main installer: `scripts/installation/install-mynodeone.sh`
 - Installation guide: [INSTALLATION.md](../installation/INSTALLATION.md)
 - Setup options: [INSTALLATION.md](../installation/INSTALLATION.md) - node types and scenarios
-- Configuration wizard: `scripts/interactive-setup.sh`
+- Configuration wizard: `scripts/installation/interactive-setup.sh`
 - VPS Edge Node Setup: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 
 ### Comparisons & Alternatives
@@ -144,7 +144,7 @@ mynodeone/
 
 ### Applications
 - Example apps: `manifests/examples/`
-- Create new app: `scripts/create-app.sh`
+- Create new app: `scripts/operations/create-app.sh`
 - Deploy guide: [APP-STORE.md](apps/APP-STORE.md)
 - **Deploy your own apps:** [external-apps/](../external-apps/) (All materials consolidated here)
 - LLM support: `manifests/examples/llm-cpu-inference.yaml`
@@ -168,7 +168,7 @@ mynodeone/
 → [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
 
 **"How do I install?"**  
-→ `sudo ./scripts/install-mynodeone.sh`
+→ `sudo ./scripts/installation/install-mynodeone.sh`
 
 **"What's Tailscale?"**  
 → [NETWORKING.md](../architecture/NETWORKING.md) - Default networking
@@ -237,7 +237,7 @@ Based on where you are:
 → Read [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
 
 ### Ready to Install
-→ Run `sudo ./scripts/install-mynodeone.sh`
+→ Run `sudo ./scripts/installation/install-mynodeone.sh`
 
 ### Already Installed
 → Check [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)

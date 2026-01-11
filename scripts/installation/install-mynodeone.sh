@@ -1,0 +1,1548 @@
+#!/bin/bash
+
+###############################################################################
+# MyNodeOne - Main Installation Script
+# 
+# This is the ONE script users run. It handles everything:
+# - System cleanup
+# - Interactive configuration
+# - Node type selection
+# - Automated deployment
+# Note: Disk setup now handled by interactive storage installers (Longhorn/MinIO)
+###############################################################################
+
+set -euo pipefail
+
+# Parse command-line arguments
+CONFIG_FILE_ARG=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --config-file)
+            CONFIG_FILE_ARG="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: sudo $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --config-file <path>    Use pre-generated config file (for remote VPS installation)"
+            echo "  --help, -h              Show this help message"
+            echo ""
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Check if running as root/sudo
+if [ "$EUID" -ne 0 ]; then 
+    echo "ERROR: This script must be run as root or with sudo"
+    echo "Usage: sudo $0"
+    exit 1
+fi
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Detect actual user and their home directory (even when run with sudo)
+export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Running under sudo - use actual user's home directory
+    export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    # Running normally (as root)
+    export ACTUAL_HOME="$HOME"
+fi
+
+# Track if we're in the middle of critical operations
+CRITICAL_OPERATION=false
+
+# Cleanup function for interrupt handling
+cleanup_on_interrupt() {
+    echo
+    echo
+    print_error "Installation interrupted by user (Ctrl+C)"
+    echo
+    
+    if [ "$CRITICAL_OPERATION" = true ]; then
+        print_warning "Interrupted during a critical operation!"
+        echo "Your system may be in an inconsistent state."
+        echo
+        echo "To recover:"
+        echo "  1. Check what was being done (see messages above)"
+        echo "  2. Manually undo any partial changes if needed"
+        echo "  3. Run the script again to restart"
+    else
+        print_info "No critical operations were in progress."
+        echo "You can safely run the script again."
+    fi
+    
+    echo
+    exit 130
+}
+
+# Set up interrupt handling
+trap cleanup_on_interrupt INT TERM
+
+# Helper functions
+print_header() {
+    echo
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  $1${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+prompt_confirm() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local response
+    
+    # If UNATTENDED mode is enabled, use default answer
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        response="$default"
+        echo -e "${BLUE}ℹ${NC} $prompt [using default: $default]"
+    elif [ "$default" = "y" ]; then
+        read -p "$(echo -e ${GREEN}?${NC}) $prompt [Y/n]: " response
+        response="${response:-y}"
+    else
+        read -p "$(echo -e ${GREEN}?${NC}) $prompt [y/N]: " response
+        response="${response:-n}"
+    fi
+    
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
+welcome() {
+    clear
+    echo -e "${MAGENTA}"
+    cat << "EOF"
+   __  ___       _   __          __     ____             
+  /  |/  /_  __/ | / /___  ____/ /__  / __ \____  _____ 
+ / /|_/ / / / /  |/ / __ \/ __  / _ \/ / / / __ \/ _ \  
+/ /  / / /_/ / /|  / /_/ / /_/ /  __/ /_/ / / / /  __/  
+/_/  /_/\__, /_/ |_/\____/\__,_/\___/\____/_/ /_/\___/   
+       /____/ 
+                                                 
+EOF
+    echo -e "${NC}"
+    echo -e "${CYAN}Welcome to MyNodeOne Setup!${NC}"
+    echo
+    echo "This script will help you set up your private cloud infrastructure."
+    echo "It handles everything automatically:"
+    echo
+    echo "  ✓ System optimization"
+    echo "  ✓ Interactive configuration"
+    echo "  ✓ Network configuration"
+    echo "  ✓ Service installation"
+    echo "  ✓ Storage setup (Longhorn/MinIO with disk selection)"
+    echo
+    echo -e "${YELLOW}Note: This script requires sudo/root access.${NC}"
+    echo
+    
+    # Skip confirmation prompt in unattended mode
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        echo -e "${BLUE}ℹ${NC} UNATTENDED mode enabled, proceeding automatically..."
+        echo
+        return
+    fi
+    
+    if ! prompt_confirm "Ready to start?" "y"; then
+        echo "Setup cancelled."
+        exit 0
+    fi
+}
+
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        print_error "This script must be run as root (use sudo)"
+        exit 1
+    fi
+}
+
+check_network() {
+    print_info "Checking internet connectivity..."
+    
+    if ! ping -c 1 -W 5 8.8.8.8 &> /dev/null; then
+        print_error "No internet connection detected"
+        echo
+        echo "MyNodeOne requires internet access to download components."
+        echo "Please check your network connection and try again."
+        echo
+        echo "Troubleshooting:"
+        echo "  1. Check if network cable is connected"
+        echo "  2. Try: ping 8.8.8.8"
+        echo "  3. Check firewall settings"
+        return 1
+    fi
+    
+    if ! ping -c 1 -W 5 github.com &> /dev/null; then
+        print_warning "Can reach internet but not GitHub"
+        echo "This might cause issues downloading from GitHub."
+        if ! prompt_confirm "Continue anyway?"; then
+            return 1
+        fi
+    fi
+    
+    print_success "Internet connection OK"
+    return 0
+}
+
+check_dependencies() {
+    print_info "Checking required dependencies..."
+    
+    local deps=("curl" "wget" "git" "lsblk" "mkfs.ext4" "blkid" "awk" "grep")
+    local missing=()
+    
+    for cmd in "${deps[@]}"; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+    
+    # Check for python3-yaml (used for YAML validation)
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        missing+=("python3-yaml")
+    fi
+    
+    if [ ${#missing[@]} -gt 0 ]; then
+        print_error "Missing required dependencies: ${missing[*]}"
+        echo
+        echo "Install with:"
+        echo "  sudo apt-get update"
+        echo "  sudo apt-get install -y ${missing[*]}"
+        return 1
+    fi
+    
+    print_success "All dependencies present"
+    return 0
+}
+
+check_architecture() {
+    print_info "Detecting system architecture..."
+    
+    local arch=$(uname -m)
+    case $arch in
+        x86_64)
+            print_success "Architecture: x86_64 (AMD64)"
+            ;;
+        aarch64)
+            print_success "Architecture: aarch64 (ARM64)"
+            ;;
+        armv7l)
+            print_success "Architecture: armv7l (ARM)"
+            ;;
+        *)
+            print_warning "Architecture: $arch (may not be fully tested)"
+            ;;
+    esac
+}
+
+check_distro() {
+    print_info "Checking Linux distribution..."
+    
+    if [ -f /etc/os-release ]; then
+        source /etc/os-release
+        
+        if [[ "$ID" == "ubuntu" ]]; then
+            if [[ "$VERSION_ID" == "24.04" ]]; then
+                print_success "Ubuntu 24.04 LTS detected (recommended)"
+            elif [[ "$VERSION_ID" == "22.04" ]]; then
+                print_success "Ubuntu 22.04 LTS detected (supported)"
+            else
+                print_warning "Ubuntu $VERSION_ID detected (not officially tested)"
+                if ! prompt_confirm "Continue anyway?"; then
+                    exit 1
+                fi
+            fi
+        else
+            print_warning "Non-Ubuntu distribution detected: $NAME $VERSION_ID"
+            echo "MyNodeOne is optimized for Ubuntu 24.04 LTS."
+            if ! prompt_confirm "Continue anyway?"; then
+                exit 1
+            fi
+        fi
+    else
+        print_warning "Cannot detect distribution"
+        if ! prompt_confirm "Continue anyway?"; then
+            exit 1
+        fi
+    fi
+}
+
+check_system_resources() {
+    print_info "Checking system resources..."
+    
+    # Check RAM
+    local ram_gb=$(free -g | awk '/^Mem:/{print $2}')
+    print_info "RAM: ${ram_gb}GB"
+    
+    # Show recommendations
+    echo
+    echo "  💡 RAM Recommendations by Node Type:"
+    echo "     • Control Plane:    4GB minimum, 8GB+ recommended"
+    echo "     • Worker Node:      2GB minimum, 4GB+ recommended"
+    echo "     • VPS Edge Node:    1GB minimum, 2GB+ recommended"
+    echo "     • Management PC:    2GB minimum"
+    echo
+    
+    if [ "$ram_gb" -lt 2 ]; then
+        print_warning "Low RAM detected (${ram_gb}GB). Some node types may not perform well."
+        echo "  Consider adding more RAM if you plan to run a Control Plane or Worker node."
+    fi
+    
+    # Check disk space
+    local disk_gb=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
+    print_info "Available disk space: ${disk_gb}GB"
+    
+    if [ "$disk_gb" -lt 10 ]; then
+        print_warning "Low disk space (${disk_gb}GB available). Consider freeing up space."
+        echo "  Recommended: 20GB+ for Control Plane, 10GB+ for other nodes"
+    fi
+    
+    # Check CPU cores
+    local cpu_cores=$(nproc)
+    print_info "CPU cores: ${cpu_cores}"
+    
+    if [ "$cpu_cores" -lt 2 ]; then
+        print_warning "Low CPU cores (${cpu_cores}). Performance may be limited."
+        echo "  Recommended: 2+ cores for smooth operation"
+    fi
+    
+    echo
+    print_success "System resource check complete"
+    return 0
+}
+
+check_existing_installation() {
+    if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
+        print_warning "MyNodeOne appears to be already configured on this machine"
+        echo
+        echo "Existing configuration found at: $ACTUAL_HOME/.mynodeone/config.env"
+        echo
+        
+        # Load existing config to show what's installed
+        source "$ACTUAL_HOME/.mynodeone/config.env"
+        if [ -n "${NODE_TYPE:-}" ]; then
+            print_info "Current node type: $NODE_TYPE"
+        fi
+        echo
+        
+        # In unattended mode, auto-select reinstall
+        if [ "${UNATTENDED:-0}" = "1" ]; then
+            print_info "UNATTENDED mode: Auto-selecting reinstall option"
+            # Backup existing config
+            cp "$ACTUAL_HOME/.mynodeone/config.env" "$ACTUAL_HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+            print_info "Config backed up. Proceeding with reinstall..."
+            return 0
+        fi
+        
+        echo "What would you like to do?"
+        echo
+        echo "  1) Add/manage a remote node (VPS Edge Node, Worker, or Management Laptop)"
+        echo "  2) Reconfigure this node (update configuration, keep existing setup)"
+        echo "  3) Reinstall this node (remove everything, fresh start)"
+        echo "  4) Cancel"
+        echo
+        read -p "Select option (1-4): " option
+        
+        case $option in
+            1)
+                print_success "Proceeding to add/manage a remote node"
+                print_info "You'll be prompted to select the node type in the next step"
+                echo
+                # Set flag to skip local system setup steps
+                ADDING_REMOTE_NODE=true
+                return 0
+                ;;
+            2)
+                print_info "Reconfiguring this node..."
+                return 0
+                ;;
+            3)
+                print_warning "This will remove existing MyNodeOne installation on THIS machine"
+                if prompt_confirm "Are you sure you want to reinstall?"; then
+                    # Backup existing config
+                    cp "$ACTUAL_HOME/.mynodeone/config.env" "$ACTUAL_HOME/.mynodeone/config.env.backup-$(date +%Y%m%d-%H%M%S)"
+                    print_info "Config backed up. Proceeding with reinstall..."
+                    return 0
+                else
+                    exit 0
+                fi
+                ;;
+            4)
+                print_info "Installation cancelled"
+                exit 0
+                ;;
+            *)
+                print_error "Invalid option. Please choose 1-4."
+                exit 1
+                ;;
+        esac
+    fi
+}
+
+system_cleanup() {
+    print_header "System Cleanup & Optimization"
+    
+    if prompt_confirm "Clean up unnecessary packages?"; then
+        print_info "Removing unnecessary packages..."
+        
+        # WARNING: DO NOT remove snap - it's required for tools like Helm
+        # Snap removal can break Firefox, Helm, and other critical tools
+        # Keeping snap check disabled for safety
+        
+        # Remove unnecessary packages
+        print_info "Removing unnecessary packages..."
+        apt-get autoremove -y
+        apt-get autoclean -y
+        
+        # Clean apt cache
+        apt-get clean
+        
+        # Remove old kernels (keep current + 1)
+        print_info "Cleaning old kernels..."
+        apt-get autoremove --purge -y
+        
+        print_success "System cleanup complete"
+    else
+        print_info "Skipping system cleanup"
+    fi
+}
+
+detect_disks() {
+    print_header "Disk Detection"
+    
+    print_info "Scanning for available disks..."
+    echo
+    
+    # ===================================================================
+    # CRITICAL SAFETY: Identify the OS disk (where root / is mounted)
+    # ===================================================================
+    
+    # Find the device where root (/) is mounted
+    ROOT_DEVICE=$(df / | tail -1 | awk '{print $1}')
+    
+    # Extract the base disk name (remove partition number)
+    # Examples: /dev/sda1 -> /dev/sda, /dev/nvme0n1p1 -> /dev/nvme0n1
+    if [[ "$ROOT_DEVICE" =~ ^/dev/(sd[a-z])[0-9]+$ ]]; then
+        OS_DISK="/dev/${BASH_REMATCH[1]}"
+    elif [[ "$ROOT_DEVICE" =~ ^/dev/(nvme[0-9]+n[0-9]+)p[0-9]+$ ]]; then
+        OS_DISK="/dev/${BASH_REMATCH[1]}"
+    elif [[ "$ROOT_DEVICE" =~ ^/dev/(mmcblk[0-9]+)p[0-9]+$ ]]; then
+        OS_DISK="/dev/${BASH_REMATCH[1]}"
+    else
+        # Fallback: just remove the last digit
+        OS_DISK=$(echo "$ROOT_DEVICE" | sed 's/[0-9]*$//')
+    fi
+    
+    print_info "OS (Ubuntu) is installed on: $OS_DISK"
+    print_warning "This disk will be EXCLUDED from storage setup for safety"
+    echo
+    
+    # List all block devices with highlighting
+    echo "Current disk layout:"
+    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE | grep -E "disk|part" | while read -r line; do
+        if echo "$line" | grep -q "$(basename "$OS_DISK")"; then
+            echo -e "${RED}$line${NC} ${YELLOW}← OS DISK (PROTECTED)${NC}"
+        else
+            echo "$line"
+        fi
+    done
+    echo
+    
+    # ===================================================================
+    # SAFE DISK DETECTION: Only show disks that are:
+    # 1. NOT the OS disk
+    # 2. Have NO mounted partitions
+    # 3. Are actual disks (not loop devices, not partitions)
+    # ===================================================================
+    
+    UNMOUNTED_DISKS=()
+    
+    # Get list of all disks (not partitions)
+    while IFS= read -r disk_name; do
+        DISK="/dev/$disk_name"
+        
+        # Skip the OS disk - CRITICAL!
+        if [ "$DISK" = "$OS_DISK" ]; then
+            continue
+        fi
+        
+        # ===================================================================
+        # CRITICAL SAFETY: Filter out virtual/unsafe disks
+        # ===================================================================
+        
+        # Skip loop devices (used by snaps, containers, etc.)
+        if [[ "$disk_name" =~ ^loop[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Skip NBD (Network Block Device)
+        if [[ "$disk_name" =~ ^nbd[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Skip RAM disks
+        if [[ "$disk_name" =~ ^ram[0-9]+ ]]; then
+            continue
+        fi
+        
+        # Check disk model to filter virtual disks
+        MODEL=$(lsblk -n -o MODEL "/dev/$disk_name" 2>/dev/null | head -1 | xargs)
+        
+        # Skip virtual disks (Kubernetes CSI volumes, VM virtual disks)
+        if [[ "$MODEL" == "VIRTUAL-DISK" ]] || [[ "$MODEL" == *"Virtual"* ]]; then
+            continue
+        fi
+        
+        # Skip if disk or its partitions are mounted to Kubernetes paths
+        # (These are CSI volumes from previous installations)
+        if lsblk -n -o MOUNTPOINT "/dev/$disk_name" 2>/dev/null | grep -q "/var/lib/kubelet/pods"; then
+            continue
+        fi
+        
+        # Skip if already mounted as Longhorn disk
+        if lsblk -n -o MOUNTPOINT "/dev/$disk_name" 2>/dev/null | grep -q "/mnt/longhorn-disks"; then
+            continue
+        fi
+        
+        # Skip if mounted to /var/lib/longhorn (default Longhorn path)
+        if lsblk -n -o MOUNTPOINT "/dev/$disk_name" 2>/dev/null | grep -q "/var/lib/longhorn"; then
+            continue
+        fi
+        
+        # Check for Windows/NTFS partitions (dual-boot protection)
+        if lsblk -n -o FSTYPE "/dev/$disk_name" 2>/dev/null | grep -qi "ntfs"; then
+            print_warning "Skipping $disk_name: Contains Windows NTFS partition (dual-boot system detected)"
+            continue
+        fi
+        
+        # All checks passed - this is a safe disk
+        UNMOUNTED_DISKS+=("$DISK")
+    done < <(lsblk -n -d -o NAME,TYPE | grep "disk" | awk '{print $1}')
+    
+    if [ ${#UNMOUNTED_DISKS[@]} -eq 0 ]; then
+        print_info "No additional unmounted disks detected (only OS disk found)."
+        print_info "If you have additional disks, ensure they are physically connected and powered on."
+        return
+    fi
+    
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    print_warning "Found ${#UNMOUNTED_DISKS[@]} SAFE disk(s) for storage:"
+    for disk in "${UNMOUNTED_DISKS[@]}"; do
+        SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+        MODEL=$(lsblk -n -o MODEL "$disk" | head -1 | xargs)
+        echo "  $disk ($SIZE) ${MODEL:+- $MODEL}"
+    done
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    
+    echo -e "${YELLOW}    ⚠️  IMPORTANT SAFETY INFORMATION:${NC}"
+    echo "      • OS disk ($OS_DISK) is EXCLUDED for safety"
+    echo "      • Virtual disks (Kubernetes CSI volumes) are EXCLUDED"
+    echo "      • Windows/NTFS partitions (dual-boot) are EXCLUDED"
+    echo "      • Only physical disks with NO mounted partitions are shown"
+    echo "      • Formatting will ERASE ALL DATA on selected disks"
+    echo
+    echo -e "${BLUE}    💡 RECOMMENDED FOR DUAL-BOOT SYSTEMS:${NC}"
+    echo "      • Use an external USB/SATA hard drive for MyNodeOne storage"
+    echo "      • Or use a spare internal drive (not your Windows drive!)"
+    echo "      • This keeps your Windows installation completely safe"
+    echo
+}
+
+select_disks_for_setup() {
+    print_header "Disk Selection"
+    
+    # In unattended mode, use all detected disks automatically
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        if [ ${#UNMOUNTED_DISKS[@]} -gt 0 ]; then
+            echo -e "${BLUE}ℹ${NC} UNATTENDED mode: Using all detected disks (${#UNMOUNTED_DISKS[@]} disks)"
+            SELECTED_DISKS=("${UNMOUNTED_DISKS[@]}")
+            for disk in "${SELECTED_DISKS[@]}"; do
+                SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+                echo "  ✓ $disk ($SIZE)"
+            done
+            echo
+            setup_disks
+        else
+            echo -e "${BLUE}ℹ${NC} UNATTENDED mode: No additional disks detected, skipping"
+        fi
+        return
+    fi
+    
+    # Let user choose which disks to use
+    echo "You can choose to use:"
+    echo "  1) All detected disks (${#UNMOUNTED_DISKS[@]} disks)"
+    echo "  2) Select specific disks individually"
+    echo "  3) Skip disk setup (configure later)"
+    echo
+    
+    read -p "$(echo -e ${GREEN}?${NC}) Select option (1-3): " SELECTION_OPTION
+    
+    case $SELECTION_OPTION in
+        1)
+            # Use all disks
+            SELECTED_DISKS=("${UNMOUNTED_DISKS[@]}")
+            print_success "All ${#SELECTED_DISKS[@]} disks selected"
+            echo
+            for disk in "${SELECTED_DISKS[@]}"; do
+                SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+                echo "  ✓ $disk ($SIZE)"
+            done
+            echo
+            setup_disks
+            ;;
+        2)
+            # Let user select specific disks
+            select_individual_disks
+            ;;
+        3)
+            print_info "Skipping disk setup. You can configure storage later."
+            return
+            ;;
+        *)
+            print_error "Invalid option"
+            select_disks_for_setup
+            ;;
+    esac
+}
+
+select_individual_disks() {
+    print_header "Individual Disk Selection"
+    
+    SELECTED_DISKS=()
+    
+    echo "Select which disks you want to use for MyNodeOne storage."
+    echo "You can choose one, some, or all disks."
+    echo
+    
+    for disk in "${UNMOUNTED_DISKS[@]}"; do
+        SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+        MODEL=$(lsblk -n -o MODEL "$disk" | head -1 | xargs)
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Disk: $disk"
+        echo "Size: $SIZE"
+        [ -n "$MODEL" ] && echo "Model: $MODEL"
+        echo
+        
+        if prompt_confirm "Use this disk for storage?"; then
+            SELECTED_DISKS+=("$disk")
+            print_success "✓ $disk added to selection"
+        else
+            print_info "✗ $disk skipped"
+        fi
+        echo
+    done
+    
+    if [ ${#SELECTED_DISKS[@]} -eq 0 ]; then
+        print_warning "No disks selected!"
+        echo
+        if prompt_confirm "Go back to disk selection menu?"; then
+            select_disks_for_setup
+        else
+            print_info "Skipping disk setup."
+        fi
+        return
+    fi
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_success "Selected ${#SELECTED_DISKS[@]} disk(s) for storage:"
+    for disk in "${SELECTED_DISKS[@]}"; do
+        SIZE=$(lsblk -n -o SIZE "$disk" | head -1)
+        echo "  ✓ $disk ($SIZE)"
+    done
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    if prompt_confirm "Proceed with these selected disks?"; then
+        # Replace UNMOUNTED_DISKS with SELECTED_DISKS for setup
+        UNMOUNTED_DISKS=("${SELECTED_DISKS[@]}")
+        setup_disks
+    else
+        print_info "Cancelled. Going back to selection menu."
+        select_disks_for_setup
+    fi
+}
+
+setup_disks() {
+    print_header "Disk Setup"
+    
+    echo "========================================================"
+    echo "  STORAGE CONFIGURATION - Choose Your Setup"
+    echo "========================================================"
+    echo
+    echo "💡 GUIDE: Which option do I need?"
+    echo
+    echo "For MOST users (apps, databases, file storage):"
+    echo "  → Choose Option 1 (Longhorn)"
+    echo "    - Automatic redundancy across nodes"
+    echo "    - Works with your applications (databases, uploads, etc.)"
+    echo "    - Most flexible option"
+    echo
+    echo "For S3-compatible object storage (backups, media, large files):"
+    echo "  → Choose BOTH Option 1 (Longhorn) AND install MinIO later"
+    echo "    - Longhorn for apps, MinIO for S3 storage"
+    echo "    - You can add MinIO anytime after installation"
+    echo
+    echo "For manual control over disks:"
+    echo "  → Choose Option 3 (RAID) or 4 (Individual)"
+    echo
+    echo "========================================================"
+    echo "STORAGE OPTIONS:"
+    echo "========================================================"
+    echo
+    echo "1) Longhorn Storage (RECOMMENDED for most users)"
+    echo "   ✅ Automatic replication across nodes"
+    echo "   ✅ Works with databases, apps, persistent storage"
+    echo "   ✅ Easy to manage, no manual configuration"
+    echo "   ✅ Best for: Running applications"
+    echo
+    echo "2) MinIO Storage (S3-compatible - Advanced users)"
+    echo "   ⚠️  NOT for application storage"
+    echo "   ✅ S3-compatible API (like Amazon S3)"
+    echo "   ✅ Best for: Backups, media files, object storage"
+    echo "   ⚠️  Most users should choose Longhorn + install MinIO later"
+    echo
+    echo "3) RAID Array (Manual redundancy)"
+    echo "   ⚠️  Requires 2+ disks"
+    echo "   ⚠️  Less flexible than Longhorn"
+    echo "   ✅ Best for: Single-node setups, manual control"
+    echo
+    echo "4) Individual Mounts (No redundancy)"
+    echo "   ⚠️  Each disk separate, no protection"
+    echo "   ✅ Best for: Testing, temporary storage"
+    echo
+    echo "5) Skip disk setup (Configure later)"
+    echo
+    echo "========================================================"
+    echo
+    
+    # In unattended mode, automatically select Longhorn (option 1)
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        DISK_OPTION="1"
+        echo -e "${BLUE}ℹ${NC} UNATTENDED mode: Auto-selecting Longhorn storage (option 1)"
+    else
+        read -p "$(echo -e ${GREEN}?${NC}) Select option (1-5): " DISK_OPTION
+    fi
+    
+    case $DISK_OPTION in
+        1)
+            setup_longhorn_disks
+            ;;
+        2)
+            setup_minio_disks
+            ;;
+        3)
+            setup_raid_array
+            ;;
+        4)
+            setup_individual_mounts
+            ;;
+        5)
+            print_info "Skipping disk setup"
+            ;;
+        *)
+            print_error "Invalid option"
+            setup_disks
+            ;;
+    esac
+}
+
+warn_data_loss() {
+    local disk="$1"
+    
+    echo
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}⚠️  WARNING: DATA LOSS RISK! ⚠️${NC}"
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    echo -e "${YELLOW}Formatting $disk will PERMANENTLY ERASE ALL DATA on it!${NC}"
+    echo
+    
+    # In unattended mode, skip all prompts and proceed
+    if [ "${UNATTENDED:-0}" = "1" ]; then
+        echo -e "${BLUE}ℹ${NC} UNATTENDED mode: Auto-confirming disk format for $disk"
+        return 0
+    fi
+    
+    # Check if disk has filesystem
+    if blkid "$disk" &> /dev/null; then
+        local fstype=$(blkid -s TYPE -o value "$disk" 2>/dev/null || echo "unknown")
+        echo -e "${YELLOW}This disk currently has: $fstype filesystem${NC}"
+        echo
+        
+        if prompt_confirm "Show files on this disk before formatting?"; then
+            local temp_mount="/tmp/mynodeone-check-$$"
+            mkdir -p "$temp_mount"
+            echo "Attempting to mount and show contents..."
+            if mount -o ro "$disk" "$temp_mount" 2>/dev/null; then
+                echo
+                echo "Files/folders found on $disk:"
+                ls -lh "$temp_mount" 2>/dev/null | head -20 || echo "Could not list files"
+                umount "$temp_mount"
+                echo
+            else
+                echo "Could not mount disk to show contents (may be encrypted or corrupted)"
+            fi
+            rmdir "$temp_mount" 2>/dev/null || true
+        fi
+    fi
+    
+    echo
+    echo -e "${RED}⚠️  ALL DATA WILL BE LOST! ⚠️${NC}"
+    echo
+    echo "To confirm, type the disk name exactly: $(basename $disk)"
+    read -p "> " confirm
+    
+    if [ "$confirm" != "$(basename $disk)" ]; then
+        print_warning "Confirmation failed. Skipping this disk."
+        return 1
+    fi
+    
+    echo
+    if ! prompt_confirm "Final confirmation - ERASE ALL DATA on $disk?" "y"; then
+        print_info "Skipping $disk"
+        return 1
+    fi
+    
+    return 0
+}
+
+prepare_disk_for_format() {
+    local disk="$1"
+    
+    print_info "Preparing $disk for formatting..."
+    
+    # Unmount any mounted partitions on this disk
+    print_info "Unmounting any mounted partitions on $disk..."
+    
+    # First, unmount all partitions
+    for part in $(lsblk -ln -o NAME "$disk" | grep -v "^$(basename $disk)$"); do
+        PART_DEV="/dev/$part"
+        if mountpoint -q "$PART_DEV" 2>/dev/null || grep -q "$PART_DEV" /proc/mounts; then
+            print_info "  Unmounting partition $PART_DEV..."
+            umount -f "$PART_DEV" 2>/dev/null || umount -l "$PART_DEV" 2>/dev/null || true
+        fi
+    done
+    
+    # Also unmount the disk itself if mounted
+    if mountpoint -q "$disk" 2>/dev/null || grep -q "$disk" /proc/mounts; then
+        print_info "  Unmounting disk $disk..."
+        umount -f "$disk" 2>/dev/null || umount -l "$disk" 2>/dev/null || true
+    fi
+    
+    # Wait for unmounts to complete
+    sleep 2
+    
+    # Wipe filesystem signatures and partition table
+    print_info "Wiping filesystem signatures and partition table..."
+    
+    # Wipe all filesystem, raid, and partition-table signatures
+    if command -v wipefs &> /dev/null; then
+        if wipefs -a "$disk" 2>/dev/null; then
+            print_success "  Disk signatures wiped successfully"
+        else
+            print_warning "  wipefs failed, trying dd method..."
+            # Fallback: zero out first 1MB and last 1MB
+            dd if=/dev/zero of="$disk" bs=1M count=1 2>/dev/null
+            print_success "  Disk cleared with dd"
+        fi
+    else
+        # wipefs not available, use dd
+        print_info "  Using dd to clear disk..."
+        dd if=/dev/zero of="$disk" bs=1M count=1 2>/dev/null
+        print_success "  Disk cleared with dd"
+    fi
+    
+    # Step 3: Inform kernel of partition table changes
+    if command -v partprobe &> /dev/null; then
+        partprobe "$disk" 2>/dev/null
+    fi
+    
+    # Wait a moment for changes to take effect
+    sleep 1
+    
+    print_success "Disk $disk prepared and ready for formatting"
+    return 0
+}
+
+setup_longhorn_disks() {
+    print_info "Setting up disks for Longhorn..."
+    
+    # Create Longhorn data directory
+    LONGHORN_DIR="/mnt/longhorn-disks"
+    mkdir -p "$LONGHORN_DIR"
+    
+    for disk in "${UNMOUNTED_DISKS[@]}"; do
+        print_info "Processing $disk..."
+        
+        # CRITICAL SAFETY CHECK: Never format OS disk
+        if [ "$disk" = "$OS_DISK" ]; then
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "This disk contains your Ubuntu installation. Skipping."
+            continue
+        fi
+        
+        # Warn about data loss
+        if ! warn_data_loss "$disk"; then
+            continue
+        fi
+        
+        # Prepare disk for formatting (unmount partitions, wipe signatures)
+        if ! prepare_disk_for_format "$disk"; then
+            print_error "Failed to prepare $disk for formatting"
+            continue
+        fi
+        
+        # Format as ext4 with optimization for large disks
+        print_info "Formatting $disk as ext4 (optimized for large storage)..."
+        CRITICAL_OPERATION=true
+        
+        # Get disk size in GB
+        DISK_SIZE_GB=$(lsblk -b -n -d -o SIZE "$disk" | awk '{print int($1/1024/1024/1024)}')
+        
+        # Optimize formatting based on disk size
+        if [ "$DISK_SIZE_GB" -gt 1000 ]; then
+            # Large disk (>1TB): Reduce reserved blocks from 5% to 1%
+            # For 18TB: Saves 720GB! (5% = 900GB, 1% = 180GB)
+            print_info "  Large disk detected (${DISK_SIZE_GB}GB) - optimizing for maximum usable space..."
+            if ! mkfs.ext4 -F -m 1 -T largefile4 "$disk"; then
+                print_error "Failed to format $disk"
+                CRITICAL_OPERATION=false
+                continue
+            fi
+        else
+            # Normal disk: Standard formatting
+            if ! mkfs.ext4 -F "$disk"; then
+                print_error "Failed to format $disk"
+                CRITICAL_OPERATION=false
+                continue
+            fi
+        fi
+        CRITICAL_OPERATION=false
+        
+        # Wait for kernel to recognize new filesystem
+        print_info "Waiting for filesystem to be recognized..."
+        sleep 3
+        
+        # Rescan the disk
+        blockdev --rereadpt "$disk" 2>/dev/null || true
+        
+        # Get UUID
+        UUID=$(blkid -s UUID -o value "$disk")
+        
+        if [ -z "$UUID" ]; then
+            print_error "Failed to get UUID for $disk after formatting"
+            print_error "The disk was formatted but the system can't read it yet."
+            print_info "→ Try rebooting your system and run the installer again"
+            continue
+        fi
+        
+        # Create mount point
+        MOUNT_POINT="$LONGHORN_DIR/disk-$(basename $disk)"
+        mkdir -p "$MOUNT_POINT"
+        
+        # Add to fstab (avoid duplicates)
+        if ! grep -q "$UUID" /etc/fstab; then
+            echo "UUID=$UUID $MOUNT_POINT ext4 defaults 0 2" >> /etc/fstab
+            print_success "Added to /etc/fstab"
+        else
+            print_warning "Already in /etc/fstab"
+        fi
+        
+        # Mount directly by UUID (don't use mount -a as it tries ALL fstab entries)
+        print_info "Mounting $disk..."
+        MOUNT_ERROR=$(mount UUID="$UUID" "$MOUNT_POINT" 2>&1)
+        
+        if mountpoint -q "$MOUNT_POINT"; then
+            print_success "✓ Mounted $disk at $MOUNT_POINT"
+            print_success "  Disk is ready for use!"
+        else
+            print_error ""
+            print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            print_error "⚠️  MOUNT FAILED: $disk could not be mounted"
+            print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            print_error ""
+            print_error "What happened:"
+            print_error "  • The disk was formatted successfully ✓"
+            print_error "  • But the system can't mount it right now ✗"
+            print_error ""
+            print_error "Technical details:"
+            print_error "  $MOUNT_ERROR"
+            print_error ""
+            print_error "What to do:"
+            print_error ""
+            print_error "  OPTION 1 (Recommended): Reboot and retry"
+            print_error "    Sometimes the system needs a reboot to recognize new disks."
+            print_error "    "
+            print_error "    $ sudo reboot"
+            print_error "    # After reboot, run the installer again"
+            print_error "    "
+            print_error ""
+            print_error "  OPTION 2: Check disk health"
+            print_error "    The disk might have hardware issues."
+            print_error "    "
+            print_error "    $ sudo smartctl -a $disk"
+            print_error "    # Look for errors or bad sectors"
+            print_error "    "
+            print_error ""
+            print_error "  OPTION 3: Manual mount"
+            print_error "    Try mounting manually to see detailed errors:"
+            print_error "    "
+            print_error "    $ sudo mount UUID=$UUID $MOUNT_POINT"
+            print_error "    $ dmesg | tail -20   # Check kernel messages"
+            print_error "    "
+            print_error ""
+            print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            print_error ""
+            print_warning "Continuing with other disks..."
+            continue
+        fi
+    done
+    
+    # Save to config
+    STORAGE_PATH="$LONGHORN_DIR"
+    
+    # Update config file with LONGHORN_PATH
+    local cfg_file="$ACTUAL_HOME/.mynodeone/config.env"
+    if [ -f "$cfg_file" ]; then
+        # Remove old LONGHORN_PATH line if exists
+        sed -i '/^LONGHORN_PATH=/d' "$cfg_file"
+        # Add new LONGHORN_PATH
+        echo "LONGHORN_PATH=\"$LONGHORN_DIR\"" >> "$cfg_file"
+        print_info "Updated config with LONGHORN_PATH=$LONGHORN_DIR"
+    fi
+    
+    print_success "Longhorn storage configured at: $STORAGE_PATH"
+}
+
+setup_minio_disks() {
+    print_info "Setting up disks for MinIO..."
+    
+    MINIO_DIR="/mnt/minio-disks"
+    mkdir -p "$MINIO_DIR"
+    
+    for disk in "${UNMOUNTED_DISKS[@]}"; do
+        print_info "Processing $disk..."
+        
+        # CRITICAL SAFETY CHECK: Never format OS disk
+        if [ "$disk" = "$OS_DISK" ]; then
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "This disk contains your Ubuntu installation. Skipping."
+            continue
+        fi
+        
+        # Warn about data loss
+        if ! warn_data_loss "$disk"; then
+            continue
+        fi
+        
+        # Prepare disk for formatting (unmount partitions, wipe signatures)
+        if ! prepare_disk_for_format "$disk"; then
+            print_error "Failed to prepare $disk for formatting"
+            continue
+        fi
+        
+        # Format as ext4 with optimization for large disks
+        print_info "Formatting $disk as ext4 (optimized for large storage)..."
+        
+        # Get disk size in GB
+        DISK_SIZE_GB=$(lsblk -b -n -d -o SIZE "$disk" | awk '{print int($1/1024/1024/1024)}')
+        
+        # Optimize formatting based on disk size
+        if [ "$DISK_SIZE_GB" -gt 1000 ]; then
+            # Large disk (>1TB): Reduce reserved blocks from 5% to 1%
+            print_info "  Large disk detected (${DISK_SIZE_GB}GB) - optimizing for maximum usable space..."
+            if ! mkfs.ext4 -F -m 1 -T largefile4 "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
+        else
+            # Normal disk: Standard formatting
+            if ! mkfs.ext4 -F "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
+        fi
+        
+        UUID=$(blkid -s UUID -o value "$disk")
+        
+        if [ -z "$UUID" ]; then
+            print_error "Failed to get UUID for $disk"
+            continue
+        fi
+        
+        MOUNT_POINT="$MINIO_DIR/disk-$(basename $disk)"
+        mkdir -p "$MOUNT_POINT"
+        
+        # Add to fstab (avoid duplicates)
+        if ! grep -q "$UUID" /etc/fstab; then
+            echo "UUID=$UUID $MOUNT_POINT ext4 defaults 0 2" >> /etc/fstab
+            print_success "Added to /etc/fstab"
+        else
+            print_warning "Already in /etc/fstab"
+        fi
+        
+        # Mount directly by UUID
+        print_info "Mounting $disk..."
+        if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
+            print_success "✓ Mounted $disk at $MOUNT_POINT"
+        else
+            print_error "✗ Failed to mount $disk (try rebooting)"
+            continue
+        fi
+    done
+    
+    STORAGE_PATH="$MINIO_DIR"
+    print_success "MinIO storage configured at: $STORAGE_PATH"
+}
+
+setup_raid_array() {
+    print_info "Setting up RAID array..."
+    
+    if [ ${#UNMOUNTED_DISKS[@]} -lt 2 ]; then
+        print_error "RAID requires at least 2 disks"
+        return
+    fi
+    
+    # Check if RAID device already exists
+    if [ -e /dev/md0 ]; then
+        print_error "RAID device /dev/md0 already exists!"
+        echo
+        echo "Existing RAID configuration:"
+        cat /proc/mdstat 2>/dev/null || echo "Could not read /proc/mdstat"
+        echo
+        if [ -f /etc/mdadm/mdadm.conf ]; then
+            echo "Existing arrays in mdadm.conf:"
+            grep "^ARRAY" /etc/mdadm/mdadm.conf || echo "No arrays configured"
+        fi
+        echo
+        print_error "Insufficient RAM: ${ram_gb}GB (minimum ${min_ram}GB required for control plane)"
+        echo
+        echo "Your system has ${ram_gb}GB RAM, but control plane requires at least ${min_ram}GB."
+        echo
+        echo "Options:"
+        echo "  1. Add more RAM to this machine"
+        echo "  2. Use this as a worker node instead (requires 2GB minimum)"
+        echo "  3. Use a different machine with more RAM"
+        return 1
+    fi
+    
+    # Install mdadm
+    print_info "Installing mdadm..."
+    if ! apt-get install -y mdadm; then
+        print_error "Failed to install mdadm"
+        return 1
+    fi
+    
+    echo "Select RAID level:"
+    echo "1) RAID 0 (Striping - Best performance, no redundancy)"
+    echo "2) RAID 1 (Mirroring - Redundancy, half capacity)"
+    echo "3) RAID 5 (Distributed parity - Good balance, requires 3+ disks)"
+    echo "4) RAID 10 (Mirrored stripes - Best of both, requires 4+ disks)"
+    
+    read -p "Select RAID level: " RAID_LEVEL
+    
+    case $RAID_LEVEL in
+        1)
+            RAID_TYPE="0"
+            ;;
+        2)
+            RAID_TYPE="1"
+            ;;
+        3)
+            if [ ${#UNMOUNTED_DISKS[@]} -lt 3 ]; then
+                print_error "RAID 5 requires at least 3 disks"
+                return
+            fi
+            RAID_TYPE="5"
+            ;;
+        4)
+            if [ ${#UNMOUNTED_DISKS[@]} -lt 4 ]; then
+                print_error "RAID 10 requires at least 4 disks"
+                return
+            fi
+            RAID_TYPE="10"
+            ;;
+        *)
+            print_error "Invalid RAID level"
+            return
+            ;;
+    esac
+    
+    # Create RAID array
+    print_info "Creating RAID $RAID_TYPE array..."
+    mdadm --create /dev/md0 --level=$RAID_TYPE --raid-devices=${#UNMOUNTED_DISKS[@]} "${UNMOUNTED_DISKS[@]}"
+    
+    # Format RAID array with optimization
+    print_info "Formatting RAID array..."
+    
+    # Get total RAID size in GB
+    RAID_SIZE_GB=$(lsblk -b -n -d -o SIZE /dev/md0 2>/dev/null | awk '{print int($1/1024/1024/1024)}')
+    
+    if [ -n "$RAID_SIZE_GB" ] && [ "$RAID_SIZE_GB" -gt 1000 ]; then
+        # Large RAID (>1TB): Optimize for large storage
+        print_info "  Large RAID array detected (${RAID_SIZE_GB}GB) - optimizing..."
+        mkfs.ext4 -F -m 1 -T largefile4 /dev/md0
+    else
+        # Normal RAID: Standard formatting
+        mkfs.ext4 -F /dev/md0
+    fi
+    
+    # Mount
+    mkdir -p /mnt/raid0
+    mount /dev/md0 /mnt/raid0
+    
+    # Add to fstab
+    echo "/dev/md0 /mnt/raid0 ext4 defaults 0 2" >> /etc/fstab
+    
+    # Backup mdadm.conf if it exists
+    if [ -f /etc/mdadm/mdadm.conf ]; then
+        cp /etc/mdadm/mdadm.conf "/etc/mdadm/mdadm.conf.backup-$(date +%Y%m%d-%H%M%S)"
+        print_success "Backed up existing mdadm.conf"
+    fi
+    
+    # Save RAID config
+    print_info "Saving RAID configuration..."
+    mdadm --detail --scan >> /etc/mdadm/mdadm.conf
+    
+    if command -v update-initramfs &> /dev/null; then
+        print_info "Updating initramfs..."
+        update-initramfs -u
+    fi
+    
+    STORAGE_PATH="/mnt/raid0"
+    print_success "RAID array created and mounted at: $STORAGE_PATH"
+}
+
+setup_individual_mounts() {
+    print_info "Setting up individual disk mounts..."
+    
+    STORAGE_DIR="/mnt/storage"
+    mkdir -p "$STORAGE_DIR"
+    
+    for disk in "${UNMOUNTED_DISKS[@]}"; do
+        print_info "Processing $disk..."
+        
+        # CRITICAL SAFETY CHECK: Never format OS disk
+        if [ "$disk" = "$OS_DISK" ]; then
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "This disk contains your Ubuntu installation. Skipping."
+            continue
+        fi
+        
+        # Warn about data loss
+        if ! warn_data_loss "$disk"; then
+            continue
+        fi
+        
+        # Prepare disk for formatting (unmount partitions, wipe signatures)
+        if ! prepare_disk_for_format "$disk"; then
+            print_error "Failed to prepare $disk for formatting"
+            continue
+        fi
+        
+        # Format as ext4 with optimization for large disks
+        print_info "Formatting $disk as ext4 (optimized for large storage)..."
+        
+        # Get disk size in GB
+        DISK_SIZE_GB=$(lsblk -b -n -d -o SIZE "$disk" | awk '{print int($1/1024/1024/1024)}')
+        
+        # Optimize formatting based on disk size
+        if [ "$DISK_SIZE_GB" -gt 1000 ]; then
+            # Large disk (>1TB): Reduce reserved blocks from 5% to 1%
+            print_info "  Large disk detected (${DISK_SIZE_GB}GB) - optimizing for maximum usable space..."
+            if ! mkfs.ext4 -F -m 1 -T largefile4 "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
+        else
+            # Normal disk: Standard formatting
+            if ! mkfs.ext4 -F "$disk"; then
+                print_error "Failed to format $disk"
+                continue
+            fi
+        fi
+        
+        UUID=$(blkid -s UUID -o value "$disk")
+        
+        if [ -z "$UUID" ]; then
+            print_error "Failed to get UUID for $disk"
+            continue
+        fi
+        
+        MOUNT_POINT="$STORAGE_DIR/$(basename $disk)"
+        mkdir -p "$MOUNT_POINT"
+        
+        # Add to fstab (avoid duplicates)
+        if ! grep -q "$UUID" /etc/fstab; then
+            echo "UUID=$UUID $MOUNT_POINT ext4 defaults 0 2" >> /etc/fstab
+            print_success "Added to /etc/fstab"
+        else
+            print_warning "Already in /etc/fstab"
+        fi
+        
+        # Mount directly by UUID
+        print_info "Mounting $disk..."
+        if mount UUID="$UUID" "$MOUNT_POINT" 2>/dev/null && mountpoint -q "$MOUNT_POINT"; then
+            print_success "✓ Mounted $disk at $MOUNT_POINT"
+        else
+            print_error "✗ Failed to mount $disk (try rebooting)"
+            continue
+        fi
+    done
+    
+    STORAGE_PATH="$STORAGE_DIR"
+    print_success "Individual disks mounted at: $STORAGE_PATH"
+}
+
+# Functions removed - interactive-setup.sh now handles node type selection
+# The old flow was confusing (asked twice for node type)
+
+show_documentation_info() {
+    print_header "Documentation & Help"
+    
+    echo "📚 Documentation is available at:"
+    echo
+    echo "  • Installation Guide: $PROJECT_ROOT/INSTALLATION.md"
+    echo "  • Getting Started: $PROJECT_ROOT/GETTING-STARTED.md"
+    echo "  • Architecture: $PROJECT_ROOT/docs/reference/architecture.md"
+    echo "  • Operations: $PROJECT_ROOT/docs/guides/operations.md"
+    echo "  • FAQ: $PROJECT_ROOT/FAQ.md"
+    echo
+    echo "🌐 Web UI will be available after installation:"
+    echo "  • Grafana (Monitoring): http://<control-plane-ip>:3000"
+    echo "  • ArgoCD (GitOps): https://<control-plane-ip>:8080"
+    echo "  • MinIO (S3 Storage): http://<control-plane-ip>:9000"
+    echo
+    echo "📖 For detailed storage options, see:"
+    echo "  • Storage Options: $PROJECT_ROOT/docs/reference/storage-guide.md"
+    echo
+}
+
+# Global flag to track if we're adding a remote node (skip local system setup)
+ADDING_REMOTE_NODE=false
+
+main() {
+    # Export UNATTENDED so child scripts inherit it
+    export UNATTENDED="${UNATTENDED:-0}"
+    
+    # If config file was provided via --config-file, use it and skip interactive setup
+    if [ -n "$CONFIG_FILE_ARG" ]; then
+        print_info "Using provided config file: $CONFIG_FILE_ARG"
+        
+        if [ ! -f "$CONFIG_FILE_ARG" ]; then
+            print_error "Config file not found: $CONFIG_FILE_ARG"
+            exit 1
+        fi
+        
+        # Source the config file
+        source "$CONFIG_FILE_ARG"
+        export CONFIG_FILE="$CONFIG_FILE_ARG"
+        
+        # Validate required variables
+        if [ -z "${NODE_TYPE:-}" ]; then
+            print_error "Invalid config file: NODE_TYPE not set"
+            exit 1
+        fi
+        
+        print_success "Config loaded: NODE_TYPE=$NODE_TYPE"
+        
+        # Skip to installation directly
+        SKIP_INTERACTIVE=true
+    else
+        SKIP_INTERACTIVE=false
+    fi
+    
+    # Show legal disclaimer FIRST (before welcome)
+    source "$SCRIPT_DIR/../utils/show-disclaimer.sh"
+    
+    welcome
+    check_root
+    
+    # If using config file, run pre-flight checks and proceed to installation
+    if [ "$SKIP_INTERACTIVE" = true ]; then
+        print_header "Pre-Flight Checks"
+        check_dependencies || exit 1
+        check_architecture
+        check_distro
+        check_network || exit 1
+        check_system_resources || exit 1
+        
+        # Skip directly to installation
+        print_info "Skipping interactive setup (using provided config)"
+    else
+        # Interactive mode: Get node type FIRST before other checks
+        print_header "Node Type Selection"
+        print_info "First, let's determine what type of node this will be..."
+        echo
+        
+        # Source helper functions from interactive-setup.sh
+        source "$SCRIPT_DIR/interactive-setup.sh"
+        
+        # Call node type selection function directly
+        configure_node_type
+        
+        # Export NODE_TYPE so it's available for subsequent checks
+        export NODE_TYPE
+        export NODE_ROLE
+        
+        # Now run pre-flight checks with node type known
+        print_header "Pre-Flight Checks"
+        check_dependencies || exit 1
+        check_architecture
+        check_distro
+        check_network || exit 1
+        check_system_resources || exit 1
+        check_existing_installation
+        
+        # Skip system cleanup and documentation if we're adding a remote node
+        if [ "$ADDING_REMOTE_NODE" = false ]; then
+            system_cleanup
+            
+            # Show documentation FIRST so users know what's coming
+            show_documentation_info
+        fi
+        
+        # Continue with rest of interactive setup wizard for remaining configuration
+        print_header "Configuration Wizard"
+        print_info "Now let's configure the remaining settings for your $NODE_ROLE..."
+        echo
+        
+        if ! prompt_confirm "Ready to continue with configuration?" "y"; then
+            print_info "Installation cancelled."
+            exit 0
+        fi
+        
+        # Call interactive setup - but skip node type selection since we already did it
+        # We'll need to modify interactive-setup.sh to skip node type if NODE_TYPE is set
+        bash "$SCRIPT_DIR/interactive-setup.sh"
+        
+        # Load the configuration created by interactive setup
+        export CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+        if [ -f "$CONFIG_FILE" ]; then
+            source "$CONFIG_FILE"
+        else
+            print_error "Configuration file not found after setup wizard. Exiting."
+            exit 1
+        fi
+    fi
+    
+    echo
+    print_info "💾 Storage Setup:"
+    echo "  • Longhorn will prompt for disk selection during installation"
+    echo "  • MinIO (optional) will prompt separately for its disks"
+    echo "  • You can skip disk setup and use OS disk (works fine for testing)"
+    echo
+    
+    echo
+    print_success "Configuration complete!"
+    echo
+    
+    # Proceed with installation
+    if prompt_confirm "Proceed with installation?" "y"; then
+        case "$NODE_TYPE" in
+            control-plane)
+                print_info "Running control plane bootstrap..."
+                bash "$SCRIPT_DIR/bootstrap-control-plane.sh"
+                
+                print_header "Final Step: Configuring Passwordless Sudo"
+                bash "$SCRIPT_DIR/setup-control-plane-sudo.sh"
+                
+                # Final verification
+                print_info "Verifying passwordless sudo..."
+                if sudo -n kubectl version --client &>/dev/null; then
+                    print_success "✓ Passwordless sudo verified."
+                else
+                    print_error "✗ Passwordless sudo configuration FAILED."
+                    print_error "Manual intervention required. Please run: ./scripts/setup/setup-control-plane-sudo.sh"
+                    exit 1
+                fi
+                ;;
+            worker)
+                print_info "Running worker node setup..."
+                bash "$SCRIPT_DIR/add-worker-node.sh"
+                ;;
+            edge)
+                # VPS Edge Nodes are ONLY installed via orchestration from control plane
+                if [ "${VPS_ORCHESTRATED:-false}" != "true" ]; then
+                    print_error "VPS Edge Nodes must be installed from the Control Plane"
+                    echo
+                    echo "For security reasons, VPS installation must be orchestrated from the control plane."
+                    echo
+                    echo "To install a VPS Edge Node:"
+                    echo "  1. SSH into your Control Plane"
+                    echo "  2. Run: sudo ./scripts/installation/install-vps-edge-node.sh --help"
+                    echo "  3. Provide required arguments (name, IP, user, domain)"
+                    echo
+                    exit 1
+                fi
+                
+                # This script is running ON the VPS (orchestrated from control plane)
+                print_info "Running VPS Edge Node local installation..."
+                echo
+                
+                # Run the VPS setup script
+                bash "$SCRIPT_DIR/setup-vps-node.sh"
+                ;;
+
+            management)
+                print_info "Running management laptop setup..."
+                bash "$SCRIPT_DIR/setup-management-laptop.sh"
+                ;;
+            *)
+                print_error "Unknown node type: $NODE_TYPE"
+                exit 1
+                ;;
+        esac
+        
+        echo
+        print_header "Installation Complete!"
+        print_success "Your MyNodeOne node has been set up successfully! 🎉"
+        echo
+        echo "Next steps:"
+        echo "  1. Review credentials in $ACTUAL_HOME/mynodeone-*-credentials.txt"
+        echo "  2. Check status: kubectl get nodes"
+        echo "  3. Deploy apps: kubectl apply -f manifests/examples/"
+        echo
+    else
+        print_info "Installation cancelled. Configuration saved in $CONFIG_FILE"
+        print_info "Run this script again to install."
+        exit 0
+    fi
+}
+
+# Run main function
+main "$@"

@@ -16,7 +16,7 @@
 # - Quick start: scripts/apps/llmapi/README.md
 # - Public access configuration: docs/APP-PUBLIC-ACCESS.md
 # - After installation, you'll be asked if you want to make this app public
-# - You can change visibility anytime: sudo ./scripts/manage-app-visibility.sh
+# - You can change visibility anytime: sudo ./scripts/operations/manage-app-visibility.sh
 ###############################################################################
 
 set -euo pipefail

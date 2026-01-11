@@ -67,7 +67,7 @@ Automated quarterly maintenance script that runs every 3 months.
 sudo ~/MyNodeOne/scripts/longhorn-maintenance/scripts/quarterly-longhorn-maintenance.sh
 ```
 
-### 3. `scripts/setup-longhorn-monitoring.sh`
+### 3. `scripts/setup/setup-longhorn-monitoring.sh`
 Installation script that:
 - Installs the metrics exporter
 - Configures cron jobs for monitoring and maintenance
@@ -76,7 +76,7 @@ Installation script that:
 
 **Usage:**
 ```bash
-sudo ~/MyNodeOne/scripts/longhorn-maintenance/scripts/setup-longhorn-monitoring.sh
+sudo ~/MyNodeOne/scripts/longhorn-maintenance/scripts/setup/setup-longhorn-monitoring.sh
 ```
 
 ### 4. Prometheus Alerts
@@ -184,7 +184,7 @@ These scripts are **automatically run** during control plane installation:
 
 1. `install_longhorn()` in `bootstrap-control-plane.sh` calls:
    - `longhorn-maintenance/scripts/fix-longhorn-disk-reservation.sh` - Optimizes reservations
-   - `longhorn-maintenance/scripts/setup-longhorn-monitoring.sh` - Installs monitoring and cron jobs
+   - `longhorn-maintenance/scripts/setup/setup-longhorn-monitoring.sh` - Installs monitoring and cron jobs
 
 2. Monitoring and automated maintenance start immediately after installation
 

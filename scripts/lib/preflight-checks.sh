@@ -71,7 +71,7 @@ check_control_plane_for_vps() {
         preflight_log_success "Passwordless sudo: OK"
     else
         preflight_log_error "Passwordless sudo: NOT CONFIGURED"
-        echo "  Fix: Run on control plane: sudo ./scripts/setup-control-plane-sudo.sh"
+        echo "  Fix: Run on control plane: sudo ./scripts/setup/setup-control-plane-sudo.sh"
         checks_failed=1
     fi
     
@@ -243,7 +243,7 @@ check_ip_conflict() {
         echo "    2. Tailscale assigned a recycled IP"
         echo ""
         echo "  Fix: Unregister the old VPS:"
-        echo "    ./scripts/unregister-vps.sh $vps_ip"
+        echo "    ./scripts/nodes/unregister-vps.sh $vps_ip"
         echo ""
         return 1
     fi

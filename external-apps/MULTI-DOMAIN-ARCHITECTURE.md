@@ -318,7 +318,7 @@ bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 # myblog.com:      A @ → VPS_IP (same IP!)
 
 # Enable public access
-sudo bash ~/MyNodeOne/scripts/manage-app-visibility.sh
+sudo bash ~/MyNodeOne/scripts/operations/manage-app-visibility.sh
 # Select voting-app → example.com
 # Run again for another-app → myblog.com
 

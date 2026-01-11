@@ -79,7 +79,7 @@ This directory contains Kubernetes manifests that implement security best practi
 All manifests are deployed automatically when you run:
 
 ```bash
-sudo ./scripts/enable-security-hardening.sh
+sudo ./scripts/setup/enable-security-hardening.sh
 ```
 
 ### Manual Deployment

@@ -21,7 +21,7 @@ MyNodeOne supports multiple node types:
 The control plane is installed during initial setup:
 
 ```bash
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 # Select: 1. Install Control Plane
 ```
 
@@ -33,7 +33,7 @@ Add worker nodes to expand cluster capacity:
 
 ```bash
 # On control plane
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 ```
 
 **Features:**
@@ -50,7 +50,7 @@ Add VPS nodes for public internet access:
 
 ```bash
 # On control plane
-sudo ./scripts/install-vps-edge-node.sh
+sudo ./scripts/installation/install-vps-edge-node.sh
 ```
 
 **Features:**
@@ -67,7 +67,7 @@ Setup laptops for cluster management:
 
 ```bash
 # On laptop
-sudo ./scripts/setup-management-laptop.sh
+sudo ./scripts/setup/setup-management-laptop.sh
 ```
 
 **Features:**
@@ -87,16 +87,16 @@ Use `remove-node.sh` to remove any node type from the cluster registry:
 
 ```bash
 # Interactive mode (lists all nodes)
-sudo ./scripts/remove-node.sh
+sudo ./scripts/nodes/remove-node.sh
 
 # Remove by name (auto-detects type)
-sudo ./scripts/remove-node.sh dev-laptop
+sudo ./scripts/nodes/remove-node.sh dev-laptop
 
 # Remove by type and name
-sudo ./scripts/remove-node.sh --type management_laptops --name dev-laptop
+sudo ./scripts/nodes/remove-node.sh --type management_laptops --name dev-laptop
 
 # Remove by IP
-sudo ./scripts/remove-node.sh --ip 100.79.49.125
+sudo ./scripts/nodes/remove-node.sh --ip 100.79.49.125
 ```
 
 **What it does:**
@@ -116,7 +116,7 @@ sudo ./scripts/remove-node.sh --ip 100.79.49.125
 
 ```bash
 # On control plane
-sudo ./scripts/remove-node.sh <node-name>
+sudo ./scripts/nodes/remove-node.sh <node-name>
 ```
 
 #### 2. Remove Kubernetes Worker Node (if applicable)
@@ -138,7 +138,7 @@ If you want to completely uninstall MyNodeOne from the node:
 ssh <user>@<node-ip>
 
 # Run uninstall script
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 ### Node Type Specific Removal
@@ -147,10 +147,10 @@ sudo ./scripts/uninstall-mynodeone.sh
 
 ```bash
 # 1. Remove from registry (on control plane)
-sudo ./scripts/remove-node.sh dev-laptop
+sudo ./scripts/nodes/remove-node.sh dev-laptop
 
 # 2. Uninstall from laptop (on laptop)
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 **Cleanup:**
@@ -162,14 +162,14 @@ sudo ./scripts/uninstall-mynodeone.sh
 
 ```bash
 # 1. Remove from registry (on control plane)
-sudo ./scripts/remove-node.sh canada-pc-0001-1
+sudo ./scripts/nodes/remove-node.sh canada-pc-0001-1
 
 # 2. Remove from Kubernetes (on control plane)
 kubectl drain canada-pc-0001-1 --ignore-daemonsets --delete-emptydir-data
 kubectl delete node canada-pc-0001-1
 
 # 3. Uninstall from worker (on worker node)
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 **Important:**
@@ -181,13 +181,13 @@ sudo ./scripts/uninstall-mynodeone.sh
 
 ```bash
 # 1. Remove from registry (on control plane)
-sudo ./scripts/remove-node.sh vps-edge-0001
+sudo ./scripts/nodes/remove-node.sh vps-edge-0001
 
 # 2. Remove from domain registry (on control plane)
 # This is done automatically by remove-node.sh
 
 # 3. Uninstall from VPS (on VPS)
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 **Cleanup:**
@@ -205,7 +205,7 @@ sudo ./scripts/uninstall-mynodeone.sh
 View all nodes registered in the sync-controller registry:
 
 ```bash
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 ```
 
 **Output:**
@@ -352,7 +352,7 @@ sudo ./scripts/lib/sync-controller.sh push-force
 
 # On the node - manually sync
 sudo ./scripts/sync-dns.sh  # For laptops/workers
-sudo ./scripts/sync-vps-routes.sh  # For VPS nodes
+sudo ./scripts/vps/sync-vps-routes.sh  # For VPS nodes
 ```
 
 ### Cannot Remove Node
@@ -363,10 +363,10 @@ sudo ./scripts/sync-vps-routes.sh  # For VPS nodes
 
 ```bash
 # List all nodes to verify name
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 
 # Try removing by IP instead
-sudo ./scripts/remove-node.sh --ip <tailscale-ip>
+sudo ./scripts/nodes/remove-node.sh --ip <tailscale-ip>
 
 # Manually edit ConfigMap (last resort)
 kubectl edit configmap sync-controller-registry -n kube-system
@@ -425,20 +425,20 @@ kubectl delete pod <pod-name> -n <namespace> --force --grace-period=0
 
 ### Add Nodes
 ```bash
-sudo ./scripts/add-worker-node.sh           # Worker node
-sudo ./scripts/install-vps-edge-node.sh     # VPS edge node
-sudo ./scripts/setup-management-laptop.sh   # Management laptop
+sudo ./scripts/nodes/add-worker-node.sh           # Worker node
+sudo ./scripts/installation/install-vps-edge-node.sh     # VPS edge node
+sudo ./scripts/setup/setup-management-laptop.sh   # Management laptop
 ```
 
 ### Remove Nodes
 ```bash
-sudo ./scripts/remove-node.sh <node-name>   # Any node type
+sudo ./scripts/nodes/remove-node.sh <node-name>   # Any node type
 kubectl delete node <node-name>             # Kubernetes worker
 ```
 
 ### View Nodes
 ```bash
-sudo ./scripts/nodes-status.sh              # All nodes (sync registry)
+sudo ./scripts/nodes/nodes-status.sh              # All nodes (sync registry)
 kubectl get nodes                           # Kubernetes nodes only
 ```
 

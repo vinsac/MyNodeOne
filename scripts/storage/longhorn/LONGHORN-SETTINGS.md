@@ -232,7 +232,7 @@ parameters:
 These settings are configured automatically during installation:
 
 ### Control Plane Bootstrap
-**File:** `scripts/bootstrap-control-plane.sh`
+**File:** `scripts/installation/bootstrap-control-plane.sh`
 
 ```bash
 helm upgrade --install longhorn longhorn/longhorn \

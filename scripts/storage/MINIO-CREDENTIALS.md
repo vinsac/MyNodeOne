@@ -30,11 +30,11 @@ MyNodeOne uses **shared credentials** across all MinIO instances in the cluster.
 **Scenario 1: Control Plane MinIO Installed First**
 ```bash
 # Control plane bootstrap
-./scripts/bootstrap-control-plane.sh
+./scripts/installation/bootstrap-control-plane.sh
 # → Creates minio-credentials secret with random password
 
 # Worker joins later
-./scripts/add-worker-node.sh
+./scripts/nodes/add-worker-node.sh
 # → Reads existing minio-credentials secret
 # → Uses SAME credentials as control plane
 ```
@@ -42,7 +42,7 @@ MyNodeOne uses **shared credentials** across all MinIO instances in the cluster.
 **Scenario 2: Worker MinIO Installed First**
 ```bash
 # Worker joins (control plane has no MinIO)
-./scripts/add-worker-node.sh
+./scripts/nodes/add-worker-node.sh
 # → Creates minio-credentials secret with random password
 
 # Control plane MinIO installed later
@@ -147,7 +147,7 @@ kubectl delete secret minio-credentials -n minio
 ./scripts/storage/minio/install-interactive.sh
 
 # Option B: Reinstall on worker
-./scripts/add-worker-node.sh  # Select MinIO installation
+./scripts/nodes/add-worker-node.sh  # Select MinIO installation
 
 # Step 3: Reinstall MinIO on OTHER nodes
 # They will automatically read the new credentials from the secret

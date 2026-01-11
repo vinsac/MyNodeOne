@@ -155,7 +155,7 @@ kubectl edit ipaddresspool -n metallb-system
 
 2. VPS routing configured?
    ```bash
-   sudo bash /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+   sudo bash /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
    ```
 
 3. SSL certificate obtained?
@@ -420,5 +420,5 @@ kubectl delete pods -n myapp --all
 
 ### Check Cluster Health
 ```bash
-bash /path/to/MyNodeOne/scripts/cluster-status.sh
+bash /path/to/MyNodeOne/scripts/operations/cluster-status.sh
 ```

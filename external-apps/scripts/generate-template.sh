@@ -206,7 +206,7 @@ To expose this app to the internet:
 
 \`\`\`bash
 # From MyNodeOne control plane
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 \`\`\`
 
 ## MyNodeOne Integration
@@ -849,7 +849,7 @@ echo "3. Access your app:"
 echo "   http://${APP_NAME}.mynodeone.local"
 echo ""
 echo "4. Make it public (optional):"
-echo "   sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh"
+echo "   sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh"
 echo ""
 
 log_success "Happy building! 🚀"

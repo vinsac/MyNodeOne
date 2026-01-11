@@ -55,7 +55,7 @@ Use a password manager on your laptop (not on the control plane):
 
 ```bash
 # View all credentials
-sudo /path/to/MyNodeOne/scripts/show-credentials.sh
+sudo /path/to/MyNodeOne/scripts/utils/show-credentials.sh
 ```
 
 ### 2. Delete Credential Files
@@ -175,7 +175,7 @@ Allow: All traffic on tailscale0 interface
 During installation, you are prompted to deploy additional security features. These can also be added later:
 
 ```bash
-sudo ./scripts/enable-security-hardening.sh
+sudo ./scripts/setup/enable-security-hardening.sh
 ```
 
 This adds:

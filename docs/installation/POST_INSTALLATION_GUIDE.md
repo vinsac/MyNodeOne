@@ -17,7 +17,7 @@ During installation, the installer displayed your service URLs and credentials. 
 
 **Credentials** were displayed during installation. If you need them again, run on **control plane**:
 ```bash
-sudo ./scripts/show-credentials.sh
+sudo ./scripts/utils/show-credentials.sh
 ```
 
 ---
@@ -56,12 +56,12 @@ kubectl get svc -A
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/deploy-demo-app.sh deploy
+sudo ./scripts/operations/deploy-demo-app.sh deploy
 ```
 
 Access the URL shown after deployment. Remove when done:
 ```bash
-sudo ./scripts/deploy-demo-app.sh remove
+sudo ./scripts/operations/deploy-demo-app.sh remove
 ```
 
 ---
@@ -70,7 +70,7 @@ sudo ./scripts/deploy-demo-app.sh remove
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/app-store.sh
+sudo ./scripts/operations/app-store.sh
 ```
 
 Or install directly:

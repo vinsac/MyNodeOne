@@ -51,7 +51,7 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 SSH into your control plane and run:
 
 ```bash
-sudo ./scripts/app-store.sh
+sudo ./scripts/operations/app-store.sh
 ```
 
 This launches an interactive menu where you can:
@@ -240,7 +240,7 @@ To add a new app to the store:
 4. Create uninstall script: `scripts/apps/uninstall-<appname>.sh`
 5. Update:
    - `scripts/apps/README.md`
-   - `scripts/app-store.sh` (add menu option)
+   - `scripts/operations/app-store.sh` (add menu option)
    - `website/dashboard.html` (add app card)
    - This file
 6. Test on a real cluster

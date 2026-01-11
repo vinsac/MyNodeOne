@@ -193,7 +193,7 @@ Longhorn will automatically expand the volume.
 To access Paperless from the internet:
 
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 This will:

@@ -1120,7 +1120,7 @@ auto_configure_domains() {
     done
     echo ""
     echo "  2. Run this command to enable public access + SSL:"
-    echo "     sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh"
+    echo "     sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh"
     echo ""
     echo "  3. Access your app (after DNS propagates ~5-30 min):"
     echo ""
@@ -1286,7 +1286,7 @@ configure_public_access() {
     done
     echo ""
     echo "  2. Run the visibility manager:"
-    echo "     sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
+    echo "     sudo $MYNODEONE_ROOT/scripts/operations/manage-app-visibility.sh"
     echo ""
     echo "  3. Wait for DNS propagation (~5-30 minutes)"
     echo ""
@@ -1317,11 +1317,11 @@ show_summary() {
         echo ""
         echo "  ℹ️  Note: '$APP_NAME' is your app name (Kubernetes namespace)"
         echo "          Individual services: $(kubectl get svc -n "$APP_NAME" -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | .metadata.name' | paste -sd, -)"
-        echo "   2. Run: sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
+        echo "   2. Run: sudo $MYNODEONE_ROOT/scripts/operations/manage-app-visibility.sh"
         echo "   3. Access your app at: https://$(echo $PUBLIC_DOMAINS | awk '{print $1}')"
     else
         echo "   1. Access your app at: http://${LOCAL_SUBDOMAIN}.mynodeone.local"
-        echo "   2. To make it public, run: sudo $MYNODEONE_ROOT/scripts/manage-app-visibility.sh"
+        echo "   2. To make it public, run: sudo $MYNODEONE_ROOT/scripts/operations/manage-app-visibility.sh"
     fi
     
     echo ""

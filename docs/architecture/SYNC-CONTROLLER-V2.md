@@ -509,7 +509,7 @@ HEARTBEAT_INTERVAL=60
 
 ```bash
 # Check node status from control plane (requires sudo to read API token)
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 
 # Output:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -580,13 +580,13 @@ Add node status to `http://mynodeone.local` dashboard:
 ### On Control Plane
 
 ```bash
-sudo ./scripts/install-config-api.sh
+sudo ./scripts/installation/install-config-api.sh
 ```
 
 ### On Other Nodes (Laptops, VPS, Workers)
 
 ```bash
-sudo ./scripts/install-node-agent.sh \
+sudo ./scripts/installation/install-node-agent.sh \
     --control-plane-ip 100.x.x.x \
     --node-type laptop \
     --api-token <token-from-control-plane>
@@ -595,5 +595,5 @@ sudo ./scripts/install-node-agent.sh \
 ### Check Status
 
 ```bash
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 ```

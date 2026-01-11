@@ -75,7 +75,7 @@ warn_if_namespace_exists "$NAMESPACE"
 ### **1. kubectl Available**
 ```
 Error: kubectl not found. Please install Kubernetes first.
-Run: sudo ./scripts/bootstrap-control-plane.sh
+Run: sudo ./scripts/installation/bootstrap-control-plane.sh
 ```
 
 ### **2. Cluster Accessible**

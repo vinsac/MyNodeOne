@@ -226,8 +226,8 @@ All scripts passed `bash -n` syntax checks:
 - ✅ `scripts/lib/node-registry-manager.sh`
 - ✅ `scripts/storage/longhorn/install-interactive.sh`
 - ✅ `scripts/storage/minio/install-interactive.sh`
-- ✅ `scripts/bootstrap-control-plane.sh`
-- ✅ `scripts/add-worker-node.sh`
+- ✅ `scripts/installation/bootstrap-control-plane.sh`
+- ✅ `scripts/nodes/add-worker-node.sh`
 
 ### ⏳ Functional Testing (Pending)
 **Recommended Tests:**
@@ -246,8 +246,8 @@ All scripts passed `bash -n` syntax checks:
 scripts/lib/node-registry-manager.sh           # Enhanced (fixed + new functions)
 scripts/storage/longhorn/install-interactive.sh # New
 scripts/storage/minio/install-interactive.sh    # New
-scripts/bootstrap-control-plane.sh              # Modified
-scripts/add-worker-node.sh                      # Modified
+scripts/installation/bootstrap-control-plane.sh              # Modified
+scripts/nodes/add-worker-node.sh                      # Modified
 examples/storage/statefulset-with-pvcs.yaml     # New
 examples/storage/deployment-with-pvc.yaml       # New
 examples/storage/app-with-minio-backup.yaml     # New
@@ -287,7 +287,7 @@ IMPLEMENTATION-SUMMARY.md                       # This file
 ### Control Plane Installation
 ```bash
 # Run interactive setup
-sudo ./scripts/interactive-setup.sh
+sudo ./scripts/installation/interactive-setup.sh
 
 # Follow prompts for:
 # 1. Node name (default from K8s)
@@ -300,7 +300,7 @@ sudo ./scripts/interactive-setup.sh
 ### Worker Node Addition
 ```bash
 # Run worker node script
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 
 # Follow prompts for:
 # 1. Node name

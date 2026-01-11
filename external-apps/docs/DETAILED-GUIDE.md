@@ -234,7 +234,7 @@ MyNodeOne provides built-in public routing via VPS edge nodes.
 
 ```bash
 # Interactive configuration
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 
 # Select your app from the list
 # Choose which domains and VPS nodes to use

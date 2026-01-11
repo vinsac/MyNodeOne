@@ -44,7 +44,7 @@ Two DNS methods work together:
 
 ## Configuration Flow
 
-When `./scripts/setup-local-dns.sh` runs:
+When `./scripts/setup/setup-local-dns.sh` runs:
 
 ```
 1. Get LoadBalancer IPs from Kubernetes

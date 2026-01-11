@@ -200,7 +200,7 @@ velero restore create myapp-restore \
 ```bash
 # On new control plane machine
 cd ~/MyNodeOne
-sudo ./scripts/bootstrap-control-plane.sh
+sudo ./scripts/installation/bootstrap-control-plane.sh
 ```
 
 **2. Reinstall Velero:**
@@ -213,7 +213,7 @@ kubectl get deployment velero -n velero
 **3. Reconnect to Existing MinIO:**
 ```bash
 # If worker node still exists with MinIO
-sudo ./scripts/add-worker-node.sh
+sudo ./scripts/nodes/add-worker-node.sh
 
 # This will:
 # - Join worker to new cluster

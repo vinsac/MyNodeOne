@@ -308,12 +308,12 @@ spec:
 ### File Changes Required
 
 **Files to Modify:**
-1. `scripts/bootstrap-control-plane.sh`
+1. `scripts/installation/bootstrap-control-plane.sh`
    - Modify `install_longhorn()` - add node selectors
    - Remove/disable `install_minio()` - move to worker
    - Add storage node labels
 
-2. `scripts/add-worker-node.sh`
+2. `scripts/nodes/add-worker-node.sh`
    - Add `install_minio_worker()` function
    - Add `setup_minio_storage_directories()`
    - Add Longhorn node restriction logic
@@ -441,7 +441,7 @@ spec:
 
 **Files Modified in Recent Work:**
 - `scripts/storage/minio/install-interactive.sh` - Systemd installation with disk detection
-- `scripts/add-worker-node.sh` - Calls systemd MinIO installer
+- `scripts/nodes/add-worker-node.sh` - Calls systemd MinIO installer
 - Removed kubectl dependencies for MinIO
 
 ### What Needs to Change
@@ -465,7 +465,7 @@ To:   MinIO as Kubernetes StatefulSet (cluster-level with node affinity)
 #### Phase 1: Longhorn on Worker Nodes
 
 **1.1 Modify Worker Node Installation**
-- File: `scripts/add-worker-node.sh`
+- File: `scripts/nodes/add-worker-node.sh`
 - Keep existing `install_longhorn()` function
 - Remove `disable_longhorn_on_worker()` logic
 - Allow Longhorn to schedule on worker nodes
@@ -580,7 +580,7 @@ spec:
 - Wait for MinIO to be ready
 - Display access information
 
-**3.2 Modify `scripts/add-worker-node.sh`**
+**3.2 Modify `scripts/nodes/add-worker-node.sh`**
 - Replace systemd MinIO installation
 - Call new `install-k8s-minio.sh`
 - Ensure kubectl is configured before MinIO installation
@@ -1049,7 +1049,7 @@ spec:
 - `install-minio-worker.sh` - MinIO worker installation with disk detection
 - `configure-velero-backup.sh` - Velero backup configuration
 
-**2. Bootstrap Control Plane Changes** (`scripts/bootstrap-control-plane.sh`)
+**2. Bootstrap Control Plane Changes** (`scripts/installation/bootstrap-control-plane.sh`)
 - Removed `install_minio()` function
 - Added `install_velero()` function
 - Updated bootstrap sequence: `install_velero` replaces `install_minio`
@@ -1057,7 +1057,7 @@ spec:
 - Updated summary display to show Velero status
 - Removed MinIO credentials from cleanup and display
 
-**3. Worker Node Changes** (`scripts/add-worker-node.sh`)
+**3. Worker Node Changes** (`scripts/nodes/add-worker-node.sh`)
 - Added `disable_longhorn_on_worker()` - Disables Longhorn scheduling on worker
 - Added `install_minio_worker()` - Installs MinIO with local disk detection
 - Added `configure_velero_backup()` - Configures Velero backup to MinIO
@@ -1157,8 +1157,8 @@ Control Plane (Longhorn PVCs) → Velero → Worker Node (MinIO)
 - `docs/architecture/STORAGE-IMPLEMENTATION.md`
 
 **Modified:**
-- `scripts/bootstrap-control-plane.sh`
-- `scripts/add-worker-node.sh`
+- `scripts/installation/bootstrap-control-plane.sh`
+- `scripts/nodes/add-worker-node.sh`
 - `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md` (this file)
 
 ### Next Steps

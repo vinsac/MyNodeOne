@@ -24,7 +24,7 @@ Worker node `canada-pc-0001-1` (100.90.70.25) was added to cluster `universe` wi
 
 ### 1. Missing User Confirmation for kubectl Labels
 **Status:** 🔴 Critical  
-**Location:** `scripts/add-worker-node.sh` - `label_node()` function
+**Location:** `scripts/nodes/add-worker-node.sh` - `label_node()` function
 
 **Observation:**
 ```
@@ -47,7 +47,7 @@ Script displays instruction but doesn't wait for confirmation that labels were a
 
 ### 2. kubectl Configuration on Worker Node
 **Status:** 🟡 Question  
-**Location:** `scripts/add-worker-node.sh` - `configure_kubectl_worker()` function
+**Location:** `scripts/nodes/add-worker-node.sh` - `configure_kubectl_worker()` function
 
 **Observation:**
 ```
@@ -96,7 +96,7 @@ Hardcoded `mynodeone.local` instead of reading from `CLUSTER_DOMAIN` or config.e
 
 ### 4. Wrong MinIO Installation Method
 **Status:** 🔴 Critical  
-**Location:** `scripts/add-worker-node.sh` - `install_minio()` function
+**Location:** `scripts/nodes/add-worker-node.sh` - `install_minio()` function
 
 **Observation:**
 ```

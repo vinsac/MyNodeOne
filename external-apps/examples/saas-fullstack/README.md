@@ -50,7 +50,7 @@ kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.vps-nod
 ## Complete Setup
 
 ```bash
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 ```
 
 Select your app and configure routing.

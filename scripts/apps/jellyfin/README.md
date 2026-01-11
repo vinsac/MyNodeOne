@@ -613,7 +613,7 @@ cat /etc/hosts | grep media.mynodeone.local
 
 **Fix:** Re-run VPS configuration (now auto-detects NodePort)
 ```bash
-sudo ./scripts/configure-vps-route.sh jellyfin 80 media example.com
+sudo ./scripts/vps/configure-vps-route.sh jellyfin 80 media example.com
 ```
 
 **Verify backend:**

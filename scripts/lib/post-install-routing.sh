@@ -245,8 +245,8 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                         log_warn "No VPS nodes registered yet"
                         echo ""
                         echo "To complete public access setup:"
-                        echo "  1. Install VPS edge node: sudo ./scripts/install-mynodeone.sh → Option 3"
-                        echo "  2. Then run: sudo ./scripts/manage-app-visibility.sh"
+                        echo "  1. Install VPS edge node: sudo ./scripts/installation/install-mynodeone.sh → Option 3"
+                        echo "  2. Then run: sudo ./scripts/operations/manage-app-visibility.sh"
                     fi
                 fi
                 ;;
@@ -258,7 +258,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                 
             *)
                 log_info "You can configure public access later with:"
-                echo "  sudo ./scripts/manage-app-visibility.sh"
+                echo "  sudo ./scripts/operations/manage-app-visibility.sh"
                 MAKE_PUBLIC="false"
                 ;;
         esac
@@ -304,7 +304,7 @@ if [[ "$MAKE_PUBLIC" != "true" ]]; then
     echo ""
     
     log_info "To make public later:"
-    echo "  sudo ./scripts/manage-app-visibility.sh"
+    echo "  sudo ./scripts/operations/manage-app-visibility.sh"
     echo ""
 fi
 

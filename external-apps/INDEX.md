@@ -196,7 +196,7 @@ kubectl set image deployment/myapp myapp=registry/myapp:v2 -n myapp
 ```bash
 # Add DNS A records for your domains
 # Then:
-sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
 # Select your app and configure
 ```
 

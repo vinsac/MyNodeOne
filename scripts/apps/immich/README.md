@@ -130,7 +130,7 @@ kubectl get pods -n immich
 To access Immich when you're away from home:
 
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 ## Backup Your Photos

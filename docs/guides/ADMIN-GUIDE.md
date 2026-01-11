@@ -22,14 +22,14 @@ MyNodeOne provides three administration methods:
 Simple menu-driven interface for common tasks.
 
 ```bash
-sudo ./scripts/admin.sh
+sudo ./scripts/operations/admin.sh
 ```
 
 ### 2. **Web Dashboard** (Most User-Friendly)
 Visual interface accessible via web browser.
 
 ```bash
-sudo ./scripts/setup-admin-dashboard.sh
+sudo ./scripts/setup/setup-admin-dashboard.sh
 ```
 
 ### 3. **kubectl Commands** (Advanced)
@@ -44,7 +44,7 @@ Already installed! Just run:
 
 ```bash
 cd /path/to/MyNodeOne
-sudo ./scripts/admin.sh
+sudo ./scripts/operations/admin.sh
 ```
 
 ### Features
@@ -65,24 +65,24 @@ sudo ./scripts/admin.sh
 ### Common Workflows
 
 #### View Application Status
-1. Run `sudo ./scripts/admin.sh`
+1. Run `sudo ./scripts/operations/admin.sh`
 2. Choose option 1 (View installed apps)
 3. See all applications with their status
 
 #### Check Resource Usage
-1. Run `sudo ./scripts/admin.sh`
+1. Run `sudo ./scripts/operations/admin.sh`
 2. Choose option 2 (View resource usage)
 3. See CPU, RAM, and storage for each node
 
 #### View Application Logs
-1. Run `sudo ./scripts/admin.sh`
+1. Run `sudo ./scripts/operations/admin.sh`
 2. Choose option 3 (View logs)
 3. Select the application namespace
 4. Select the pod
 5. Logs stream in real-time (Ctrl+C to stop)
 
 #### Restart a Stuck Application
-1. Run `sudo ./scripts/admin.sh`
+1. Run `sudo ./scripts/operations/admin.sh`
 2. Choose option 4 (Restart application)
 3. Select the application from the list
 4. Confirm restart
@@ -94,7 +94,7 @@ sudo ./scripts/admin.sh
 ### Setup
 
 ```bash
-sudo ./scripts/setup-admin-dashboard.sh
+sudo ./scripts/setup/setup-admin-dashboard.sh
 ```
 
 The script will:
@@ -212,13 +212,13 @@ kubectl exec -n llm-chat deployment/ollama -- df -h /home/ollama/.ollama
 
 **Using Admin Tool:**
 ```bash
-sudo ./scripts/admin.sh
+sudo ./scripts/operations/admin.sh
 # Choose option 6 (Install new app)
 ```
 
 **Using App Store:**
 ```bash
-sudo ./scripts/app-store.sh
+sudo ./scripts/operations/app-store.sh
 ```
 
 **Direct Installation:**
@@ -256,7 +256,7 @@ kubectl logs -n <namespace> deployment/<app-name> -p
 
 **Via admin tool:**
 ```bash
-sudo ./scripts/admin.sh
+sudo ./scripts/operations/admin.sh
 # Choose option 4 (Restart application)
 ```
 
@@ -315,7 +315,7 @@ MyNodeOne uses a heartbeat system to track which nodes are online. Each node run
 
 ```bash
 # View all nodes and their status (requires sudo to read API token)
-sudo ./scripts/nodes-status.sh
+sudo ./scripts/nodes/nodes-status.sh
 ```
 
 Output shows:
@@ -331,7 +331,7 @@ To add a new node (such as a VPS, Worker, or another Management Laptop), follow 
 2. Configure it to connect to your control plane
 3. Start sending heartbeats immediately
 
-The node will appear in `sudo ./scripts/nodes-status.sh` within 60 seconds.
+The node will appear in `sudo ./scripts/nodes/nodes-status.sh` within 60 seconds.
 
 ### Permanently Removing a Node
 
@@ -343,7 +343,7 @@ kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 kubectl delete node <node-name>
 
 # Step 2: Remove from sync controller registry
-sudo ./scripts/nodes-status.sh remove <node-name>
+sudo ./scripts/nodes/nodes-status.sh remove <node-name>
 ```
 
 **Note:** Nodes are never automatically removed. This is a safety measure to prevent accidental removal due to temporary network outages. An offline node will stay in the registry (showing as "offline") until you explicitly remove it.
@@ -427,7 +427,7 @@ kubectl get svc -n kubernetes-dashboard
 **Reinstall if needed:**
 ```bash
 kubectl delete namespace kubernetes-dashboard
-sudo ./scripts/setup-admin-dashboard.sh
+sudo ./scripts/setup/setup-admin-dashboard.sh
 ```
 
 ### Lost Admin Token
@@ -495,7 +495,7 @@ cat ~/.mynodeone/dashboard-token.txt
 
 ```bash
 # Admin tool
-sudo ./scripts/admin.sh
+sudo ./scripts/operations/admin.sh
 
 # View all apps
 kubectl get deployments --all-namespaces
@@ -520,7 +520,7 @@ kubectl top pods --all-namespaces
 sudo ./scripts/apps/llm-chat/expand-storage.sh
 
 # Install app
-sudo ./scripts/app-store.sh
+sudo ./scripts/operations/app-store.sh
 ```
 
 ---
@@ -531,7 +531,7 @@ sudo ./scripts/app-store.sh
 
 ```bash
 # Admin tool has built-in help
-sudo ./scripts/admin.sh
+sudo ./scripts/operations/admin.sh
 
 # Each script has help
 ./scripts/apps/install-<app-name>.sh --help
@@ -556,7 +556,7 @@ sudo ./scripts/admin.sh
 
 1. **Set up web dashboard** (easiest way to manage):
    ```bash
-   sudo ./scripts/setup-admin-dashboard.sh
+   sudo ./scripts/setup/setup-admin-dashboard.sh
    ```
 
 2. **Set up storage monitoring** (prevent space issues):
@@ -569,5 +569,5 @@ sudo ./scripts/admin.sh
 
 4. **Install applications** you need:
    ```bash
-   sudo ./scripts/app-store.sh
+   sudo ./scripts/operations/app-store.sh
    ```

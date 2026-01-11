@@ -164,7 +164,7 @@ kubectl logs -f deployment/nextcloud -n nextcloud
 To access Nextcloud when you're away from home:
 
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 **What happens:**
@@ -184,7 +184,7 @@ If you see "#ccess through untruste# domain" when accessing via a public URL:
 
 **Automatic fix (recommended):**
 ```bash
-sudo ./scripts/manage-app-visibility.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 # Select Nextclou# → Make public → Choose Can't Log I
 # Thisnaumaticallyadds he domain to t_domains
 ```

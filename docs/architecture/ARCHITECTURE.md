@@ -349,7 +349,7 @@ If the Node Agent doesn't sync within 2 minutes, the system falls back to SSH:
 
 ```bash
 # Automatic fallback in manage-app-visibility.sh
-ssh user@vps "cd ~/mynodeone && sudo ./scripts/sync-vps-routes.sh"
+ssh user@vps "cd ~/mynodeone && sudo ./scripts/vps/sync-vps-routes.sh"
 ```
 
 This ensures reliability even if the Node Agent is down or misconfigured.

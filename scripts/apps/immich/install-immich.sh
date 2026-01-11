@@ -9,7 +9,7 @@
 # DOCUMENTATION:
 # - Public access configuration: docs/APP-PUBLIC-ACCESS.md
 # - After installation, you'll be asked if you want to make this app public
-# - You can change visibility anytime: sudo ./scripts/manage-app-visibility.sh
+# - You can change visibility anytime: sudo ./scripts/operations/manage-app-visibility.sh
 ###############################################################################
 
 set -euo pipefail
@@ -70,7 +70,7 @@ echo ""
 # Validate prerequisites
 if ! command -v kubectl &> /dev/null; then
     echo -e "${YELLOW}Error: kubectl not found. Please install Kubernetes first.${NC}"
-    echo "Run: sudo ./scripts/bootstrap-control-plane.sh"
+    echo "Run: sudo ./scripts/installation/bootstrap-control-plane.sh"
     exit 1
 fi
 

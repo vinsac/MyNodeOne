@@ -9,7 +9,7 @@ This guide covers how to remove MyNodeOne from your machines.
 Run on **any node** (control plane, worker, management laptop, or VPS):
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 The script will detect the node type and guide you through the removal process.
@@ -21,7 +21,7 @@ The script will detect the node type and guide you through the removal process.
 ### Interactive Mode (Default)
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 You'll be asked what to keep or remove:
@@ -34,7 +34,7 @@ You'll be asked what to keep or remove:
 ### Keep Configuration for Reinstall
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh --keep-config
+sudo ./scripts/installation/uninstall-mynodeone.sh --keep-config
 ```
 
 Preserves `~/.mynodeone/` so you can reinstall with the same settings.
@@ -42,7 +42,7 @@ Preserves `~/.mynodeone/` so you can reinstall with the same settings.
 ### Keep Application Data
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh --keep-data
+sudo ./scripts/installation/uninstall-mynodeone.sh --keep-data
 ```
 
 Preserves Longhorn volumes (your app data stays on disk).
@@ -50,7 +50,7 @@ Preserves Longhorn volumes (your app data stays on disk).
 ### Complete Removal
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh --full
+sudo ./scripts/installation/uninstall-mynodeone.sh --full
 ```
 
 Removes everything except Tailscale and formatted disks.
@@ -58,7 +58,7 @@ Removes everything except Tailscale and formatted disks.
 ### Non-Interactive Mode
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh --full --yes
+sudo ./scripts/installation/uninstall-mynodeone.sh --full --yes
 ```
 
 Skips all prompts (useful for automation).
@@ -66,7 +66,7 @@ Skips all prompts (useful for automation).
 ### Remove Tailscale Too
 
 ```bash
-sudo ./scripts/uninstall-mynodeone.sh --full --remove-tailscale --yes
+sudo ./scripts/installation/uninstall-mynodeone.sh --full --remove-tailscale --yes
 ```
 
 Also removes Tailscale from the machine.
@@ -97,7 +97,7 @@ Also removes Tailscale from the machine.
 
 ```bash
 # On control plane
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
@@ -110,7 +110,7 @@ This removes:
 
 ```bash
 # On worker node
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
@@ -121,7 +121,7 @@ This removes:
 
 ```bash
 # On management laptop
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
@@ -133,7 +133,7 @@ This removes:
 
 ```bash
 # On VPS
-sudo ./scripts/uninstall-mynodeone.sh
+sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
@@ -169,7 +169,7 @@ rm -rf ~/MyNodeOne
 
 If you kept configuration (`--keep-config`):
 ```bash
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 # Will use existing configuration
 ```
 
@@ -177,7 +177,7 @@ If you removed everything:
 ```bash
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
-sudo ./scripts/install-mynodeone.sh
+sudo ./scripts/installation/install-mynodeone.sh
 # Will ask for new configuration
 ```
 

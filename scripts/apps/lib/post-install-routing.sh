@@ -54,7 +54,7 @@ else
 fi
 echo "" >&2
 echo "  You can change this later by running:" >&2
-echo "  sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh" >&2
+echo "  sudo $PROJECT_ROOT/scripts/operations/manage-app-visibility.sh" >&2
 echo "" >&2
 
 read -p "Make ${APP_NAME} publicly accessible? [y/N]: " MAKE_PUBLIC < /dev/tty
@@ -62,14 +62,14 @@ read -p "Make ${APP_NAME} publicly accessible? [y/N]: " MAKE_PUBLIC < /dev/tty
 if [[ "${MAKE_PUBLIC,,}" == "y" || "${MAKE_PUBLIC,,}" == "yes" ]]; then
     echo ""
     
-    if [[ -f "$PROJECT_ROOT/scripts/manage-app-visibility.sh" ]]; then
+    if [[ -f "$PROJECT_ROOT/scripts/operations/manage-app-visibility.sh" ]]; then
         echo "Launching interactive public access configuration..."
         echo "You'll be able to select which domains and VPS nodes to use."
         echo ""
         
         # Run in full interactive mode so user can choose domains and VPS nodes
         # This handles multiple domains/VPS gracefully
-        sudo bash "$PROJECT_ROOT/scripts/manage-app-visibility.sh"
+        sudo bash "$PROJECT_ROOT/scripts/operations/manage-app-visibility.sh"
     else
         echo -e "${YELLOW}⚠️  manage-app-visibility.sh not found${NC}"
         echo "Public access will need to be configured manually."
@@ -78,7 +78,7 @@ else
     echo ""
     echo "ℹ️  App will be accessible only on your local network."
     echo "   To enable public access later, run:"
-    echo "   sudo $PROJECT_ROOT/scripts/manage-app-visibility.sh"
+    echo "   sudo $PROJECT_ROOT/scripts/operations/manage-app-visibility.sh"
 fi
 
 echo ""

@@ -235,7 +235,7 @@ After deployment, you need to:
 
 2. **Complete setup** (one command):
    ```bash
-   sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
+   sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
    ```
 
 Then access at:

@@ -299,7 +299,7 @@ if [[ "$MAKE_PUBLIC" != "true" ]]; then
     echo ""
     
     log_info "From management laptops (after DNS sync):"
-    echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
+    echo "  cd ~/MyNodeOne && sudo ./scripts/domains/sync-dns.sh"
     echo "  Then open: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
     echo ""
     

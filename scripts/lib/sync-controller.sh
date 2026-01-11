@@ -113,13 +113,13 @@ push_sync_to_node() {
     local sync_script=""
     case "$node_type" in
         management_laptops)
-            sync_script="sync-dns.sh"
+            sync_script="domains/sync-dns.sh"
             ;;
         vps_nodes)
-            sync_script="sync-vps-routes.sh"
+            sync_script="vps/sync-vps-routes.sh"
             ;;
         worker_nodes)
-            sync_script="sync-dns.sh"
+            sync_script="domains/sync-dns.sh"
             ;;
         *)
             log_error "Unknown node type: $node_type"

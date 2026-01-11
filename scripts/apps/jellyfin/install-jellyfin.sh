@@ -277,7 +277,7 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             # If on control plane, update local DNS immediately (no SSH overhead)
             if [ "$IS_CONTROL_PLANE" = "true" ]; then
                 echo "🔄 Updating control plane DNS..."
-                if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                if sudo bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" --quiet 2>/dev/null; then
                     echo "✓ Control plane DNS updated"
                 fi
             fi
@@ -303,14 +303,14 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             echo ""
             
             # Fallback to manual DNS update
-            if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+            if sudo bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" --quiet 2>/dev/null; then
                 echo "✓ Local DNS updated manually"
             fi
         fi
     else
         # Fallback to manual DNS update if service-registry.sh not found
         echo -e "${YELLOW}⚠️  Service registry not found - updating DNS manually${NC}"
-        if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+        if sudo bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" --quiet 2>/dev/null; then
             echo "✓ Local DNS updated"
         fi
     fi

@@ -534,7 +534,7 @@ main() {
                 
                 # Now sync DNS on this laptop
                 log_info "Updating local DNS entries..."
-                sudo ./scripts/sync-dns.sh > /dev/null 2>&1 || log_warn "DNS sync had issues (non-critical)"
+                sudo ./scripts/domains/sync-dns.sh > /dev/null 2>&1 || log_warn "DNS sync had issues (non-critical)"
             else
                 log_warn "Could not sync service registry (missing control plane info)"
             fi

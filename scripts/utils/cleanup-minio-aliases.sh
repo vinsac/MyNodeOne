@@ -45,4 +45,4 @@ kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.servic
 
 echo ""
 echo "Run DNS sync to update /etc/hosts:"
-echo "  sudo ./scripts/sync-dns.sh"
+echo "  sudo ./scripts/domains/sync-dns.sh"

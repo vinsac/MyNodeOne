@@ -50,7 +50,7 @@ if [ -n "$CONFIGURED_DOMAINS" ]; then
     echo "  Public URL will be: ${APP_SUBDOMAIN}.${CONFIGURED_DOMAINS%%,*}" >&2
 else
     echo -e "  ${YELLOW}No public domains configured yet.${NC}" >&2
-    echo "  Run: sudo $PROJECT_ROOT/scripts/add-domain.sh" >&2
+    echo "  Run: sudo $PROJECT_ROOT/scripts/domains/add-domain.sh" >&2
 fi
 echo "" >&2
 echo "  You can change this later by running:" >&2

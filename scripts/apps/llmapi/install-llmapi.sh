@@ -1509,8 +1509,8 @@ if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
         "llmapi" "$APP_SUBDOMAIN" "$NAMESPACE" "llmapi" "80" "false" 2>/dev/null || true
 fi
 
-if [ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]; then
-    sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null || true
+if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+    sudo bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" --quiet 2>/dev/null || true
 fi
 
 # =============================================================================

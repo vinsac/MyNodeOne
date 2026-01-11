@@ -317,14 +317,14 @@ if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
             
             # Update local DNS
             echo "🔄 Updating local DNS..."
-            if [ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]; then
-                bash "$PROJECT_ROOT/scripts/sync-dns.sh" || echo "⚠️  DNS sync completed with warnings"
+            if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+                bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" || echo "⚠️  DNS sync completed with warnings"
             fi
             
             # Trigger sync to all nodes
             echo "🔄 Syncing DNS to all nodes..."
-            if [ -f "$PROJECT_ROOT/scripts/sync-controller.sh" ]; then
-                bash "$PROJECT_ROOT/scripts/sync-controller.sh" || echo "⚠️  Node sync completed with warnings"
+            if [ -f "$PROJECT_ROOT/scripts/lib/sync-controller.sh" ]; then
+                bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" || echo "⚠️  Node sync completed with warnings"
             fi
         else
             echo "⚠️  Warning: Could not verify service registration"

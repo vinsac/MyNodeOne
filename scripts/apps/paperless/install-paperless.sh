@@ -417,9 +417,9 @@ if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
             echo "✓ Service registration verified"
             
             # Update local DNS immediately
-            if [ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]; then
+            if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
                 echo "🔄 Updating DNS..."
-                if sudo bash "$PROJECT_ROOT/scripts/sync-dns.sh" --quiet 2>/dev/null; then
+                if sudo bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" --quiet 2>/dev/null; then
                     echo "✓ DNS updated"
                 fi
             fi

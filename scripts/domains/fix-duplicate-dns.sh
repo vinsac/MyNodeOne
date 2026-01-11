@@ -30,7 +30,7 @@
 #   6. Updates /etc/hosts with single, consistent entries
 #
 # USAGE:
-#   sudo ./scripts/fix-duplicate-dns.sh
+#   sudo ./scripts/domains/fix-duplicate-dns.sh
 #
 # EXAMPLE SCENARIO:
 #   Before:

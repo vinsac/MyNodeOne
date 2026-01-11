@@ -223,7 +223,7 @@ cleanup_ssh_control_master "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP"
 
 echo ""
 log_info "Running initial sync..."
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -246,7 +246,7 @@ echo "  • New services become accessible within ~10 seconds"
 echo ""
 
 log_info "Manual sync (if needed):"
-echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
+echo "  cd ~/MyNodeOne && sudo ./scripts/domains/sync-dns.sh"
 echo ""
 
 # Show current services

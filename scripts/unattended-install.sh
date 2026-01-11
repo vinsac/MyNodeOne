@@ -49,7 +49,7 @@ echo "Using hostname: ${HOSTNAME}"
 echo "Using Tailscale IP: ${TAILSCALE_IP}"
 echo
 
-cat /tmp/mynodeone-answers.txt | sudo ./scripts/mynodeone
+cat /tmp/mynodeone-answers.txt | sudo ./scripts/install-mynodeone.sh
 
 # Clean up
 rm -f /tmp/mynodeone-answers.txt

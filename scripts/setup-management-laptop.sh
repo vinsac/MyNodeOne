@@ -388,7 +388,7 @@ main() {
     # Load configuration (CONFIG_FILE set by detect-actual-home.sh)
     if [ ! -f "$CONFIG_FILE" ]; then
         log_error "Configuration file not found: $CONFIG_FILE"
-        log_error "Please run the interactive setup first: sudo ./scripts/mynodeone"
+        log_error "Please run the interactive setup first: sudo ./scripts/install-mynodeone.sh"
         exit 1
     fi
     

@@ -382,9 +382,9 @@ configure_routing() {
 #
 # http:
 #   routers:
-#     curiios:
-#       rule: "Host(\`curiios.com\`) || Host(\`www.curiios.com\`)"
-#       service: curiios-service
+#     example:
+#       rule: "Host(\`example.com\`) || Host(\`www.example.com\`)"
+#       service: example-service
 #       entryPoints:
 #         - websecure
 #       tls:

@@ -7,7 +7,7 @@ Advanced configuration for running MyNodeOne with multiple domains and VPS edge 
 ## Overview
 
 MyNodeOne supports:
-- Multiple domains (e.g., `curiios.com`, `vinaysachdeva.com`)
+- Multiple domains (e.g., `example.com`, `test.org`)
 - Multiple VPS edge nodes for load balancing and failover
 - Automatic sync across all nodes via the sync controller
 
@@ -48,8 +48,8 @@ sudo ./scripts/lib/service-registry.sh sync
 ### 2. Register Domains
 
 ```bash
-sudo ./scripts/lib/multi-domain-registry.sh register-domain curiios.com "Personal site"
-sudo ./scripts/lib/multi-domain-registry.sh register-domain vinaysachdeva.com "Professional site"
+sudo ./scripts/lib/multi-domain-registry.sh register-domain example.com "Main site"
+sudo ./scripts/lib/multi-domain-registry.sh register-domain test.org "Test site"
 ```
 
 ### 3. Register VPS Nodes
@@ -83,7 +83,7 @@ sudo ./scripts/nodes-status.sh
 ```bash
 # Format: configure-routing <service> "<domains>" "<vps_ips>" <strategy>
 sudo ./scripts/lib/multi-domain-registry.sh configure-routing immich \
-    "curiios.com,vinaysachdeva.com" \
+    "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     round-robin
 ```
@@ -98,16 +98,16 @@ sudo ./scripts/lib/multi-domain-registry.sh configure-routing immich \
 **Round-Robin Example:**
 ```bash
 sudo ./scripts/lib/multi-domain-registry.sh configure-routing photos \
-    "curiios.com,vinaysachdeva.com" \
+    "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     round-robin
 ```
-Result: `photos.curiios.com` → VPS1, `photos.vinaysachdeva.com` → VPS2
+Result: `photos.example.com` → VPS1, `photos.test.org` → VPS2
 
 **Primary-Backup Example:**
 ```bash
 sudo ./scripts/lib/multi-domain-registry.sh configure-routing chat \
-    "curiios.com,vinaysachdeva.com" \
+    "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     primary-backup
 ```
@@ -126,8 +126,8 @@ Output:
 Multi-Domain, Multi-VPS Configuration
 
 Registered Domains:
-  - curiios.com: Personal site
-  - vinaysachdeva.com: Professional site
+  - example.com: Main site
+  - test.org: Test site
 
 Registered VPS Nodes:
   - 100.68.225.92 → 45.8.133.192 (eu)
@@ -135,7 +135,7 @@ Registered VPS Nodes:
 
 Service Routing:
   - immich:
-    Domains: curiios.com, vinaysachdeva.com
+    Domains: example.com, test.org
     VPS: 100.68.225.92, 100.70.123.45
     Strategy: round-robin
 ```
@@ -157,7 +157,7 @@ sudo ./scripts/lib/sync-controller.sh register vps_nodes \
 
 # 3. Update service routing to include new VPS
 sudo ./scripts/lib/multi-domain-registry.sh configure-routing immich \
-    "curiios.com,vinaysachdeva.com" \
+    "example.com,test.org" \
     "100.68.225.92,100.70.123.45,100.72.200.50" \
     round-robin
 

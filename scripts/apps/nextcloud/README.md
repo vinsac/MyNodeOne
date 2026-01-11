@@ -176,7 +176,7 @@ sudo ./scripts/manage-app-visibility.sh
    - Issues SSL certificate (takes 2-3 minutes)
    - **Adds public domain to Nextcloud's trusted_domains** (important!)
 
-**Important:** Nextcloud only allows access from trusted domains for security. When you make it public, the script automatically adds your public domain (e.g., `cloud.curiios.com`) to the trusted list. This prevents the "Access through untrusted domain" error.
+**Important:** Nextcloud only allows access from trusted domains for security. When you make it public, the script automatically adds your public domain (e.g., `cloud.example.com`) to the trusted list. This prevents the "Access through untrusted domain" error.
 
 ## Problems?
 

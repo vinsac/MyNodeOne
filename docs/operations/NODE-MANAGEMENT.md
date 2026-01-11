@@ -21,7 +21,7 @@ MyNodeOne supports multiple node types:
 The control plane is installed during initial setup:
 
 ```bash
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 # Select: 1. Install Control Plane
 ```
 

@@ -120,7 +120,7 @@ check_vps_availability() {
         log_warn "No VPS nodes registered"
         echo ""
         echo "To make apps publicly accessible, you need a VPS edge node."
-        echo "Install one with: sudo ./scripts/mynodeone → Option 3 (VPS Edge Node)"
+        echo "Install one with: sudo ./scripts/install-mynodeone.sh → Option 3 (VPS Edge Node)"
         echo ""
         return 1
     fi
@@ -666,7 +666,7 @@ else
             echo ""
             echo "Command-line mode:"
             echo "  $0 public immich"
-            echo "  $0 public immich 'curiios.com,vinaysachdeva.com' '100.68.225.92'"
+            echo "  $0 public immich 'example.com,test.org' '100.68.225.92'"
             echo "  $0 private immich"
             exit 1
             ;;

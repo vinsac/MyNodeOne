@@ -196,8 +196,8 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                 echo ""
                 echo "How do you want to access this app?"
                 echo ""
-                echo "  1. Use subdomain: ${SUBDOMAIN}.<domain> (e.g., photos.curiios.com)"
-                echo "  2. Use root domain: <domain> only (e.g., curiios.com)"
+                echo "  1. Use subdomain: ${SUBDOMAIN}.<domain> (e.g., photos.example.com)"
+                echo "  2. Use root domain: <domain> only (e.g., example.com)"
                 echo ""
                 read -p "Choice (1/2): " domain_type_choice
                 
@@ -245,7 +245,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                         log_warn "No VPS nodes registered yet"
                         echo ""
                         echo "To complete public access setup:"
-                        echo "  1. Install VPS edge node: sudo ./scripts/mynodeone → Option 3"
+                        echo "  1. Install VPS edge node: sudo ./scripts/install-mynodeone.sh → Option 3"
                         echo "  2. Then run: sudo ./scripts/manage-app-visibility.sh"
                     fi
                 fi

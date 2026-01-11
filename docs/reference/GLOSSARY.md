@@ -296,7 +296,7 @@
 
 **Example:** Like "Run as Administrator" in Windows.
 
-**When you see:** `sudo ./scripts/mynodeone` - you're running with full permissions.
+**When you see:** `sudo ./scripts/install-mynodeone.sh` - you're running with full permissions.
 
 ---
 
@@ -389,7 +389,7 @@
 
 **With MyNodeOne:**
 - You don't need to know how Kubernetes works
-- You just need to run `sudo ./scripts/mynodeone` and answer questions
+- You just need to run `sudo ./scripts/install-mynodeone.sh` and answer questions
 
 ---
 

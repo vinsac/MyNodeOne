@@ -57,7 +57,7 @@ TTL: 300 (or Auto)
 **Check if it worked:**
 ```bash
 # On your laptop
-dig vote.curiios.com
+dig vote.example.com
 
 # Should show your VPS IP
 ```
@@ -83,7 +83,7 @@ sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
 
 **Output:**
 ```
-✓ Configured routing for vote.curiios.com
+✓ Configured routing for vote.example.com
 ✓ SSL certificate requested (takes ~30 seconds)
 ✓ App is now public!
 ```
@@ -95,8 +95,8 @@ sudo /path/to/MyNodeOne/scripts/manage-app-visibility.sh
 **Wait a few minutes**, then:
 
 ```bash
-https://vote.curiios.com    ← Automatic HTTPS!
-https://result.curiios.com  ← Automatic HTTPS!
+https://vote.example.com    ← Automatic HTTPS!
+https://result.example.com  ← Automatic HTTPS!
 ```
 
 **SSL is automatic!** Let's Encrypt gives you a free, valid SSL certificate.
@@ -116,7 +116,7 @@ MyNodeOne doesn't have a "domain registry" you need to pre-configure. It's dynam
 
 ---
 
-### **Q: What if I don't own curiios.com yet?**
+### **Q: What if I don't own example.com yet?**
 
 **A: You have 2 options:**
 
@@ -138,9 +138,9 @@ MyNodeOne doesn't have a "domain registry" you need to pre-configure. It's dynam
 
 ```
 1. You run manage-app-visibility.sh
-2. MyNodeOne tells Traefik: "Route vote.curiios.com to this app"
+2. MyNodeOne tells Traefik: "Route vote.example.com to this app"
 3. Traefik (via cert-manager) asks Let's Encrypt: "Can I get an SSL cert?"
-4. Let's Encrypt checks: "Does vote.curiios.com point to this server?" (via HTTP challenge)
+4. Let's Encrypt checks: "Does vote.example.com point to this server?" (via HTTP challenge)
 5. If yes → Issues certificate (valid for 90 days)
 6. Traefik auto-renews every 60 days
 ```
@@ -228,9 +228,9 @@ Add public access later when you get a domain.
 │ Step 2: YOU Configure DNS (at registrar)                   │
 ├─────────────────────────────────────────────────────────────┤
 │ • Go to GoDaddy/Cloudflare/etc                             │
-│ • Add A record: vote.curiios.com → VPS_PUBLIC_IP           │
+│ • Add A record: vote.example.com → VPS_PUBLIC_IP           │
 │ • Wait 5-30 minutes for propagation                        │
-│ • Test: dig vote.curiios.com                               │
+│ • Test: dig vote.example.com                               │
 └─────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -246,7 +246,7 @@ Add public access later when you get a domain.
 ┌─────────────────────────────────────────────────────────────┐
 │ Step 4: Access Your App!                                   │
 ├─────────────────────────────────────────────────────────────┤
-│ • https://vote.curiios.com ✓                               │
+│ • https://vote.example.com ✓                               │
 │ • Valid SSL certificate ✓                                  │
 │ • Automatic HTTPS redirect ✓                               │
 │ • Auto-renewal every 60 days ✓                             │
@@ -300,13 +300,13 @@ curl http://voting.mynodeone.local
 
 ### **Test Public Access:**
 ```bash
-curl https://vote.curiios.com
+curl https://vote.example.com
 # Should return your app HTML
 ```
 
 ### **Check SSL Certificate:**
 ```bash
-curl -vI https://vote.curiios.com 2>&1 | grep -i "subject:\|issuer:"
+curl -vI https://vote.example.com 2>&1 | grep -i "subject:\|issuer:"
 # Should show Let's Encrypt as issuer
 ```
 
@@ -318,7 +318,7 @@ curl -vI https://vote.curiios.com 2>&1 | grep -i "subject:\|issuer:"
 
 **Check DNS:**
 ```bash
-dig vote.curiios.com
+dig vote.example.com
 # Should show your VPS IP
 ```
 

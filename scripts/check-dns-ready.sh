@@ -38,7 +38,7 @@ if [ $# -lt 2 ]; then
     echo "Usage: $0 <domain> <expected-ip>"
     echo ""
     echo "Example:"
-    echo "  $0 demo.curiios.com 45.8.133.192"
+    echo "  $0 demo.example.com 45.8.133.192"
     exit 1
 fi
 

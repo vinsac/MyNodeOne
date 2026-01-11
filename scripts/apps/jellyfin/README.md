@@ -37,7 +37,7 @@ Enter subdomain [default: jellyfin]: media
 
 **Result:**
 - Local: `http://media.mynodeone.local`
-- Public: `https://media.curiios.com`
+- Public: `https://media.example.com`
 
 ### **2. Kubernetes Deployment**
 - ✅ Creates dedicated namespace (`jellyfin`)
@@ -87,7 +87,7 @@ kubectl get svc -n jellyfin
 sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 # Answer 2 questions:
 #   1. Subdomain? (e.g., "media")
-#   2. Public domain? (e.g., "curiios.com")
+#   2. Public domain? (e.g., example.com")
 # Done! Everything works.
 ```
 
@@ -144,7 +144,7 @@ http://media.mynodeone.local
 
 #### **Internet (via VPS)**
 ```
-https://media.curiios.com
+https://media.example.com
 ```
 
 ### **First-Time Setup**
@@ -160,7 +160,7 @@ https://media.curiios.com
 - **iOS:** Search "Jellyfin" in App Store
 - **Android:** Search "Jellyfin" in Play Store
 
-**Server URL:** `http://media.mynodeone.local` (or `https://media.curiios.com`)
+**Server URL:** `http://media.mynodeone.local` (or `https://media.example.com`)
 
 ---
 
@@ -607,13 +607,13 @@ cat /etc/hosts | grep media.mynodeone.local
 
 ### **Issue: VPS Shows 502 Bad Gateway**
 
-**Symptom:** `https://media.curiios.com` shows 502 error
+**Symptom:** `https://media.example.com` shows 502 error
 
 **Cause:** VPS route pointing to wrong backend
 
 **Fix:** Re-run VPS configuration (now auto-detects NodePort)
 ```bash
-sudo ./scripts/configure-vps-route.sh jellyfin 80 media curiios.com
+sudo ./scripts/configure-vps-route.sh jellyfin 80 media example.com
 ```
 
 **Verify backend:**
@@ -645,12 +645,12 @@ ssh root@<vps-ip> "docker restart traefik"
 
 # Wait 60 seconds, then verify
 sleep 60
-echo | openssl s_client -servername media.curiios.com \
-  -connect media.curiios.com:443 2>/dev/null | \
+echo | openssl s_client -servername media.example.com \
+  -connect media.example.com:443 2>/dev/null | \
   openssl x509 -noout -subject -issuer
 
 # Should show:
-# subject=CN = media.curiios.com
+# subject=CN = media.example.com
 # issuer=C = US, O = Let's Encrypt, CN = R12
 ```
 
@@ -757,8 +757,8 @@ After installation, verify:
 - [ ] Service has IP: `kubectl get svc -n jellyfin`
 - [ ] Local DNS works: `ping media.mynodeone.local`
 - [ ] Local access works: `curl http://media.mynodeone.local`
-- [ ] (If VPS) Public DNS points to VPS: `nslookup media.curiios.com`
-- [ ] (If VPS) HTTPS works: `curl https://media.curiios.com`
+- [ ] (If VPS) Public DNS points to VPS: `nslookup media.example.com`
+- [ ] (If VPS) HTTPS works: `curl https://media.example.com`
 - [ ] (If VPS) SSL certificate valid: Check in browser (green padlock)
 
 **All green? Perfect! Enjoy your personal media server! 🎉**

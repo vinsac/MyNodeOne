@@ -107,16 +107,16 @@ You can choose between:
 
 ### **Option 1: Subdomain (Default)**
 ```
-Main app:  voting.vinaysachdeva.com
-Services:  vote.vinaysachdeva.com
-           result.vinaysachdeva.com
+Main app:  voting.example.com
+Services:  vote.example.com
+           result.example.com
 ```
 
 ### **Option 2: Apex/Root Domain**
 ```
-Main app:  vinaysachdeva.com
-Services:  vote.vinaysachdeva.com
-           result.vinaysachdeva.com
+Main app:  example.com
+Services:  vote.example.com
+           result.example.com
 ```
 
 **Both work! The script now asks which you prefer.**
@@ -187,12 +187,12 @@ bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 App name: voting-app
 Subdomain: voting
 Public: y
-Base domain: vinaysachdeva.com
+Base domain: example.com
 Domain type: 2 (apex domain)
 
 # Result:
 Local:  http://voting.mynodeone.local
-Public: https://vinaysachdeva.com  ← Apex domain!
+Public: https://example.com  ← Apex domain!
 ```
 
 ### **Blog App**
@@ -218,12 +218,12 @@ Public: https://blog.myblog.com  ← Subdomain
 
 ## **Traffic Flow Example**
 
-### **Request to vinaysachdeva.com**
+### **Request to example.com**
 ```
 1. Browser → DNS lookup → 147.182.123.45 (VPS IP)
 2. Browser → HTTPS to VPS
-3. VPS Traefik reads Host: vinaysachdeva.com
-4. Traefik matches IngressRoute: Host(`vinaysachdeva.com`)
+3. VPS Traefik reads Host: example.com
+4. Traefik matches IngressRoute: Host(`example.com`)
 5. Traefik → Tailscale mesh → Control plane
 6. Reaches voting-app service (10.20.30.40)
 7. Response flows back
@@ -256,9 +256,9 @@ This script configures public access by:
 **It supports apex domains via `@` notation:**
 ```bash
 # In manage-app-visibility.sh, you can enter:
-Domain: @vinaysachdeva.com  # @ means apex/root domain
+Domain: @example.com  # @ means apex/root domain
 # Or:
-Domain: vinaysachdeva.com   # Also works
+Domain: example.com   # Also works
 ```
 
 ---
@@ -292,7 +292,7 @@ routes:
 ## **Key Takeaways**
 
 1. ✅ **Each app can have its own domain** (exampleA.com, exampleB.com)
-2. ✅ **Apex domains supported** (vinaysachdeva.com, not just voting.vinaysachdeva.com)
+2. ✅ **Apex domains supported** (example.com, not just voting.example.com)
 3. ✅ **All apps point to same VPS IP** (Traefik routes by hostname)
 4. ✅ **Local DNS always works** (voting.mynodeone.local)
 5. ✅ **Automatic SSL per domain** (Let's Encrypt)
@@ -306,7 +306,7 @@ routes:
 # Deploy App A
 cd /tmp/voting-app
 bash ~/MyNodeOne/external-apps/scripts/deploy.sh
-# Use: vinaysachdeva.com (apex domain)
+# Use: example.com (apex domain)
 
 # Deploy App B
 cd /tmp/another-app
@@ -314,17 +314,17 @@ bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 # Use: myblog.com (apex domain)
 
 # Configure DNS at registrars
-# vinaysachdeva.com:  A @ → VPS_IP
-# myblog.com:         A @ → VPS_IP (same IP!)
+# example.com:    A @ → VPS_IP
+# myblog.com:      A @ → VPS_IP (same IP!)
 
 # Enable public access
 sudo bash ~/MyNodeOne/scripts/manage-app-visibility.sh
-# Select voting-app → vinaysachdeva.com
+# Select voting-app → example.com
 # Run again for another-app → myblog.com
 
 # Both work:
-curl https://vinaysachdeva.com    # App A
-curl https://myblog.com            # App B
+curl https://example.com     # App A
+curl https://myblog.com      # App B
 ```
 
 ---
@@ -335,7 +335,7 @@ curl https://myblog.com            # App B
 ┌─────────────────────────────────────────────────────────────┐
 │  DNS Registrars                                             │
 ├─────────────────────────────────────────────────────────────┤
-│  vinaysachdeva.com  →  147.182.123.45                       │
+│  example.com       →  147.182.123.45                       │
 │  myblog.com         →  147.182.123.45 (same IP!)            │
 │  family.io          →  147.182.123.45 (same IP!)            │
 └──────────────────────┬──────────────────────────────────────┘
@@ -345,7 +345,7 @@ curl https://myblog.com            # App B
 │  Traefik Reverse Proxy + SSL Termination                   │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  IngressRoute 1: Host(`vinaysachdeva.com`)                 │
+│  IngressRoute 1: Host(`example.com`)                 │
 │    → Tailscale → voting.mynodeone.local                    │
 │                                                             │
 │  IngressRoute 2: Host(`myblog.com`)                        │

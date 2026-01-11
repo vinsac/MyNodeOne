@@ -303,7 +303,7 @@ EOF
     # Add HTTPS routers - format: {service}-{domain-dashed}
     # Using jq to generate proper router names matching V1 format
     echo "$config" | jq -r '.routes[]? | 
-        # Convert domain to dashed format (e.g., curiios.com -> curiios-com)
+        # Convert domain to dashed format (e.g., example.com -> example-com)
         (.domain | gsub("\\."; "-")) as $domain_dashed |
         "    " + .service + "-" + $domain_dashed + ":\n" +
         "      rule: \"Host(`" + .domain + "`)\"\n" +

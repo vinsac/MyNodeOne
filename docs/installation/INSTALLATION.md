@@ -189,7 +189,7 @@ ls
 
 ```bash
 # Run the installer
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 ```
 
 **Interactive prompts:**
@@ -448,7 +448,7 @@ sudo ./scripts/install-vps-edge-node.sh \
   --ip "100.80.255.123" \
   --user "sammy" \
   --public-ip "45.8.133.192" \
-  --domain "curiios.com" \
+  --domain "example.com" \
   --email "admin@example.com" \
   --location "NYC"
 ```
@@ -469,7 +469,7 @@ Step-by-step with prompts:
 ```bash
 # ON YOUR CONTROL PLANE:
 cd ~/MyNodeOne
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 ```
 
 When prompted:
@@ -489,7 +489,7 @@ Choose **3) VPS Edge Node** and answer the prompts for VPS details
 2. **VPS Tailscale IP** (e.g., `100.101.237.15`)
 3. **VPS SSH Username** (e.g., `sammy`)
 4. **VPS Public IPv4 Address** (e.g., `45.8.133.192`)
-5. **VPS Primary Domain** (e.g., `curiios.com`)
+5. **VPS Primary Domain** (e.g., `example.com`)
 6. **SSL Email Address** (e.g., `admin@example.com`)
 7. **VPS Location** (Optional: e.g., `NYC`, `London`)
 
@@ -572,15 +572,15 @@ sudo ./scripts/manage-app-visibility.sh public demo yourdomain.com YOUR_VPS_TAIL
 sudo ./scripts/manage-app-visibility.sh public open-webui yourdomain.com YOUR_VPS_TAILSCALE_IP
 
 # Example with actual values:
-sudo ./scripts/manage-app-visibility.sh public demo curiios.com 100.80.255.123
-sudo ./scripts/manage-app-visibility.sh public open-webui curiios.com 100.80.255.123
+sudo ./scripts/manage-app-visibility.sh public demo example.com 100.80.255.123
+sudo ./scripts/manage-app-visibility.sh public open-webui example.com 100.80.255.123
 ```
 
 In these commands:
 
 - `public` tells the script to make the service accessible from the internet (use `private` to make it local-only again).
 - `demo` or `open-webui` is the internal service name in the MyNodeOne service registry. For example, `open-webui` uses the `chat` subdomain, so it becomes `https://chat.yourdomain.com`.
-- `yourdomain.com` is the domain you registered and pointed at your VPS in Step 1. You can pass multiple domains as a comma-separated list (for example, `curiios.com,example.com`).
+- `yourdomain.com` is the domain you registered and pointed at your VPS in Step 1. You can pass multiple domains as a comma-separated list (for example, `example.com,test.org`).
 - `YOUR_VPS_TAILSCALE_IP` is the Tailscale IPv4 address of your VPS edge node (from `tailscale ip -4`). If you have multiple VPS edge nodes, you can pass a comma-separated list of Tailscale IPs.
 
 You can also run the script with no arguments to use the interactive wizard:
@@ -696,7 +696,7 @@ git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
 
 # Run installation:
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 # Select Option 4: Management Workstation
 ```
 
@@ -1175,7 +1175,7 @@ ls
 
 ```bash
 # Run the installer
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 ```
 
 **Interactive prompts:**

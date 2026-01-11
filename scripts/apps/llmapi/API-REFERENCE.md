@@ -894,12 +894,12 @@ Permanent Redirect
 
 **Bad Example:**
 ```bash
-curl -X POST http://llmapi.curiios.com/v1/chat/completions  # ← HTTP
+curl -X POST http://llmapi.example.com/v1/chat/completions  # ← HTTP
 ```
 
 **Fix:** Use `https://` for public domains:
 ```bash
-curl -X POST https://llmapi.curiios.com/v1/chat/completions \
+curl -X POST https://llmapi.example.com/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen2.5-14b","messages":[{"role":"user","content":"Hello"}]}'

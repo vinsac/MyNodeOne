@@ -169,7 +169,7 @@ rm -rf ~/MyNodeOne
 
 If you kept configuration (`--keep-config`):
 ```bash
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 # Will use existing configuration
 ```
 
@@ -177,7 +177,7 @@ If you removed everything:
 ```bash
 git clone https://github.com/vinsac/MyNodeOne.git
 cd MyNodeOne
-sudo ./scripts/mynodeone
+sudo ./scripts/install-mynodeone.sh
 # Will ask for new configuration
 ```
 

@@ -615,7 +615,7 @@ Yes! Each app gets its own:
 - Domain routing
 - Resource allocation
 
-Example: curiios.com, vinaysachdeva.com, blog.example.com all on the same cluster.
+Example: example.com, test.org, blog.example.com all on the same cluster.
 
 ## Networking Questions
 

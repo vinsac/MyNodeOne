@@ -766,10 +766,10 @@ fi
 
 echo "🔄 To reinstall MyNodeOne:"
 if [ "$KEEP_CONFIG" = true ]; then
-    echo "   sudo ./scripts/mynodeone"
+    echo "   sudo ./scripts/install-mynodeone.sh"
     echo "   (Will use existing configuration)"
 else
-    echo "   sudo ./scripts/mynodeone"
+    echo "   sudo ./scripts/install-mynodeone.sh"
     echo "   (Will ask for configuration)"
 fi
 echo

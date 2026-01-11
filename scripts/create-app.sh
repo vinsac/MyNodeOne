@@ -38,14 +38,14 @@ usage() {
 Usage: $0 <app-name> [options]
 
 Options:
-  -d, --domain DOMAIN     Domain name for the app (e.g., curiios.com)
+  -d, --domain DOMAIN     Domain name for the app (e.g., example.com)
   -p, --port PORT         Container port (default: 3000)
   -t, --type TYPE         App type: web, api, worker (default: web)
   -s, --storage SIZE      Storage size (e.g., 10Gi) - optional
   -h, --help              Show this help message
 
 Example:
-  $0 curiios --domain curiios.com --port 3000 --storage 20Gi
+  $0 example --domain example.com --port 3000 --storage 20Gi
 EOF
     exit 1
 }

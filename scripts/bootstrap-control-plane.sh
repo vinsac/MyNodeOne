@@ -1188,7 +1188,7 @@ configure_tailscale_subnet_routes() {
                 log_error "Installation cancelled by user"
                 echo
                 echo "After approving the subnet route, run:"
-                echo "  sudo ./scripts/mynodeone"
+                echo "  sudo ./scripts/install-mynodeone.sh"
                 exit 1
             fi
         else
@@ -1912,7 +1912,7 @@ print_summary() {
         echo "   On EACH VPS machine, run:"
         echo "   ┌─────────────────────────────────────────────────────────────┐"
         echo "   │ cd ~/MyNodeOne                                              │"
-        echo "   │ sudo ./scripts/mynodeone                                    │"
+        echo "   │ sudo ./scripts/install-mynodeone.sh                                    │"
         echo "   │ # Select 'VPS Edge Node' when asked                        │"
         echo "   └─────────────────────────────────────────────────────────────┘"
         echo

@@ -73,7 +73,7 @@ type DNSEntry struct {
 type TraefikRoute struct {
 	Service   string `json:"service"`   // Service name (e.g., "open-webui")
 	Subdomain string `json:"subdomain"` // Subdomain (e.g., "open-webui" or "@" for root)
-	Domain    string `json:"domain"`    // Full domain (e.g., "open-webui.curiios.com")
+	Domain    string `json:"domain"`    // Full domain (e.g., "open-webui.example.com")
 	Backend   string `json:"backend"`   // Backend URL (e.g., "100.72.41.208:80")
 }
 
@@ -402,7 +402,7 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 	}
 
 	// Parse routing config
-	// Format: {"servicename": {"domains": ["curiios.com"], "vps_nodes": ["100.x.x.x"], ...}, ...}
+	// Format: {"servicename": {"domains": ["example.com"], "vps_nodes": ["100.x.x.x"], ...}, ...}
 	var routing map[string]interface{}
 	if len(routingOutput) > 0 {
 		if err := json.Unmarshal(routingOutput, &routing); err != nil {
@@ -449,7 +449,7 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 				if domainsRaw, ok := routingMap["domains"].([]interface{}); ok {
 					for _, domainRaw := range domainsRaw {
 						if domain, ok := domainRaw.(string); ok {
-							// Build full domain: subdomain.domain (e.g., open-webui.curiios.com)
+							// Build full domain: subdomain.domain (e.g., open-webui.example.com)
 							fullDomain := subdomain + "." + domain
 							if subdomain == "@" {
 								fullDomain = domain // Root domain

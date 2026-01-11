@@ -6,13 +6,13 @@ This document explains how MyNodeOne routes traffic from the internet to your ap
 
 ## Overview
 
-When you host multiple domains (e.g., `vinaysachdeva.com` and `curiios.com`) on the same VPS, Traefik uses **host-based routing** to direct each request to the correct backend service in your cluster.
+When you host multiple domains (e.g., `example.com` and `test.org`) on the same VPS, Traefik uses **host-based routing** to direct each request to the correct backend service in your cluster.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           INTERNET                                       │
 │                                                                          │
-│  User visits: https://vinaysachdeva.com                                 │
+│  User visits: https://example.com                                 │
 │  DNS resolves to: 45.8.133.192 (your VPS)                               │
 └────────────────────────────────┬────────────────────────────────────────┘
                                  │
@@ -51,8 +51,8 @@ Every HTTP/HTTPS request includes a **Host header** that specifies which domain 
 
 | Request | Host Header | Traefik Action |
 |---------|-------------|----------------|
-| `https://vinaysachdeva.com/blog` | `vinaysachdeva.com` | Route to blog service |
-| `https://curiios.com/app` | `curiios.com` | Route to curiios service |
+| `https://example.com/blog` | `example.com` | Route to blog service |
+| `https://test.org/app` | `test.org` | Route to test service |
 | `https://45.8.133.192/` | (none - IP only) | 404 or default page |
 
 ### Generated Traefik Configuration
@@ -64,19 +64,19 @@ The Node Agent generates this configuration on VPS nodes:
 
 http:
   routers:
-    # Router for vinaysachdeva.com
+    # Router for example.com
     blog:
-      rule: "Host(`vinaysachdeva.com`)"
+      rule: "Host(`example.com`)"
       service: blog
       entryPoints:
         - websecure
       tls:
         certResolver: letsencrypt
     
-    # Router for curiios.com
-    curiios:
-      rule: "Host(`curiios.com`)"
-      service: curiios
+    # Router for example.com
+    example:
+      rule: "Host(`example.com`)"
+      service: example
       entryPoints:
         - websecure
       tls:
@@ -109,25 +109,25 @@ When multiple domains point to the same VPS IP address:
 
 ```
 DNS Records:
-  vinaysachdeva.com  →  A  →  45.8.133.192
-  curiios.com        →  A  →  45.8.133.192
+  example.com    →  A  →  45.8.133.192
+  test.org      →  A  →  45.8.133.192
   blog.example.com   →  A  →  45.8.133.192
 ```
 
 **Request Flow:**
 
 ```
-User: https://vinaysachdeva.com
+User: https://example.com
          │
          ▼
     ┌─────────────────────────────────────────────────────┐
     │              VPS (45.8.133.192)                     │
     │                                                     │
     │  Traefik receives request:                         │
-    │    Host: vinaysachdeva.com                         │
+    │    Host: example.com                         │
     │                                                     │
     │  Matches router rule:                              │
-    │    rule: "Host(`vinaysachdeva.com`)"               │
+    │    rule: "Host(`example.com`)"               │
     │                                                     │
     │  Forwards to service:                              │
     │    url: "http://100.x.x.1:8080"                    │
@@ -190,8 +190,8 @@ For high availability, you can point a domain to multiple VPS nodes using DNS ro
 ### DNS Configuration
 
 ```
-vinaysachdeva.com  →  A  →  45.8.133.192  (VPS A - EU)
-vinaysachdeva.com  →  A  →  167.99.1.1    (VPS B - US)
+example.com    →  A  →  45.8.133.192  (VPS A - EU)
+example.com    →  A  →  167.99.1.1    (VPS B - US)
 ```
 
 ### Architecture
@@ -200,7 +200,7 @@ vinaysachdeva.com  →  A  →  167.99.1.1    (VPS B - US)
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           USER BROWSER                                   │
 │                                                                          │
-│  DNS query for vinaysachdeva.com returns:                               │
+│  DNS query for example.com returns:                               │
 │    - 45.8.133.192 (VPS A)                                               │
 │    - 167.99.1.1   (VPS B)                                               │
 │                                                                          │
@@ -271,9 +271,9 @@ When using multiple VPS nodes for the same domain:
 
 | Scenario | Host Header | Result |
 |----------|-------------|--------|
-| `https://vinaysachdeva.com` | `vinaysachdeva.com` | Routes to blog backend |
-| `https://curiios.com` | `curiios.com` | Routes to curiios backend |
-| `https://api.curiios.com` | `api.curiios.com` | Routes to API backend (if configured) |
+| `https://example.com` | `example.com` | Routes to blog backend |
+| `https://test.org` | `test.org` | Routes to test backend |
+| `https://api.test.org` | `api.test.org` | Routes to API backend (if configured) |
 | `http://45.8.133.192` | (none) | 404 Not Found |
 | `https://unknown.com` → VPS IP | `unknown.com` | 404 (no matching rule) |
 

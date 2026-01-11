@@ -110,7 +110,7 @@ if [ -z "$VPS_NODES" ]; then
     log_warn "No VPS nodes registered yet"
     echo ""
     echo "To add a VPS node:"
-    echo "  1. Install VPS: sudo ./scripts/mynodeone → Option 3"
+    echo "  1. Install VPS: sudo ./scripts/install-mynodeone.sh → Option 3"
     echo "  2. Or manually: sudo ./scripts/setup-vps-node.sh"
     echo ""
     

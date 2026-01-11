@@ -196,7 +196,7 @@ unregister_vps() {
 # Maps service to domain(s) and VPS node(s)
 configure_service_routing() {
     local service_name="$1"
-    local domains="$2"       # Comma-separated: curiios.com,vinaysachdeva.com
+    local domains="$2"       # Comma-separated: example.com,test.org
     local vps_nodes="$3"     # Comma-separated: 100.68.225.92,100.70.123.45
     local strategy="${4:-round-robin}"  # round-robin, primary-backup, geo
     
@@ -428,10 +428,10 @@ Commands:
   init                                    Initialize domain registry
 
   register-domain <domain> [description]  Register a public domain
-                                          Example: curiios.com "Main site"
+                                          Example: example.com "Main site"
 
   unregister-domain <domain>              Unregister a domain
-                                          Example: curiios.com
+                                          Example: example.com
 
   register-vps <tailscale_ip> <public_ip> <region> <provider>
                                           Register a VPS edge node
@@ -442,7 +442,7 @@ Commands:
 
   configure-routing <service> <domains> <vps_nodes> [strategy]
                                           Configure service routing
-                                          Example: immich "curiios.com,vinaysachdeva.com" \
+                                          Example: immich "example.com,test.org" \
                                                    "100.68.225.92,100.70.123.45" round-robin
 
   export-vps-routes <vps_ip> <control_plane_ip>
@@ -458,14 +458,14 @@ Strategies:
 Examples:
   # Setup
   multi-domain-registry.sh init
-  multi-domain-registry.sh register-domain curiios.com "Personal site"
-  multi-domain-registry.sh register-domain vinaysachdeva.com "Professional site"
+  multi-domain-registry.sh register-domain example.com "Main site"
+  multi-domain-registry.sh register-domain test.org "Test site"
   multi-domain-registry.sh register-vps 100.68.225.92 45.8.133.192 eu contabo
   multi-domain-registry.sh register-vps 100.70.123.45 167.99.1.1 us digitalocean
 
   # Configure routing
   multi-domain-registry.sh configure-routing immich \
-    "curiios.com,vinaysachdeva.com" \
+    "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     round-robin
 

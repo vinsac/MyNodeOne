@@ -730,7 +730,7 @@ install_dns_guardian() {
     
     # Copy the guardian script to system location
     local guardian_script="/usr/local/bin/coredns-dns-guardian.sh"
-    cp "$SCRIPT_DIR/coredns-dns-guardian.sh" "$guardian_script"
+    cp "$SCRIPT_DIR/../domains/coredns-dns-guardian.sh" "$guardian_script"
     chmod +x "$guardian_script"
     
     # Create systemd service
@@ -783,7 +783,7 @@ install_permanent_host_dns_fix() {
     log_info "Installing permanent host-level DNS fix for Tailscale override..."
     
     # Copy the permanent DNS fix script to system location
-    cp "$SCRIPT_DIR/fix-tailscale-dns-permanent.sh" /usr/local/bin/
+    cp "$SCRIPT_DIR/../domains/fix-tailscale-dns-permanent.sh" /usr/local/bin/
     chmod +x /usr/local/bin/fix-tailscale-dns-permanent.sh
     
     # Apply the permanent fix
@@ -1792,7 +1792,7 @@ display_credentials() {
             echo
             echo "Options:"
             echo "  1. Save credentials now and re-run this confirmation"
-            echo "  2. View credentials again: sudo $SCRIPT_DIR/show-credentials.sh"
+            echo "  2. View credentials again: sudo $SCRIPT_DIR/../utils/show-credentials.sh"
             echo "  3. Credentials are in: $ACTUAL_HOME/mynodeone-*-credentials.txt"
             echo
             read -p "Try again - Have you saved credentials? [y/N]: " -r
@@ -1890,7 +1890,7 @@ print_summary() {
     echo "  • Monitoring and managing the cluster"
     echo
     echo "📄 Additional Resources:"
-    echo "  • View credentials anytime: sudo $SCRIPT_DIR/show-credentials.sh"
+    echo "  • View credentials anytime: sudo $SCRIPT_DIR/../utils/show-credentials.sh"
     echo "  • Demo app guide: $PROJECT_ROOT/docs/guides/DEMO_APP_GUIDE.md"
     echo "  • Deploy apps easily: $PROJECT_ROOT/docs/guides/APP_DEPLOYMENT_GUIDE.md"
     echo "  • Security guide: $PROJECT_ROOT/docs/guides/SECURITY_CREDENTIALS_GUIDE.md"
@@ -2042,7 +2042,7 @@ offer_security_hardening() {
     # Skip prompt in unattended mode
     if [ "${UNATTENDED:-0}" = "1" ]; then
         log_info "UNATTENDED mode: Skipping optional security enhancements"
-        log_info "You can add them later with: sudo $SCRIPT_DIR/enable-security-hardening.sh"
+        log_info "You can add them later with: sudo $SCRIPT_DIR/../setup/enable-security-hardening.sh"
         return
     fi
     
@@ -2050,7 +2050,7 @@ offer_security_hardening() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo
         log_info "Deploying optional security enhancements..."
-        if bash "$SCRIPT_DIR/enable-security-hardening.sh"; then
+        if bash "$SCRIPT_DIR/../setup/enable-security-hardening.sh"; then
             log_success "Optional security enhancements deployed!"
             echo
             echo "✅ Network policies active"
@@ -2058,14 +2058,14 @@ offer_security_hardening() {
             echo "✅ Traefik security headers configured"
         else
             log_warn "Deployment had issues. You can try again later with:"
-            echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
+            echo "  sudo $SCRIPT_DIR/../setup/enable-security-hardening.sh"
         fi
     else
         echo
         log_info "Skipping optional enhancements. Your cluster still has strong core security."
         echo
         log_info "You can add them anytime with:"
-        echo "  sudo $SCRIPT_DIR/enable-security-hardening.sh"
+        echo "  sudo $SCRIPT_DIR/../setup/enable-security-hardening.sh"
     fi
 }
 
@@ -2110,7 +2110,7 @@ setup_local_dns() {
     local dns_success=false
     
     while [ $dns_retry -lt $dns_max_retries ]; do
-        if bash "$SCRIPT_DIR/setup-local-dns.sh"; then
+        if bash "$SCRIPT_DIR/../setup/setup-local-dns.sh"; then
             dns_success=true
             break
         else
@@ -2153,7 +2153,7 @@ setup_local_dns() {
     else
         log_warn "Local DNS setup failed after $dns_max_retries attempts."
         log_warn "You can set it up later with:"
-        echo "  sudo $SCRIPT_DIR/setup-local-dns.sh"
+        echo "  sudo $SCRIPT_DIR/../setup/setup-local-dns.sh"
     fi
 }
 
@@ -2230,16 +2230,16 @@ offer_demo_app() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo
         log_info "Deploying demo application..."
-        if bash "$SCRIPT_DIR/deploy-demo-app.sh" deploy; then
+        if bash "$SCRIPT_DIR/../operations/deploy-demo-app.sh" deploy; then
             log_success "Demo app deployment complete!"
         else
             log_warn "Demo app deployment had issues. You can deploy it later with:"
-            echo "  sudo $SCRIPT_DIR/deploy-demo-app.sh"
+            echo "  sudo $SCRIPT_DIR/../operations/deploy-demo-app.sh"
         fi
     else
         echo
         log_info "Skipping demo app. You can deploy it anytime with:"
-        echo "  sudo $SCRIPT_DIR/deploy-demo-app.sh"
+        echo "  sudo $SCRIPT_DIR/../operations/deploy-demo-app.sh"
     fi
 }
 
@@ -2322,7 +2322,7 @@ display_final_credentials_unattended() {
     echo "   sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt"
     echo
     echo "💡 You can view credentials anytime with:"
-    echo "   sudo $SCRIPT_DIR/show-credentials.sh"
+    echo "   sudo $SCRIPT_DIR/../utils/show-credentials.sh"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
@@ -2452,8 +2452,8 @@ main() {
     if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
         bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
     fi
-    if [ -f "$SCRIPT_DIR/sync-dns.sh" ]; then
-        bash "$SCRIPT_DIR/sync-dns.sh" 2>/dev/null || true
+    if [ -f "$SCRIPT_DIR/../domains/sync-dns.sh" ]; then
+        bash "$SCRIPT_DIR/../domains/sync-dns.sh" 2>/dev/null || true
     fi
     log_success "All services registered and DNS updated"
     echo
@@ -2466,9 +2466,9 @@ main() {
     echo
     log_info "Setting up passwordless sudo for cluster management..."
     
-    if [ -f "$SCRIPT_DIR/setup-control-plane-sudo.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../setup/setup-control-plane-sudo.sh" ]; then
         # Run with error handling (don't fail installation if this fails)
-        if bash "$SCRIPT_DIR/setup-control-plane-sudo.sh" 2>&1; then
+        if bash "$SCRIPT_DIR/../setup/setup-control-plane-sudo.sh" 2>&1; then
             log_success "✓ Passwordless sudo configured successfully"
         else
             local exit_code=$?
@@ -2486,7 +2486,7 @@ main() {
             log_success "✓ Verified: kubectl works without password"
         else
             log_warn "⚠ kubectl still requires password"
-            log_info "To fix manually: sudo $SCRIPT_DIR/setup-control-plane-sudo.sh"
+            log_info "To fix manually: sudo $SCRIPT_DIR/../setup/setup-control-plane-sudo.sh"
         fi
     else
         log_warn "setup-control-plane-sudo.sh not found, skipping"

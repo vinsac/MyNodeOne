@@ -226,7 +226,7 @@ kubectl get pods -n metallb-system
 
 # DNS not working?
 kubectl get configmap -n kube-system service-registry -o yaml
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 
 # App not accessible?
 kubectl describe svc -n myapp myapp

@@ -915,7 +915,7 @@ register_app() {
         echo "   # Then register:"
         echo "   sudo bash $MYNODEONE_ROOT/scripts/lib/service-registry.sh register \\"
         echo "       $APP_NAME $LOCAL_SUBDOMAIN $APP_NAME $primary_service 80 false"
-        echo "   sudo bash $MYNODEONE_ROOT/scripts/sync-dns.sh"
+        echo "   sudo bash $MYNODEONE_ROOT/scripts/domains/sync-dns.sh"
         echo ""
         echo "🚀 Access your app now (without local DNS):"
         local nodeport=$(kubectl get svc -n "$APP_NAME" "$primary_service" \
@@ -941,12 +941,12 @@ register_app() {
     fi
     
     # Update DNS
-    if [[ -f "$MYNODEONE_ROOT/scripts/sync-dns.sh" ]]; then
+    if [[ -f "$MYNODEONE_ROOT/scripts/domains/sync-dns.sh" ]]; then
         log "Updating local DNS..."
-        if bash "$MYNODEONE_ROOT/scripts/sync-dns.sh" &>/dev/null; then
+        if bash "$MYNODEONE_ROOT/scripts/domains/sync-dns.sh" &>/dev/null; then
             success "DNS updated"
         else
-            warn "DNS sync failed (run manually: sudo bash ~/MyNodeOne/scripts/sync-dns.sh)"
+            warn "DNS sync failed (run manually: sudo bash ~/MyNodeOne/scripts/domains/sync-dns.sh)"
         fi
     fi
     

@@ -170,7 +170,7 @@ bash /path/to/MyNodeOne/scripts/lib/service-registry.sh register \
   "false"            # Public (true/false)
 
 # Update DNS
-bash /path/to/MyNodeOne/scripts/sync-dns.sh
+bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 #### Option C: Using Helper Script (Easiest)
@@ -600,7 +600,7 @@ deploy:
 kubectl get configmap -n kube-system service-registry -o yaml
 
 # Sync DNS manually
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 
 # Check service has LoadBalancer IP
 kubectl get svc -n your-namespace

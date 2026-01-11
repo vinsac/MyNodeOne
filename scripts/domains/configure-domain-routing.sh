@@ -51,7 +51,7 @@ if [ -z "$DOMAIN" ]; then
     
     if [ -z "$DOMAINS" ]; then
         log_error "No domains registered"
-        echo "Add a domain first: sudo ./scripts/add-domain.sh"
+        echo "Add a domain first: sudo ./scripts/domains/add-domain.sh"
         exit 1
     fi
     

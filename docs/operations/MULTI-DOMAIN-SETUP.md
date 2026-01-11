@@ -175,7 +175,7 @@ sudo ./scripts/lib/sync-controller.sh register management_laptops \
 # 2. On the laptop, run initial sync
 cd ~/MyNodeOne
 git pull origin main
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 ```
 
 ### Add New Domain
@@ -223,7 +223,7 @@ sudo ./scripts/lib/sync-controller.sh push
 
 # Or sync individual machines:
 # On laptop
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 
 # On VPS
 sudo ./scripts/vps/sync-vps-routes.sh
@@ -304,7 +304,7 @@ sudo ./scripts/lib/sync-controller.sh health      # Check nodes
 sudo ./scripts/lib/multi-domain-registry.sh show  # View config
 
 # Laptop
-sudo ./scripts/sync-dns.sh                        # Manual sync
+sudo ./scripts/domains/sync-dns.sh                        # Manual sync
 
 # VPS
 sudo ./scripts/vps/sync-vps-routes.sh                 # Manual sync

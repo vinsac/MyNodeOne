@@ -1479,7 +1479,7 @@ main() {
                 bash "$SCRIPT_DIR/bootstrap-control-plane.sh"
                 
                 print_header "Final Step: Configuring Passwordless Sudo"
-                bash "$SCRIPT_DIR/setup-control-plane-sudo.sh"
+                bash "$SCRIPT_DIR/../setup/setup-control-plane-sudo.sh"
                 
                 # Final verification
                 print_info "Verifying passwordless sudo..."
@@ -1493,7 +1493,7 @@ main() {
                 ;;
             worker)
                 print_info "Running worker node setup..."
-                bash "$SCRIPT_DIR/add-worker-node.sh"
+                bash "$SCRIPT_DIR/../nodes/add-worker-node.sh"
                 ;;
             edge)
                 # VPS Edge Nodes are ONLY installed via orchestration from control plane
@@ -1515,12 +1515,12 @@ main() {
                 echo
                 
                 # Run the VPS setup script
-                bash "$SCRIPT_DIR/setup-vps-node.sh"
+                bash "$SCRIPT_DIR/../setup/setup-vps-node.sh"
                 ;;
 
             management)
                 print_info "Running management laptop setup..."
-                bash "$SCRIPT_DIR/setup-management-laptop.sh"
+                bash "$SCRIPT_DIR/../setup/setup-management-laptop.sh"
                 ;;
             *)
                 print_error "Unknown node type: $NODE_TYPE"

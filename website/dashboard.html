@@ -347,15 +347,15 @@
                     <div class="card-title">Quick Actions</div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <button onclick="alert('Run: sudo ./scripts/add-worker-node.sh')" 
+                    <button onclick="alert('Run: sudo ./scripts/nodes/add-worker-node.sh')" 
                             style="padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
                         ➕ Add Worker Node
                     </button>
-                    <button onclick="alert('Run: sudo ./scripts/cluster-status.sh')" 
+                    <button onclick="alert('Run: sudo ./scripts/operations/cluster-status.sh')" 
                             style="padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
                         📊 Check Cluster Status
                     </button>
-                    <button onclick="alert('Run: sudo ./scripts/show-credentials.sh')" 
+                    <button onclick="alert('Run: sudo ./scripts/utils/show-credentials.sh')" 
                             style="padding: 12px; background: #ffc107; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
                         🔑 View Credentials
                     </button>
@@ -553,7 +553,7 @@
                     <div class="script-name">add-worker-node.sh</div>
                     <div class="script-desc">Add more machines to your cluster for increased capacity</div>
                 </div>
-                <div class="script-command">sudo ./scripts/add-worker-node.sh</div>
+                <div class="script-command">sudo ./scripts/nodes/add-worker-node.sh</div>
             </div>
             
             <div class="script-item">
@@ -562,7 +562,7 @@
                     <div class="script-name">setup-edge-node.sh</div>
                     <div class="script-desc">Configure VPS as edge node for public access</div>
                 </div>
-                <div class="script-command">sudo ./scripts/setup-edge-node.sh</div>
+                <div class="script-command">sudo ./scripts/setup/setup-edge-node.sh</div>
             </div>
             
             <div class="script-item">
@@ -571,7 +571,7 @@
                     <div class="script-name">setup-laptop.sh</div>
                     <div class="script-desc">Configure management laptop with kubectl and access</div>
                 </div>
-                <div class="script-command">sudo ./scripts/setup-laptop.sh</div>
+                <div class="script-command">sudo ./scripts/setup/setup-laptop.sh</div>
             </div>
             
             <div class="script-item">
@@ -580,7 +580,7 @@
                     <div class="script-name">cluster-status.sh</div>
                     <div class="script-desc">Check cluster health, nodes, pods, and resources</div>
                 </div>
-                <div class="script-command">./scripts/cluster-status.sh</div>
+                <div class="script-command">./scripts/operations/cluster-status.sh</div>
             </div>
             
             <div class="script-item">
@@ -589,7 +589,7 @@
                     <div class="script-name">show-credentials.sh</div>
                     <div class="script-desc">Display service URLs and login credentials</div>
                 </div>
-                <div class="script-command">sudo ./scripts/show-credentials.sh</div>
+                <div class="script-command">sudo ./scripts/utils/show-credentials.sh</div>
             </div>
             
             <div class="script-item">
@@ -598,7 +598,7 @@
                     <div class="script-name">create-app.sh</div>
                     <div class="script-desc">Scaffold new application with manifests and configuration</div>
                 </div>
-                <div class="script-command">./scripts/create-app.sh myapp</div>
+                <div class="script-command">./scripts/operations/create-app.sh myapp</div>
             </div>
             
             <div class="script-item">
@@ -616,7 +616,7 @@
                     <div class="script-name">enable-security-hardening.sh</div>
                     <div class="script-desc">Apply production security policies and encryption</div>
                 </div>
-                <div class="script-command">sudo ./scripts/enable-security-hardening.sh</div>
+                <div class="script-command">sudo ./scripts/setup/enable-security-hardening.sh</div>
             </div>
         </div>
         

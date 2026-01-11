@@ -114,9 +114,9 @@ for i in {1..30}; do
 done
 
 # Update local DNS
-if [ -f "$SCRIPT_DIR/update-laptop-dns.sh" ]; then
+if [ -f "$SCRIPT_DIR/../domains/update-laptop-dns.sh" ]; then
     echo "📝 Updating local DNS..."
-    bash "$SCRIPT_DIR/update-laptop-dns.sh" > /dev/null 2>&1 || true
+    bash "$SCRIPT_DIR/../domains/update-laptop-dns.sh" > /dev/null 2>&1 || true
 fi
 
 echo ""

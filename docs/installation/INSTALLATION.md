@@ -829,7 +829,7 @@ sudo journalctl -u mynodeone-node-agent -f
 **Manual sync (if needed):**
 ```bash
 cd ~/MyNodeOne
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 ```
 
 ---

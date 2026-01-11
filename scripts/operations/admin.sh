@@ -196,8 +196,8 @@ setup_dashboard() {
     echo "🌐 Web Dashboard Setup"
     echo ""
     
-    if [ -f "$SCRIPT_DIR/setup-admin-dashboard.sh" ]; then
-        bash "$SCRIPT_DIR/setup-admin-dashboard.sh"
+    if [ -f "$SCRIPT_DIR/../setup/setup-admin-dashboard.sh" ]; then
+        bash "$SCRIPT_DIR/../setup/setup-admin-dashboard.sh"
         read -p "Press Enter to continue..."
     else
         echo "Dashboard setup script not found"

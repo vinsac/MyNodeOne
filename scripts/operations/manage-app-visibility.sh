@@ -137,7 +137,7 @@ check_domain_availability() {
         log_warn "No domains registered"
         echo ""
         echo "To make apps publicly accessible, you need a domain."
-        echo "Add one with: sudo ./scripts/add-domain.sh"
+        echo "Add one with: sudo ./scripts/domains/add-domain.sh"
         echo ""
         return 1
     fi

@@ -61,7 +61,7 @@
 # SEE ALSO:
 #   - docs/guides/OPERATIONS-GUIDE.md - DNS troubleshooting section
 #   - scripts/lib/service-registry.sh - Enterprise registry commands
-#   - scripts/sync-dns.sh - Regular DNS sync (after this fix)
+#   - scripts/domains/sync-dns.sh - Regular DNS sync (after this fix)
 #
 # VERSION: 1.0 (Created: 2024-11-07)
 # MAINTENANCE: This script may be removed in future versions once all

@@ -381,7 +381,7 @@ nslookup minio-canada-pc-0001-1.mynodeone.local
 
 #### 4.4 External DNS (Laptop)
 - Update laptop DNS with new MinIO entries
-- Use `scripts/update-laptop-dns.sh`
+- Use `scripts/domains/update-laptop-dns.sh`
 
 **Estimated Time:** 2-3 hours
 

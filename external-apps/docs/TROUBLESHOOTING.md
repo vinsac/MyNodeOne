@@ -104,7 +104,7 @@ cat /etc/hosts | grep mynodeone.local
 **Fix**:
 ```bash
 # Re-sync DNS
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 
 # Check from control plane
 ping myapp.mynodeone.local
@@ -409,7 +409,7 @@ kubectl rollout restart deployment -n myapp --all
 
 ### Re-sync DNS
 ```bash
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 ### Force Redeploy

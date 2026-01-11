@@ -597,7 +597,7 @@ ping media.mynodeone.local
 **Fix:**
 ```bash
 # Update DNS
-sudo ./scripts/update-laptop-dns.sh
+sudo ./scripts/domains/update-laptop-dns.sh
 
 # Verify
 cat /etc/hosts | grep media.mynodeone.local

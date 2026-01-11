@@ -231,8 +231,8 @@ if [[ "$AUTO_DNS" == "true" ]]; then
     echo ""
     log_info "Updating DNS configuration..."
     
-    if [[ -f "$PROJECT_ROOT/scripts/sync-dns.sh" ]]; then
-        if bash "$PROJECT_ROOT/scripts/sync-dns.sh" 2>&1 | grep -q "DNS"; then
+    if [[ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]]; then
+        if bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" 2>&1 | grep -q "DNS"; then
             log_success "Local DNS updated"
         else
             log_warn "DNS sync completed with warnings"

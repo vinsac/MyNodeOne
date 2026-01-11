@@ -168,7 +168,7 @@ sudo bash ~/MyNodeOne/scripts/lib/service-registry.sh register \
     myapp mysubdomain myapp myservice 80 false
 
 # Update DNS
-sudo bash ~/MyNodeOne/scripts/sync-dns.sh
+sudo bash ~/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 ---

@@ -7,7 +7,7 @@
 # 
 # Please use instead:
 #   sudo ./scripts/lib/service-registry.sh sync
-#   sudo ./scripts/sync-dns.sh
+#   sudo ./scripts/domains/sync-dns.sh
 # 
 # This script may create duplicate DNS entries if you're using the
 # enterprise registry (setup-enterprise-registry.sh)
@@ -22,7 +22,7 @@ echo "This script is DEPRECATED and may cause duplicate DNS entries."
 echo ""
 echo "If you have enterprise registry installed, use instead:"
 echo "  sudo ./scripts/lib/service-registry.sh sync"
-echo "  sudo ./scripts/sync-dns.sh"
+echo "  sudo ./scripts/domains/sync-dns.sh"
 echo ""
 echo "If you already have duplicate DNS entries, run:"
 echo "  sudo ./scripts/domains/fix-duplicate-dns.sh"

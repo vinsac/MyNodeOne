@@ -168,7 +168,7 @@ sudo ./scripts/apps/immich/expand-storage.sh
 
 Update your network settings:
 ```bash
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 ```
 
 ## Uninstall

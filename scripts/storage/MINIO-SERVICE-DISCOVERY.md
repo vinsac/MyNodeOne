@@ -133,7 +133,7 @@ The `sync-dns.sh` script reads the service registry and updates `/etc/hosts` on 
 
 **Automatic Updates:**
 - Triggered after MinIO installation
-- Can be manually run: `sudo ./scripts/sync-dns.sh`
+- Can be manually run: `sudo ./scripts/domains/sync-dns.sh`
 - Updates are idempotent (safe to run multiple times)
 
 ### DNS Propagation
@@ -230,7 +230,7 @@ grep minio /etc/hosts
 sudo ./scripts/lib/service-registry.sh sync
 
 # Update DNS
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 
 # Verify
 ping minio-canada-pc-worker-0001.mynodeone.local
@@ -277,7 +277,7 @@ sudo ./scripts/lib/service-registry.sh register \
   "minio-console-${NODE_NAME}" "minio-console-${NODE_NAME}" minio "minio-console-${NODE_NAME}" 9001 false
 
 # Sync DNS
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 ```
 
 ### DNS Not Resolving on Worker
@@ -304,7 +304,7 @@ http://100.77.243.210:9000
 **Solution 3: Manual /etc/hosts Update**
 ```bash
 # On worker node
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 ```
 
 ---
@@ -327,7 +327,7 @@ kubectl get svc minio-console-<node-name> -n minio -o jsonpath='{.status.loadBal
 kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq
 
 # Sync DNS
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 
 # Test DNS resolution
 ping minio-<node-name>.mynodeone.local
@@ -339,6 +339,6 @@ curl http://minio-<node-name>.mynodeone.local:9000/minio/health/live
 ## Related Documentation
 
 - **Service Registry:** `scripts/lib/service-registry.sh`
-- **DNS Sync:** `scripts/sync-dns.sh`
+- **DNS Sync:** `scripts/domains/sync-dns.sh`
 - **MinIO Credentials:** `scripts/storage/MINIO-CREDENTIALS.md`
 - **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md`

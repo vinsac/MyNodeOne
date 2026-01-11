@@ -241,7 +241,7 @@ kubectl get pods -n myapp
 **Can't Access App**
 ```bash
 kubectl get svc -n myapp
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 **Detailed Help**

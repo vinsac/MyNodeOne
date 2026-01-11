@@ -65,7 +65,7 @@ sudo bash scripts/lib/service-registry.sh register \
     votingapp voting votingapp vote 80 false
 
 # Update DNS
-sudo bash scripts/sync-dns.sh
+sudo bash scripts/domains/sync-dns.sh
 ```
 
 **Test DNS:**
@@ -146,7 +146,7 @@ kubectl get ipaddresspool -n metallb-system
 LB_IP=$(kubectl get svc vote -n votingapp -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 sudo bash /path/to/MyNodeOne/scripts/lib/service-registry.sh register \
     votingapp voting votingapp vote 80 false
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 ---
@@ -167,7 +167,7 @@ cat /etc/hosts | grep voting
 **Fix:**
 ```bash
 # Re-sync DNS
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 
 # Or manually add to /etc/hosts
 echo "10.20.30.40  voting.mynodeone.local" | sudo tee -a /etc/hosts
@@ -275,7 +275,7 @@ VOTE_IP=$(kubectl get svc vote -n votingapp -o jsonpath='{.status.loadBalancer.i
 if [[ -n "$VOTE_IP" ]]; then
     sudo bash /path/to/MyNodeOne/scripts/lib/service-registry.sh register \
         votingapp voting votingapp vote 80 false
-    sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+    sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 fi
 
 # 4. Test

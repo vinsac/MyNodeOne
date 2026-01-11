@@ -198,7 +198,7 @@ read -p "Selection: " service_selection
 if [ "$service_selection" = "none" ]; then
     log_info "Skipping service configuration"
     log_info "You can configure services later with:"
-    echo "  sudo ./scripts/configure-domain-routing.sh $NEW_DOMAIN"
+    echo "  sudo ./scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
     echo ""
 else
     declare -a selected_services
@@ -338,7 +338,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 echo "Add more services to this domain later:"
-echo "  sudo ./scripts/configure-domain-routing.sh $NEW_DOMAIN"
+echo "  sudo ./scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
 echo ""
 
 echo "View all domains and routing:"
@@ -346,7 +346,7 @@ echo "  sudo ./scripts/lib/multi-domain-registry.sh show"
 echo ""
 
 echo "Remove a domain:"
-echo "  sudo ./scripts/remove-domain.sh $NEW_DOMAIN"
+echo "  sudo ./scripts/domains/remove-domain.sh $NEW_DOMAIN"
 echo ""
 
 log_success "Setup complete! 🎉"

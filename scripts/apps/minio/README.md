@@ -273,7 +273,7 @@ kubectl get ipaddresspool -n metallb-system
 kubectl get configmap -n kube-system domain-registry -o yaml
 
 # Update laptop DNS
-sudo ./scripts/update-laptop-dns.sh
+sudo ./scripts/domains/update-laptop-dns.sh
 
 # Or use LoadBalancer IP directly
 ```

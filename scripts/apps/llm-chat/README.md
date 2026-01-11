@@ -143,7 +143,7 @@ If you have an NVIDIA GPU, the installer will automatically detect and use it fo
 
 Update your network settings:
 ```bash
-sudo ./scripts/sync-dns.sh
+sudo ./scripts/domains/sync-dns.sh
 ```
 
 ### Running Out of Storage

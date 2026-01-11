@@ -452,7 +452,7 @@ kubectl get svc -n myapp
 kubectl get configmap -n kube-system service-registry -o yaml
 
 # Update DNS manually
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 ### Public Domain Not Working

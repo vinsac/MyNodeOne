@@ -351,7 +351,7 @@ journalctl -u mynodeone-node-agent -f
 sudo ./scripts/lib/sync-controller.sh push-force
 
 # On the node - manually sync
-sudo ./scripts/sync-dns.sh  # For laptops/workers
+sudo ./scripts/domains/sync-dns.sh  # For laptops/workers
 sudo ./scripts/vps/sync-vps-routes.sh  # For VPS nodes
 ```
 

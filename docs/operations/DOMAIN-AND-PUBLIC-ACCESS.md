@@ -31,7 +31,7 @@ Log into your domain registrar (Namecheap, GoDaddy, Cloudflare, etc.) and add A 
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/add-domain.sh
+sudo ./scripts/domains/add-domain.sh
 ```
 
 Follow the prompts to:
@@ -105,14 +105,14 @@ kubectl get cm domain-registry -n kube-system -o jsonpath='{.data.domains\.json}
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/remove-domain.sh
+sudo ./scripts/domains/remove-domain.sh
 ```
 
 ### Update Domain Configuration
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/configure-domain-routing.sh
+sudo ./scripts/domains/configure-domain-routing.sh
 ```
 
 ---

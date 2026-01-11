@@ -313,7 +313,7 @@ cat /etc/hosts | grep mynodeone.local
 
 **Fix**:
 ```bash
-sudo bash /path/to/MyNodeOne/scripts/sync-dns.sh
+sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 ```
 
 ### Issue: Database Connection Errors

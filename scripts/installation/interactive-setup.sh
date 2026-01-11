@@ -877,8 +877,8 @@ show_next_steps() {
             echo
             
             # Run the dedicated laptop setup script
-            if [ -f "$SCRIPT_DIR/setup-laptop.sh" ]; then
-                bash "$SCRIPT_DIR/setup-laptop.sh"
+            if [ -f "$SCRIPT_DIR/../setup/setup-laptop.sh" ]; then
+                bash "$SCRIPT_DIR/../setup/setup-laptop.sh"
             else
                 echo "❌ setup-laptop.sh not found"
                 echo

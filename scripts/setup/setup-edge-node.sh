@@ -528,9 +528,9 @@ auto_register_vps() {
     log_info "Registering VPS in enterprise registry..."
     
     # Check if setup script exists
-    if [ -f "$SCRIPT_DIR/setup-vps-node.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../setup/setup-vps-node.sh" ]; then
         # Skip pre-flight checks since we already ran them
-        sudo -u "$ACTUAL_USER" bash "$SCRIPT_DIR/setup-vps-node.sh" --skip-preflight
+        sudo -u "$ACTUAL_USER" bash "$SCRIPT_DIR/../setup/setup-vps-node.sh" --skip-preflight
         log_success "VPS auto-registration complete"
     else
         log_warn "Auto-registration script not found, skipping..."

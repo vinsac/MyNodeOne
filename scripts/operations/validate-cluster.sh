@@ -91,7 +91,7 @@ else
     echo ""
     echo "Common fixes:"
     echo "  • Restart failed pods: kubectl delete pod <pod-name> -n <namespace>"
-    echo "  • Re-run DNS setup: sudo $SCRIPT_DIR/setup-local-dns.sh"
+    echo "  • Re-run DNS setup: sudo $SCRIPT_DIR/../setup/setup-local-dns.sh"
     echo "  • Check MetalLB: kubectl get ipaddresspool -n metallb-system"
     echo "  • View logs: kubectl logs -n <namespace> <pod-name>"
     echo ""

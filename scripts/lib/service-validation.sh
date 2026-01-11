@@ -201,7 +201,7 @@ verify_service_complete() {
     local namespace="$1"
     local service="$2"
     local dns_hostname="$3"
-    local cluster_domain="${4:-mycloud}"
+    local cluster_domain="${4:-mynodeone}"
     local all_ok=true
     
     echo ""
@@ -253,7 +253,7 @@ verify_service_complete() {
 # Verify all core services
 # Usage: verify_all_core_services <cluster-domain>
 verify_all_core_services() {
-    local cluster_domain="${1:-mycloud}"
+    local cluster_domain="${1:-mynodeone}"
     local all_ok=true
     
     echo ""

@@ -62,7 +62,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
 
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
 
 echo ""

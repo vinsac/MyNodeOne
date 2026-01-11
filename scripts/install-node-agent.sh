@@ -279,7 +279,7 @@ log_info "Creating agent configuration..."
 
 # Detect TRAEFIK_CONFIG_DIR for VPS nodes
 TRAEFIK_CONFIG_DIR=""
-CLUSTER_DOMAIN="minicloud"
+CLUSTER_DOMAIN="mynodeone"
 
 if [[ "$NODE_TYPE" == "vps" ]]; then
     # Try to find existing Traefik config directory

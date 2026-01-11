@@ -132,7 +132,7 @@ validate_control_plane() {
         # List registered services
         echo
         log_info "Registered services:"
-        echo "$registry_json" | jq -r 'to_entries[] | "  • \(.value.subdomain).\(env.CLUSTER_DOMAIN // "minicloud").local → \(.value.ip)"' 2>/dev/null || echo "  (Could not parse services)"
+        echo "$registry_json" | jq -r 'to_entries[] | "  • \(.value.subdomain).\(env.CLUSTER_DOMAIN // "mynodeone").local → \(.value.ip)"' 2>/dev/null || echo "  (Could not parse services)"
         echo
     else
         log_warn "Service registry is empty or malformed"
@@ -175,7 +175,7 @@ validate_management_laptop() {
     fi
     
     # DNS Resolution
-    local cluster_domain="${CLUSTER_DOMAIN:-minicloud}"
+    local cluster_domain="${CLUSTER_DOMAIN:-mynodeone}"
     
     echo
     log_info "Testing DNS resolution for .local domains..."

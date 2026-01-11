@@ -82,7 +82,7 @@ if ! kubectl get nodes &> /dev/null; then
 fi
 
 # Get cluster domain
-CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "minicloud")
+CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
 
 # Select target node
 echo "Available nodes:"
@@ -405,6 +405,7 @@ else
 fi
 
 # Register in service discovery
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 DOMAIN_NAME="minio-${NODE_NAME}.${CLUSTER_DOMAIN}.local"
 log_info "Registering in service discovery..."
 if [ -f "$LIB_DIR/service-registry.sh" ]; then

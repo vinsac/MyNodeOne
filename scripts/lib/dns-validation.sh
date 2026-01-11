@@ -117,7 +117,7 @@ test_dns_no_wildcard() {
 # Comprehensive DNS health check
 # Usage: dns_health_check <cluster-domain>
 dns_health_check() {
-    local cluster_domain="${1:-mycloud}"
+    local cluster_domain="${1:-mynodeone}"
     local all_ok=true
     
     echo ""

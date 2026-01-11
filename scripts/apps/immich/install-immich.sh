@@ -41,8 +41,8 @@ fi
 if [ -z "$CLUSTER_DOMAIN" ]; then
     echo -e "${YELLOW}⚠️  Could not detect cluster domain from cluster-info ConfigMap${NC}"
     echo ""
-    read -p "Enter your cluster domain [default: minicloud]: " USER_CLUSTER_DOMAIN
-    CLUSTER_DOMAIN="${USER_CLUSTER_DOMAIN:-minicloud}"
+    read -p "Enter your cluster domain [default: mynodeone]: " USER_CLUSTER_DOMAIN
+    CLUSTER_DOMAIN="${USER_CLUSTER_DOMAIN:-mynodeone}"
     echo ""
 fi
 

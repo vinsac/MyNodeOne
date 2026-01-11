@@ -940,7 +940,7 @@ register_minio_services() {
         local cluster_domain="${CLUSTER_DOMAIN:-}"
         
         if [[ -z "$cluster_domain" ]]; then
-            cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "atomcloud.local")
+            cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
         fi
         
         log_info "Registering MinIO API service..."

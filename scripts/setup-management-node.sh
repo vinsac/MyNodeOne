@@ -250,7 +250,7 @@ echo "  cd ~/MyNodeOne && sudo ./scripts/sync-dns.sh"
 echo ""
 
 # Show current services
-LOCAL_DOMAIN="${CLUSTER_DOMAIN:-mycloud}.local"
+LOCAL_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}.local"
 SERVICE_COUNT=$(grep "$LOCAL_DOMAIN" /etc/hosts 2>/dev/null | wc -l)
 if [ -z "$SERVICE_COUNT" ]; then
     SERVICE_COUNT=0

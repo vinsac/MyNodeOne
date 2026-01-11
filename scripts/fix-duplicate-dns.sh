@@ -110,7 +110,7 @@ CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-}"
 if [ -z "$CLUSTER_DOMAIN" ] && [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
     source "$ACTUAL_HOME/.mynodeone/config.env"
 fi
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 log_info "Checking current DNS entries..."
 echo ""

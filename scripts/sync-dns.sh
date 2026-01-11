@@ -61,7 +61,7 @@ fi
 
 # Fallback to config file or default
 if [[ -z "$CLUSTER_DOMAIN" ]]; then
-    CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
+    CLUSTER_DOMAIN="mynodeone"
     log_warn "Could not fetch cluster domain from cluster, using: $CLUSTER_DOMAIN"
 fi
 

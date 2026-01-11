@@ -662,7 +662,7 @@ main() {
     
     if [[ -z "$cluster_domain" ]]; then
         log_error "Could not detect cluster domain"
-        echo -n "Please enter cluster domain (e.g., nanocloud): "
+        echo -n "Please enter cluster domain (e.g., mynodeone): "
         read cluster_domain
         if [[ -z "$cluster_domain" ]]; then
             log_error "Cluster domain is required"

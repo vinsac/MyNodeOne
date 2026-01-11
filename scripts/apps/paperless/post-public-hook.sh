@@ -35,7 +35,7 @@ fi
 if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
     source "$ACTUAL_HOME/.mynodeone/config.env"
 fi
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-minicloud}"
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 # Build allowed hosts list
 ALLOWED_HOSTS="${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"

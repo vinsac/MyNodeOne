@@ -228,7 +228,7 @@ EOF
         fi
         
         # Fallback if still not set
-        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mycloud}"
+        CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
         
         # Register in new enterprise registry
         if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then

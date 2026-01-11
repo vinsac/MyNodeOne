@@ -579,7 +579,7 @@ install_minio() {
     log_info "  - Let you select target node (control plane or worker)"
     log_info "  - Install via SSH if remote node"
     log_info "  - Assign unique MetalLB IP per node"
-    log_info "  - Create node-specific .local domain (minio-<nodename>.atomcloud.local)"
+    log_info "  - Create node-specific .local domain (minio-<nodename>.mynodeone.local)"
     log_info "  - Generate independent credentials per node"
     log_info ""
 }

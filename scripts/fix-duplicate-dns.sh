@@ -11,7 +11,7 @@
 #
 # WHEN TO USE THIS SCRIPT:
 #   ✅ You see duplicate DNS entries for the same app
-#      Example: demo-chat-app.minicloud.local AND demoapp.minicloud.local
+#      Example: demo-chat-app.mynodeone.local AND demoapp.mynodeone.local
 #   ✅ You upgraded from a pre-enterprise-registry installation
 #   ✅ Apps are accessible via multiple URLs and you want to clean up
 #   ✅ You reinstalled control plane and got duplicates
@@ -34,12 +34,12 @@
 #
 # EXAMPLE SCENARIO:
 #   Before:
-#     100.76.150.207    demo-chat-app.minicloud.local  (from old system)
-#     100.76.150.207    demoapp.minicloud.local        (from configure-app-dns.sh)
-#     100.76.150.207    demo.minicloud.local           (from enterprise registry)
+#     100.76.150.207    demo-chat-app.mynodeone.local  (from old system)
+#     100.76.150.207    demoapp.mynodeone.local        (from configure-app-dns.sh)
+#     100.76.150.207    demo.mynodeone.local           (from enterprise registry)
 #
 #   After:
-#     100.76.150.207    demo.minicloud.local           (single entry)
+#     100.76.150.207    demo.mynodeone.local           (single entry)
 #
 # REQUIREMENTS:
 #   - Enterprise registry must be set up (setup-enterprise-registry.sh)
@@ -97,7 +97,7 @@ echo ""
 log_info "This script will:"
 echo "  1. Remove old DNS entries (demo-chat-app, demoapp)"
 echo "  2. Rebuild using enterprise registry"
-echo "  3. Result: Single consistent entry (demo.minicloud.local)"
+echo "  3. Result: Single consistent entry (demo.mynodeone.local)"
 echo ""
 
 # Load cluster domain - handle sudo correctly

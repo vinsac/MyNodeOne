@@ -146,7 +146,7 @@ spec:
             # Node-specific MinIO endpoint
             # Replace 'pc1' with your node name
             - name: MINIO_ENDPOINT
-              value: "minio-pc1.minicloud.local:9000"
+              value: "minio-pc1.mynodeone.local:9000"
             
             volumeMounts:
             - name: data

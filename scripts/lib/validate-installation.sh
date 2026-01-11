@@ -186,7 +186,7 @@ validate_management_laptop() {
     for subdomain in grafana argocd minio longhorn "${cluster_domain}"; do
         dns_tests=$((dns_tests + 1))
         
-        # Special case: dashboard is at root domain (e.g., minicloud.local, not minicloud.minicloud.local)
+        # Special case: dashboard is at root domain (e.g., mynodeone.local, not mynodeone.mynodeone.local)
         if [ "$subdomain" = "$cluster_domain" ]; then
             local test_domain="${cluster_domain}.local"
         else

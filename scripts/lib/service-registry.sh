@@ -454,7 +454,7 @@ Examples:
   service-registry.sh sync
   service-registry.sh register immich photos immich immich-server 80 true
   service-registry.sh export-dns                    # Uses CLUSTER_DOMAIN from config
-  service-registry.sh export-dns minicloud.local    # Explicit domain
+  service-registry.sh export-dns mynodeone.local    # Explicit domain
   service-registry.sh export-traefik example.com 100.122.68.75 > routes.yml
 
 EOF

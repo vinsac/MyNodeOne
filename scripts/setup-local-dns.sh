@@ -169,7 +169,7 @@ address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
 address=/traefik.${CLUSTER_DOMAIN}.local/${TRAEFIK_IP}
-# Note: MinIO uses node-specific domains (minio-nodename.minicloud.local)
+# Note: MinIO uses node-specific domains (minio-nodename.mynodeone.local)
 # No generic minio/minio-api aliases to avoid confusion about which node is being accessed
 EOF
     

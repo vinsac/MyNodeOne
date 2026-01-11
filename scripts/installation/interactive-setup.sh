@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Source validation library
-if [ -f "$SCRIPT_DIR/lib/validation.sh" ]; then
+if [ -f "$SCRIPT_DIR/../lib/validation.sh" ]; then
     source "$SCRIPT_DIR/../lib/validation.sh"
 fi
 
@@ -465,7 +465,7 @@ configure_cluster_info() {
         echo
         
         # Try to fetch cluster info before asking user
-        if bash "$SCRIPT_DIR/lib/fetch-cluster-info.sh"; then
+        if bash "$SCRIPT_DIR/../lib/fetch-cluster-info.sh"; then
             # Reload config after fetch
             if [ -f "$CONFIG_DIR/config.env" ]; then
                 source "$CONFIG_DIR/config.env"

@@ -99,7 +99,7 @@ verify_domain_registry() {
         log_warn "Domain registry not initialized"
         log_info "Initializing now..."
         
-        if bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" init; then
+        if bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" init; then
             log_success "Domain registry initialized"
             return 0
         else
@@ -174,7 +174,7 @@ make_public() {
     if [ -n "$domains" ] && [ -n "$vps_nodes" ]; then
         log_info "Configuring routing..."
         
-        if retry_command 3 "bash '$SCRIPT_DIR/lib/multi-domain-registry.sh' configure-routing \
+        if retry_command 3 "bash '$SCRIPT_DIR/../lib/multi-domain-registry.sh' configure-routing \
             '$service_name' '$domains' '$vps_nodes' round-robin"; then
             log_success "Routing configured"
         else
@@ -190,7 +190,7 @@ make_public() {
         local namespace=$(echo "$service_info" | jq -r '.namespace')
         
         # Look for post-public-hook.sh in app directory
-        local hook_path="$SCRIPT_DIR/apps/$service_name/post-public-hook.sh"
+        local hook_path="$SCRIPT_DIR/../apps/$service_name/post-public-hook.sh"
         if [ -f "$hook_path" ]; then
             log_info "Running app-specific configuration..."
             if bash "$hook_path" "$service_name" "$subdomain" "$domains"; then

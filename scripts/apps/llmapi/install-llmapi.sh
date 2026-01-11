@@ -486,7 +486,7 @@ echo ""
 
 # Load centralized HF token management
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/hf-token.sh"
+source "$SCRIPT_DIR/../lib/hf-token.sh"
 
 # HuggingFace Token (optional but recommended for faster downloads)
 HF_TOKEN=""

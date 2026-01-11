@@ -29,7 +29,7 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REGISTRY_MANAGER="$SCRIPT_DIR/lib/node-registry-manager.sh"
+REGISTRY_MANAGER="$SCRIPT_DIR/../lib/node-registry-manager.sh"
 
 # Colors
 RED='\033[0;31m'

@@ -7,7 +7,7 @@
 # and their home directory, even when scripts are run with sudo.
 #
 # Usage:
-#   source "$SCRIPT_DIR/lib/detect-actual-home.sh"
+#   source "$SCRIPT_DIR/../lib/detect-actual-home.sh"
 #   # Then use $ACTUAL_USER and $ACTUAL_HOME
 ###############################################################################
 

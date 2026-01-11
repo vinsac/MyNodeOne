@@ -365,8 +365,8 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ -f "$SCRIPT_DIR/scripts/lib/node-registry-manager.sh" ]; then
-    source "$SCRIPT_DIR/scripts/lib/node-registry-manager.sh"
+if [ -f "$SCRIPT_DIR/../lib/node-registry-manager.sh" ]; then
+    source "$SCRIPT_DIR/../lib/node-registry-manager.sh"
     
     # Get node name from kubectl
     K8S_NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
@@ -475,7 +475,7 @@ print_summary() {
 install_node_agent() {
     log_info "Installing Node Agent for pull-based config sync..."
     
-    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
         # Get API token from config if available
         API_TOKEN="${API_TOKEN:-}"
         
@@ -485,7 +485,7 @@ install_node_agent() {
         
         # Call install-config-sync with ssh-user parameter for automatic token fetch
         # Arguments: node-type control-plane-ip api-token node-name ssh-user
-        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME" "$CP_SSH_USER"; then
+        if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Worker will now pull config updates from control plane"
         else
@@ -522,7 +522,7 @@ setup_gpu() {
     
     log_info "NVIDIA GPU detected on this worker node"
     
-    if [ -f "$SCRIPT_DIR/lib/gpu-setup.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../lib/gpu-setup.sh" ]; then
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  NVIDIA GPU Detected"
@@ -531,7 +531,7 @@ setup_gpu() {
         echo ""
         
         # Interactive GPU setup (no device plugin - that's on control plane)
-        bash "$SCRIPT_DIR/lib/gpu-setup.sh" --no-plugin
+        bash "$SCRIPT_DIR/../lib/gpu-setup.sh" --no-plugin
         GPU_EXIT_CODE=$?
         
         if [ $GPU_EXIT_CODE -eq 2 ]; then
@@ -655,8 +655,8 @@ main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
-        if bash "$SCRIPT_DIR/lib/validate-installation.sh" worker-node; then
+    if [ -f "$SCRIPT_DIR/../lib/validate-installation.sh" ]; then
+        if bash "$SCRIPT_DIR/../lib/validate-installation.sh" worker-node; then
             log_success "Worker node validation passed!"
         else
             log_warn "Some validation tests failed (see above)"

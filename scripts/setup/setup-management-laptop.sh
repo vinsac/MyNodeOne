@@ -551,7 +551,7 @@ main() {
     
     log_info "Installing Node Agent for pull-based config sync..."
     
-    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
         # Get API token from config if available
         # First check if it's in user's config.env (saved by fetch-cluster-info.sh)
         local user_config="${ACTUAL_HOME:-$HOME}/.mynodeone/config.env"
@@ -575,7 +575,7 @@ main() {
         
         # Call install-config-sync with ssh-user parameter for automatic token fetch
         # Arguments: node-type control-plane-ip api-token node-name ssh-user
-        if sudo bash "$SCRIPT_DIR/lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "$(hostname)" "$CP_SSH_USER"; then
+        if sudo bash "$SCRIPT_DIR/../lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "$(hostname)" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Laptop will now pull config updates from control plane"
         else
@@ -594,8 +594,8 @@ main() {
     log_info "Running installation validation tests..."
     echo
     
-    if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
-        if bash "$SCRIPT_DIR/lib/validate-installation.sh" management-laptop; then
+    if [ -f "$SCRIPT_DIR/../lib/validate-installation.sh" ]; then
+        if bash "$SCRIPT_DIR/../lib/validate-installation.sh" management-laptop; then
             echo
             log_success "All validation tests passed!"
             

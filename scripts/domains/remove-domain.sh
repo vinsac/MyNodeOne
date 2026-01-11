@@ -151,7 +151,7 @@ if [ -n "$AFFECTED_SERVICES" ]; then
             jq -r ".[\"$service\"].vps_nodes[]" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
         
         # Update routing
-        bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" configure-routing \
+        bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" configure-routing \
             "$service" "$new_domains" "$vps_nodes" "round-robin" &>/dev/null || true
         
         log_success "✓ Updated $service"
@@ -176,7 +176,7 @@ log_success "Domain removed from registry"
 # Push updates to VPS
 echo ""
 log_info "Pushing updates to VPS nodes..."
-bash "$SCRIPT_DIR/lib/sync-controller.sh" push || true
+bash "$SCRIPT_DIR/../lib/sync-controller.sh" push || true
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

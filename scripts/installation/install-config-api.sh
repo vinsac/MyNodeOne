@@ -108,7 +108,7 @@ log_success "Binary installed: /usr/local/bin/mynodeone-config-api"
 
 # Install systemd service
 log_info "Installing systemd service..."
-cp "$SCRIPT_DIR/lib/mynodeone-config-api.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/../lib/mynodeone-config-api.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable mynodeone-config-api
 

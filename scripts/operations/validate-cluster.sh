@@ -59,8 +59,8 @@ if ! command -v kubectl &> /dev/null; then
 fi
 
 # Source validation library
-if [ ! -f "$SCRIPT_DIR/lib/service-validation.sh" ]; then
-    echo "❌ Validation library not found at: $SCRIPT_DIR/lib/service-validation.sh"
+if [ ! -f "$SCRIPT_DIR/../lib/service-validation.sh" ]; then
+    echo "❌ Validation library not found at: $SCRIPT_DIR/../lib/service-validation.sh"
     exit 1
 fi
 

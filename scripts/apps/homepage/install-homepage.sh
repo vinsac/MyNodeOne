@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Load shared validation library
-source "$SCRIPT_DIR/lib/validation.sh"
+source "$SCRIPT_DIR/../lib/validation.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

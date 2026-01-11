@@ -145,7 +145,7 @@ log_success "Old entries removed"
 # Check if enterprise registry exists
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ ! -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
+if [ ! -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
     log_warn "Enterprise registry not found!"
     echo ""
     echo "To set up enterprise registry:"
@@ -155,7 +155,7 @@ fi
 
 # Sync service registry
 log_info "Syncing service registry..."
-if bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null; then
+if bash "$SCRIPT_DIR/../lib/service-registry.sh" sync 2>/dev/null; then
     log_success "Service registry synced"
 else
     log_warn "Could not sync (this is OK if no apps installed yet)"
@@ -163,7 +163,7 @@ fi
 
 # Export and update DNS
 log_info "Updating DNS from registry..."
-if bash "$SCRIPT_DIR/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/registry-dns.txt; then
+if bash "$SCRIPT_DIR/../lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/registry-dns.txt; then
     sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
     {
         echo ""

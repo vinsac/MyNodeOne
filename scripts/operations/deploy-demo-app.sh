@@ -231,8 +231,8 @@ EOF
         CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
         
         # Register in new enterprise registry
-        if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
-            if bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+        if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+            if bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
                 "demo" "demo" "demo-apps" "demo" "80" "false" 2>/dev/null; then
                 log_success "Registered in service registry"
                 DEMO_URL="http://demo.${CLUSTER_DOMAIN}.local"
@@ -242,7 +242,7 @@ EOF
             fi
             
             # Update local DNS
-            if bash "$SCRIPT_DIR/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/demo-dns-entries.txt; then
+            if bash "$SCRIPT_DIR/../lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/demo-dns-entries.txt; then
                 sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
                 sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
                 {
@@ -349,8 +349,8 @@ main() {
             # Sync service registry after deployment
             log_info "Syncing service registry..."
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
-                bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+            if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+                bash "$SCRIPT_DIR/../lib/service-registry.sh" sync 2>/dev/null || true
             fi
             ;;
         remove|delete|undeploy)
@@ -359,8 +359,8 @@ main() {
             
             # Sync service registry after removal
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
-                bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+            if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+                bash "$SCRIPT_DIR/../lib/service-registry.sh" sync 2>/dev/null || true
             fi
             ;;
         status)

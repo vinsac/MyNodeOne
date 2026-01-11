@@ -56,8 +56,8 @@ fi
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-METADATA_COLLECTOR="$SCRIPT_DIR/lib/collect-vps-metadata.sh"
-REGISTRY_MANAGER="$SCRIPT_DIR/lib/node-registry-manager.sh"
+METADATA_COLLECTOR="$SCRIPT_DIR/../lib/collect-vps-metadata.sh"
+REGISTRY_MANAGER="$SCRIPT_DIR/../lib/node-registry-manager.sh"
 
 # Detect user
 ACTUAL_USER="${SUDO_USER:-$(whoami)}"

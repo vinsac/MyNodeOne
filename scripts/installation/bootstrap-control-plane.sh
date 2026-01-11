@@ -642,7 +642,7 @@ EOF
     
     # Register cluster node in node registry
     log_info "Registering cluster node in node registry..."
-    if [ -f "$SCRIPT_DIR/lib/node-registry-manager.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../lib/node-registry-manager.sh" ]; then
         source "$SCRIPT_DIR/../lib/node-registry-manager.sh"
         
         # Get Kubernetes node name (may differ from hostname)
@@ -806,7 +806,7 @@ setup_gpu_support() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # Use shared GPU setup script
-    local GPU_SETUP_SCRIPT="$SCRIPT_DIR/lib/gpu-setup.sh"
+    local GPU_SETUP_SCRIPT="$SCRIPT_DIR/../lib/gpu-setup.sh"
     if [ ! -f "$GPU_SETUP_SCRIPT" ]; then
         log_error "GPU setup script not found: $GPU_SETUP_SCRIPT"
         return 1
@@ -1332,7 +1332,7 @@ install_minio() {
     log_info "MinIO is now installed as an app (like Immich, LLM API)"
     log_info ""
     log_info "To install MinIO on this or any node:"
-    log_info "  sudo $SCRIPT_DIR/apps/minio/install-minio.sh"
+    log_info "  sudo $SCRIPT_DIR/../apps/minio/install-minio.sh"
     log_info ""
     log_info "MinIO can be installed multiple times on different nodes"
     log_info "Each installation gets independent credentials and .local domain"
@@ -1500,13 +1500,13 @@ initialize_service_registries() {
     echo
     
     log_info "Creating service registry..."
-    bash "$SCRIPT_DIR/lib/service-registry.sh" init || true
+    bash "$SCRIPT_DIR/../lib/service-registry.sh" init || true
     
     log_info "Creating multi-domain registry..."
-    bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" init || true
+    bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" init || true
     
     log_info "Initializing enterprise node registry..."
-    bash "$SCRIPT_DIR/lib/node-registry-manager.sh" init || {
+    bash "$SCRIPT_DIR/../lib/node-registry-manager.sh" init || {
         log_warn "Could not initialize node registry (kubectl may not be ready yet)"
         log_info "Registry will be initialized on first node registration"
     }
@@ -1543,7 +1543,7 @@ initialize_service_registries() {
     fi
     
     log_info "Syncing existing services to registry..."
-    bash "$SCRIPT_DIR/lib/service-registry.sh" sync || true
+    bash "$SCRIPT_DIR/../lib/service-registry.sh" sync || true
     
     # Register platform services in the registry
     log_info "Registering platform services..."
@@ -1553,7 +1553,7 @@ initialize_service_registries() {
     
     # Register Grafana
     if kubectl get svc -n monitoring kube-prometheus-stack-grafana &>/dev/null; then
-        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
             "kube-prometheus-stack-grafana" "grafana" "monitoring" \
             "kube-prometheus-stack-grafana" "80" "false" 2>/dev/null || \
             log_warn "Could not register Grafana (will retry later)"
@@ -1561,7 +1561,7 @@ initialize_service_registries() {
     
     # Register ArgoCD
     if kubectl get svc -n argocd argocd-server &>/dev/null; then
-        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
             "argocd-server" "argocd" "argocd" \
             "argocd-server" "80" "false" 2>/dev/null || \
             log_warn "Could not register ArgoCD (will retry later)"
@@ -1572,7 +1572,7 @@ initialize_service_registries() {
     
     # Register Longhorn (if LoadBalancer type)
     if kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.spec.type}' 2>/dev/null | grep -q "LoadBalancer"; then
-        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
             "longhorn-frontend" "longhorn" "longhorn-system" \
             "longhorn-frontend" "80" "false" 2>/dev/null || \
             log_warn "Could not register Longhorn (will retry later)"
@@ -1580,7 +1580,7 @@ initialize_service_registries() {
     
     # Register Dashboard
     if kubectl get svc -n mynodeone-dashboard dashboard &>/dev/null; then
-        bash "$SCRIPT_DIR/lib/service-registry.sh" register \
+        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
             "dashboard" "${CLUSTER_DOMAIN}" "mynodeone-dashboard" \
             "dashboard" "80" "false" 2>/dev/null || \
             log_warn "Could not register Dashboard (will retry later)"
@@ -1639,7 +1639,7 @@ initialize_service_registries() {
     CONTROL_PLANE_USER="${SUDO_USER:-$(whoami)}"
     
     # Use sudo for registration (needs root to update ConfigMap)
-    if sudo bash "$SCRIPT_DIR/lib/node-registry-manager.sh" register \
+    if sudo bash "$SCRIPT_DIR/../lib/node-registry-manager.sh" register \
         "management_laptops" "$TAILSCALE_IP" "$CONTROL_PLANE_HOSTNAME" \
         "$CONTROL_PLANE_USER" "" "$PROJECT_ROOT"; then
         log_success "✓ Control plane registered for DNS sync"
@@ -1657,8 +1657,8 @@ initialize_service_registries() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
-        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" control-plane; then
+    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
+        if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" control-plane; then
             log_success "Config API Server installed"
             
             # Display API token for use on other nodes
@@ -2168,8 +2168,8 @@ run_final_validation() {
     echo
     
     # Run unified validation script
-    if [ -f "$SCRIPT_DIR/lib/validate-installation.sh" ]; then
-        if bash "$SCRIPT_DIR/lib/validate-installation.sh" control-plane; then
+    if [ -f "$SCRIPT_DIR/../lib/validate-installation.sh" ]; then
+        if bash "$SCRIPT_DIR/../lib/validate-installation.sh" control-plane; then
             echo
             log_success "🎉 INSTALLATION VALIDATION PASSED!"
             log_info "Your control plane is fully operational!"
@@ -2182,7 +2182,7 @@ run_final_validation() {
             log_error "❌ INSTALLATION VALIDATION FAILED"
             log_warn "Some components may need attention (see details above)"
             log_info "You can re-run validation anytime:"
-            echo "  sudo bash $SCRIPT_DIR/lib/validate-installation.sh control-plane"
+            echo "  sudo bash $SCRIPT_DIR/../lib/validate-installation.sh control-plane"
             
             # Save validation status
             echo "LAST_VALIDATION=$(date -Iseconds)" >> $ACTUAL_HOME/.mynodeone/config.env
@@ -2199,7 +2199,7 @@ run_final_validation() {
             fi
         fi
     else
-        log_warn "Validation script not found at: $SCRIPT_DIR/lib/validate-installation.sh"
+        log_warn "Validation script not found at: $SCRIPT_DIR/../lib/validate-installation.sh"
         log_info "Skipping automated validation"
     fi
 }
@@ -2274,7 +2274,7 @@ offer_llm_chat() {
         log_info "Deploying LLM chat application..."
         # Use the new app store installation script (auto-skips prompts for subdomain/VPS during bootstrap)
         export AUTO_INSTALL_MODE=true
-        if bash "$SCRIPT_DIR/apps/llm-chat/install-llm-chat.sh"; then
+        if bash "$SCRIPT_DIR/../apps/llm-chat/install-llm-chat.sh"; then
             log_success "LLM chat deployment complete!"
             echo
             log_info "LLM Chat installed locally. To add public internet access later:"
@@ -2419,8 +2419,8 @@ main() {
     echo
     log_info "Installing Config API Server for pull-based node sync..."
     
-    if [ -f "$SCRIPT_DIR/lib/install-config-sync.sh" ]; then
-        if bash "$SCRIPT_DIR/lib/install-config-sync.sh" control-plane; then
+    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
+        if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" control-plane; then
             log_success "Config API Server installed"
             log_info "Nodes can now pull config updates via HTTP on port 8443"
             
@@ -2449,8 +2449,8 @@ main() {
     
     # Final sync: Ensure all services are registered and DNS is updated
     log_info "Final sync: Registering all services and updating DNS..."
-    if [ -f "$SCRIPT_DIR/lib/service-registry.sh" ]; then
-        bash "$SCRIPT_DIR/lib/service-registry.sh" sync 2>/dev/null || true
+    if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+        bash "$SCRIPT_DIR/../lib/service-registry.sh" sync 2>/dev/null || true
     fi
     if [ -f "$SCRIPT_DIR/../domains/sync-dns.sh" ]; then
         bash "$SCRIPT_DIR/../domains/sync-dns.sh" 2>/dev/null || true

@@ -49,14 +49,14 @@ echo ""
 
 # Step 1: Initialize registries
 log_info "Step 1/5: Initializing service registries..."
-bash "$SCRIPT_DIR/lib/service-registry.sh" init
-bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" init
+bash "$SCRIPT_DIR/../lib/service-registry.sh" init
+bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" init
 log_success "Registries initialized"
 echo ""
 
 # Step 2: Sync existing services
 log_info "Step 2/5: Discovering existing services..."
-bash "$SCRIPT_DIR/lib/service-registry.sh" sync
+bash "$SCRIPT_DIR/../lib/service-registry.sh" sync
 SERVICE_COUNT=$(kubectl get configmap -n kube-system service-registry \
     -o jsonpath='{.data.services\.json}' | jq 'length' 2>/dev/null || echo "0")
 log_success "Found $SERVICE_COUNT existing services"
@@ -109,14 +109,14 @@ if [ -z "${PUBLIC_DOMAIN:-}" ]; then
     
     if [ -n "$user_domain" ]; then
         echo "PUBLIC_DOMAIN=\"$user_domain\"" >> ~/.mynodeone/config.env
-        bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" register-domain "$user_domain" "Primary domain"
+        bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain "$user_domain" "Primary domain"
         log_success "Domain registered: $user_domain"
     else
         log_info "Skipping domain configuration (local access only)"
     fi
 else
     log_info "Using existing domain: $PUBLIC_DOMAIN"
-    bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" register-domain "$PUBLIC_DOMAIN" "Primary domain" 2>/dev/null || true
+    bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain "$PUBLIC_DOMAIN" "Primary domain" 2>/dev/null || true
 fi
 echo ""
 
@@ -125,7 +125,7 @@ log_info "Step 5/5: Registering control plane for sync..."
 
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 if [ -n "$TAILSCALE_IP" ]; then
-    bash "$SCRIPT_DIR/lib/sync-controller.sh" register management_laptops \
+    bash "$SCRIPT_DIR/../lib/sync-controller.sh" register management_laptops \
         "$TAILSCALE_IP" "control-plane" "$(whoami)" 2>/dev/null || true
     log_success "Control plane registered"
 else

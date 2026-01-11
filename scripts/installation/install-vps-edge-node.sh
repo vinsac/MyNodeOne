@@ -258,23 +258,23 @@ if [ $? -eq 0 ]; then
             
             # Fallback to basic registration
             if retry_command "Basic VPS registration" \
-                sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/lib/sync-controller.sh" register vps_nodes \
+                sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/../lib/sync-controller.sh" register vps_nodes \
                 "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
                 echo "✅ Basic registration succeeded"
             else
                 echo "❌ Basic registration also failed"
-                echo "   Manual registration: sudo $SCRIPT_DIR/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+                echo "   Manual registration: sudo $SCRIPT_DIR/../lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
             fi
         fi
     else
         # Use basic registration (legacy)
         echo "ℹ Using basic registration (no metadata available)..."
         if ! retry_command "Registering in sync controller" \
-            sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/lib/sync-controller.sh" register vps_nodes \
+            sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/../lib/sync-controller.sh" register vps_nodes \
             "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
             REGISTRATION_FAILED=true
             echo "❌ Failed to register in sync controller"
-            echo "   Manual registration: sudo $SCRIPT_DIR/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+            echo "   Manual registration: sudo $SCRIPT_DIR/../lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
         fi
     fi
     echo
@@ -285,11 +285,11 @@ if [ $? -eq 0 ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if ! retry_command "Registering VPS in domain registry" \
-        sudo "$SCRIPT_DIR/lib/multi-domain-registry.sh" register-vps \
+        sudo "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-vps \
         "$VPS_TAILSCALE_IP" "$VPS_PUBLIC_IP" "$VPS_LOCATION" "unknown"; then
         REGISTRATION_FAILED=true
         echo "❌ Failed to register VPS in domain registry"
-        echo "   Manual registration: sudo $SCRIPT_DIR/lib/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
+        echo "   Manual registration: sudo $SCRIPT_DIR/../lib/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
     fi
     echo
     
@@ -299,11 +299,11 @@ if [ $? -eq 0 ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if ! retry_command "Registering domain" \
-        sudo "$SCRIPT_DIR/lib/multi-domain-registry.sh" register-domain \
+        sudo "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain \
         "$VPS_DOMAIN" "VPS edge node domain"; then
         REGISTRATION_FAILED=true
         echo "❌ Failed to register domain"
-        echo "   Manual registration: sudo $SCRIPT_DIR/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS edge node domain'"
+        echo "   Manual registration: sudo $SCRIPT_DIR/../lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS edge node domain'"
     fi
     echo
     
@@ -353,7 +353,7 @@ if [ $? -eq 0 ]; then
         
         echo "ℹ Triggering initial sync to VPS..."
         if retry_command "Syncing configuration" \
-            sudo "$SCRIPT_DIR/lib/sync-controller.sh" push; then
+            sudo "$SCRIPT_DIR/../lib/sync-controller.sh" push; then
             echo "✅ Sync command completed"
         else
             echo "❌ Sync command failed"

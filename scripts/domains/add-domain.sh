@@ -91,7 +91,7 @@ echo "  Step 2: Registering Domain"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" register-domain "$NEW_DOMAIN" "$DESCRIPTION"
+bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain "$NEW_DOMAIN" "$DESCRIPTION"
 log_success "Domain registered in cluster"
 echo ""
 
@@ -246,7 +246,7 @@ else
             
             # Configure routing
             if [ -n "$all_vps" ]; then
-                bash "$SCRIPT_DIR/lib/multi-domain-registry.sh" configure-routing \
+                bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" configure-routing \
                     "$service" "$all_domains" "$all_vps" "round-robin" 2>/dev/null || true
                 log_success "✓ $service configured"
             fi
@@ -267,7 +267,7 @@ if [ -n "$SELECTED_VPS" ]; then
     echo ""
     
     log_info "Pushing configuration to VPS nodes..."
-    bash "$SCRIPT_DIR/lib/sync-controller.sh" push || true
+    bash "$SCRIPT_DIR/../lib/sync-controller.sh" push || true
     log_success "Configuration pushed to all VPS nodes"
     echo ""
 fi

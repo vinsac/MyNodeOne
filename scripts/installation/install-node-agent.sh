@@ -333,13 +333,13 @@ log_success "Config created: /etc/mynodeone/agent.env"
 
 # Install the node agent script
 log_info "Installing node agent..."
-cp "$SCRIPT_DIR/lib/node-agent.sh" /usr/local/bin/mynodeone-node-agent
+cp "$SCRIPT_DIR/../lib/node-agent.sh" /usr/local/bin/mynodeone-node-agent
 chmod +x /usr/local/bin/mynodeone-node-agent
 log_success "Agent installed: /usr/local/bin/mynodeone-node-agent"
 
 # Install systemd service
 log_info "Installing systemd service..."
-cp "$SCRIPT_DIR/lib/mynodeone-node-agent.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/../lib/mynodeone-node-agent.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable mynodeone-node-agent
 

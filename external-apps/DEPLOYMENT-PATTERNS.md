@@ -39,7 +39,7 @@ services:
 3. `frontend` and `backend` → converted to LoadBalancer (get MetalLB IPs)
 4. `database` → stays ClusterIP (internal only)
 5. MetalLB assigns IPs: `frontend=100.72.41.214`, `backend=100.72.41.215`
-6. Services registered in local DNS: `myapp.minicloud.local`
+6. Services registered in local DNS: `myapp.mynodeone.local`
 7. Optional: Public domains configured (if user wants)
 
 ---
@@ -59,7 +59,7 @@ MyNodeOne uses **naming conventions** to classify services:
 **What happens:**
 - Service type changed: `ClusterIP` → `LoadBalancer`
 - MetalLB assigns external IP from pool
-- Registered in local DNS: `<subdomain>.minicloud.local`
+- Registered in local DNS: `<subdomain>.mynodeone.local`
 - Optionally exposed publicly: `<subdomain>.<yourdomain.com>`
 
 ### Internal Services (Stay ClusterIP)
@@ -140,7 +140,7 @@ services:
 Only **LoadBalancer** services are accessible externally:
 
 ```
-User → http://myapp.minicloud.local (100.72.41.214) → MetalLB → frontend pod
+User → http://myapp.mynodeone.local (100.72.41.214) → MetalLB → frontend pod
 ```
 
 Internal services (`database`, `cache`, etc.) are **never** exposed externally.
@@ -397,7 +397,7 @@ docker push myregistry.com/app:latest
 bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 
 # 4. Access app
-curl http://myapp.minicloud.local
+curl http://myapp.mynodeone.local
 ```
 
 ### For App Developers
@@ -420,7 +420,7 @@ curl http://myapp.minicloud.local
 bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 ```
 
-That's it! The app will be available at http://myapp.minicloud.local
+That's it! The app will be available at http://myapp.mynodeone.local
 ```
 
 ---

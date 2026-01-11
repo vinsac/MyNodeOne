@@ -44,7 +44,7 @@ detect_hardware              # Auto-detect system hardware
     "tailscale_ip": "100.64.0.2",
     "hardware": {"cpu": "...", "ram": "...", "gpu": "...", "os": "..."},
     "longhorn": {"enabled": true, "disks": [...], "total_capacity": "40TB"},
-    "minio": {"enabled": true, "endpoint": "minio-pc1.minicloud.local:9000", ...}
+    "minio": {"enabled": true, "endpoint": "minio-pc1.mynodeone.local:9000", ...}
   }]
 }
 ```
@@ -83,7 +83,7 @@ Continue? [y/N]: y
 - Standalone MinIO per node (NOT distributed)
 - Detects available disks (excludes OS and Longhorn disks)
 - Interactive disk selection (single disk only)
-- Node-specific DNS: `minio-NODENAME.minicloud.local:9000`
+- Node-specific DNS: `minio-NODENAME.mynodeone.local:9000`
 - Shared admin credentials across all nodes
 - Credentials stored in Kubernetes Secret
 - Credentials file saved to `~/mynodeone-minio-credentials.txt`
@@ -264,11 +264,11 @@ IMPLEMENTATION-SUMMARY.md                       # This file
 - **Default replica count:** 1 (no cross-node replication)
 - **Disk selection:** Interactive, multiple disks supported
 - **Storage class:** Default for all PVCs
-- **UI:** `http://longhorn.minicloud.local`
+- **UI:** `http://longhorn.mynodeone.local`
 
 ### MinIO
 - **Mode:** Standalone per node (NOT distributed)
-- **DNS:** Node-specific (`minio-NODENAME.minicloud.local`)
+- **DNS:** Node-specific (`minio-NODENAME.mynodeone.local`)
 - **Credentials:** Shared admin credentials across all nodes
 - **Disk selection:** Interactive, single disk per node
 - **Replication:** None (each node independent)
@@ -334,10 +334,10 @@ kubectl apply -f examples/storage/app-with-minio-backup.yaml
 cat ~/mynodeone-minio-credentials.txt
 
 # Access console (replace pc1 with your node name)
-http://minio-pc1.minicloud.local:9001
+http://minio-pc1.mynodeone.local:9001
 
 # Access API
-http://minio-pc1.minicloud.local:9000
+http://minio-pc1.mynodeone.local:9000
 ```
 
 ---

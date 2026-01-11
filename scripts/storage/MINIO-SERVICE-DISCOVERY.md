@@ -24,8 +24,8 @@ When MinIO is installed on any node (control plane or worker), the installer aut
 ### Format
 
 ```
-minio-<node-name>.minicloud.local:9000        # S3 API endpoint
-minio-console-<node-name>.minicloud.local:9001 # Web Console
+minio-<node-name>.mynodeone.local:9000        # S3 API endpoint
+minio-console-<node-name>.mynodeone.local:9001 # Web Console
 ```
 
 ### Examples
@@ -33,15 +33,15 @@ minio-console-<node-name>.minicloud.local:9001 # Web Console
 **Control Plane Node:**
 ```
 Node name: canada-pc-control-0001
-API:     minio-canada-pc-control-0001.minicloud.local:9000
-Console: minio-console-canada-pc-control-0001.minicloud.local:9001
+API:     minio-canada-pc-control-0001.mynodeone.local:9000
+Console: minio-console-canada-pc-control-0001.mynodeone.local:9001
 ```
 
 **Worker Node:**
 ```
 Node name: canada-pc-worker-0001
-API:     minio-canada-pc-worker-0001.minicloud.local:9000
-Console: minio-console-canada-pc-worker-0001.minicloud.local:9001
+API:     minio-canada-pc-worker-0001.mynodeone.local:9000
+Console: minio-console-canada-pc-worker-0001.mynodeone.local:9001
 ```
 
 ---
@@ -127,8 +127,8 @@ The `sync-dns.sh` script reads the service registry and updates `/etc/hosts` on 
 
 ```bash
 # /etc/hosts on control plane
-100.77.243.210 minio-canada-pc-worker-0001.minicloud.local
-100.77.243.211 minio-console-canada-pc-worker-0001.minicloud.local
+100.77.243.210 minio-canada-pc-worker-0001.mynodeone.local
+100.77.243.211 minio-console-canada-pc-worker-0001.mynodeone.local
 ```
 
 **Automatic Updates:**
@@ -159,13 +159,13 @@ The `sync-dns.sh` script reads the service registry and updates `/etc/hosts` on 
 
 ```bash
 # Using DNS name (recommended)
-mc alias set worker-minio http://minio-canada-pc-worker-0001.minicloud.local:9000 admin [password]
+mc alias set worker-minio http://minio-canada-pc-worker-0001.mynodeone.local:9000 admin [password]
 
 # Using IP directly
 mc alias set worker-minio http://100.77.243.210:9000 admin [password]
 
 # Web Console
-xdg-open http://minio-console-canada-pc-worker-0001.minicloud.local:9001
+xdg-open http://minio-console-canada-pc-worker-0001.mynodeone.local:9001
 ```
 
 ### From Worker Node
@@ -210,7 +210,7 @@ spec:
 
 ### MinIO Not Accessible via DNS
 
-**Symptom:** `ping minio-canada-pc-worker-0001.minicloud.local` fails
+**Symptom:** `ping minio-canada-pc-worker-0001.mynodeone.local` fails
 
 **Diagnosis:**
 ```bash
@@ -233,7 +233,7 @@ sudo ./scripts/lib/service-registry.sh sync
 sudo ./scripts/sync-dns.sh
 
 # Verify
-ping minio-canada-pc-worker-0001.minicloud.local
+ping minio-canada-pc-worker-0001.mynodeone.local
 ```
 
 ### LoadBalancer IP Pending
@@ -330,8 +330,8 @@ kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.servic
 sudo ./scripts/sync-dns.sh
 
 # Test DNS resolution
-ping minio-<node-name>.minicloud.local
-curl http://minio-<node-name>.minicloud.local:9000/minio/health/live
+ping minio-<node-name>.mynodeone.local
+curl http://minio-<node-name>.mynodeone.local:9000/minio/health/live
 ```
 
 ---

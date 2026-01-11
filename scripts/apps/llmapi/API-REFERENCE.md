@@ -863,14 +863,14 @@ cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope
 
 **Bad Example:**
 ```bash
-curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx
 "   # ← Newline before closing quote breaks the header!
 ```
 
 **Fix:** Close quote immediately after token (no newline):
 ```bash
-curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen2.5-14b","messages":[{"role":"user","content":"Hello"}]}'
@@ -951,7 +951,7 @@ curl -d @request.json
 
 **Fix:** Always include Content-Type header:
 ```bash
-curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \  # ← Required!
   -d '{"model":"qwen2.5-14b","messages":[...]}'
@@ -965,7 +965,7 @@ curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
 
 ```bash
 # Local domain (HTTP)
-curl -X POST http://llmapi.minicloud.local/v1/chat/completions \
+curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{

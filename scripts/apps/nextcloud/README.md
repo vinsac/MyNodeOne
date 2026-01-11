@@ -43,9 +43,9 @@ During installation, you'll be asked:
 
 ### Local Access
 ```
-http://nextcloud.minicloud.local
+http://nextcloud.mynodeone.local
 ```
-(Replace `nextcloud` with your chosen subdomain and `minicloud` with your cluster domain)
+(Replace `nextcloud` with your chosen subdomain and `mynodeone` with your cluster domain)
 
 ### First-Time Setup
 
@@ -63,7 +63,7 @@ kubectl get secret nextcloud-admin -n nextcloud -o jsonpath='{.data.admin-passwo
 
 ### iOS
 1. Download "Nextcloud" from App Store
-2. Enter server URL: `http://nextcloud.minicloud.local` (or your public domain)
+2. Enter server URL: `http://nextcloud.mynodeone.local` (or your public domain)
 3. Log in with your credentials
 4. Enable auto-upload for photos
 

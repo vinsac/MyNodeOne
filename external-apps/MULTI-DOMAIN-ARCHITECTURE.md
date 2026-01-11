@@ -5,10 +5,10 @@
 MyNodeOne supports multiple apps, each with its own unique domain:
 
 ```
-App A: exampleA.com      → appA.minicloud.local (local)
-App B: exampleB.com      → appB.minicloud.local (local)  
-App C: mysaas.net        → saas.minicloud.local (local)
-Immich: photos.family.io → photos.minicloud.local (local)
+App A: exampleA.com      → appA.mynodeone.local (local)
+App B: exampleB.com      → appB.mynodeone.local (local)  
+App C: mysaas.net        → saas.mynodeone.local (local)
+Immich: photos.family.io → photos.mynodeone.local (local)
 ```
 
 **Each app is completely independent in terms of domains.**
@@ -47,9 +47,9 @@ Immich: photos.family.io → photos.minicloud.local (local)
 ┌──────────────────────┴──────────────────────────────────┐
 │  MyNodeOne Cluster (Control Plane + Workers)           │
 ├─────────────────────────────────────────────────────────┤
-│  App A: appA.minicloud.local (10.20.30.40)             │
-│  App B: appB.minicloud.local (10.20.30.50)             │
-│  Immich: photos.minicloud.local (10.20.30.60)          │
+│  App A: appA.mynodeone.local (10.20.30.40)             │
+│  App B: appB.mynodeone.local (10.20.30.50)             │
+│  Immich: photos.mynodeone.local (10.20.30.60)          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -167,9 +167,9 @@ dashboard.exampleB.com  → Certificate 5
 Regardless of public domain, local DNS always works:
 
 ```
-App A:  http://appa.minicloud.local       (10.20.30.40)
-App B:  http://appb.minicloud.local       (10.20.30.50)
-Immich: http://photos.minicloud.local     (10.20.30.60)
+App A:  http://appa.mynodeone.local       (10.20.30.40)
+App B:  http://appb.mynodeone.local       (10.20.30.50)
+Immich: http://photos.mynodeone.local     (10.20.30.60)
 ```
 
 **Local DNS is managed by `/etc/hosts` and service registry.**
@@ -191,7 +191,7 @@ Base domain: vinaysachdeva.com
 Domain type: 2 (apex domain)
 
 # Result:
-Local:  http://voting.minicloud.local
+Local:  http://voting.mynodeone.local
 Public: https://vinaysachdeva.com  ← Apex domain!
 ```
 
@@ -208,7 +208,7 @@ Base domain: myblog.com
 Domain type: 1 (subdomain)
 
 # Result:
-Local:  http://blog.minicloud.local
+Local:  http://blog.mynodeone.local
 Public: https://blog.myblog.com  ← Subdomain
 ```
 
@@ -294,7 +294,7 @@ routes:
 1. ✅ **Each app can have its own domain** (exampleA.com, exampleB.com)
 2. ✅ **Apex domains supported** (vinaysachdeva.com, not just voting.vinaysachdeva.com)
 3. ✅ **All apps point to same VPS IP** (Traefik routes by hostname)
-4. ✅ **Local DNS always works** (voting.minicloud.local)
+4. ✅ **Local DNS always works** (voting.mynodeone.local)
 5. ✅ **Automatic SSL per domain** (Let's Encrypt)
 6. ✅ **Independent apps don't conflict** (different namespaces, domains, IPs)
 
@@ -346,32 +346,32 @@ curl https://myblog.com            # App B
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  IngressRoute 1: Host(`vinaysachdeva.com`)                 │
-│    → Tailscale → voting.minicloud.local                    │
+│    → Tailscale → voting.mynodeone.local                    │
 │                                                             │
 │  IngressRoute 2: Host(`myblog.com`)                        │
-│    → Tailscale → blog.minicloud.local                      │
+│    → Tailscale → blog.mynodeone.local                      │
 │                                                             │
 │  IngressRoute 3: Host(`photos.family.io`)                  │
-│    → Tailscale → photos.minicloud.local                    │
+│    → Tailscale → photos.mynodeone.local                    │
 │                                                             │
 └──────────────────────┬──────────────────────────────────────┘
                        │ Tailscale VPN Mesh
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  MyNodeOne Cluster (minicloud.local)                        │
+│  MyNodeOne Cluster (mynodeone.local)                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Namespace: voting-app                                      │
 │    Service: vote (LoadBalancer: 10.20.30.40)               │
-│    DNS: voting.minicloud.local                              │
+│    DNS: voting.mynodeone.local                              │
 │                                                             │
 │  Namespace: blog                                            │
 │    Service: blog (LoadBalancer: 10.20.30.50)               │
-│    DNS: blog.minicloud.local                                │
+│    DNS: blog.mynodeone.local                                │
 │                                                             │
 │  Namespace: immich                                          │
 │    Service: immich-server (LoadBalancer: 10.20.30.60)      │
-│    DNS: photos.minicloud.local                              │
+│    DNS: photos.mynodeone.local                              │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```

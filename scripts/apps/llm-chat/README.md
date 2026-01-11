@@ -37,9 +37,9 @@ If you have an NVIDIA GPU, you'll be asked:
 
 ### Local Access
 ```
-http://chat.minicloud.local
+http://chat.mynodeone.local
 ```
-(Replace `chat` with your chosen subdomain and `minicloud` with your cluster domain)
+(Replace `chat` with your chosen subdomain and `mynodeone` with your cluster domain)
 
 ### First-Time Setup
 

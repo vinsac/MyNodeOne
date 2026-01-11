@@ -328,8 +328,8 @@ MinIO Credentials
 =================
 
 Node: $(hostname)
-Endpoint: http://minio-NODENAME.minicloud.local:9000
-Console: http://minio-NODENAME.minicloud.local:9001
+Endpoint: http://minio-NODENAME.mynodeone.local:9000
+Console: http://minio-NODENAME.mynodeone.local:9001
 
 Admin Credentials (shared across all nodes):
   Username: $MINIO_ROOT_USER

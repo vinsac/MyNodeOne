@@ -20,7 +20,7 @@
 ### What We Need (V3 Architecture)
 - ✅ MinIO as Kubernetes StatefulSet
 - ✅ MetalLB LoadBalancer per instance
-- ✅ .local domain per instance (`minio-<node>.minicloud.local`)
+- ✅ .local domain per instance (`minio-<node>.mynodeone.local`)
 - ✅ Cluster-wide service discovery
 - ✅ VPS-exposable
 - ✅ Independent credentials (K8s Secrets)
@@ -363,7 +363,7 @@ install_minio() {
 
 #### 4.1 Service Registry Entry
 - Use existing `scripts/lib/service-registry.sh`
-- Register MinIO with domain: `minio-<nodename>.minicloud.local`
+- Register MinIO with domain: `minio-<nodename>.mynodeone.local`
 - Store LoadBalancer IP in registry
 
 #### 4.2 CoreDNS Integration
@@ -374,7 +374,7 @@ install_minio() {
 #### 4.3 DNS Verification
 ```bash
 # From any pod in cluster
-nslookup minio-canada-pc-0001-1.minicloud.local
+nslookup minio-canada-pc-0001-1.mynodeone.local
 
 # Should return MetalLB IP
 ```
@@ -433,10 +433,10 @@ sudo ./scripts/add-worker-node.sh
 kubectl get all -n minio-<worker-name>
 
 # Test access
-curl http://minio-<worker-name>.minicloud.local:9000/minio/health/live
+curl http://minio-<worker-name>.mynodeone.local:9000/minio/health/live
 
 # Test S3 operations
-mc alias set worker http://minio-<worker-name>.minicloud.local:9000 admin <password>
+mc alias set worker http://minio-<worker-name>.mynodeone.local:9000 admin <password>
 mc mb worker/test-bucket
 mc ls worker/
 ```
@@ -505,8 +505,8 @@ kubectl delete pvc test-pvc-worker
 ```bash
 # From any pod in cluster
 kubectl run -it --rm debug --image=busybox --restart=Never -- sh
-nslookup minio-<worker-name>.minicloud.local
-wget -O- http://minio-<worker-name>.minicloud.local:9000/minio/health/live
+nslookup minio-<worker-name>.mynodeone.local
+wget -O- http://minio-<worker-name>.mynodeone.local:9000/minio/health/live
 exit
 ```
 
@@ -516,10 +516,10 @@ exit
 kubectl get all -n minio-<control-plane-name>
 
 # Test access
-curl http://minio-<control-plane-name>.minicloud.local:9000/minio/health/live
+curl http://minio-<control-plane-name>.mynodeone.local:9000/minio/health/live
 
 # Test S3 operations
-mc alias set control http://minio-<control-plane-name>.minicloud.local:9000 admin <password>
+mc alias set control http://minio-<control-plane-name>.mynodeone.local:9000 admin <password>
 mc mb control/test-bucket
 mc ls control/
 ```

@@ -8,11 +8,11 @@ This directory contains example Kubernetes manifests demonstrating proper storag
 - Installed on ALL nodes (control plane + workers)
 - Default replica count: 1 (data on single node)
 - Default storage class for PVCs
-- Cluster-wide UI: `http://longhorn.minicloud.local`
+- Cluster-wide UI: `http://longhorn.mynodeone.local`
 
 **MinIO (Object Storage):**
 - Standalone instance per node (NOT distributed)
-- Node-specific DNS endpoints: `minio-NODENAME.minicloud.local:9000`
+- Node-specific DNS endpoints: `minio-NODENAME.mynodeone.local:9000`
 - Shared admin credentials across all nodes
 - Used for backups and S3-compatible storage
 
@@ -118,7 +118,7 @@ kubectl apply -f app-with-minio-backup.yaml
 
 **Create MinIO Bucket:**
 ```bash
-# Access MinIO console at: http://minio-NODENAME.minicloud.local:9001
+# Access MinIO console at: http://minio-NODENAME.mynodeone.local:9001
 # Login with credentials from: ~/mynodeone-minio-credentials.txt
 # Create bucket named: backups
 ```
@@ -166,7 +166,7 @@ kubectl logs job/manual-backup-1
 **Check Available Storage per Node:**
 ```bash
 # Longhorn dashboard
-http://longhorn.minicloud.local
+http://longhorn.mynodeone.local
 
 # Or via kubectl
 kubectl get nodes.longhorn.io -n longhorn-system -o wide
@@ -275,7 +275,7 @@ kubectl logs cronjob/app-backup
 ```bash
 # Test MinIO access
 kubectl run -it --rm debug --image=minio/mc --restart=Never -- \
-  mc alias set minio http://minio-pc1.minicloud.local:9000 ACCESS_KEY SECRET_KEY
+  mc alias set minio http://minio-pc1.mynodeone.local:9000 ACCESS_KEY SECRET_KEY
 
 # Verify credentials
 cat ~/mynodeone-minio-credentials.txt

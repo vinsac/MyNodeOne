@@ -234,7 +234,7 @@ cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope - for Prometheus
 # Use auto-generated admin key
 ADMIN_KEY=$(cat ~/.mynodeone/llmapi-admin-key)
 curl -H "Authorization: Bearer $ADMIN_KEY" \
-     http://llmapi.minicloud.local/admin
+     http://llmapi.mynodeone.local/admin
 ```
 
 **Features:**

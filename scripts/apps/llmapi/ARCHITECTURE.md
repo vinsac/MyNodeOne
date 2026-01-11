@@ -119,7 +119,7 @@ Responses follow the **OpenAI API format** with an additional `system_fingerprin
 # Access admin UI
 ADMIN_KEY=$(cat ~/.mynodeone/llmapi-admin-key)
 curl -H "Authorization: Bearer $ADMIN_KEY" \
-     http://llmapi.minicloud.local/admin
+     http://llmapi.mynodeone.local/admin
 ```
 
 To create additional admin keys:

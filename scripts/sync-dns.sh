@@ -148,7 +148,7 @@ log_info "Removing old DNS entries..."
 
 # Capture what we're removing for reporting
 # Use grep -E for extended regex and handle output robustly
-OLD_ENTRIES=$(grep -cE "\.(${CLUSTER_DOMAIN}|minicloud|mynodeone)\.local" /etc/hosts 2>/dev/null | head -1 | tr -d '[:space:]' || echo "0")
+OLD_ENTRIES=$(grep -cE "\.(${CLUSTER_DOMAIN}|mynodeone|mynodeone)\.local" /etc/hosts 2>/dev/null | head -1 | tr -d '[:space:]' || echo "0")
 # Ensure it's a valid integer (strip any non-numeric characters)
 OLD_ENTRIES="${OLD_ENTRIES//[!0-9]/}"
 OLD_ENTRIES="${OLD_ENTRIES:-0}"
@@ -157,12 +157,12 @@ OLD_ENTRIES="${OLD_ENTRIES:-0}"
 sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts
 
 # Method 2: Remove ANY entries ending with cluster domain (catches unmarked entries)
-# This handles entries like: 100.x.x.x something.mycloud.local
+# This handles entries like: 100.x.x.x something.mynodeone.local
 sudo sed -i "/\.${CLUSTER_DOMAIN}\.local/d" /etc/hosts
 
 # Method 3: Also clean up common variations and old domain names
-# This catches cases where the domain changed (e.g., minicloud -> mycloud)
-for old_domain in "minicloud" "mynodeone"; do
+# This catches cases where the domain changed (e.g., mynodeone -> mynodeone)
+for old_domain in "mynodeone" "mynodeone"; do
     if [ "$old_domain" != "$CLUSTER_DOMAIN" ]; then
         sudo sed -i "/\.${old_domain}\.local/d" /etc/hosts 2>/dev/null || true
     fi

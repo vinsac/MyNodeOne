@@ -277,7 +277,7 @@ tailscale ip -4
 
 **What this means:** Under the hood, MyNodeOne has installed a Kubernetes cluster on your control plane machine. Kubernetes is software that runs and manages containerized applications across one or more machines. Because it runs entirely on hardware you control and is only reachable over your private Tailscale network, it behaves like your own private cloud instead of relying on a public cloud provider.
 
-**Check in your browser on the control plane PC:** Open a web browser on the control plane machine and visit a few `.local` URLs from your credentials file, using the domain name you selected during installation (for example, if you chose `minicloud.local` as your domain, you might see URLs like `http://minicloud.local` or `http://grafana.minicloud.local`). If these pages load, your core control plane services are accessible from that machine.
+**Check in your browser on the control plane PC:** Open a web browser on the control plane machine and visit a few `.local` URLs from your credentials file, using the domain name you selected during installation (for example, if you chose `mynodeone.local` as your domain, you might see URLs like `http://mynodeone.local` or `http://grafana.mynodeone.local`). If these pages load, your core control plane services are accessible from that machine.
 
 **Passwordless Sudo:**
 The installation automatically configures passwordless sudo for your user. This enables:
@@ -784,9 +784,9 @@ grep "MyNodeOne Services" /etc/hosts
 # Should show comment line
 
 # Access services via .local domains:
-curl http://grafana.minicloud.local
-curl http://photos.minicloud.local
-# Replace 'minicloud' with your cluster domain
+curl http://grafana.mynodeone.local
+curl http://photos.mynodeone.local
+# Replace 'mynodeone' with your cluster domain
 ```
 
 ---
@@ -814,7 +814,7 @@ kubectl get svc -n my-app
 # Wait up to 60 seconds for auto-sync
 
 # 4. Access via .local domain from your management laptop
-curl http://my-app.minicloud.local
+curl http://my-app.mynodeone.local
 ```
 
 **Check Node Agent Status:**

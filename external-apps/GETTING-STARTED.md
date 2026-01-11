@@ -55,7 +55,7 @@ bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 
 **The script will ask:**
 - App name? (namespace)
-- Local subdomain? (for myapp.minicloud.local)
+- Local subdomain? (for myapp.mynodeone.local)
 - Make publicly accessible? (y/n)
 - Public domain? (optional)
 
@@ -63,7 +63,7 @@ bash ~/MyNodeOne/external-apps/scripts/deploy.sh
 
 **Local network:**
 ```bash
-curl http://myapp.minicloud.local
+curl http://myapp.mynodeone.local
 ```
 
 **Public internet** (if configured):

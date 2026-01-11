@@ -109,8 +109,8 @@ MinIO Credentials
 =================
 
 Node: canada-pc-0001
-Endpoint: http://minio-canada-pc-0001.minicloud.local:9000
-Console: http://minio-canada-pc-0001.minicloud.local:9001
+Endpoint: http://minio-canada-pc-0001.mynodeone.local:9000
+Console: http://minio-canada-pc-0001.mynodeone.local:9001
 
 Admin Credentials (shared across all nodes):
   Username: admin

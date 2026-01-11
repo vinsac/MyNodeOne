@@ -469,9 +469,9 @@ if [ -f /etc/hosts ]; then
     sed -i '/# MyNodeOne/,/# End MyNodeOne/d' /etc/hosts 2>/dev/null || true
     sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
     
-    # Method 2: Remove all .local domain entries (mycloud, minicloud, mynodeone)
-    sed -i '/\.mycloud\.local/d' /etc/hosts 2>/dev/null || true
-    sed -i '/\.minicloud\.local/d' /etc/hosts 2>/dev/null || true
+    # Method 2: Remove all .local domain entries (mynodeone, mynodeone, mynodeone)
+    sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
+    sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
     sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
     
     # Method 3: Remove entries matching config domain (if available)

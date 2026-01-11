@@ -115,7 +115,7 @@ chmod +x mc
 sudo mv mc /usr/local/bin/
 
 # Add alias
-mc alias set mynode http://minio-<nodename>.minicloud.local:9000 admin <password>
+mc alias set mynode http://minio-<nodename>.mynodeone.local:9000 admin <password>
 
 # Create bucket
 mc mb mynode/test-bucket

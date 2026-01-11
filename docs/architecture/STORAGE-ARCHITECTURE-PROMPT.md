@@ -596,10 +596,10 @@ spec:
 
 **4.1 CoreDNS / Service Registry Integration**
 - Each MinIO gets entry in service registry
-- Domain format: `minio-<nodename>.minicloud.local`
+- Domain format: `minio-<nodename>.mynodeone.local`
 - Example:
-  - Control plane: `minio-pc1.minicloud.local`
-  - Worker: `minio-pc2.minicloud.local`
+  - Control plane: `minio-pc1.mynodeone.local`
+  - Worker: `minio-pc2.mynodeone.local`
 
 **4.2 MetalLB IP Allocation**
 - Each MinIO service gets LoadBalancer IP from pool
@@ -671,7 +671,7 @@ MyNodeOne/
 - [ ] MinIO StatefulSet deployed
 - [ ] Pod runs on correct node (affinity)
 - [ ] Service gets MetalLB LoadBalancer IP
-- [ ] DNS resolves `minio-<nodename>.minicloud.local`
+- [ ] DNS resolves `minio-<nodename>.mynodeone.local`
 - [ ] MinIO accessible via LoadBalancer IP
 - [ ] MinIO accessible via .local domain
 - [ ] Independent credentials work
@@ -748,7 +748,7 @@ After implementing systemd-based MinIO (commits 1ee886b-8d8b7ff), we are revisin
 3. Each MinIO instance has independent credentials (no shared passwords)
 4. Each MinIO instance gets:
    - Kubernetes Service with MetalLB LoadBalancer IP
-   - Cluster-local domain: `minio-<nodename>.minicloud.local`
+   - Cluster-local domain: `minio-<nodename>.mynodeone.local`
    - Accessible cluster-wide via service discovery
    - Exposable to internet via VPS (using standard routing)
 5. MinIO on worker nodes can be installed as Kubernetes apps from control plane (like Immich, LLM API)
@@ -770,7 +770,7 @@ After implementing systemd-based MinIO (commits 1ee886b-8d8b7ff), we are revisin
 **New (Kubernetes Services - Current Goal):**
 - ✅ MinIO as Kubernetes StatefulSet
 - ✅ Each instance with MetalLB LoadBalancer IP
-- ✅ Each instance with .local domain (minio-pc1.minicloud.local)
+- ✅ Each instance with .local domain (minio-pc1.mynodeone.local)
 - ✅ Cluster-wide service discovery
 - ✅ VPS-exposable via standard routing
 - ✅ Independent credentials per instance (stored in per-node secrets)

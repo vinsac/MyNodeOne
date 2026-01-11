@@ -78,11 +78,11 @@ Is kubectl configuration needed on worker nodes when MinIO is now installed from
 
 **Observation:**
 ```
-[INFO] 2026-01-09 18:28:29 UI will be accessible at: http://longhorn.minicloud.local
+[INFO] 2026-01-09 18:28:29 UI will be accessible at: http://longhorn.mynodeone.local
 ```
 
 **Expected:**
-Should use cluster domain from config: `atomcloud.local`
+Should use cluster domain from config: `mynodeone.local`
 
 **Impact:**
 - Incorrect DNS information shown to user
@@ -90,7 +90,7 @@ Should use cluster domain from config: `atomcloud.local`
 - Inconsistent with cluster configuration
 
 **Root Cause:**
-Hardcoded `minicloud.local` instead of reading from `CLUSTER_DOMAIN` or config.env
+Hardcoded `mynodeone.local` instead of reading from `CLUSTER_DOMAIN` or config.env
 
 ---
 
@@ -110,7 +110,7 @@ MinIO was installed as **systemd service** instead of **Kubernetes deployment**.
 - MinIO should be installed separately from control plane using `scripts/storage/minio/install-minio.sh`
 - Should deploy as Kubernetes StatefulSet with Helm
 - Should get MetalLB LoadBalancer IP
-- Should get cluster-wide DNS domain (minio-<nodename>.atomcloud.local)
+- Should get cluster-wide DNS domain (minio-<nodename>.mynodeone.local)
 
 **Current Behavior:**
 - Installed as systemd service (old architecture)

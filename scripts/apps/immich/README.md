@@ -28,9 +28,9 @@ During installation, you'll be asked:
 
 ### Local Access
 ```
-http://immich.minicloud.local
+http://immich.mynodeone.local
 ```
-(Replace `immich` with your chosen subdomain and `minicloud` with your cluster domain)
+(Replace `immich` with your chosen subdomain and `mynodeone` with your cluster domain)
 
 ### First-Time Setup
 
@@ -45,7 +45,7 @@ http://immich.minicloud.local
    - Android: Search "Immich" in the Play Store
 
 2. **Configure the app:**
-   - Server URL: `http://immich.minicloud.local` (or your public domain)
+   - Server URL: `http://immich.mynodeone.local` (or your public domain)
    - Login with your admin credentials
    - Enable background upload
    - Select albums to backup

@@ -584,33 +584,38 @@ install_minio() {
     log_info ""
 }
 
-scale_longhorn_replicas() {
-    log_info "Scaling Longhorn replica count for redundancy..."
-    
-    # Check if Longhorn is installed
-    if ! kubectl get namespace longhorn-system &>/dev/null; then
-        log_warn "Longhorn not found, skipping replica scaling"
-        return 0
-    fi
-    
-    # Count Longhorn nodes
-    local node_count=$(kubectl get nodes.longhorn.io -n longhorn-system --no-headers 2>/dev/null | wc -l)
-    
-    if [ "$node_count" -ge 2 ]; then
-        log_info "Detected $node_count Longhorn nodes, increasing default replica count to 2"
-        
-        # Update default replica count setting
-        kubectl -n longhorn-system patch setting default-replica-count --type=merge \
-            -p '{"value":"2"}' &>/dev/null || \
-        kubectl -n longhorn-system patch setting defaultReplicaCount --type=merge \
-            -p '{"value":"2"}' &>/dev/null || true
-        
-        log_success "Longhorn will now create 2 replicas for new volumes (redundancy across nodes)"
-        log_info "Existing volumes will remain at 1 replica (change manually via Longhorn UI if needed)"
-    else
-        log_warn "Only $node_count Longhorn node(s) detected, keeping replica count at 1"
-    fi
-}
+# DISABLED: Auto-scaling replicas conflicts with single-replica architecture
+# MyNodeOne uses replica=1 to avoid rebuild storms over Tailscale network
+# StorageClass enforces numberOfReplicas=1 for all new PVCs
+# See: docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md
+#
+# scale_longhorn_replicas() {
+#     log_info "Scaling Longhorn replica count for redundancy..."
+#     
+#     # Check if Longhorn is installed
+#     if ! kubectl get namespace longhorn-system &>/dev/null; then
+#         log_warn "Longhorn not found, skipping replica scaling"
+#         return 0
+#     fi
+#     
+#     # Count Longhorn nodes
+#     local node_count=$(kubectl get nodes.longhorn.io -n longhorn-system --no-headers 2>/dev/null | wc -l)
+#     
+#     if [ "$node_count" -ge 2 ]; then
+#         log_info "Detected $node_count Longhorn nodes, increasing default replica count to 2"
+#         
+#         # Update default replica count setting
+#         kubectl -n longhorn-system patch setting default-replica-count --type=merge \
+#             -p '{"value":"2"}' &>/dev/null || \
+#         kubectl -n longhorn-system patch setting defaultReplicaCount --type=merge \
+#             -p '{"value":"2"}' &>/dev/null || true
+#         
+#         log_success "Longhorn will now create 2 replicas for new volumes (redundancy across nodes)"
+#         log_info "Existing volumes will remain at 1 replica (change manually via Longhorn UI if needed)"
+#     else
+#         log_warn "Only $node_count Longhorn node(s) detected, keeping replica count at 1"
+#     fi
+# }
 
 main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

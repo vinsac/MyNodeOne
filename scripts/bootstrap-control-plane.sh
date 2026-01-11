@@ -1062,6 +1062,8 @@ install_longhorn() {
             --namespace longhorn-system \
             --version 1.5.3 \
             --set defaultSettings.defaultReplicaCount=1 \
+            --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
+            --set defaultSettings.replicaAutoBalance="best-effort" \
             --wait
         
         kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'

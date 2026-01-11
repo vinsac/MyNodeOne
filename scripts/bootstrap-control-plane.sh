@@ -1445,7 +1445,7 @@ create_cluster_info() {
     # Get absolute path to MyNodeOne repository
     REPO_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     
-    # Detect control plane user from repo path (e.g., /home/vinaysachdeva/MyNodeOne -> vinaysachdeva)
+    # Detect control plane user from repo path (e.g., /home/your-username/MyNodeOne -> your-username)
     CONTROL_PLANE_USER=$(echo "$REPO_PATH" | sed 's|/home/\([^/]*\)/.*|\1|')
     if [ -z "$CONTROL_PLANE_USER" ] || [ "$CONTROL_PLANE_USER" = "$REPO_PATH" ]; then
         CONTROL_PLANE_USER="$ACTUAL_USER"

@@ -53,7 +53,7 @@ Script displays instruction but doesn't wait for confirmation that labels were a
 ```
 [INFO] Configuring kubectl on worker node...
 [INFO] Generating kubeconfig for worker node...
-[SUCCESS] Kubeconfig created at /home/vinaysachdeva/.kube/config
+[SUCCESS] Kubeconfig created at /home/example-user/.kube/config
 [WARN] kubectl configured but cluster access verification failed
 ```
 

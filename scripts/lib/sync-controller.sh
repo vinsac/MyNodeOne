@@ -640,7 +640,7 @@ Commands:
 
 Examples:
   # Register nodes
-  sync-controller.sh register management_laptops 100.86.112.112 vinay-laptop vinaysachdeva
+  sync-controller.sh register management_laptops 100.86.112.112 dev-laptop your-username
   sync-controller.sh register vps_nodes 100.68.225.92 contabo-vps root
 
   # One-time push to nodes without active Node Agent

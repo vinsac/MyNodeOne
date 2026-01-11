@@ -90,10 +90,10 @@ Use `remove-node.sh` to remove any node type from the cluster registry:
 sudo ./scripts/remove-node.sh
 
 # Remove by name (auto-detects type)
-sudo ./scripts/remove-node.sh vinay-vivobook
+sudo ./scripts/remove-node.sh dev-laptop
 
 # Remove by type and name
-sudo ./scripts/remove-node.sh --type management_laptops --name vinay-vivobook
+sudo ./scripts/remove-node.sh --type management_laptops --name dev-laptop
 
 # Remove by IP
 sudo ./scripts/remove-node.sh --ip 100.79.49.125
@@ -147,7 +147,7 @@ sudo ./scripts/uninstall-mynodeone.sh
 
 ```bash
 # 1. Remove from registry (on control plane)
-sudo ./scripts/remove-node.sh vinay-vivobook
+sudo ./scripts/remove-node.sh dev-laptop
 
 # 2. Uninstall from laptop (on laptop)
 sudo ./scripts/uninstall-mynodeone.sh
@@ -217,7 +217,7 @@ sudo ./scripts/nodes-status.sh
     NAME                 TYPE     IP                 STATUS     LAST SEEN    CONFIG
     ----                 ----     --                 ------     ---------    ------
 ●  vps-edge-0001        vps      100.99.197.116     online     53s ago      v1768016802
-●  vinay-vivobook       laptop   100.79.49.125      offline    12h ago      v1767904572
+●  dev-laptop         laptop   100.79.49.125      offline    12h ago      v1767904572
 ●  canada-pc-0001-1     worker   100.90.70.25       online     14s ago      v1768016802
 
 Total: 3 nodes  ● Online: 2  ● Stale: 0  ● Offline: 1
@@ -256,9 +256,9 @@ canada-pc-0001-1   Ready    worker                             6h30m   v1.28.5+k
 {
   "management_laptops": [
     {
-      "name": "vinay-vivobook",
+      "name": "dev-laptop",
       "ip": "100.79.49.125",
-      "ssh_user": "vinaysachdeva1",
+      "ssh_user": "example-user",
       "status": "offline",
       "last_sync": "2026-01-09T12:30:00Z",
       "config_version": "v1767904572"
@@ -279,7 +279,7 @@ canada-pc-0001-1   Ready    worker                             6h30m   v1.28.5+k
     {
       "name": "canada-pc-0001-1",
       "ip": "100.90.70.25",
-      "ssh_user": "vinaysachdeva1",
+      "ssh_user": "example-user",
       "status": "online",
       "last_sync": "2026-01-10T06:46:00Z",
       "config_version": "v1768016802"
@@ -288,7 +288,7 @@ canada-pc-0001-1   Ready    worker                             6h30m   v1.28.5+k
   "metadata": {
     "version": "2.0",
     "last_updated": "2026-01-10T06:46:00Z",
-    "updated_by": "vinaysachdeva1@canada-pc-0001"
+    "updated_by": "example-user@canada-pc-0001"
   }
 }
 ```
@@ -401,7 +401,7 @@ kubectl delete pod <pod-name> -n <namespace> --force --grace-period=0
 - **Control Plane:** `<location>-pc-<number>` (e.g., `canada-pc-0001`)
 - **Worker Nodes:** `<location>-pc-<number>-<worker-id>` (e.g., `canada-pc-0001-1`)
 - **VPS Nodes:** `vps-edge-<number>` or `<provider>-vps-<number>`
-- **Laptops:** `<user>-<model>` (e.g., `vinay-vivobook`)
+- **Laptops:** `<purpose>-<type>` (e.g., `dev-laptop`, `work-laptop`)
 
 ### Node Maintenance
 

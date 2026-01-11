@@ -142,8 +142,8 @@ fi
 ### ❌ Hardcoded User Information
 ```bash
 # WRONG
-HOME_DIR="/home/vinay"
-USER_NAME="vinay"
+HOME_DIR="/home/your-username"
+USER_NAME="your-username"
 
 # RIGHT
 HOME_DIR="$ACTUAL_HOME"

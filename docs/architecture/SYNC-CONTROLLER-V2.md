@@ -145,7 +145,7 @@ Returns configuration for a specific node type.
 
 ```bash
 # Request
-curl -H "X-Node-Name: vinay-laptop" \
+curl -H "X-Node-Name: dev-laptop" \
      https://100.x.x.x:8443/api/v1/config/laptop
 
 # Response
@@ -187,7 +187,7 @@ Nodes report their status.
 curl -X POST \
      -H "Content-Type: application/json" \
      -d '{
-       "node_name": "vinay-laptop",
+       "node_name": "dev-laptop",
        "node_type": "laptop",
        "node_ip": "100.86.112.112",
        "config_version": "v42",
@@ -208,7 +208,7 @@ Returns status of all registered nodes.
 {
   "nodes": [
     {
-      "name": "vinay-laptop",
+      "name": "dev-laptop",
       "type": "laptop",
       "ip": "100.86.112.112",
       "status": "online",
@@ -436,7 +436,7 @@ The sync interval is controlled by the reconciliation interval (default: 1 hour)
 sudo systemctl start mynodeone-sync-controller
 
 # Or manually specify interval
-/home/vinaysachdeva1/MyNodeOne/scripts/lib/sync-controller.sh daemon 2  # 2 hours
+/home/example-user/MyNodeOne/scripts/lib/sync-controller.sh daemon 2  # 2 hours
 ```
 
 ### Manual Sync
@@ -444,7 +444,7 @@ sudo systemctl start mynodeone-sync-controller
 If you need to sync immediately (e.g., after deleting namespaces):
 
 ```bash
-sudo bash /home/vinaysachdeva1/MyNodeOne/scripts/lib/service-registry.sh sync
+sudo bash /home/example-user/MyNodeOne/scripts/lib/service-registry.sh sync
 ```
 
 ---
@@ -490,7 +490,7 @@ HEARTBEAT_STALE_THRESHOLD=600     # seconds
 ```bash
 # Node Agent Configuration
 CONTROL_PLANE_IP=100.x.x.x
-NODE_NAME=vinay-laptop
+NODE_NAME=dev-laptop
 NODE_TYPE=laptop  # laptop, vps, worker
 
 # Polling intervals (seconds)
@@ -518,7 +518,7 @@ sudo ./scripts/nodes-status.sh
 #
 #    NAME                 TYPE     IP                 STATUS     LAST SEEN    CONFIG
 #    ----                 ----     --                 ------     ---------    ------
-# ●  vinay-laptop         laptop   100.86.112.112     online     30s ago      v42
+# ●  dev-laptop         laptop   100.86.112.112     online     30s ago      v42
 # ●  contabo-vps          vps      100.68.225.92      offline    15m ago      v41
 # ●  worker-01            worker   100.90.1.5         online     45s ago      v42
 #

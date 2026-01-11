@@ -199,7 +199,7 @@ Output:
 Node Health Status
 
 Management Laptops:
-  - vinay-laptop (100.86.112.112): active (last sync: 2025-11-06T18:30:00Z)
+  - dev-laptop (100.86.112.112): active (last sync: 2025-11-06T18:30:00Z)
 
 VPS Edge Nodes:
   - contabo-vps (100.68.225.92): active (last sync: 2025-11-06T18:30:05Z)

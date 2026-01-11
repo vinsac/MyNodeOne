@@ -11,7 +11,7 @@
 #   ./scripts/check-prerequisites.sh control-plane
 #
 # Examples:
-#   ./scripts/check-prerequisites.sh vps 100.67.210.15 vinaysachdeva
+#   ./scripts/check-prerequisites.sh vps 100.67.210.15 your-username
 #   ./scripts/check-prerequisites.sh management 100.67.210.15
 ###############################################################################
 
@@ -32,7 +32,7 @@ show_usage() {
     echo "  control-plane    Check prerequisites for control plane"
     echo ""
     echo "Examples:"
-    echo "  $0 vps 100.67.210.15 vinaysachdeva"
+    echo "  $0 vps 100.67.210.15 your-username"
     echo "  $0 management 100.67.210.15"
     echo "  $0 control-plane"
     echo ""

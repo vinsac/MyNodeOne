@@ -39,7 +39,7 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 - **System Cleanup** - Automatic removal of bloat and unused packages
 - **Disk Auto-Detection** - Finds and configures external drives automatically
 - **Fully Generic** - Works with any hardware, names, IPs
-- **LLM Support** - Run language models on CPU
+- **LLM Support** - Run language models on CPU and Nvidia GPUs
 
 ## Architecture
 
@@ -67,13 +67,16 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 │ - K3s Server   │    │ - K3s Worker     │    │ - K3s Worker │
 │ - Your RAM/CPU │    │ - Your RAM/CPU   │    │ - Your RAM   │
 │ - Your Storage │    │ - Your Storage   │    │ - Your Disk  │
-└────────────────┘    └──────────────────┘    └──────────────┘
-                               │
-                    ┌──────────┴───────────┐
-                    │  Distributed Storage │
-                    │  - MinIO (S3)        │
-                    │  - Longhorn (Blocks) │
-                    └──────────────────────┘
+│ - MinIO/Longhorn│    │ - MinIO/Longhorn │    │ - MinIO/     │
+└────────────────┘    └──────────────────┘    │ Longhorn     │
+                                            └──────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    Distributed Storage                          │
+│  - MinIO (S3-compatible object storage)                        │
+│  - Longhorn (Distributed block storage with replication)       │
+│  - Available on ALL nodes (Control Plane + Workers)            │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Documentation

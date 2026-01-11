@@ -702,7 +702,7 @@ sudo ./scripts/install-mynodeone.sh
 
 **You will be prompted for:**
 1. **Control plane Tailscale IP** (e.g., `100.115.64.91`)
-2. **SSH username on control plane** (e.g., `vinaysachdeva`)
+2. **SSH username on control plane** (e.g., `your-username`)
 3. **SSH password** (entered once for secure connection)
 4. **Sudo password on control plane** (if passwordless sudo is not configured)
 
@@ -743,8 +743,8 @@ cd ~/MyNodeOne
 
 # Example:
 ./scripts/setup-management-laptop-ssh.sh \
-    vinaysachdeva 100.115.64.91 \
-    vinay 100.120.243.100
+    your-username 100.115.64.91 \
+    your-username 100.120.243.100
 ```
 
 > **Note:** Run this script without `sudo`. It will prompt for passwords when needed and handles file ownership correctly.
@@ -1097,9 +1097,9 @@ ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
 
 **Example with real values:**
 ```bash
-# If worker IP is 100.116.16.118 and username is vinaysachdeva:
+# If worker IP is 100.116.16.118 and username is your-username:
 WORKER_IP="100.116.16.118"
-WORKER_USER="vinaysachdeva"
+WORKER_USER="your-username"
 ssh-copy-id ${WORKER_USER}@${WORKER_IP}
 ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
 ```
@@ -1232,7 +1232,7 @@ kubectl label node <NODE_NAME> \
 #   mynodeone.io/location=home \
 #   mynodeone.io/storage=true \
 #   mynodeone.io/worker-ip=100.90.70.25 \
-#   mynodeone.io/ssh-user=vinaysachdeva \
+#   mynodeone.io/ssh-user=your-username \
 #   --overwrite
 ```
 

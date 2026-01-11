@@ -27,13 +27,13 @@ local ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" 2>/dev/null | cut -d: -f6 || ec
 ```
 
 **Problem:**
-- When script runs via `sudo` from remote management laptop, `$SUDO_USER` gives **management laptop user** (vinay), not **control plane user** (vinaysachdeva)
+- When script runs via `sudo` from remote management laptop, `$SUDO_USER` gives **management laptop user** (your-username), not **control plane user** (your-username)
 - This is the EXACT issue we fixed in LLM API scripts
 - Credentials file will be saved to wrong user's home directory
 - File ownership will be set to non-existent user on worker node
 
 **Impact:**
-- Credentials saved to `/home/vinay/` which doesn't exist on worker node
+- Credentials saved to `/home/your-username/` which doesn't exist on worker node
 - File creation fails silently or creates orphaned file
 - User cannot find credentials after installation
 

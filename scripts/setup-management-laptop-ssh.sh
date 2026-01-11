@@ -14,7 +14,7 @@
 #   ./setup-management-laptop-ssh.sh <control-plane-user> <control-plane-ip> <laptop-user> <laptop-ip>
 #
 # Example:
-#   ./setup-management-laptop-ssh.sh vinaysachdeva 100.101.4.2 vinay 100.101.4.3
+#   ./setup-management-laptop-ssh.sh your-username 100.101.4.2 your-username 100.101.4.3
 ###############################################################################
 
 set -euo pipefail
@@ -47,7 +47,7 @@ if [ $# -ne 4 ]; then
     echo "Usage: $0 <control-plane-user> <control-plane-ip> <laptop-user> <laptop-ip>"
     echo ""
     echo "Example:"
-    echo "  $0 vinaysachdeva 100.101.4.2 vinay 100.101.4.3"
+    echo "  $0 your-username 100.101.4.2 your-username 100.101.4.3"
     echo ""
     echo "Get IPs with: tailscale ip -4"
     exit 1

@@ -118,8 +118,8 @@ The SSH-based Sync Controller maintains configuration consistency across all nod
   "management_laptops": [
     {
       "ip": "100.86.112.112",
-      "name": "vinay-laptop",
-      "ssh_user": "vinay",
+      "name": "dev-laptop",
+      "ssh_user": "example-user",
       "status": "active",
       "last_sync": "2025-11-21T20:45:00Z"
     }

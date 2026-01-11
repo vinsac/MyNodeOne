@@ -102,10 +102,10 @@ Examples:
   sudo ./scripts/remove-node.sh
 
   # Remove by name (auto-detects type)
-  sudo ./scripts/remove-node.sh vinay-vivobook
+  sudo ./scripts/remove-node.sh dev-laptop
 
   # Remove by type and name
-  sudo ./scripts/remove-node.sh --type management_laptops --name vinay-vivobook
+  sudo ./scripts/remove-node.sh --type management_laptops --name dev-laptop
 
   # Remove by IP
   sudo ./scripts/remove-node.sh --ip 100.79.49.125

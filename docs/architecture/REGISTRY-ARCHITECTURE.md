@@ -48,9 +48,9 @@ MyNodeOne uses a **two-tier node architecture** to manage both Kubernetes cluste
 **Example:**
 ```json
 {
-  "name": "vinay-vivobook",
+  "name": "dev-laptop",
   "ip": "100.79.49.125",
-  "ssh_user": "vinaysachdeva1",
+  "ssh_user": "example-user",
   "status": "offline",
   "last_sync": "2026-01-09T12:30:00Z"
 }
@@ -137,7 +137,7 @@ MyNodeOne uses a **two-tier node architecture** to manage both Kubernetes cluste
   "role": "control-plane",
   "location": "home",
   "tailscale_ip": "100.83.31.109",
-  "ssh_user": "vinaysachdeva1",
+  "ssh_user": "example-user",
   "hardware": {
     "cpu": "AMD Ryzen 9 9950X 16-Core",
     "ram": "123Gi",
@@ -160,7 +160,7 @@ MyNodeOne uses a **two-tier node architecture** to manage both Kubernetes cluste
   "role": "worker",
   "location": "home",
   "tailscale_ip": "100.90.70.25",
-  "ssh_user": "vinaysachdeva1",
+  "ssh_user": "example-user",
   "hardware": {...},
   "longhorn": {...},
   "minio": {...},

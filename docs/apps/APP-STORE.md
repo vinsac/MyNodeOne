@@ -10,6 +10,7 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | Application | Description | Status |
 |-------------|-------------|--------|
 | LLM Chat (Open WebUI + Ollama) | Private AI chat with local LLMs. Supports phi3, llama3.2, mistral, and more. | Available |
+| LLM API | OpenAI-compatible API for AI applications with GPU acceleration | Available |
 
 ### Media & Entertainment
 | Application | Description | Status |
@@ -21,7 +22,7 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 |-------------|-------------|--------|
 | Immich | Self-hosted Google Photos alternative with AI features | Available |
 | Nextcloud | Cloud storage and collaboration platform | Available |
-| Paperless-ngx | Document management with OCR | Coming soon |
+| Paperless-ngx | Document management with OCR | Available |
 
 ### Communication & Productivity
 | Application | Description | Status |
@@ -38,9 +39,13 @@ MyNodeOne includes a built-in App Store with one-click installations for popular
 | Application | RAM | CPU | Storage | Notes |
 |-------------|-----|-----|---------|-------|
 | LLM Chat | 4GB+ | 2 cores | 50GB+ | Depends on model size |
+| LLM API | 8GB+ | 4 cores | 100GB+ | GPU acceleration recommended |
 | Jellyfin | 2GB | 1 core | 10GB + media | Hardware transcoding available |
 | Immich | 4GB | 2 cores | 50GB + photos | Includes PostgreSQL + Redis |
+| Nextcloud | 2GB | 1 core | 20GB + files | Includes database |
+| Paperless-ngx | 2GB | 1 core | 10GB + documents | Includes OCR processing |
 | Homepage | 256MB | 0.2 core | 500MB | Dashboard only |
+| Mattermost | 2GB | 1 core | 10GB | Includes PostgreSQL |
 
 ---
 
@@ -68,6 +73,9 @@ Install any app directly:
 # AI Chat Assistant
 sudo ./scripts/apps/llm-chat/install-llm-chat.sh
 
+# LLM API (OpenAI-compatible)
+sudo ./scripts/apps/llmapi/install-llmapi.sh
+
 # Media server
 sudo ./scripts/apps/jellyfin/install-jellyfin.sh
 
@@ -77,8 +85,14 @@ sudo ./scripts/apps/immich/install-immich.sh
 # Cloud storage
 sudo ./scripts/apps/nextcloud/install-nextcloud.sh
 
+# Document management
+sudo ./scripts/apps/paperless/install-paperless.sh
+
+# Team chat
+sudo ./scripts/apps/mattermost/install-mattermost.sh
+
 # Application dashboard
-sudo ./scripts/apps/install-homepage.sh
+sudo ./scripts/apps/homepage/install-homepage.sh
 ```
 
 ### Method 3: Web Dashboard
@@ -106,7 +120,7 @@ Each script automatically:
 ### View Installed Apps
 
 ```bash
-kubectl get namespaces | grep -E "jellyfin|immich|homepage|llm-chat|nextcloud|paperless"
+kubectl get namespaces | grep -E "jellyfin|immich|homepage|llm-chat|llmapi|nextcloud|paperless|mattermost"
 ```
 
 ### Check App Status
@@ -143,7 +157,11 @@ Every app gets an easy-to-remember address:
 | Jellyfin | `http://jellyfin.mynodeone.local` |
 | Immich | `http://immich.mynodeone.local` |
 | Nextcloud | `http://nextcloud.mynodeone.local` |
+| Paperless-ngx | `http://paperless.mynodeone.local` |
 | Homepage | `http://homepage.mynodeone.local` |
+| Mattermost | `http://mattermost.mynodeone.local` |
+| LLM Chat | `http://llm-chat.mynodeone.local` |
+| LLM API | `http://llmapi.mynodeone.local` |
 
 **Desktop/Laptop:** Works immediately after DNS setup. Run `setup-client-dns.sh` on each client.
 

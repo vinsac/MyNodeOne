@@ -269,10 +269,24 @@ reclaimPolicy: Delete
 volumeBindingMode: Immediate
 parameters:
   numberOfReplicas: "1"
-  staleReplicaTimeout: "30"
+  staleReplicaTimeout: "30"     # 30 minutes
+  replicaReplenishmentWaitInterval: "432000"  # 5 days (432000 seconds)
   fromBackup: ""
   fsType: "xfs"
 ```
+
+### Key Longhorn Settings
+
+#### staleReplicaTimeout: "30" (30 minutes)
+- **Purpose**: How long Longhorn waits before marking a replica as "stale"
+- **Behavior**: After 30 minutes of no communication, replica is marked stale
+- **Impact**: Short timeout ensures quick detection of failed replicas
+
+#### replicaReplenishmentWaitInterval: "432000" (5 days)
+- **Purpose**: How long Longhorn waits before rebuilding a lost replica
+- **Behavior**: Waits 5 days before starting replica rebuild process
+- **Impact**: Prevents unnecessary rebuilds when nodes temporarily disconnect
+- **Critical for**: Avoiding network traffic over limited bandwidth connections
 
 ### Usage Patterns
 

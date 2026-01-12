@@ -80,14 +80,12 @@ sudo ./scripts/apps/immich/install-immich.sh # Photo backup
 sudo ./scripts/apps/nextcloud/install-nextcloud.sh # Cloud storage
 ```
 
-See [APP-STORE.md](../reference/APP-STORE.md) for the full catalog.
+See [APP-STORE.md](../apps/APP-STORE.md) for the full catalog.
 
 ---
 
 ## Next Steps
 
-- **Deploy apps:** See [APP-STORE.md](../reference/APP-STORE.md)
+- **Deploy apps:** See [APP-STORE.md](../apps/APP-STORE.md)
 - **Manage your cluster:** See [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md)
-- **Add worker nodes:** See [INSTALLATION.md](INSTALLATION.md#section-4-worker-node-installation)
-- **Set up management laptop:** See [INSTALLATION.md](INSTALLATION.md#section-3-management-laptop-setup)
 - **Troubleshooting:** See [FAQ.md](../reference/FAQ.md)

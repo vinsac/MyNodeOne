@@ -13,7 +13,7 @@ This guide has **4 independent sections** - one for each node type:
 | **[1. Control Plane](#section-1-control-plane-installation)** | First node (master) | **START HERE** - Always install this first |
 | **[2. VPS Edge Node](#section-2-vps-edge-node-installation)** | Public internet access | Add after control plane for public apps |
 | **[3. Management Laptop or Workstation](#section-3-management-laptop-or-workstation-setup)** | Admin workstation | Recommended - Control cluster from laptop |
-| **[4. Worker Node](#section-4-worker-node-installation-%28optional%29)** | Additional compute | Optional - Add more resources to cluster |
+| **[4. Worker Node](#section-4-worker-node-installation-(optional))** | Additional compute | Optional - Add more resources to cluster |
 
 **Always start with Section 1 (Control Plane), then choose which other sections you need.**
 
@@ -222,7 +222,8 @@ Next steps:
 **Note:** The installation wizard in Step 2 already applies these hardening settings, so you do not need to run this separately during a normal installation. This step is available if you skipped hardening during installation or want to apply it later.
 
 ```bash
-cd ~/MyNodeOne
+# ON CONTROL PLANE:
+cd MyNodeOne
 sudo ./scripts/setup/enable-security-hardening.sh
 ```
 
@@ -292,6 +293,10 @@ sudo ./scripts/setup/setup-control-plane-sudo.sh
 
 **Next Steps - Choose What You Need:**
 
+- **Want to install applications?**
+  → See [APPS.md](../apps/APPS.md) for available applications
+  → Use `kubectl apply -f manifests/examples/` for demo apps
+
 - **Want public internet access for your apps?**
   → Go to [Section 2: VPS Edge Node](#section-2-vps-edge-node-installation)
 
@@ -316,6 +321,8 @@ sudo ./scripts/setup/setup-control-plane-sudo.sh
 ## What is a VPS Edge Node (Edge Node)?
 
 A VPS (Virtual Private Server) is a virtual machine you rent from a hosting provider. In MyNodeOne, this VPS acts as an edge node that safely exposes selected services from your private cloud to the internet so you can reach them from other machines. For non-technical users, you can think of it as a secure gateway that forwards traffic from the internet to your private cloud. In the rest of this guide, we may refer to this VPS simply as the edge node.
+
+**Important:** Adding a VPS edge node only makes sense if you have a domain name that you want to use to expose your websites/services publicly. If you don't have a domain name or don't need public internet access, you can skip this section.
 
 - **Public Gateway**: A cloud server that acts as a secure entry point to your cluster.
 - **Reverse Proxy**: Routes public internet traffic to your control plane through Tailscale's secure mesh network.
@@ -366,64 +373,56 @@ Run these commands in a terminal on your control plane machine:
     **Do not use root user** for security reasons.
 
     ```bash
-    # FROM YOUR CONTROL PLANE (or another machine with SSH access):
-    ssh root@YOUR_VPS_PUBLIC_IP    # or ssh admin@YOUR_VPS_PUBLIC_IP, depending on your provider
+# ON VPS (connected as root or admin):
+# 1. Create a new user (replace 'sammy' with your own username)
+adduser sammy
 
-    # ON YOUR NEW VPS (connected as root or admin from the previous command):
+# 2. Add user to sudo group
+usermod -aG sudo sammy
 
-    # 1. Create a new user (replace 'sammy' with your own username)
-    adduser sammy
+# 3. Configure passwordless sudo (REQUIRED for orchestration)
+echo 'sammy ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/sammy
+sudo chmod 0440 /etc/sudoers.d/sammy
 
-    # 2. Add user to sudo group
-    usermod -aG sudo sammy
+# 4. Test passwordless sudo
+su - sammy
+sudo -n echo 'Sudo works!'
+# Expected: "Sudo works!" (no password prompt)
 
-    # 3. Configure passwordless sudo (REQUIRED for orchestration)
-    echo 'sammy ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/sammy
-    sudo chmod 0440 /etc/sudoers.d/sammy
-
-    # 4. Test passwordless sudo
-    su - sammy
-    sudo -n echo 'Sudo works!'
-    # Expected: "Sudo works!" (no password prompt)
-
-    # 5. Log out and reconnect as the new user
-    exit
-    exit
-    # ssh sammy@YOUR_VPS_PUBLIC_IP
-    ```
+# 5. Log out and reconnect as the new user
+exit
+exit
+# ssh sammy@YOUR_VPS_PUBLIC_IP
+```
 
 3.  **Install Tailscale on the VPS**
     
     From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@YOUR_VPS_PUBLIC_IP`). Once you are logged in, run the following commands on the VPS:
     
     ```bash
-    # FROM YOUR CONTROL PLANE (or another machine with SSH access):
-    ssh sammy@YOUR_VPS_PUBLIC_IP
+# ON VPS (connected as your sudo user 'sammy'):
+# Install curl (if not already installed)
+sudo apt install -y curl
 
-    # ON YOUR NEW VPS (connected your sudo user 'sammy' from the previous command):
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
 
-    # Install curl (if not already installed)
-    sudo apt install -y curl
+# Start Tailscale and authenticate
+# Note: --accept-dns=false prevents Tailscale from managing DNS
+# This avoids DNS resolution issues if Tailscale's DNS fails
+sudo tailscale up --accept-dns=false
 
-    # Install Tailscale
-    curl -fsSL https://tailscale.com/install.sh | sh
+# Follow the URL to authenticate in browser
+# Verify it's connected
+tailscale status
 
-    # Start Tailscale and authenticate
-    # Note: --accept-dns=false prevents Tailscale from managing DNS
-    # This avoids DNS resolution issues if Tailscale's DNS fails
-    sudo tailscale up --accept-dns=false
+# Get and save your VPS Tailscale IP
+tailscale ip -4
+# Example: 100.101.237.15 (you'll need this!)
 
-    # Follow the URL to authenticate in browser
-    # Verify it's connected
-    tailscale status
-    
-    # Get and save your VPS Tailscale IP
-    tailscale ip -4
-    # Example: 100.101.237.15 (you'll need this!)
-
-    # When finished, exit to return to your control plane terminal
-    exit
-    ```
+# When finished, exit to return to your control plane terminal
+exit
+```
 
 --- 
 
@@ -441,11 +440,11 @@ Fast, non-interactive installation with all parameters in one command:
 
 ```bash
 # ON YOUR CONTROL PLANE:
-cd ~/MyNodeOne
+cd MyNodeOne
 
 sudo ./scripts/installation/install-vps-edge-node.sh \
   --name "vps-edge-01" \
-  --ip "100.80.255.123" \
+  --tailscale-ip "100.80.255.123" \
   --user "sammy" \
   --public-ip "45.8.133.192" \
   --domain "example.com" \
@@ -455,12 +454,12 @@ sudo ./scripts/installation/install-vps-edge-node.sh \
 
 **Replace with your actual values:**
 - `--name`: Friendly name for your VPS (e.g., "vps-edge-01")
-- `--ip`: VPS Tailscale IP (from `tailscale ip -4` on VPS)
+- `--tailscale-ip`: VPS Tailscale IP (from `tailscale ip -4` on VPS)
 - `--user`: Your sudo user on VPS (e.g., "sammy")
 - `--public-ip`: VPS public IP address
 - `--domain`: Your public domain name
 - `--email`: Your email for SSL certificates
- - `--location`: Optional label for where this VPS is hosted (for example, `NYC`, `London`, or a provider region name). Used in internal registries and dashboards.
+- `--location`: Optional label for where this VPS is hosted (for example, `NYC`, `London`, or a provider region name). Used in internal registries and dashboards.
 
 **Method 2: Interactive Installation**
 
@@ -468,7 +467,7 @@ Step-by-step with prompts:
 
 ```bash
 # ON YOUR CONTROL PLANE:
-cd ~/MyNodeOne
+cd MyNodeOne
 sudo ./scripts/installation/install-mynodeone.sh
 ```
 
@@ -563,7 +562,7 @@ Use the `manage-app-visibility.sh` script to expose services:
 
 ```bash
 # ON YOUR CONTROL PLANE:
-cd ~/MyNodeOne
+cd MyNodeOne
 
 # Make demo app public
 sudo ./scripts/operations/manage-app-visibility.sh public demo yourdomain.com YOUR_VPS_TAILSCALE_IP
@@ -603,6 +602,7 @@ The wizard lets you choose the app, domains, and VPS nodes from menus instead of
 Wait 2-5 minutes for SSL certificates, then test:
 
 ```bash
+# ON ANY MACHINE WITH INTERNET ACCESS:
 # Check if service is accessible
 curl -I https://demo.yourdomain.com
 curl -I https://chat.yourdomain.com
@@ -659,6 +659,21 @@ In this section, "management laptop" and "management workstation" are used inter
 Before starting, you need:
 1. **Control plane Tailscale IP** (run `tailscale ip -4` on control plane)
 2. **SSH credentials** for the control plane (username and password)
+3. **Passwordless sudo** on your management laptop (required for Node Agent and DNS sync)
+
+### Setup Passwordless Sudo on Management Laptop
+
+**Required for automated DNS sync and Node Agent operation.**
+
+```bash
+# ON MANAGEMENT LAPTOP:
+# Create sudoers file (replace 'yourusername' with your actual username)
+echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee "/etc/sudoers.d/${USER}-nopasswd"
+sudo chmod 0440 "/etc/sudoers.d/${USER}-nopasswd"
+
+# Verify it works (should not prompt for a password)
+sudo -n echo "Passwordless sudo configured!"
+```
 
 ---
 
@@ -724,7 +739,7 @@ sudo ./scripts/installation/install-mynodeone.sh
 
 ---
 
-### Step 3: Setup SSH Keys for Sync Fallback (Required)
+### Step 3: Setup SSH Keys for Sync Fallback
 
 **This step is mandatory** to ensure robust DNS sync. While the Node Agent handles most updates via HTTP polling, SSH-based sync provides critical fallback capabilities.
 
@@ -736,7 +751,7 @@ sudo ./scripts/installation/install-mynodeone.sh
 
 ```bash
 # On management laptop (run from MyNodeOne directory):
-cd ~/MyNodeOne
+cd MyNodeOne
 ./scripts/setup/setup-management-laptop-ssh.sh \
     <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
     <laptop-user> LAPTOP_TAILSCALE_IP
@@ -828,7 +843,7 @@ sudo journalctl -u mynodeone-node-agent -f
 
 **Manual sync (if needed):**
 ```bash
-cd ~/MyNodeOne
+cd MyNodeOne
 sudo ./scripts/domains/sync-dns.sh
 ```
 
@@ -857,7 +872,7 @@ sudo -n echo "Works"
 **Fix: Re-run the SSH setup script:**
 ```bash
 # On laptop:
-cd ~/MyNodeOne
+cd MyNodeOne
 ./scripts/setup/setup-management-laptop-ssh.sh \
     <control-plane-user> CONTROL_PLANE_TAILSCALE_IP \
     <laptop-user> LAPTOP_TAILSCALE_IP
@@ -894,7 +909,7 @@ sudo journalctl -u mynodeone-node-agent -n 50
 sudo systemctl restart mynodeone-node-agent
 
 # If Node Agent is not installed, reinstall:
-cd ~/MyNodeOne
+cd MyNodeOne
 # Get control plane IP and API token from your config
 source ~/.mynodeone/config.env
 sudo ./scripts/lib/install-config-sync.sh laptop "$CONTROL_PLANE_IP" "$API_TOKEN"
@@ -1206,11 +1221,27 @@ Node Information:
   Control Plane: 100.116.16.117
 
 Next Steps:
-  1. Apply node labels on control plane (see instructions)
+  1. Apply node labels on control plane (see instructions below)
   2. Verify node status: kubectl get nodes
 ```
 
 ### Step 3: Apply Node Labels (on Control Plane)
+
+**Important:** Node labels must be applied **after** the worker joins but **before** Longhorn tries to use the node for storage. The installer creates a file with the exact commands to run.
+
+Node labels are required for:
+- **Longhorn disk configuration**: Properly adding worker disks to the storage pool
+- **Storage coordination**: Enabling the worker to participate in distributed storage
+- **Service registration**: Correctly registering MinIO endpoints and other services
+
+The installation script automatically:
+1. Waits for node to join the cluster
+2. Generates kubeconfig using K3s agent certificates  
+3. Creates `~/.kube/config` with proper permissions
+4. Verifies kubectl access to the cluster
+5. Proceeds with Longhorn installation (which requires node labels to be applied first)
+
+**Critical:** Apply node labels immediately after worker joins and before Longhorn installation completes. Without proper labels, Longhorn disks will not be added to the cluster storage pool.
 
 The installer creates a file with commands to label your worker node. Run these on the control plane:
 
@@ -1368,7 +1399,6 @@ kubectl get nodes.longhorn.io -n longhorn-system
 - [Node Management Guide](../operations/NODE-MANAGEMENT.md) - Adding, removing, and managing nodes
 
 **See Also:**
-- [Node Management Guide](../operations/NODE-MANAGEMENT.md) - Comprehensive guide for managing all node types
 - [Uninstall Guide](UNINSTALL.md) - Complete uninstallation instructions
 - [Admin Guide](../guides/ADMIN-GUIDE.md) - Cluster administration
 

@@ -402,10 +402,6 @@ Yes. One of the benefits of Kubernetes is that you can add or remove nodes over 
 - Electricity: ~$20
 - **Total: $26/month = $312/year** (after hardware)
 
-**Savings: $7,188/year**
-
-**Break-even: 2.4 months** (hardware pays for itself)
-
 ---
 
 ## 🧠 Decision Tree
@@ -875,10 +871,6 @@ See disaster recovery section in operations.md
 - Domains: $2 (amortized)
 - Electricity: $40
 - **Total: ~$72/month**
-
-**Compared to AWS:**
-- Equivalent resources: $2,500/month
-- **Savings: $2,428/month = $29,136/year**
 
 ### What if I don't want to use VPS?
 

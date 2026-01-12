@@ -1076,7 +1076,7 @@ tailscale ip -4
 
 **Why set up SSH?**
 - **Faster first launch:** Copy 9GB model in 2 minutes instead of downloading in 5 minutes
-- **Bandwidth savings:** Avoid re-downloading same models on each worker
+- **Efficient distribution:** Share models between nodes instead of each downloading separately
 - **Not required:** Pods will download directly if SSH not set up
 
 **If you want faster model loading**, set up SSH key authentication:

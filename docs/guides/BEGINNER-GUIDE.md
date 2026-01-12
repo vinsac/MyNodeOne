@@ -17,19 +17,20 @@ Think of MyNodeOne as **your personal app store** - like the App Store on iPhone
 
 ## What Can You Actually Do With It?
 
-### Replace These Services:
+### Media & Entertainment
+- **Jellyfin**: Stream your movies and TV shows to any device
+- **Automatic organization**: Movie posters, descriptions, and metadata
+- **Multi-device support**: Phone, tablet, TV, laptop
 
-| Instead of Paying For... | Install This (Free) | Savings/Year |
-|--------------------------|---------------------|--------------|
-| Netflix ($240/year) | **Jellyfin** | $240 |
-| Google Photos ($100/year) | **Immich** | $100 |
-| Dropbox ($120/year) | **Nextcloud** | $120 |
-| Slack ($96/year) | **Mattermost** | $96 |
-| **TOTAL SAVINGS** | | **$592/year** |
+### Photos & Files
+- **Immich**: Automatic photo backup from your phone
+- **Nextcloud**: File sync and collaboration
+- **Paperless-ngx**: Document management with OCR
 
-**Your Cost:** Old laptop/mini PC you already own + $5/month electricity = **$60/year**
-
-**Net Savings: $612/year**
+### Communication & Productivity
+- **Mattermost**: Team chat and collaboration
+- **LLM Chat**: Private AI assistant
+- **LLM API**: OpenAI-compatible API for AI applications
 
 ---
 
@@ -407,10 +408,6 @@ You literally can't break anything permanently:
 
 **Monthly cost: ~$5**
 
-Compare to:
-- Netflix + Google Photos + Dropbox + 1Password = $40/month
-- **Savings: $35/month = $420/year**
-
 ---
 
 ## Troubleshooting for Beginners
@@ -502,22 +499,19 @@ Might need to:
 - Old laptop (2016, $0)
 - 2TB external hard drive ($60)
 - Installed: Jellyfin + Immich + Homepage
-- **Result:** Family of 4 canceled Netflix, backs up 50,000 photos
-- **Savings: $360/year**
+- **Result:** Family of 4 enjoys personal media server and photo backup
 
 ### Example 2: Small Business
 **Mike's Coffee Shop:**
 - Mini PC ($150)
 - Installed: Mattermost + Nextcloud
 - **Result:** Team communication, file sharing, no monthly fees
-- **Savings: $150/month = $1,800/year**
 
 ### Example 3: Student
 **Alex's Dorm Setup:**
 - Old gaming PC (repurposed)
 - Installed: Nextcloud + Paperless + Homepage
 - **Result:** File sync, document management, organized dashboard
-- **Savings: $200/year + priceless learning**
 
 ---
 

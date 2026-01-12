@@ -453,7 +453,7 @@ kubectl get svc -n minio
 ## Related Documentation
 
 - **Installation:** `scripts/storage/README.md`
-- **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md`
-- **Defensive Programming:** `scripts/storage/DEFENSIVE-PROGRAMMING-AUDIT.md`
+- **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE.md`
+- **Defensive Programming:** `docs/contributing/DEFENSIVE-PROGRAMMING.md`
 - **Velero Docs:** https://velero.io/docs/
 - **MinIO Docs:** https://min.io/docs/

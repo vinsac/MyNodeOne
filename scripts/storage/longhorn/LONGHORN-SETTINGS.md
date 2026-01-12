@@ -369,8 +369,7 @@ sudo kubectl patch volumes.longhorn.io <volume-name> -n longhorn-system \
 
 For more context on storage architecture:
 
-- `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md` - Overall storage strategy
-- `docs/architecture/STORAGE-V3-IMPLEMENTATION-PLAN.md` - Implementation plan
+- `docs/architecture/STORAGE-ARCHITECTURE.md` - Overall storage strategy
 - `docs/architecture/REGISTRY-ARCHITECTURE.md` - Node registry design
 
 ---

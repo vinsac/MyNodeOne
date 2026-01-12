@@ -286,4 +286,4 @@ cat ~/mynodeone-minio-credentials.txt
 - [Longhorn Documentation](https://longhorn.io/docs/)
 - [MinIO Documentation](https://min.io/docs/)
 - [Kubernetes Storage Documentation](https://kubernetes.io/docs/concepts/storage/)
-- MyNodeOne Architecture: `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md`
+- MyNodeOne Architecture: `docs/architecture/STORAGE-ARCHITECTURE.md`

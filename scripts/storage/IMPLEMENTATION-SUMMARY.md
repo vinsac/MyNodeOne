@@ -399,7 +399,7 @@ http://minio-pc1.mynodeone.local:9000
 ## Support
 
 **Documentation:**
-- Architecture: `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md`
+- Architecture: `docs/architecture/STORAGE-ARCHITECTURE.md`
 - Examples: `examples/storage/README.md`
 - Longhorn: https://longhorn.io/docs/
 - MinIO: https://min.io/docs/

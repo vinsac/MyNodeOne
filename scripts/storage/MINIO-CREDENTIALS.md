@@ -256,7 +256,7 @@ kubectl get secret minio-credentials -n minio
 
 ## Related Documentation
 
-- **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE-PROMPT.md` (Option B implementation)
+- **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE.md` (Storage design and implementation)
 - **Installation:** `docs/installation/INSTALLATION.md` (kubectl configuration on workers)
 - **MinIO Installer:** `scripts/storage/minio/install-interactive.sh`
 

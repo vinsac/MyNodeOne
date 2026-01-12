@@ -28,7 +28,7 @@ MyNodeOne enables security best practices during installation. These features ar
 |------------|----------|-------------|
 | ArgoCD password | `/root/mynodeone-argocd-credentials.txt` | 600 (root only) |
 | MinIO password | `/root/mynodeone-minio-credentials.txt` | 600 (root only) |
-| Grafana password | Kubernetes secret only | N/A |
+| Grafana password | `$HOME/mynodeone-grafana-credentials.txt` | 600 (user only) |
 | Join token | `/root/mynodeone-join-token.txt` | 600 (root only) |
 
 ### Why Plain Text Files?

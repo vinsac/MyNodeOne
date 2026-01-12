@@ -40,10 +40,9 @@ Enables:
 - Security headers (HSTS, CSP)
 
 **Security documentation:**
-- Comprehensive security audit performed (all identified issues addressed)
 - Production security guidance included
 - Password management strategy documented
-- See: `COMPREHENSIVE_AUDIT_REPORT.md`, `../security-best-practices.md`
+- See: `../security/` directory for complete security guides
 
 **Suitable for:**
 - Workloads where you are comfortable operating and maintaining your own infrastructure
@@ -142,12 +141,11 @@ Enables:
 - Monitor with: `df -h /var/lib/longhorn`
 
 **Can I add disks later?**
-- Yes! Plug in additional disks anytime
-- Run: `sudo ./scripts/add-storage-disk.sh`
-- Longhorn automatically uses new disks
-- Zero downtime migration
+- Yes! Additional disks can be added to Longhorn storage pool
+- Disks are automatically detected and made available
+- Zero downtime migration for existing volumes
 
-**See:** [single-disk-setup.md](../single-disk-setup.md) for complete guide
+---
 
 ### How much does hardware cost?
 

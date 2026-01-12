@@ -395,10 +395,10 @@
 
 ## Need more help?
 
-- **Quick questions:** Check [FAQ](FAQ.md)
+- **Quick questions:** Check [FAQ.md](FAQ.md)
 - **Getting started:** Read [GETTING-STARTED.md](../guides/GETTING-STARTED.md)
-- **Detailed guide:** See [INSTALLATION.md](../guides/INSTALLATION.md)
-- **Problems:** Check [troubleshooting.md](../guides/troubleshooting.md)
+- **Detailed guide:** See [INSTALLATION.md](../installation/INSTALLATION.md)
+- **Problems:** Check [troubleshooting.md](../operations/troubleshooting.md)
 
 ---
 

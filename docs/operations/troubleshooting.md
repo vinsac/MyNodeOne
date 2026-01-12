@@ -312,6 +312,28 @@ AttachVolume.Attach failed: Volume is already attached to another node
 kubectl delete pod <pod-name>
 ```
 
+#### Worker Disk Not Showing in Longhorn
+```
+Disk shows storageAvailable: 0 and storageMaximum: 0
+Error: "record diskUUID doesn't match the one on the disk"
+```
+
+**Cause**: Worker disk was previously formatted and used by Longhorn, but reformatted during reinstallation. Longhorn still has the old UUID in its records.
+
+**Diagnosis**:
+```bash
+kubectl get nodes.longhorn.io <worker-node> -n longhorn-system -o yaml | grep -A 10 "diskStatus"
+```
+
+**Solution**: Delete Longhorn node resource to re-detect disk
+```bash
+# Delete the Longhorn node resource (data on disk is preserved)
+kubectl delete nodes.longhorn.io <worker-node> -n longhorn-system
+
+# Longhorn will automatically recreate the node resource with correct UUID
+# Verify disk shows up correctly in Longhorn UI
+```
+
 ### 6. Monitoring Not Working
 
 **Symptom**: Grafana not showing data, Prometheus not scraping

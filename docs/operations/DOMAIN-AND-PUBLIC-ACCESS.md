@@ -272,4 +272,4 @@ docker logs traefik 2>&1 | grep -i acme
 
 - [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation) - VPS edge node installation
 - [CLUSTER-MANAGEMENT.md](CLUSTER-MANAGEMENT.md) - General cluster operations
-- [APP-STORE.md](../reference/APP-STORE.md) - Available apps
+- [APP-STORE.md](../apps/APP-STORE.md) - Available apps

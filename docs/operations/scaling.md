@@ -29,7 +29,7 @@ sudo tailscale up
 ```bash
 # On your second machine (worker node)
 git clone <mynodeone-repo-url>
-cd mynodeone
+cd MyNodeOne
 sudo ./scripts/nodes/add-worker-node.sh
 ```
 
@@ -273,7 +273,7 @@ Add more Contabo VPS or other providers:
 ```bash
 # On new VPS
 git clone <mynodeone-repo>
-cd mynodeone
+cd MyNodeOne
 sudo ./scripts/setup/setup-edge-node.sh
 ```
 

@@ -38,12 +38,6 @@ while [[ $# -gt 0 ]]; do
             VPS_TAILSCALE_IP="$2"
             shift 2
             ;;
-        --ip)
-            # Backward compatibility
-            echo "Warning: --ip is deprecated, use --tailscale-ip instead"
-            VPS_TAILSCALE_IP="$2"
-            shift 2
-            ;;
         --user)
             VPS_SSH_USER="$2"
             shift 2

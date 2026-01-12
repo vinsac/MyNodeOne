@@ -8,7 +8,7 @@
 # Usage:
 #   sudo ./scripts/installation/install-vps-edge-node.sh \
 #     --name <node-name> \
-#     --ip <tailscale-ip> \
+#     --tailscale-ip <tailscale-ip> \
 #     --user <ssh-user> \
 #     --public-ip <public-ip> \
 #     --domain <domain> \
@@ -34,7 +34,13 @@ while [[ $# -gt 0 ]]; do
             VPS_NODE_NAME="$2"
             shift 2
             ;;
+        --tailscale-ip)
+            VPS_TAILSCALE_IP="$2"
+            shift 2
+            ;;
         --ip)
+            # Backward compatibility
+            echo "Warning: --ip is deprecated, use --tailscale-ip instead"
             VPS_TAILSCALE_IP="$2"
             shift 2
             ;;
@@ -60,7 +66,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: sudo $0 --name <name> --ip <tailscale-ip> --user <ssh-user> --public-ip <public-ip> --domain <domain>"
+            echo "Usage: sudo $0 --name <name> --tailscale-ip <tailscale-ip> --user <ssh-user> --public-ip <public-ip> --domain <domain>"
             exit 1
             ;;
     esac
@@ -69,7 +75,7 @@ done
 # Validate required arguments
 REQUIRED_MISSING=false
 if [ -z "$VPS_NODE_NAME" ]; then echo "Missing required argument: --name"; REQUIRED_MISSING=true; fi
-if [ -z "$VPS_TAILSCALE_IP" ]; then echo "Missing required argument: --ip"; REQUIRED_MISSING=true; fi
+if [ -z "$VPS_TAILSCALE_IP" ]; then echo "Missing required argument: --tailscale-ip"; REQUIRED_MISSING=true; fi
 if [ -z "$VPS_SSH_USER" ]; then echo "Missing required argument: --user"; REQUIRED_MISSING=true; fi
 if [ -z "$VPS_PUBLIC_IP" ]; then echo "Missing required argument: --public-ip"; REQUIRED_MISSING=true; fi
 if [ -z "$VPS_DOMAIN" ]; then echo "Missing required argument: --domain"; REQUIRED_MISSING=true; fi

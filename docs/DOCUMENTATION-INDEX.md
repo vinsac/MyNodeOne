@@ -54,16 +54,21 @@ mynodeone/
 │   ├── operations/                   ← Cluster management
 │   │   ├── CLUSTER-MANAGEMENT.md     ← Day-to-day operations
 │   │   ├── DOMAIN-AND-PUBLIC-ACCESS.md ← Domains and public apps
+│   │   ├── MULTI-DOMAIN-SETUP.md     ← Advanced multi-domain setup
+│   │   ├── NODE-MANAGEMENT.md        ← Adding/removing nodes
 │   │   ├── scaling.md                ← Adding nodes
 │   │   └── troubleshooting.md        ← Problem solving
 │   ├── guides/                       ← User guides
 │   │   ├── GETTING-STARTED.md        ← Entry point for new users
 │   │   ├── TERMINAL-BASICS.md        ← Terminal for beginners
+│   │   ├── BEGINNER-GUIDE.md         ← Complete beginner's tutorial
+│   │   ├── ADMIN-GUIDE.md             ← Cluster administration
 │   │   └── MOBILE-ACCESS-GUIDE.md    ← Phone/tablet access
 │   ├── apps/                         ← App catalog
 │   │   └── APP-STORE.md              ← Available apps
 │   ├── reference/                    ← Reference documentation
-│   │   └── FAQ.md                    ← Common questions
+│   │   ├── FAQ.md                    ← Common questions
+│   │   └── GLOSSARY.md               ← Technical terms explained
 │   ├── security/                     ← Security documentation
 │   │   ├── SECURITY.md               ← Security overview
 │   │   ├── PASSWORD-MANAGEMENT.md    ← Credential storage
@@ -74,9 +79,11 @@ mynodeone/
 │   │   ├── GPU-SUPPORT.md            ← NVIDIA GPU setup for AI/ML workloads
 │   │   ├── NETWORKING.md             ← Tailscale and networking
 │   │   ├── REVERSE-PROXY.md          ← Traefik routing (multi-domain, SSL)
+│   │   ├── REGISTRY-ARCHITECTURE.md  ← Node registry system
+│   │   ├── STORAGE-ARCHITECTURE.md   ← Longhorn and MinIO design
 │   │   ├── SYNC-CONTROLLER-V2.md     ← Node sync (HTTP pull + heartbeat) - PRIMARY
 │   │   └── SYNC-CONTROLLER.md        ← Node sync (SSH push) - FALLBACK
-│   └── use-cases/                    ← Deployment scenarios
+│   └── use-cases/                    ← Deployment scenarios (coming soon)
 ├── manifests/                        ← Kubernetes manifests
 └── website/                          ← Dashboard
 ```
@@ -89,11 +96,13 @@ mynodeone/
 1. [TERMINAL-BASICS.md](../guides/TERMINAL-BASICS.md) - 10 min (if new to terminal)
 2. [GETTING-STARTED.md](../guides/GETTING-STARTED.md) - 5 min
 3. [README.md](../../README.md) - 5 min
-4. [INSTALLATION.md](../installation/INSTALLATION.md) - 20 min
-5. [FAQ.md](FAQ.md) - Common questions and scenarios
-6. Install: `sudo ./scripts/installation/install-mynodeone.sh`
-7. [POST_INSTALLATION_GUIDE.md](../installation/POST_INSTALLATION_GUIDE.md) - After install
-8. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Daily operations
+4. [BEGINNER-GUIDE.md](../guides/BEGINNER-GUIDE.md) - 15 min
+5. [INSTALLATION.md](../installation/INSTALLATION.md) - 20 min
+6. [FAQ.md](../reference/FAQ.md) - Common questions and scenarios
+7. Install: `sudo ./scripts/installation/install-mynodeone.sh`
+8. [POST_INSTALLATION_GUIDE.md](../installation/POST_INSTALLATION_GUIDE.md) - After install
+9. [ADMIN-GUIDE.md](../guides/ADMIN-GUIDE.md) - Daily operations
+10. [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - Cluster management
 
 ### Intermediate (Some Linux/Docker experience)
 1. [README.md](../../README.md) - 5 min
@@ -105,11 +114,9 @@ mynodeone/
 
 ### Advanced (Kubernetes experience)
 1. [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) - Technical design
-2. [REPO-STRUCTURE.md](REPO-STRUCTURE.md) - Repository layout
-3. Install: `sudo ./scripts/installation/install-mynodeone.sh`
-4. Explore: `manifests/` and `scripts/`
-5. [dev-docs/](dev-docs/) - Developer documentation
-6. [CONTRIBUTING.md](CONTRIBUTING.md) - Help improve
+2. Install: `sudo ./scripts/installation/install-mynodeone.sh`
+3. Explore: `manifests/` and `scripts/`
+4. [CONTRIBUTING.md](../CONTRIBUTING.md) - Help improve
 
 ---
 
@@ -123,7 +130,7 @@ mynodeone/
 - VPS Edge Node Setup: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 
 ### Comparisons & Alternatives
-- **MyNodeOne vs Alternatives:** [comparison-guide.md](comparison-guide.md)
+- **MyNodeOne vs Alternatives:** See [FAQ.md](../reference/FAQ.md) - Comparison questions
 - MyNodeOne vs OpenStack
 - MyNodeOne vs Proxmox
 - MyNodeOne vs Bare Kubernetes
@@ -206,6 +213,9 @@ mynodeone/
 
 ### Guides (how-to)
 - [INSTALLATION.md](../installation/INSTALLATION.md) - installation walkthrough
+- [BEGINNER-GUIDE.md](../guides/BEGINNER-GUIDE.md) - complete beginner tutorial
+- [ADMIN-GUIDE.md](../guides/ADMIN-GUIDE.md) - cluster administration
+- [MOBILE-ACCESS-GUIDE.md](../guides/MOBILE-ACCESS-GUIDE.md) - phone/tablet setup
 - [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md) - domains and public apps
 - [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - daily management
 - [scaling.md](../operations/scaling.md) - growth strategies
@@ -217,9 +227,8 @@ mynodeone/
 - [NETWORKING.md](../architecture/NETWORKING.md) - networking explained
 
 ### Reference (lookup)
-- [FAQ](reference/FAQ.md) - Q&A format
-- [FINAL-SUMMARY.md](FINAL-SUMMARY.md) - technical specs
-- [ANSWERS-TO-QUESTIONS.md](ANSWERS-TO-QUESTIONS.md) - design decisions
+- [FAQ.md](../reference/FAQ.md) - Q&A format
+- [GLOSSARY.md](../reference/GLOSSARY.md) - technical terms explained
 - `scripts/` - all automation
 
 ### Tutorials (Learning)

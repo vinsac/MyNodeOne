@@ -68,15 +68,14 @@ Internet → VPS (Public IP) → Tailscale → Toronto Nodes
 #### Longhorn - Distributed Block Storage
 - **Purpose**: Persistent volumes for databases, stateful apps
 - **How it works**:
-  - Replicates data across nodes
+  - Provides block storage with replica count of 1
   - Creates snapshots and backups
   - Provides PersistentVolumes to Kubernetes
 - **Configuration**:
   - Uses available storage on your nodes
-  - Replication factor: Adjusts based on node count
-  - Default: 1 replica (single node)
-  - With 2 nodes: 2 replicas
-  - With 3 nodes: 3 replicas
+  - **Fixed replica count: 1** (no cross-node replication)
+  - 5-day rebuild wait to avoid network traffic over limited bandwidth
+  - Optimized for home lab environments
 
 #### MinIO - Object Storage
 - **Purpose**: S3-compatible object storage
@@ -86,8 +85,9 @@ Internet → VPS (Public IP) → Tailscale → Toronto Nodes
   - Backups
   - Machine learning datasets
 - **Configuration**:
-  - Distributed mode (when multiple nodes available)
-  - Erasure coding for redundancy
+  - **Independent instances per node** (not distributed)
+  - Each node has separate MinIO with unique credentials
+  - MetalLB LoadBalancer for each instance
   - Compatible with AWS S3 SDK
 
 ### 4. Networking & Load Balancing

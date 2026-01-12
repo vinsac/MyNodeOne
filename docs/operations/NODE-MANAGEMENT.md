@@ -61,6 +61,8 @@ sudo ./scripts/installation/install-vps-edge-node.sh
 
 **See:** [`docs/installation/INSTALLATION.md#vps-edge-nodes`](../installation/INSTALLATION.md#vps-edge-nodes)
 
+**VPS Metadata Management:** See [VPS-EDGE-NODE-METADATA.md](VPS-EDGE-NODE-METADATA.md) for comprehensive VPS node metadata management, including automatic collection, updates, and troubleshooting.
+
 ### Management Laptops
 
 Setup laptops for cluster management:

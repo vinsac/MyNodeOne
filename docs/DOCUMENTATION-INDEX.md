@@ -56,6 +56,7 @@ mynodeone/
 │   │   ├── DOMAIN-AND-PUBLIC-ACCESS.md ← Domains and public apps
 │   │   ├── MULTI-DOMAIN-SETUP.md     ← Advanced multi-domain setup
 │   │   ├── NODE-MANAGEMENT.md        ← Adding/removing nodes
+│   │   ├── VPS-EDGE-NODE-METADATA.md ← VPS node metadata management
 │   │   ├── scaling.md                ← Adding nodes
 │   │   └── troubleshooting.md        ← Problem solving
 │   ├── guides/                       ← User guides
@@ -217,6 +218,7 @@ mynodeone/
 - [ADMIN-GUIDE.md](../guides/ADMIN-GUIDE.md) - cluster administration
 - [MOBILE-ACCESS-GUIDE.md](../guides/MOBILE-ACCESS-GUIDE.md) - phone/tablet setup
 - [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md) - domains and public apps
+- [VPS-EDGE-NODE-METADATA.md](../operations/VPS-EDGE-NODE-METADATA.md) - VPS node metadata management
 - [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) - daily management
 - [scaling.md](../operations/scaling.md) - growth strategies
 - [troubleshooting.md](../operations/troubleshooting.md) - problem solving

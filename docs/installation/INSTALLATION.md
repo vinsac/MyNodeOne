@@ -528,6 +528,8 @@ The orchestration automatically installs:
 - Secure Tailscale mesh network to Control Plane
 - Automated sync system for configuration updates
 
+**VPS Management:** For comprehensive VPS node metadata management, including automatic collection, updates, and troubleshooting, see [VPS-EDGE-NODE-METADATA.md](../operations/VPS-EDGE-NODE-METADATA.md).
+
 ---
 
 ## Making Services Public

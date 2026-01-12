@@ -1,6 +1,8 @@
 # Uninstalling MyNodeOne
 
-This guide covers how to remove MyNodeOne from your machines.
+This guide covers how to completely remove MyNodeOne from your machines.
+
+> **⚠️ Important:** Uninstalling will remove your cluster and applications. Always backup important data before proceeding.
 
 ---
 
@@ -61,7 +63,7 @@ Removes everything except Tailscale and formatted disks.
 sudo ./scripts/installation/uninstall-mynodeone.sh --full --yes
 ```
 
-Skips all prompts (useful for automation).
+Skips all prompts and removes everything (useful for automation).
 
 ### Remove Tailscale Too
 
@@ -85,6 +87,7 @@ Also removes Tailscale from the machine.
 | Application data (PVCs) | Removed | Removed | Kept |
 | DNS configurations | Removed | Removed | Removed |
 | Systemd services | Removed | Removed | Removed |
+| Node Agent service | Removed | Removed | Removed |
 | VPS Traefik setup | Removed | Kept | Removed |
 | Tailscale | Kept | Kept | Kept |
 | Formatted disks | Kept | Kept | Kept |
@@ -96,51 +99,62 @@ Also removes Tailscale from the machine.
 ### Control Plane
 
 ```bash
-# On control plane
+# ON CONTROL PLANE:
 sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
-- K3s server
-- All cluster data and ConfigMaps
+- K3s server and all cluster data
 - Longhorn storage system
 - Sync controller service
+- Node Agent service
+- All ConfigMaps and service registries
+- DNS configurations
+- SSH keys (root and user)
+- Credential files and join tokens
 
 ### Worker Node
 
 ```bash
-# On worker node
+# ON WORKER NODE:
 sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
 - K3s agent
-- Local storage mounts
+- Node Agent service
+- Local storage mounts (unmounted)
+- SSH configurations
+- DNS configurations
 
 ### Management Laptop
 
 ```bash
-# On management laptop
+# ON MANAGEMENT LAPTOP:
 sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
 - kubectl configuration
+- Node Agent service
 - DNS entries in /etc/hosts
 - MyNodeOne config files
+- SSH keys for cluster access
 
 ### VPS Edge Node
 
 ```bash
-# On VPS
+# ON VPS:
 sudo ./scripts/installation/uninstall-mynodeone.sh
 ```
 
 This removes:
 - Traefik reverse proxy
-- Docker containers
+- Docker containers and volumes
 - Route configurations
+- Node Agent service
 - Sync cron jobs
+- SSH configurations
 
 ---
 
@@ -149,7 +163,7 @@ This removes:
 After uninstall, you may want to manually remove:
 
 ```bash
-# Remove formatted disk data
+# Remove formatted disk data (WARNING: This permanently deletes data)
 sudo rm -rf /mnt/longhorn-disks/
 
 # Remove Tailscale
@@ -161,6 +175,13 @@ rm -rf ~/.kube
 
 # Remove Git repository
 rm -rf ~/MyNodeOne
+
+# Remove Traefik config (VPS only)
+sudo rm -rf /etc/traefik
+
+# Clean systemd services
+sudo systemctl list-units | grep mynodeone
+sudo systemctl reset-failed mynodeone-node-agent 2>/dev/null || true
 ```
 
 ---
@@ -200,15 +221,19 @@ sudo /usr/local/bin/k3s-uninstall.sh
 
 ```bash
 # Check for remaining processes
-ps aux | grep -E "k3s|containerd|kubelet"
+ps aux | grep -E "k3s|containerd|kubelet|mynodeone-node-agent"
 
 # Kill if necessary
-sudo killall containerd-shim-runc-v2 2>/dev/null
+sudo killall containerd-shim-runc-v2 2>/dev/null || true
+sudo killall mynodeone-node-agent 2>/dev/null || true
 ```
 
 ### Stuck Mounts
 
 ```bash
-# Force unmount
-sudo umount -l /mnt/longhorn-disks/*
+# Force unmount Longhorn disks
+sudo umount -l /mnt/longhorn-disks/* 2>/dev/null || true
+
+# Remove from fstab if persistent
+sudo sed -i '/longhorn-disks/d' /etc/fstab 2>/dev/null || true
 ```

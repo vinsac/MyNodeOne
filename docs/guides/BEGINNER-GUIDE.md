@@ -530,9 +530,9 @@ Might need to:
 - [ ] Troubleshooting Common Issues
 
 ### Written Guides
-- [APP-STORE.md](APP-STORE.md) - Complete app catalog
-- [INSTALLATION.md](INSTALLATION.md) - Installation details
-- [FAQ.md](FAQ.md) - Frequently asked questions
+- [../apps/APP-STORE.md](../apps/APP-STORE.md) - Complete app catalog
+- [../installation/INSTALLATION.md](../installation/INSTALLATION.md) - Installation details
+- [../reference/FAQ.md](../reference/FAQ.md) - Frequently asked questions
 
 ### Community
 - GitHub Discussions: Ask questions

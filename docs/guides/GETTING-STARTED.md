@@ -28,19 +28,19 @@ This guide teaches you:
 
 - If you are completely new to the terminal, start with [TERMINAL-BASICS.md](TERMINAL-BASICS.md).
 - When you are ready to install, follow [INSTALLATION.md](../installation/INSTALLATION.md) for the full step-by-step guide.
-- After installation, use [operations.md](operations.md) and [../reference/FAQ.md](../reference/FAQ.md) to run and troubleshoot your cluster.
+- After installation, use [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) and [../reference/FAQ.md](../reference/FAQ.md) to run and troubleshoot your cluster.
 - For a complete documentation map, see [../reference/DOCUMENTATION-INDEX.md](../reference/DOCUMENTATION-INDEX.md).
 
 ## Networking
 
 MyNodeOne uses Tailscale by default for secure networking between machines. Installation will install and configure Tailscale for you.
 
-For details, alternatives, and background, see [../reference/networking.md](../reference/networking.md).
+For details, alternatives, and background, see [NETWORKING.md](../architecture/NETWORKING.md).
 
 ## If you get stuck
 
-- Check [troubleshooting.md](troubleshooting.md).
+- Check [../operations/troubleshooting.md](../operations/troubleshooting.md).
 - Check [../reference/FAQ.md](../reference/FAQ.md).
-- Look up unfamiliar terms in [GLOSSARY.md](../reference/GLOSSARY.md).
+- Look up unfamiliar terms in [../reference/GLOSSARY.md](../reference/GLOSSARY.md).
 - If you still need help, open an issue on GitHub.
 

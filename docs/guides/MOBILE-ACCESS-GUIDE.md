@@ -438,9 +438,10 @@ Data used: ~50MB
 **Use mobile apps**
 - Immich: Photo backup
 - Jellyfin: Stream media
-- Bitwarden: Password manager
 - Nextcloud: File sync
 - Mattermost: Team chat
+- LLM Chat: AI assistant
+- LLM API: AI applications
 
 **Share with family**
 - Create accounts for them

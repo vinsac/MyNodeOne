@@ -320,9 +320,9 @@ You need internet to:
 
 If something goes wrong, do the following:
 1. Read the error message
-2. Check [troubleshooting.md](../troubleshooting.md)
+2. Check [../operations/troubleshooting.md](../operations/troubleshooting.md)
 3. Ask ChatGPT: "I got this error with MyNodeOne: [paste error]"
-4. Check [FAQ](../reference/FAQ.md)
+4. Check [../reference/FAQ.md](../reference/FAQ.md)
 5. Open a GitHub Issue with the error message
 
 ---
@@ -336,16 +336,16 @@ You now know:
 - What to expect when running commands
 - How to navigate and fix mistakes
 
-**Next step:** Go to [INSTALLATION.md](INSTALLATION.md) and start installing!
+**Next step:** Go to [../installation/INSTALLATION.md](../installation/INSTALLATION.md) and start installing!
 
 ---
 
 ## Getting help
 
 **If you're stuck:**
-- Check [GLOSSARY.md](../reference/GLOSSARY.md) for technical terms
+- Check [../reference/GLOSSARY.md](../reference/GLOSSARY.md) for technical terms
 - Ask ChatGPT, Gemini, or Claude
-- Read [FAQ](../reference/FAQ.md)
+- Read [../reference/FAQ.md](../reference/FAQ.md)
 - Open a GitHub Issue (we're friendly!)
 
 **Remember:** Everyone was a beginner once. Take your time, read carefully, and don't be afraid to ask for help!
@@ -371,8 +371,8 @@ Go up One Level:      cd ..
 
 ---
 
-**Ready to start?** Go to → [INSTALLATION.md](INSTALLATION.md)
+**Ready to start?** Go to → [../installation/INSTALLATION.md](../installation/INSTALLATION.md)
 
-**Need simpler explanations?** See → [GLOSSARY.md](../reference/GLOSSARY.md)
+**Need simpler explanations?** See → [../reference/GLOSSARY.md](../reference/GLOSSARY.md)
 
-**Questions?** Check → [FAQ](../reference/FAQ.md)
+**Questions?** Check → [../reference/FAQ.md](../reference/FAQ.md)

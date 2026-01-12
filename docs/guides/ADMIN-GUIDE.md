@@ -326,7 +326,7 @@ Output shows:
 
 ### Adding a New Node
 
-To add a new node (such as a VPS, Worker, or another Management Laptop), follow the relevant sections in the [**Installation Guide**](./INSTALLATION.md). The setup scripts will:
+To add a new node (such as a VPS, Worker, or another Management Laptop), follow the relevant sections in the [**Installation Guide**](../installation/INSTALLATION.md). The setup scripts will:
 1. Install the Node Agent automatically
 2. Configure it to connect to your control plane
 3. Start sending heartbeats immediately

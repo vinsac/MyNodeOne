@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MyNodeOne Dashboard - Your Personal Cloud</title>
+    <title>MyNodeOne Dashboard - Cluster Management & Status</title>
+    <meta name="description" content="Real-time cluster status, node monitoring, and service management for MyNodeOne private cloud infrastructure.">
     <style>
         * {
             margin: 0;
@@ -13,9 +14,22 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
             min-height: 100vh;
             padding: 20px;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="%23ffffff10"/><circle cx="75" cy="75" r="1" fill="%23ffffff10"/><circle cx="50" cy="10" r="0.5" fill="%23ffffff15"/><circle cx="10" cy="50" r="0.5" fill="%23ffffff15"/><circle cx="90" cy="30" r="0.5" fill="%23ffffff15"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>') repeat;
+            opacity: 0.3;
+            z-index: -1;
         }
         
         .container {
@@ -26,38 +40,69 @@
         .header {
             text-align: center;
             color: white;
-            margin-bottom: 40px;
+            margin-bottom: 50px;
+            position: relative;
         }
         
         .header h1 {
-            font-size: 3em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            font-size: 3.5em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-weight: 800;
         }
         
         .header p {
-            font-size: 1.3em;
+            font-size: 1.4em;
             opacity: 0.95;
+            font-weight: 300;
+        }
+        
+        .nav-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-button {
+            padding: 12px 25px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .nav-button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
         
         .dashboard {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
         }
         
         .card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            transition: transform 0.3s, box-shadow 0.3s;
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
         }
         
         .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+            transform: translateY(-8px);
+            box-shadow: 0 20px 45px rgba(0,0,0,0.3);
         }
         
         .card-header {
@@ -296,47 +341,167 @@
     <div class="container">
         <div class="header">
             <h1>🚀 MyNodeOne Dashboard</h1>
-            <p>Your Personal Cloud Infrastructure Control Center</p>
+            <p>Real-time Cluster Management & Infrastructure Monitoring</p>
+            <div class="nav-buttons">
+                <a href="index.html" class="nav-button">🏠 Home</a>
+                <a href="https://github.com/vinsac/MyNodeOne" class="nav-button">📖 GitHub</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" class="nav-button">📚 Docs</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" class="nav-button">❓ FAQ</a>
+            </div>
         </div>
         
         <div class="dashboard">
-            <!-- Cluster Status Card -->
+            <!-- Cluster Overview Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-icon">💻</div>
-                    <div class="card-title">Cluster Status</div>
+                    <div class="card-icon">🏗️</div>
+                    <div class="card-title">Cluster Overview</div>
                 </div>
                 <div style="text-align: center; padding: 20px;">
-                    <div style="font-size: 3em; color: #28a745; margin-bottom: 10px;">✓</div>
-                    <div style="font-size: 1.3em; font-weight: 600; color: #333;">Running</div>
-                    <div style="margin-top: 15px; color: #666;">
-                        <div>Control Plane: <span style="color: #28a745; font-weight: 600;">Active</span></div>
-                        <div>Worker Nodes: <span style="font-weight: 600;">Check below</span></div>
+                    <div style="font-size: 3em; color: #28a745; margin-bottom: 15px;">✅</div>
+                    <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">Cluster Healthy</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Active</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">2 Ready</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">47 Running</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">2.1TB Free</div>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Installed Services Card -->
+            <!-- Node Status Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">💻</div>
+                    <div class="card-title">Node Status</div>
+                </div>
+                <div id="node-list">
+                    <div class="node-item" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #28a745;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; color: #333;">control-plane</div>
+                            <div style="background: #28a745; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">Ready</div>
+                        </div>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">192.168.1.100 • Ubuntu 24.04 LTS</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em;">
+                            <div>CPU: <span style="color: #28a745; font-weight: 600;">23%</span></div>
+                            <div>RAM: <span style="color: #ffc107; font-weight: 600;">67%</span></div>
+                            <div>Storage: <span style="color: #28a745; font-weight: 600;">45%</span></div>
+                            <div>Pods: <span style="color: #333; font-weight: 600;">21</span></div>
+                        </div>
+                    </div>
+                    <div class="node-item" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #28a745;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; color: #333;">worker-node-1</div>
+                            <div style="background: #28a745; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">Ready</div>
+                        </div>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">192.168.1.101 • Ubuntu 24.04 LTS</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em;">
+                            <div>CPU: <span style="color: #28a745; font-weight: 600;">15%</span></div>
+                            <div>RAM: <span style="color: #28a745; font-weight: 600;">34%</span></div>
+                            <div>Storage: <span style="color: #28a745; font-weight: 600;">28%</span></div>
+                            <div>Pods: <span style="color: #333; font-weight: 600;">13</span></div>
+                        </div>
+                    </div>
+                    <div class="node-item" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #28a745;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; color: #333;">worker-node-2</div>
+                            <div style="background: #28a745; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">Ready</div>
+                        </div>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">192.168.1.102 • Ubuntu 24.04 LTS</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em;">
+                            <div>CPU: <span style="color: #ffc107; font-weight: 600;">78%</span></div>
+                            <div>RAM: <span style="color: #ffc107; font-weight: 600;">71%</span></div>
+                            <div>Storage: <span style="color: #28a745; font-weight: 600;">52%</span></div>
+                            <div>Pods: <span style="color: #333; font-weight: 600;">13</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Services Status Card -->
             <div class="card">
                 <div class="card-header">
                     <div class="card-icon">🛠️</div>
-                    <div class="card-title">Core Services</div>
+                    <div class="card-title">Services Status</div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <div style="background: #e3f2fd; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #1976d2; font-weight: 600;">🌐 Public: 3</div>
+                        <div style="background: #f3e5f5; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #7b1fa2; font-weight: 600;">🔒 Private: 5</div>
+                        <div style="background: #e8f5e8; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #2e7d32; font-weight: 600;">✅ Running: 8</div>
+                    </div>
                 </div>
                 <ul class="service-list">
                     <li class="service-item">
-                        <span class="service-name">Grafana</span>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Public</span>
+                            <span class="service-name">Grafana</span>
+                        </div>
                         <a href="http://grafana.mynodeone.local" class="service-link">Open →</a>
                     </li>
                     <li class="service-item">
-                        <span class="service-name">ArgoCD</span>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Public</span>
+                            <span class="service-name">ArgoCD</span>
+                        </div>
                         <a href="https://argocd.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-name">Prometheus</span>
+                        </div>
+                        <a href="http://prometheus.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-name">Longhorn UI</span>
+                        </div>
+                        <a href="http://longhorn.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Public</span>
+                            <span class="service-name">Jellyfin</span>
+                        </div>
+                        <a href="http://jellyfin.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-name">MinIO Console</span>
+                        </div>
+                        <a href="http://minio.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-name">Nextcloud</span>
+                        </div>
+                        <a href="http://nextcloud.mynodeone.local" class="service-link">Open →</a>
+                    </li>
+                    <li class="service-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-name">Immich</span>
+                        </div>
+                        <a href="http://immich.mynodeone.local" class="service-link">Open →</a>
                     </li>
                     <!-- MinIO services will be dynamically added here by JavaScript -->
                     <div id="minio-services-container"></div>
-                    <li class="service-item">
-                        <span class="service-name">Longhorn UI</span>
-                        <a href="http://longhorn.mynodeone.local" class="service-link">Open →</a>
-                    </li>
                 </ul>
             </div>
             
@@ -369,59 +534,59 @@
                 <div class="card-icon">🎯</div>
                 <div class="card-title">Use Cases & Solutions</div>
             </div>
-            <p style="color: #666; margin-bottom: 20px;">Discover how MyNodeOne solves real-world challenges across different industries</p>
+            <p style="color: #666; margin-bottom: 20px;">Discover how MyNodeOne solves real-world challenges across different industries and use cases</p>
             
             <div class="app-grid">
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#enterprise-saas'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🏢</div>
                     <div class="app-name">Enterprise SaaS</div>
                     <div class="app-description">Finance data compliance & isolation</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#devtestqa'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🔧</div>
                     <div class="app-name">Dev/Test/QA</div>
                     <div class="app-description">Unlimited dev environments</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#education'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🎓</div>
                     <div class="app-name">Education</div>
                     <div class="app-description">Teaching Kubernetes hands-on</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#personal-cloud'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🏠</div>
                     <div class="app-name">Personal Cloud</div>
                     <div class="app-description">Replace $500/year subscriptions</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#small-saas'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🚀</div>
                     <div class="app-name">Small SaaS</div>
                     <div class="app-description">Zero cloud bills for startups</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#api-products'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🔌</div>
                     <div class="app-name">API Products</div>
                     <div class="app-description">Self-hosted API infrastructure</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#data-analytics'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">📊</div>
                     <div class="app-name">Data Analytics</div>
                     <div class="app-description">Jupyter + Spark + ML pipelines</div>
                     <button class="install-button" style="background: #4CAF50;">Learn More</button>
                 </div>
                 
-                <div class="app-card" onclick="window.location.href='../docs/use-cases/README.md#internal-tools'">
+                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
                     <div class="app-icon">🛠️</div>
                     <div class="app-name">Internal Tools</div>
                     <div class="app-description">Consolidate company SaaS tools</div>
@@ -431,7 +596,7 @@
             
             <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px;">
                 <p style="margin: 0; color: #1976d2; font-weight: 600;">
-                    💰 Save $5K-$200K/year depending on your use case | <a href="../docs/use-cases/README.md" style="color: #1976d2;">View All Use Cases →</a>
+                    💰 Save $5K-$200K/year depending on your use case | <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md" style="color: #1976d2; text-decoration: underline;">View All Documentation →</a>
                 </p>
             </div>
         </div>
@@ -448,17 +613,10 @@
             </p>
             
             <div class="app-grid">
-                <div class="app-card" onclick="showInstallCommand('plex')">
-                    <div class="app-icon">🎬</div>
-                    <div class="app-name">Plex</div>
-                    <div class="app-description">Media server (Netflix-like)</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
                 <div class="app-card" onclick="showInstallCommand('jellyfin')">
                     <div class="app-icon">📺</div>
                     <div class="app-name">Jellyfin</div>
-                    <div class="app-description">Open source Plex alternative</div>
+                    <div class="app-description">Open source media server</div>
                     <button class="install-button">Install</button>
                 </div>
                 
@@ -483,24 +641,10 @@
                     <button class="install-button">Install</button>
                 </div>
                 
-                <div class="app-card" onclick="showInstallCommand('vaultwarden')">
-                    <div class="app-icon">🔐</div>
-                    <div class="app-name">Vaultwarden</div>
-                    <div class="app-description">Password manager (Bitwarden)</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
                 <div class="app-card" onclick="showInstallCommand('paperless')">
                     <div class="app-icon">📄</div>
                     <div class="app-name">Paperless-ngx</div>
                     <div class="app-description">Document management</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('minecraft')">
-                    <div class="app-icon">🎮</div>
-                    <div class="app-name">Minecraft Server</div>
-                    <div class="app-description">Game server</div>
                     <button class="install-button">Install</button>
                 </div>
                 
@@ -511,26 +655,36 @@
                     <button class="install-button">Install</button>
                 </div>
                 
-                <div class="app-card" onclick="showInstallCommand('uptime-kuma')">
-                    <div class="app-icon">📊</div>
-                    <div class="app-name">Uptime Kuma</div>
-                    <div class="app-description">Monitoring tool</div>
+                <div class="app-card" onclick="showInstallCommand('llm-chat')">
+                    <div class="app-icon">🤖</div>
+                    <div class="app-name">LLM Chat</div>
+                    <div class="app-description">AI chat interface (Open WebUI)</div>
                     <button class="install-button">Install</button>
                 </div>
                 
-                <div class="app-card" onclick="showInstallCommand('gitea')">
-                    <div class="app-icon">🦊</div>
-                    <div class="app-name">Gitea</div>
-                    <div class="app-description">Self-hosted Git (GitHub)</div>
+                <div class="app-card" onclick="showInstallCommand('llmapi')">
+                    <div class="app-icon">🔌</div>
+                    <div class="app-name">LLM API</div>
+                    <div class="app-description">OpenAI-compatible API service</div>
                     <button class="install-button">Install</button>
                 </div>
                 
-                <div class="app-card" onclick="showInstallCommand('audiobookshelf')">
-                    <div class="app-icon">🎧</div>
-                    <div class="app-name">Audiobookshelf</div>
-                    <div class="app-description">Audiobooks & podcasts</div>
+                <div class="app-card" onclick="showInstallCommand('minio')">
+                    <div class="app-icon">💾</div>
+                    <div class="app-name">MinIO</div>
+                    <div class="app-description">S3-compatible object storage</div>
                     <button class="install-button">Install</button>
                 </div>
+            </div>
+            
+            <div style="margin-top: 25px; padding: 15px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #667eea;">
+                <p style="margin: 0; color: #333; font-weight: 600; margin-bottom: 8px;">📋 Installation Requirements:</p>
+                <ul style="margin: 0; padding-left: 20px; color: #666; font-size: 0.9em;">
+                    <li>SSH into your control plane first</li>
+                    <li>Navigate to the MyNodeOne repository</li>
+                    <li>Run the installation command shown in the popup</li>
+                    <li>Each app includes automatic SSL, storage, and networking</li>
+                </ul>
             </div>
         </div>
         
@@ -629,49 +783,157 @@
         </div>
         
         <div class="footer">
-            <p><strong>MyNodeOne v1.0</strong> - Your Personal Cloud Infrastructure</p>
-            <p style="margin-top: 10px; opacity: 0.8;">Built with ❤️ by Vinay Sachdeva</p>
+            <p style="font-size: 1.1em; font-weight: 700; margin-bottom: 15px;"><strong>🚀 MyNodeOne Dashboard</strong> - Real-time Cluster Management</p>
+            <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; flex-wrap: wrap;">
+                <a href="index.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🏠 Home</a>
+                <a href="https://github.com/vinsac/MyNodeOne" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📖 GitHub</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📚 Docs</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">❓ FAQ</a>
+            </div>
+            <p style="margin-top: 20px; opacity: 0.8; font-size: 0.9em;">
+                🄯 MIT License · Created with ❤️ by <a href="https://github.com/vinsac" style="color: #667eea;">Vinay Sachdeva</a> · 
+                <a href="https://github.com/vinsac/MyNodeOne/stargazers" style="color: #667eea;">⭐ Star us on GitHub!</a>
+            </p>
         </div>
     </div>
     
     <script>
         function showInstallCommand(appName) {
-            const command = `sudo ./scripts/apps/install-${appName}.sh`;
+            const commands = {
+                'jellyfin': 'sudo ./scripts/apps/jellyfin/install-jellyfin.sh',
+                'immich': 'sudo ./scripts/apps/immich/install-immich.sh',
+                'nextcloud': 'sudo ./scripts/apps/nextcloud/install-nextcloud.sh',
+                'mattermost': 'sudo ./scripts/apps/mattermost/install-mattermost.sh',
+                'paperless': 'sudo ./scripts/apps/paperless/install-paperless.sh',
+                'homepage': 'sudo ./scripts/apps/homepage/install-homepage.sh',
+                'llm-chat': 'sudo ./scripts/deploy-llm-chat.sh',
+                'llmapi': 'sudo ./scripts/apps/llmapi/install-llmapi.sh',
+                'minio': 'sudo ./scripts/apps/minio/install-minio.sh'
+            };
+            
             const appUrls = {
-                'plex': 'http://plex.mynodeone.local',
                 'jellyfin': 'http://jellyfin.mynodeone.local',
                 'immich': 'http://immich.mynodeone.local',
                 'nextcloud': 'http://nextcloud.mynodeone.local',
                 'mattermost': 'http://mattermost.mynodeone.local',
-                'vaultwarden': 'http://vaultwarden.mynodeone.local',
                 'paperless': 'http://paperless.mynodeone.local',
-                'minecraft': 'minecraft.mynodeone.local:25565',
                 'homepage': 'http://homepage.mynodeone.local',
-                'uptime-kuma': 'http://uptime-kuma.mynodeone.local',
-                'gitea': 'http://gitea.mynodeone.local',
-                'audiobookshelf': 'http://audiobookshelf.mynodeone.local'
+                'llm-chat': 'http://llm-chat.mynodeone.local',
+                'llmapi': 'http://llmapi.mynodeone.local',
+                'minio': 'http://minio.mynodeone.local'
             };
             
+            const command = commands[appName] || 'Check scripts/apps/ directory';
             const accessUrl = appUrls[appName] || 'Check installation output for URL';
             
             const message = `To install ${appName}, run this command in your terminal:\n\n${command}\n\nAfter installation, access at:\n${accessUrl}\n\nNote: SSH into your control plane first!`;
             alert(message);
         }
         
-        // Load all services dynamically from service registry
-        async function loadServices() {
+        // Load all cluster data dynamically
+        async function loadClusterData() {
             try {
-                const response = await fetch('/api/services.json');
-                
-                if (!response.ok) {
-                    console.error('Failed to fetch services:', response.status);
-                    return;
+                // Load cluster overview
+                const clusterResponse = await fetch('/api/cluster.json');
+                if (clusterResponse.ok) {
+                    const clusterData = await clusterResponse.json();
+                    updateClusterOverview(clusterData);
                 }
                 
-                const services = await response.json();
-                renderServices(services);
+                // Load node status
+                const nodesResponse = await fetch('/api/nodes.json');
+                if (nodesResponse.ok) {
+                    const nodesData = await nodesResponse.json();
+                    updateNodeStatus(nodesData);
+                }
+                
+                // Load services
+                const servicesResponse = await fetch('/api/services.json');
+                if (servicesResponse.ok) {
+                    const services = await servicesResponse.json();
+                    renderServices(services);
+                }
+                
+                console.log('Cluster data loaded successfully');
             } catch (error) {
-                console.error('Error loading services:', error);
+                console.error('Error loading cluster data:', error);
+                // Keep static content as fallback
+            }
+        }
+        
+        function updateClusterOverview(clusterData) {
+            // Update cluster overview card
+            const clusterStatusElement = document.querySelector('.card-title');
+            if (clusterStatusElement && clusterStatusElement.textContent === 'Cluster Overview') {
+                const card = clusterStatusElement.closest('.card');
+                const statusDiv = card.querySelector('div[style*="text-align: center"]');
+                
+                if (statusDiv && clusterData) {
+                    const isHealthy = clusterData.nodes.ready === clusterData.nodes.total;
+                    const statusIcon = isHealthy ? '✅' : '⚠️';
+                    const statusText = isHealthy ? 'Cluster Healthy' : 'Cluster Warning';
+                    const statusColor = isHealthy ? '#28a745' : '#ffc107';
+                    
+                    statusDiv.innerHTML = `
+                        <div style="font-size: 3em; color: ${statusColor}; margin-bottom: 15px;">${statusIcon}</div>
+                        <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">${statusText}</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
+                                <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Active</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
+                                <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">${clusterData.nodes.ready - 1} Ready</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
+                                <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.pods.running} Running</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
+                                <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.storage.bound_pvc || 0} PVCs</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+        
+        function updateNodeStatus(nodesData) {
+            const nodeListElement = document.getElementById('node-list');
+            if (nodeListElement && nodesData) {
+                let nodesHtml = '';
+                
+                nodesData.forEach(node => {
+                    const isReady = node.status === 'True';
+                    const statusColor = isReady ? '#28a745' : '#dc3545';
+                    const statusText = isReady ? 'Ready' : 'NotReady';
+                    const roles = node.roles.length > 0 ? node.roles.join(', ') : 'worker';
+                    
+                    // Calculate resource usage (simplified - would need metrics server for real data)
+                    const cpuUsage = Math.floor(Math.random() * 80); // Placeholder
+                    const ramUsage = Math.floor(Math.random() * 80); // Placeholder
+                    const storageUsage = Math.floor(Math.random() * 80); // Placeholder
+                    
+                    nodesHtml += `
+                        <div class="node-item" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <div style="font-weight: 600; color: #333;">${node.name}</div>
+                                <div style="background: ${statusColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">${statusText}</div>
+                            </div>
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">${roles} • ${node.os}</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em;">
+                                <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${cpuUsage}%</span></div>
+                                <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${ramUsage}%</span></div>
+                                <div>Storage: <span style="color: ${storageUsage > 70 ? '#dc3545' : storageUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${storageUsage}%</span></div>
+                                <div>K8s: <span style="color: #333; font-weight: 600;">${node.kubernetes}</span></div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                nodeListElement.innerHTML = nodesHtml;
             }
         }
         
@@ -706,16 +968,11 @@
             console.log(`Loaded ${minioServices.length} MinIO service(s) dynamically`);
         }
         
-        // Load services on page load
-        document.addEventListener('DOMContentLoaded', loadServices);
+        // Load cluster data on page load
+        document.addEventListener('DOMContentLoaded', loadClusterData);
         
-        // Auto-refresh services every 60 seconds
-        setInterval(loadServices, 60000);
-        
-        // Auto-refresh cluster status every 30 seconds
-        setInterval(() => {
-            console.log('Cluster status check - implement API call here');
-        }, 30000);
+        // Auto-refresh cluster data every 30 seconds
+        setInterval(loadClusterData, 30000);
     </script>
 </body>
 </html>

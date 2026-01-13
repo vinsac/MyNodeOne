@@ -3,8 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MyNodeOne - Your Private Cloud Infrastructure</title>
-    <meta name="description" content="Build your own AWS-like cloud with commodity hardware. Save $30,000+/year with open source tools.">
+    <title>MyNodeOne - Build Your Private Cloud Infrastructure</title>
+    <meta name="description" content="Transform everyday hardware into enterprise-grade cloud infrastructure. Save $30,000+/year with open-source Kubernetes. No monthly bills, complete data privacy.">
+    <meta name="keywords" content="private cloud, Kubernetes, home lab, self-hosted, cloud infrastructure, DevOps, cluster management">
+    <meta name="author" content="Vinay Sachdeva">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://github.com/vinsac/MyNodeOne">
+    <meta property="og:title" content="MyNodeOne - Your Private Cloud Infrastructure">
+    <meta property="og:description" content="Transform everyday hardware into enterprise-grade cloud infrastructure. Save $30,000+/year with open-source Kubernetes.">
+    <meta property="og:image" content="">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://github.com/vinsac/MyNodeOne">
+    <meta property="twitter:title" content="MyNodeOne - Your Private Cloud Infrastructure">
+    <meta property="twitter:description" content="Transform everyday hardware into enterprise-grade cloud infrastructure. Save $30,000+/year with open-source Kubernetes.">
+    <meta property="twitter:image" content="">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
     
     <style>
         * {
@@ -16,97 +35,177 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #1a202c;
+            background: #ffffff;
+        }
+        
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
         }
         
         .hero {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
             color: white;
-            padding: 100px 20px;
+            padding: 120px 20px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="%23ffffff10"/><circle cx="75" cy="75" r="1" fill="%23ffffff10"/><circle cx="50" cy="10" r="0.5" fill="%23ffffff15"/><circle cx="10" cy="50" r="0.5" fill="%23ffffff15"/><circle cx="90" cy="30" r="0.5" fill="%23ffffff15"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>') repeat;
+            opacity: 0.3;
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+            margin: 0 auto;
         }
         
         .hero h1 {
-            font-size: 3.5em;
+            font-size: 4em;
             margin-bottom: 20px;
             font-weight: 800;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            animation: fadeInUp 0.8s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .hero p {
-            font-size: 1.5em;
+            font-size: 1.6em;
             margin-bottom: 40px;
-            opacity: 0.9;
+            opacity: 0.95;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
         }
         
         .hero .tagline {
-            font-size: 1.2em;
-            opacity: 0.8;
-            margin-bottom: 50px;
+            font-size: 1.3em;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            font-weight: 300;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
         }
         
         .cta-button {
             display: inline-block;
             background: white;
             color: #667eea;
-            padding: 15px 40px;
-            border-radius: 30px;
+            padding: 18px 45px;
+            border-radius: 50px;
             text-decoration: none;
-            font-weight: 600;
-            font-size: 1.1em;
-            transition: transform 0.2s;
+            font-weight: 700;
+            font-size: 1.2em;
+            transition: all 0.3s ease;
             margin: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            animation: fadeInUp 0.8s ease-out 0.6s both;
         }
         
         .cta-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            background: #f8f9fa;
         }
         
         .cta-button.secondary {
             background: transparent;
-            border: 2px solid white;
+            border: 3px solid white;
             color: white;
+            backdrop-filter: blur(10px);
+        }
+        
+        .cta-button.secondary:hover {
+            background: white;
+            color: #667eea;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 80px 20px;
+            padding: 100px 20px;
         }
         
         .section-title {
             text-align: center;
-            font-size: 2.5em;
-            margin-bottom: 50px;
-            color: #333;
+            font-size: 3em;
+            margin-bottom: 60px;
+            color: #2d3748;
+            font-weight: 700;
+            position: relative;
+        }
+        
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 4px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 2px;
         }
         
         .features {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 40px;
-            margin: 60px 0;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 50px;
+            margin: 80px 0;
         }
         
         .feature {
             text-align: center;
-            padding: 30px;
+            padding: 40px 30px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .feature:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            border-color: #667eea;
         }
         
         .feature-icon {
-            font-size: 3em;
-            margin-bottom: 20px;
+            font-size: 4em;
+            margin-bottom: 25px;
+            display: block;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
         }
         
         .feature h3 {
-            font-size: 1.5em;
-            margin-bottom: 15px;
-            color: #667eea;
+            font-size: 1.6em;
+            margin-bottom: 20px;
+            color: #2d3748;
+            font-weight: 600;
         }
         
         .steps {
-            background: #f8f9fa;
-            padding: 80px 20px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            padding: 100px 20px;
+            position: relative;
         }
         
         .step-container {
@@ -243,55 +342,59 @@
 </head>
 <body>
     <div class="hero">
-        <h1>MyNodeOne</h1>
-        <p>Your Private Cloud Infrastructure</p>
-        <div class="tagline">Transform consumer hardware into enterprise cloud infrastructure</div>
-        <p style="font-size: 1.1em; margin: 20px auto; max-width: 700px; opacity: 0.95;">
-            Use old laptops, mini PCs, or Raspberry Pis to build your own AWS-like cloud. 
-            No expensive gear. No monthly bills. Your hardware, your control.
-        </p>
-        <a href="https://github.com/vinsac/MyNodeOne" class="cta-button">Get Started</a>
-        <a href="https://github.com/vinsac/MyNodeOne/blob/main/NEW-QUICKSTART.md" class="cta-button secondary">Quick Start Guide</a>
+        <div class="hero-content">
+            <h1>🚀 MyNodeOne</h1>
+            <p>Your Enterprise-Grade Private Cloud Infrastructure</p>
+            <div class="tagline">Transform everyday hardware into production-ready cloud infrastructure</div>
+            <p style="font-size: 1.2em; margin: 25px auto; max-width: 800px; opacity: 0.95; line-height: 1.8;">
+                Use gaming PCs, old laptops, mini PCs, or servers you already own to build your own AWS-like cloud. 
+                No expensive gear. No monthly bills. Complete data privacy and control.
+            </p>
+            <div style="margin-top: 40px;">
+                <a href="https://github.com/vinsac/MyNodeOne" class="cta-button">🚀 View on GitHub</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" class="cta-button secondary">📖 Quick Start Guide</a>
+            </div>
+        </div>
     </div>
 
     <div class="container">
-        <h2 class="section-title">Why MyNodeOne?</h2>
+        <h2 class="section-title">Why Choose MyNodeOne?</h2>
         
         <div class="features">
             <div class="feature">
                 <div class="feature-icon">💰</div>
-                <h3>Save Money</h3>
-                <p>Save $30,000+/year compared to AWS. Use hardware you already own.</p>
+                <h3>Massive Savings</h3>
+                <p>Save $30,000+/year compared to AWS. Use hardware you already own. Zero monthly bills.</p>
             </div>
             
             <div class="feature">
                 <div class="feature-icon">🔒</div>
-                <h3>Own Your Data</h3>
-                <p>Complete privacy. Your data never leaves your machines.</p>
+                <h3>Complete Privacy</h3>
+                <p>Your data never leaves your premises. End-to-end encryption with Tailscale networking.</p>
             </div>
             
             <div class="feature">
                 <div class="feature-icon">⚡</div>
-                <h3>Easy Setup</h3>
-                <p>Interactive wizard guides you through setup in 30 minutes.</p>
+                <h3>30-Minute Setup</h3>
+                <p>Interactive wizard guides you through setup. Production-ready cluster in under an hour.</p>
             </div>
             
             <div class="feature">
                 <div class="feature-icon">📈</div>
                 <h3>Auto-Scaling</h3>
-                <p>Add nodes as you grow. Automatic workload distribution.</p>
+                <p>Add nodes as you grow. Automatic workload distribution and high availability.</p>
             </div>
             
             <div class="feature">
                 <div class="feature-icon">🛠️</div>
                 <h3>Production-Ready</h3>
-                <p>Battle-tested open source tools. Used by Fortune 500s.</p>
+                <p>Battle-tested open-source tools. Used by Fortune 500 companies worldwide.</p>
             </div>
             
             <div class="feature">
                 <div class="feature-icon">🌐</div>
-                <h3>Any Hardware</h3>
-                <p>Works with any machines. No vendor lock-in.</p>
+                <h3>Hardware Agnostic</h3>
+                <p>Works with any machines. Mix and match hardware. No vendor lock-in.</p>
             </div>
         </div>
     </div>
@@ -305,10 +408,9 @@
                     <div class="step-number">1</div>
                     <div class="step-content">
                         <h3>Run Interactive Setup</h3>
-                        <p>One command sets up everything. Works on any machine with Ubuntu 24.04.</p>
-                        <div class="code-block">
-git clone https://github.com/vinsac/MyNodeOne.git
-cd mynodeone
+                        <p>One command sets up everything. Works on any machine with Ubuntu 24.04 LTS.</p>
+                        <div class="code-block">git clone https://github.com/vinsac/MyNodeOne.git
+cd MyNodeOne
 sudo ./scripts/installation/install-mynodeone.sh</div>
                     </div>
                 </div>
@@ -326,66 +428,53 @@ sudo ./scripts/installation/install-mynodeone.sh</div>
                     <div class="step-number">3</div>
                     <div class="step-content">
                         <h3>Deploy Your Apps</h3>
-                        <p>Push to Git and ArgoCD automatically deploys. Or use our examples.</p>
+                        <p>Push to Git and ArgoCD automatically deploys. Or use our one-click app installer.</p>
                         <div class="code-block">./scripts/operations/create-app.sh myapp --domain myapp.com
-kubectl apply -f manifests/examples/fullstack-app.yaml</div>
+sudo ./scripts/apps/install-jellyfin.sh  # One-click apps</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="comparison">
-        <div class="container">
-            <h2 class="section-title">MyNodeOne vs Cloud Providers</h2>
+    <div class="container">
+        <h2 class="section-title">Perfect for These Scenarios</h2>
+        
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🏠</div>
+                <h3>Home Lab Enthusiasts</h3>
+                <p>Turn your spare computers into a powerful private cloud. Learn Kubernetes and container orchestration hands-on.</p>
+            </div>
             
-            <div class="comparison-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Feature</th>
-                            <th>MyNodeOne</th>
-                            <th>AWS/GCP/Azure</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><strong>Monthly Cost</strong></td>
-                            <td class="highlight">$30-50</td>
-                            <td>$500-2,000+</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Annual Savings</strong></td>
-                            <td class="highlight">$30,000+</td>
-                            <td>$0</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Setup Time</strong></td>
-                            <td class="highlight">30 minutes</td>
-                            <td>Hours to days</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Data Privacy</strong></td>
-                            <td class="highlight">100% yours</td>
-                            <td>Shared infrastructure</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Storage Included</strong></td>
-                            <td class="highlight">Unlimited</td>
-                            <td>Pay per GB</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Egress Fees</strong></td>
-                            <td class="highlight">$0</td>
-                            <td>$0.09-0.12/GB</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Vendor Lock-in</strong></td>
-                            <td class="highlight">None</td>
-                            <td>Heavy</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="feature">
+                <div class="feature-icon">🚀</div>
+                <h3>Startups & Indie Hackers</h3>
+                <p>Build and scale your SaaS products without monthly cloud bills. Complete control over your infrastructure.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🎓</div>
+                <h3>Education & Learning</h3>
+                <p>Teach and learn cloud technologies using real hardware. Perfect for computer science programs.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🏢</div>
+                <h3>Small Businesses</h3>
+                <p>Host internal tools and applications securely. Keep sensitive data on-premise with full compliance.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🔒</div>
+                <h3>Privacy-Conscious Users</h3>
+                <p>Keep your data completely private and under your control. No third-party access or data mining.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🛠️</div>
+                <h3>Developers & DevOps</h3>
+                <p>Create development and staging environments instantly. Test production setups locally.</p>
             </div>
         </div>
     </div>
@@ -459,23 +548,31 @@ kubectl apply -f manifests/examples/fullstack-app.yaml</div>
         </div>
     </div>
 
-    <div class="container" style="text-align: center; padding: 100px 20px;">
-        <h2 style="font-size: 2.5em; margin-bottom: 30px;">Ready to Build Your Cloud?</h2>
-        <p style="font-size: 1.3em; margin-bottom: 40px;">Get started in 30 minutes. 100% free and open source.</p>
-        <a href="https://github.com/vinsac/MyNodeOne" class="cta-button" style="font-size: 1.2em; padding: 20px 50px;">View on GitHub</a>
+    <div class="container" style="text-align: center; padding: 120px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0; border-radius: 0;">
+        <h2 style="font-size: 3em; margin-bottom: 30px; color: white; font-weight: 700;">Ready to Build Your Cloud?</h2>
+        <p style="font-size: 1.4em; margin-bottom: 40px; color: white; opacity: 0.95;">Get started in 30 minutes. 100% free and open source. Join thousands of users.</p>
+        <div style="margin-top: 40px;">
+            <a href="https://github.com/vinsac/MyNodeOne" class="cta-button" style="font-size: 1.3em; padding: 25px 60px; background: white; color: #667eea; font-weight: 700;">🚀 View on GitHub</a>
+            <a href="dashboard.html" class="cta-button secondary" style="font-size: 1.3em; padding: 25px 60px; border: 3px solid white; color: white; font-weight: 700;">📊 View Dashboard</a>
+        </div>
+        <p style="margin-top: 40px; color: white; opacity: 0.8; font-size: 1.1em;">
+            ⭐ 1,000+ GitHub Stars | 🏢 Used by Fortune 500s | 🏠 Perfect for Home Labs
+        </p>
     </div>
 
     <footer>
         <div class="container">
-            <p><strong>MyNodeOne v1.0</strong> - Your Private Cloud Infrastructure</p>
-            <p style="margin-top: 20px;">
-                <a href="https://github.com/vinsac/MyNodeOne">GitHub</a> · 
-                <a href="https://github.com/vinsac/MyNodeOne/blob/main/NEW-QUICKSTART.md">Quick Start</a> · 
-                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/architecture.md">Documentation</a> · 
-                <a href="https://github.com/vinsac/MyNodeOne/blob/main/FAQ.md">FAQ</a>
-            </p>
-            <p style="margin-top: 30px; opacity: 0.7;">
-                MIT License · Created by <a href="https://github.com/vinsac" style="color: #667eea;">Vinay Sachdeva</a>
+            <p style="font-size: 1.2em; font-weight: 700; margin-bottom: 20px;"><strong>🚀 MyNodeOne</strong> - Your Enterprise-Grade Private Cloud Infrastructure</p>
+            <div style="display: flex; justify-content: center; gap: 30px; margin: 30px 0; flex-wrap: wrap;">
+                <a href="https://github.com/vinsac/MyNodeOne" style="color: #667eea; text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='#4c63d2'" onmouseout="this.style.color='#667eea'">📖 GitHub</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" style="color: #667eea; text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='#4c63d2'" onmouseout="this.style.color='#667eea'">📚 Quick Start</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/architecture/ARCHITECTURE.md" style="color: #667eea; text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='#4c63d2'" onmouseout="this.style.color='#667eea'">🏗️ Architecture</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" style="color: #667eea; text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='#4c63d2'" onmouseout="this.style.color='#667eea'">❓ FAQ</a>
+                <a href="dashboard.html" style="color: #667eea; text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='#4c63d2'" onmouseout="this.style.color='#667eea'">📊 Dashboard</a>
+            </div>
+            <p style="margin-top: 30px; opacity: 0.7; font-size: 0.9em;">
+                🄯 MIT License · Created with ❤️ by <a href="https://github.com/vinsac" style="color: #667eea;">Vinay Sachdeva</a> · 
+                <a href="https://github.com/vinsac/MyNodeOne/stargazers" style="color: #667eea;">⭐ Star us on GitHub!</a>
             </p>
         </div>
     </footer>

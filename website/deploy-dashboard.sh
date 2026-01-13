@@ -53,7 +53,7 @@ kubectl create configmap dashboard-exporter \
 # Clean up temp file
 rm -f "$TEMP_HTML"
 
-# Create ServiceAccount and RBAC for dashboard pod to read service registry
+# Create ServiceAccount and RBAC for dashboard pod to read cluster info
 kubectl apply -f - <<EOF
 ---
 apiVersion: v1
@@ -65,21 +65,36 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: service-registry-reader
+  name: dashboard-reader
 rules:
+# Service registry access
 - apiGroups: [""]
   resources: ["configmaps"]
   resourceNames: ["service-registry"]
+  verbs: ["get", "list"]
+# Node status access
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
+# Pod status access
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+# Service access
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list"]
+# Metrics access (if metrics-server is available)
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["nodes", "pods"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: dashboard-service-registry-reader
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: service-registry-reader
+  name: dashboard-reader
+clusterRole:
+  name: dashboard-reader
 subjects:
 - kind: ServiceAccount
   name: dashboard

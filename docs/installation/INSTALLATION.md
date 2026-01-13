@@ -21,7 +21,7 @@ This guide has **4 independent sections** - one for each node type:
 
 ## New to Terminal/Linux?
 
-**First time with command line?** → Read **[TERMINAL-BASICS.md](TERMINAL-BASICS.md)** first!
+**First time with command line?** → Read **[TERMINAL-BASICS.md](../guides/TERMINAL-BASICS.md)** first!
 
 Learn how to:
 - Open terminal
@@ -294,7 +294,7 @@ sudo ./scripts/setup/setup-control-plane-sudo.sh
 **Next Steps - Choose What You Need:**
 
 - **Want to install applications?**
-  → See [APPS.md](../apps/APPS.md) for available applications
+  → See [APP-STORE.md](../apps/APP-STORE.md) for available applications
   → Use `kubectl apply -f manifests/examples/` for demo apps
 
 - **Want public internet access for your apps?**

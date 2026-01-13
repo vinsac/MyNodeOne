@@ -720,9 +720,8 @@ Adds:
 
 **Security documentation:**
 - Full security audit performed (0 vulnerabilities remaining)
-- Production security guide: `../security-best-practices.md`
-- Password management guide: `../password-management.md`
-- Audit report: `COMPREHENSIVE_AUDIT_REPORT.md`
+- Production security guide: `../security/BEST-PRACTICES.md`
+- Password management guide: `../security/PASSWORD-MANAGEMENT.md`
 
 ### Should I expose my control plane node to the internet?
 

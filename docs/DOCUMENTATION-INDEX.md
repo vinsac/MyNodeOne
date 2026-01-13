@@ -27,13 +27,13 @@ Quick reference for finding what you need in the MyNodeOne repository.
 
 ### Troubleshooting
 - **"Something broke"** → [troubleshooting.md](../operations/troubleshooting.md)
-- **"Common questions"** → [FAQ](FAQ.md)
+- **"Common questions"** → [FAQ.md](../reference/FAQ.md)
 - **"Network issues"** → [NETWORKING.md](../architecture/NETWORKING.md)
 
 ### Advanced
-- **"Architecture deep-dive"** → [ARCHITECTURE.md](architecture/ARCHITECTURE.md)
-- **"Sync system design"** → [SYNC-CONTROLLER-V2.md](architecture/SYNC-CONTROLLER-V2.md)
-- **"Contribute"** → [CONTRIBUTING.md](../CONTRIBUTING.md)
+- **"Architecture deep-dive"** → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
+- **"Sync system design"** → [SYNC-CONTROLLER-V2.md](../architecture/SYNC-CONTROLLER-V2.md)
+- **"Contribute"** → [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ---
 
@@ -66,7 +66,7 @@ mynodeone/
 │   │   ├── ADMIN-GUIDE.md             ← Cluster administration
 │   │   └── MOBILE-ACCESS-GUIDE.md    ← Phone/tablet access
 │   ├── apps/                         ← App catalog
-│   │   └── APP-STORE.md              ← Available apps
+│   │  → See [APP-STORE.md](../apps/APP-STORE.md) for available applications
 │   ├── reference/                    ← Reference documentation
 │   │   ├── FAQ.md                    ← Common questions
 │   │   └── GLOSSARY.md               ← Technical terms explained
@@ -84,7 +84,7 @@ mynodeone/
 │   │   ├── STORAGE-ARCHITECTURE.md   ← Longhorn and MinIO design
 │   │   ├── SYNC-CONTROLLER-V2.md     ← Node sync (HTTP pull + heartbeat) - PRIMARY
 │   │   └── SYNC-CONTROLLER.md        ← Node sync (SSH push) - FALLBACK
-│   └── use-cases/                    ← Deployment scenarios (coming soon)
+│   └── use-cases/                    ← Deployment scenarios (moved to website)
 ├── manifests/                        ← Kubernetes manifests
 └── website/                          ← Dashboard
 ```
@@ -194,7 +194,7 @@ mynodeone/
 → [ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 **"I have a question..."**  
-→ [FAQ.md](FAQ.md)
+→ [FAQ.md](../reference/FAQ.md)
 
 **"How do I add a domain to my VPS?"**  
 → [DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md)

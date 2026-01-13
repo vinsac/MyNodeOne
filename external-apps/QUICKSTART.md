@@ -2,24 +2,111 @@
 
 Deploy your own apps on MyNodeOne in 3 steps.
 
-## TL;DR
+---
+
+## 🎯 Overview
+
+MyNodeOne allows you to deploy any containerized application using:
+- **Standard docker-compose.yml** files
+- **Kubernetes manifests**  
+- **Simple naming conventions** (no MyNodeOne-specific config required)
+
+The deployment script automatically:
+- ✅ Detects service types (public vs internal)
+- ✅ Assigns external IPs via MetalLB
+- ✅ Registers local DNS
+- ✅ Configures optional public domains + SSL
+
+---
+
+## 📋 Prerequisites
+
+**Your app must have:**
+1. Container images in a registry (Docker Hub, ghcr.io, etc.)
+2. Standard docker-compose.yml or Kubernetes manifests
+3. Service names following conventions (see [DEPLOYMENT-PATTERNS.md](DEPLOYMENT-PATTERNS.md))
+
+**Not supported automatically:**
+- `build:` directives (images must be pre-built)
+- Host path volumes (use named volumes)
+- Privileged containers
+
+---
+
+## 🚀 Quick Start
+
+### TL;DR
 
 ```bash
 # Option 1: Use template generator
-cd /path/to/MyNodeOne
-bash scripts/new-external-app.sh --name myapp --type fullstack --database
-cd ../external-apps/myapp
-bash scripts/deploy.sh
+bash /path/to/MyNodeOne/external-apps/scripts/generate-template.sh --name myapp --type fullstack --database
+cd myapp
+bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
 
 # Option 2: Deploy existing manifests
 kubectl apply -f your-app.yaml
-bash /path/to/MyNodeOne/scripts/lib/register-external-app.sh \
+bash /path/to/MyNodeOne/external-apps/scripts/register-app.sh \
   --name myapp --subdomain myapp --namespace myapp --service myapp
 
 # Access: http://myapp.mynodeone.local
 ```
 
-## When to Use External Apps
+### 1. Prepare Your App
+
+**Minimal docker-compose.yml:**
+```yaml
+services:
+  web:                        # Name indicates public service
+    image: nginx:latest       # Registry image (not build:)
+    ports:
+      - "80:80"
+```
+
+**Full SaaS example:**
+```yaml
+services:
+  frontend:                  # Public - gets app.domain.com
+    image: your-registry/frontend:latest
+    ports:
+      - "80:80"
+  
+  backend:                   # Public - gets api.domain.com
+    image: your-registry/backend:latest
+    environment:
+      - DATABASE_URL=postgresql://postgres:pass@database:5432
+  
+  database:                  # Internal - no public domain
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+
+### 2. Deploy
+
+```bash
+cd your-app-folder/
+bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
+```
+
+**Script will ask:**
+- App name?
+- How much RAM per service? (default: 512Mi)
+- How much CPU per service? (default: 500m)
+- Storage size? (default: 10Gi)
+- Domains? (api.example.com, app.example.com)
+- Make public? (y/n)
+
+### 3. Access Your App
+
+- **Local**: `http://myapp.mynodeone.local` (automatic)
+- **Public**: `https://app.example.com` (after DNS setup)
+
+---
+
+## 🎯 When to Use External Apps
 
 ✅ **Use external apps when:**
 - Building a SaaS product you want to keep private
@@ -28,290 +115,66 @@ bash /path/to/MyNodeOne/scripts/lib/register-external-app.sh \
 - You want separate Git repos for different projects
 - You need to share code with customers/partners
 
-❌ **Use MyNodeOne built-in apps when:**
-- Adding a popular self-hosted app everyone uses (Nextcloud, Jellyfin, etc.)
-- Contributing to the MyNodeOne project
-- Creating example/demo apps
+❌ **Use built-in apps when:**
+- You want one-click installation
+- You prefer pre-configured applications
+- You need community-supported apps
+- You want automatic updates and maintenance
 
-## 3 Deployment Patterns
+---
 
-### Pattern 1: Template Generator (Fastest)
+## 📝 Service Naming Conventions
 
+The deployment script automatically detects service types:
+
+| Service Name Pattern | Detected Type | Public Domain | Convention |
+|---------------------|---------------|---------------|------------|
+| frontend, web, app, ui, client | `frontend` | ✓ | `app.domain.com` |
+| backend, api, server | `backend` | ✓ | `api.domain.com` |
+| admin, dashboard | `admin` | ✓ | `admin.domain.com` |
+| db, database, postgres, mysql, mongo | `database` | ✗ | Internal only |
+| redis, cache, memcache | `cache` | ✗ | Internal only |
+| worker, queue, celery | `worker` | ✗ | Internal only |
+
+---
+
+## 🛠️ Advanced Options
+
+### Template Generator
+
+Create a new app template:
 ```bash
-# Generate scaffolded app
-bash /path/to/MyNodeOne/scripts/new-external-app.sh \
-  --name mysaas \
-  --type fullstack \
-  --database \
-  --redis
-
-# Customize and deploy
-cd ../external-apps/mysaas
-# Edit kubernetes/ manifests
-# Update Docker images
-bash scripts/deploy.sh
+bash /path/to/MyNodeOne/external-apps/scripts/generate-template.sh \
+  --name myapp --type fullstack --database
 ```
 
-**Best for:** New projects, rapid prototyping
+### Register Existing App
 
-### Pattern 2: Kubernetes-Native (Most Flexible)
-
-```yaml
-# your-app.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: myapp
-  namespace: myapp
-  annotations:
-    mynodeone.io/subdomain: "myapp"
-    mynodeone.io/auto-register: "true"
-spec:
-  type: LoadBalancer
-  # ... rest of config
-```
-
+For apps already deployed with `kubectl`:
 ```bash
-kubectl apply -f your-app.yaml
+bash /path/to/MyNodeOne/external-apps/scripts/register-app.sh \
+  --name myapp --subdomain myapp --namespace myapp --service myapp-web
 ```
 
-**Best for:** Existing Kubernetes apps, CI/CD pipelines
+### Remove App
 
-### Pattern 3: Manual Integration
-
+Clean up deployed app:
 ```bash
-# Deploy however you want
-kubectl apply -f myapp/
-
-# Register manually
-bash /path/to/MyNodeOne/scripts/lib/register-external-app.sh \
-  --name myapp \
-  --subdomain myapp \
-  --namespace myapp \
-  --service myapp-web \
-  --port 80
+bash /path/to/MyNodeOne/external-apps/scripts/undeploy.sh myapp
 ```
 
-**Best for:** Complex apps, custom workflows
+---
 
-## What You Get from MyNodeOne
+## 📚 Next Steps
 
-| Feature | Description | Auto-Configured |
-|---------|-------------|-----------------|
-| **DNS** | `myapp.mynodeone.local` | ✅ |
-| **LoadBalancer** | MetalLB assigns IPs | ✅ |
-| **Storage** | Longhorn persistent volumes | Use `storageClassName: longhorn` |
-| **Public Routing** | VPS edge nodes | Run `manage-app-visibility.sh` |
-| **SSL** | Let's Encrypt certificates | ✅ (when public) |
-| **Monitoring** | Logs via kubectl | ✅ |
+**Read the documentation:**
+- `DEPLOYMENT-PATTERNS.md` - Service detection patterns and conventions
+- `LIMITATIONS.md` - Known limitations and workarounds
+- `MULTI-DOMAIN-ARCHITECTURE.md` - How multi-domain routing works
+- `DOMAIN-SSL-WORKFLOW.md` - Public domain and SSL setup
 
-## Making Apps Public
-
+**Try the examples:**
 ```bash
-# Interactive setup
-sudo /path/to/MyNodeOne/scripts/operations/manage-app-visibility.sh
-
-# Manual
-bash /path/to/MyNodeOne/scripts/lib/multi-domain-registry.sh \
-  configure-routing myapp yourdomain.com vps-ip round-robin
+cd external-apps/examples/simple-web-app/
+bash ../../scripts/deploy.sh
 ```
-
-Then add DNS record:
-```
-Type: A
-Name: myapp (or *)
-Value: <VPS_PUBLIC_IP>
-```
-
-Access at: `https://myapp.yourdomain.com`
-
-## Directory Structure
-
-### Recommended Layout
-
-```
-your-projects/
-├── MyNodeOne/                    # Infrastructure repo
-│   └── scripts/
-│       ├── new-external-app.sh
-│       └── lib/
-│           └── register-external-app.sh
-│
-└── external-apps/                # Your apps
-    ├── saas-app-1/
-    │   ├── kubernetes/
-    │   ├── scripts/deploy.sh
-    │   ├── src/
-    │   └── .mynodeone/config.yaml
-    │
-    └── saas-app-2/
-        ├── kubernetes/
-        └── ...
-```
-
-### Each App Structure
-
-```
-myapp/
-├── kubernetes/           # K8s manifests
-│   ├── 00-namespace.yaml
-│   ├── 10-database.yaml
-│   ├── 20-app.yaml
-│   └── 30-service.yaml
-├── scripts/
-│   └── deploy.sh        # Deployment automation
-├── src/                 # Your code
-├── .mynodeone/
-│   └── config.yaml      # MyNodeOne integration
-├── Dockerfile
-└── README.md
-```
-
-## Common Workflows
-
-### Initial Deployment
-
-```bash
-# Generate template
-bash /path/to/MyNodeOne/scripts/new-external-app.sh --name myapp
-
-# Customize
-cd ../external-apps/myapp
-# Edit kubernetes/ manifests
-# Build your app: docker build -t registry/myapp:v1 .
-# Push: docker push registry/myapp:v1
-# Update image in kubernetes/20-app.yaml
-
-# Deploy
-bash scripts/deploy.sh
-```
-
-### Update Existing App
-
-```bash
-# Build new version
-docker build -t registry/myapp:v2 .
-docker push registry/myapp:v2
-
-# Rolling update
-kubectl set image deployment/myapp \
-  myapp=registry/myapp:v2 -n myapp
-
-# Or redeploy
-kubectl apply -f kubernetes/
-```
-
-### Check Status
-
-```bash
-# Pods
-kubectl get pods -n myapp
-
-# Services
-kubectl get svc -n myapp
-
-# Logs
-kubectl logs -n myapp -l app=myapp -f
-
-# Events
-kubectl get events -n myapp --sort-by='.lastTimestamp'
-```
-
-### Troubleshooting
-
-```bash
-# No LoadBalancer IP?
-kubectl get svc -n myapp
-kubectl get pods -n metallb-system
-
-# DNS not working?
-kubectl get configmap -n kube-system service-registry -o yaml
-sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
-
-# App not accessible?
-kubectl describe svc -n myapp myapp
-curl http://$(kubectl get svc -n myapp myapp -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-```
-
-## Examples
-
-### Simple Web App
-
-```bash
-# Use the example
-kubectl apply -f /path/to/MyNodeOne/manifests/examples/external-app-simple.yaml
-
-# Access
-curl http://$(kubectl get svc -n myexternalapp myexternalapp -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-```
-
-### Full-Stack SaaS
-
-```bash
-# Generate with all features
-bash /path/to/MyNodeOne/scripts/new-external-app.sh \
-  --name mysaas \
-  --type fullstack \
-  --database \
-  --redis
-
-# This creates:
-# - Frontend deployment
-# - Backend API
-# - PostgreSQL database
-# - Redis cache
-# - Auto-scaling
-# - Health checks
-```
-
-### Python FastAPI
-
-```bash
-bash /path/to/MyNodeOne/scripts/new-external-app.sh \
-  --name myapi \
-  --type api \
-  --database
-```
-
-## CI/CD Integration
-
-### GitHub Actions
-
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy
-on: [push]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: docker build -t registry/myapp:${{ github.sha }} .
-      - run: docker push registry/myapp:${{ github.sha }}
-      - uses: azure/k8s-set-context@v3
-        with:
-          kubeconfig: ${{ secrets.KUBECONFIG }}
-      - run: |
-          kubectl set image deployment/myapp \
-            myapp=registry/myapp:${{ github.sha }} -n myapp
-```
-
-## Best Practices
-
-1. **Use namespaces** - One namespace per app
-2. **Set resource limits** - Prevent resource exhaustion
-3. **Add health checks** - Liveness and readiness probes
-4. **Use secrets** - Never hardcode passwords
-5. **Tag images** - Use semantic versioning
-6. **Enable autoscaling** - Handle traffic spikes
-7. **Monitor logs** - `kubectl logs` is your friend
-
-## Full Documentation
-
-See `docs/guides/EXTERNAL-APP-DEPLOYMENT.md` for complete guide.
-
-## Support
-
-- **Issues**: GitHub Issues
-- **Examples**: `manifests/examples/`
-- **Community**: GitHub Discussions

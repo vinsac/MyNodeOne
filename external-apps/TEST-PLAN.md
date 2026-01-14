@@ -1,19 +1,22 @@
 # External App Deployment - Test Plan
 
-## Branch Information
+## Overview
 
-**Branch**: `feature/external-app-deployment`  
-**Latest Commit**: `af10162`  
-**Status**: Documentation complete, ready for production use
+This test plan validates the MyNodeOne external app deployment system using real-world applications to ensure all features work correctly.
 
-## Pull Branch on Control Plane
+## Quick Test (5 minutes)
 
 ```bash
-# On control plane
-cd /path/to/MyNodeOne
-git fetch origin
-git checkout feature/external-app-deployment
-git pull origin feature/external-app-deployment
+# Clone test app
+cd /tmp
+git clone https://github.com/dockersamples/example-voting-app.git
+cd example-voting-app
+
+# Deploy
+bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
+
+# Monitor
+watch kubectl get pods -n voting-app
 ```
 
 ---
@@ -182,70 +185,71 @@ Expected:
 
 ### Test Case 1: Auto-Detect Mode (Primary Test)
 
+**Objective**: Validate intelligent domain mapping
+
 **Steps**:
-1. Run `deploy.sh`
-2. Choose option 1 (Auto-detect)
-3. Provide base domain: `test.mynodeone.local`
+1. Deploy voting app using auto-detect mode
+2. Verify service type detection
+3. Confirm domain mapping
 
-**Expected**:
-- Script detects `vote` and `result` as frontend type
-- Auto-maps: `app.test.mynodeone.local` → vote
-- Auto-maps: `result.test.mynodeone.local` → result
-- Skips internal: redis, db, worker
-
-**Verify**:
-```bash
-kubectl get svc -n voting-app -o wide
-curl http://app.test.mynodeone.local
-curl http://result.test.mynodeone.local
+**Expected Results**:
+```
+✓ Auto-detecting subdomain mapping...
+  ✓ app.test.mynodeone.local → vote (frontend)
+  ✓ result.test.mynodeone.local → result (frontend)
+  
+Internal services (no public domain):
+  • worker, redis, db
 ```
 
 ### Test Case 2: Manual Mode with Intelligence
 
+**Objective**: Test manual domain specification with auto-matching
+
 **Steps**:
-1. Undeploy: `bash /path/to/MyNodeOne/external-apps/scripts/undeploy.sh voting-app`
-2. Run `deploy.sh` again
-3. Choose option 2 (Manual)
-4. Domains: `vote.test.com,results.test.com`
+1. Deploy with manual mode
+2. Specify custom domains
+3. Verify intelligent matching
 
 **Expected**:
-- Script should NOT auto-match (no "app." or "result." prefix)
-- Should ask which service for each domain
-- User manually selects
-
-**Verify**: Manual mapping works
+- Script auto-matches common patterns (api.*, app.*)
+- Asks for unknown patterns
+- User can manually select services
 
 ### Test Case 3: Single Domain Mode
 
-**Steps**:
-1. Undeploy
-2. Run `deploy.sh`
-3. Choose option 3 (Single domain)
-4. Domain: `voting.mynodeone.local`
+**Objective**: Test simplified single-domain deployment
 
 **Expected**:
-- Maps to primary service (vote or first service)
-- Result service has no public domain (internal only)
-
-**Verify**:
-```bash
-kubectl get svc -n voting-app
-# Only 'vote' should be LoadBalancer
-```
+- Maps to primary frontend service
+- Other services remain internal
+- Simplified DNS configuration
 
 ### Test Case 4: Interactive Mode (No docker-compose)
 
+**Objective**: Test fallback to interactive setup
+
 **Steps**:
-1. Create empty directory: `mkdir /tmp/test-interactive`
-2. Run: `bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh`
+1. Create empty directory
+2. Run deploy script
 3. Provide service details manually
 
 **Expected**:
 - Script detects no docker-compose
 - Falls back to interactive mode
-- Asks for number of services, images, ports, etc.
+- Generates manifests from user input
 
-### Test Case 5: Update Deployment
+### Test Case 5: Error Handling
+
+**Objective**: Test error scenarios and recovery
+
+**Test Scenarios**:
+- Invalid Docker images
+- Insufficient resources
+- Network issues
+- MetalLB problems
+
+**Expected**: Clear error messages with actionable fixes
 
 **Steps**:
 1. After successful deployment
@@ -333,10 +337,10 @@ kubectl logs -n voting-app <worker-pod>
 
 ## Success Criteria
 
-✅ **Must Pass**:
+✅ **Core Functionality (Must Pass)**:
 1. Script detects docker-compose.yml automatically
-2. Parses all 5 services correctly
-3. Auto-detects service types (frontend, cache, database)
+2. Parses all 5 services correctly  
+3. Auto-detects service types (frontend, cache, database, worker)
 4. Creates appropriate Kubernetes resources
 5. Assigns LoadBalancer IPs to public services only
 6. Registers with MyNodeOne service registry
@@ -345,150 +349,87 @@ kubectl logs -n voting-app <worker-pod>
 9. Apps can communicate (vote → redis → worker → db → result)
 10. Real-time updates work (vote submission shows in results)
 
-✅ **Nice to Have**:
-1. Auto-scaling configured
-2. Resource limits applied correctly
-3. Health checks work
-4. Logs accessible via kubectl
-5. Can undeploy cleanly
+✅ **Advanced Features (Should Pass)**:
+1. All three domain modes work (auto-detect, manual, single)
+2. Interactive mode generates manifests correctly
+3. Error handling provides clear guidance
+4. Resource limits applied correctly
+5. Health checks work
+6. Clean undeployment possible
 
 ---
 
-## Performance Metrics
+## Performance Benchmarks
 
 Track during deployment:
 
-- **Time to deploy**: Should be < 5 minutes
-- **Script execution**: Should complete without errors
-- **First access**: Apps should be responsive immediately
-- **Memory usage**: Should match requested resources
-- **Pod startup time**: < 30 seconds per pod
+- **Deployment time**: < 5 minutes for voting app
+- **Script execution**: Complete without user intervention errors
+- **First access**: Apps responsive within 30 seconds
+- **Resource usage**: Matches requested specifications
+- **Pod startup**: < 30 seconds per pod
 
 ---
 
-## Test Report Template
+## Modern Test Applications
 
-```markdown
-## Test Execution Report
+For comprehensive testing, consider these additional apps:
 
-**Date**: YYYY-MM-DD
-**Tester**: Name
-**Branch**: feature/external-app-deployment
-**Commit**: 2a6ad40
+### 1. Ghost (Blog Platform)
+```bash
+git clone https://github.com/TryGhost/Ghost.git
+# Tests: Single service with database integration
+```
 
-### Environment
-- Control plane: [specs]
-- Kubernetes version: [version]
-- MyNodeOne version: [commit]
+### 2. Uptime Kuma (Monitoring)
+```bash
+git clone https://github.com/louislam/uptime-kuma.git
+# Tests: Simple single-service deployment
+```
 
-### Test Case Results
-
-#### TC1: Auto-Detect Mode
-- Status: ✓ PASS / ✗ FAIL
-- Notes: [observations]
-
-#### TC2: Manual Mode
-- Status: ✓ PASS / ✗ FAIL
-- Notes: [observations]
-
-#### TC3: Single Domain
-- Status: ✓ PASS / ✗ FAIL
-- Notes: [observations]
-
-### Issues Found
-1. [Issue description]
-   - Severity: Critical/Major/Minor
-   - Steps to reproduce:
-   - Expected:
-   - Actual:
-
-### Recommendations
-- [Improvements needed]
-
-### Screenshots
-- [Attach relevant screenshots]
+### 3. n8n (Workflow Automation)
+```bash
+git clone https://github.com/n8n-io/n8n.git
+# Tests: Multi-service coordination (n8n, Postgres, Redis)
 ```
 
 ---
 
-## Next Steps After Testing
-
-### If Tests Pass:
-1. Merge feature branch to main
-2. Update main README with external-apps link
-3. Create demo video
-4. Write blog post
-
-### If Tests Fail:
-1. Document issues in GitHub Issues
-2. Fix critical bugs
-3. Re-test
-4. Iterate
-
----
-
-## Additional Test Apps (Future)
-
-For broader testing, consider:
-
-1. **Ghost** (Blog platform)
-   - Repository: https://github.com/TryGhost/Ghost
-   - Services: Ghost, MySQL
-   - Tests: Database integration
-
-2. **n8n** (Workflow automation)
-   - Repository: https://github.com/n8n-io/n8n
-   - Services: n8n, Postgres, Redis
-   - Tests: Multi-service coordination
-
-3. **Uptime Kuma** (Monitoring)
-   - Repository: https://github.com/louislam/uptime-kuma
-   - Services: Single service
-   - Tests: Simple app deployment
-
-4. **Directus** (Headless CMS)
-   - Repository: https://github.com/directus/directus
-   - Services: Directus, Postgres
-   - Tests: Data persistence
-
----
-
-## Quick Test Commands (Copy-Paste)
+## Quick Validation Commands
 
 ```bash
-# On control plane
-cd /path/to/MyNodeOne
-git fetch origin
-git checkout feature/external-app-deployment
-
-# Clone test app
-cd /tmp
-git clone https://github.com/dockersamples/example-voting-app.git
+# Deploy voting app
+cd /tmp && git clone https://github.com/dockersamples/example-voting-app.git
 cd example-voting-app
-
-# Deploy
 bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
 
 # Monitor deployment
 watch kubectl get pods -n voting-app
 
-# Check services
+# Test services
 kubectl get svc -n voting-app
-
-# Test access
 curl http://voting.mynodeone.local
 
 # Check logs
 kubectl logs -n voting-app -l app=voting-app -f
 
-# Undeploy when done
+# Cleanup
 bash /path/to/MyNodeOne/external-apps/scripts/undeploy.sh voting-app
 ```
 
 ---
 
-## Contact for Issues
+## Contributing to Test Plan
 
-- Create GitHub issue with test report
-- Tag: `external-apps`, `testing`
-- Include: logs, error messages, environment details
+To improve this test plan:
+1. Test with additional applications
+2. Document edge cases and solutions
+3. Update success criteria as features evolve
+4. Add performance benchmarks
+5. Report issues via GitHub with `external-apps` and `testing` tags
+
+---
+
+**Last Updated**: January 2026  
+**MyNodeOne Version**: Current main branch  
+**Test Status**: Ready for validation

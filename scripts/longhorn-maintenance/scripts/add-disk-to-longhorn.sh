@@ -1,4 +1,8 @@
-#!/bin/bash
+# Get script directory and project root using standardized utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Calculate project root from longhorn-maintenance location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 ###############################################################################
 # Add Additional Disk to Longhorn
@@ -46,7 +50,7 @@ fi
 
 # Check if Longhorn is installed
 if ! kubectl get namespace longhorn-system &> /dev/null; then
-    log_error "Longhorn is not installed. Install it first with ./scripts/installation/bootstrap-control-plane.sh"
+    log_error "Longhorn is not installed. Install it first with $PROJECT_ROOT/scripts/installation/bootstrap-control-plane.sh"
     exit 1
 fi
 

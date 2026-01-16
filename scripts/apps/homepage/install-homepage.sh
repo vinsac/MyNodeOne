@@ -9,11 +9,12 @@
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Load shared validation library
-source "$SCRIPT_DIR/../lib/validation.sh"
+# Calculate project root from apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/apps/homepage/lib/validation.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -93,7 +94,7 @@ echo "📍 Access Homepage at: http://$SERVICE_IP:3000"
 echo ""
 
 # Configure DNS automatically
-if bash "$SCRIPT_DIR/../configure-app-dns.sh" > /dev/null 2>&1; then
+if bash "$PROJECT_ROOT/scripts/domains/configure-app-dns.sh" > /dev/null 2>&1; then
     # Load cluster domain
     CLUSTER_DOMAIN="mynodeone"
     if [ -f "$HOME/.mynodeone/config.env" ]; then

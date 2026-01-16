@@ -47,14 +47,16 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
-# Detect script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MANIFESTS_DIR="$SCRIPT_DIR/manifests"
-LIB_DIR="$SCRIPT_DIR/../../lib"
+# Calculate project root from apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
 # Load user detection
-if [[ -f "$LIB_DIR/detect-actual-home.sh" ]]; then
-    source "$LIB_DIR/detect-actual-home.sh"
+if [[ -f "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 else
     ACTUAL_USER="${SUDO_USER:-$(whoami)}"
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then

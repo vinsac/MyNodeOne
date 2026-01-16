@@ -363,10 +363,12 @@ EOF
 #!/bin/bash
 # Run this script on the control plane to register the worker node
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
-if [ -f "$SCRIPT_DIR/../lib/node-registry-manager.sh" ]; then
-    source "$SCRIPT_DIR/../lib/node-registry-manager.sh"
+if [ -f "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" ]; then
+    source "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh"
     
     # Get node name from kubectl
     K8S_NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
@@ -475,7 +477,7 @@ print_summary() {
 install_node_agent() {
     log_info "Installing Node Agent for pull-based config sync..."
     
-    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
         # Get API token from config if available
         API_TOKEN="${API_TOKEN:-}"
         
@@ -485,7 +487,7 @@ install_node_agent() {
         
         # Call install-config-sync with ssh-user parameter for automatic token fetch
         # Arguments: node-type control-plane-ip api-token node-name ssh-user
-        if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME" "$CP_SSH_USER"; then
+        if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Worker will now pull config updates from control plane"
         else
@@ -522,7 +524,7 @@ setup_gpu() {
     
     log_info "NVIDIA GPU detected on this worker node"
     
-    if [ -f "$SCRIPT_DIR/../lib/gpu-setup.sh" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/gpu-setup.sh" ]; then
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  NVIDIA GPU Detected"
@@ -531,7 +533,7 @@ setup_gpu() {
         echo ""
         
         # Interactive GPU setup (no device plugin - that's on control plane)
-        bash "$SCRIPT_DIR/../lib/gpu-setup.sh" --no-plugin
+        bash "$PROJECT_ROOT/scripts/lib/gpu-setup.sh" --no-plugin
         GPU_EXIT_CODE=$?
         
         if [ $GPU_EXIT_CODE -eq 2 ]; then
@@ -560,10 +562,10 @@ install_longhorn() {
     log_info "Installing Longhorn storage (interactive)..."
     
     # Use new interactive installation script
-    if [ -f "$SCRIPT_DIR/storage/longhorn/install-interactive.sh" ]; then
-        bash "$SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+    if [ -f "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
     else
-        log_warn "Longhorn installation script not found: $SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+        log_warn "Longhorn installation script not found: $PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
         log_info "Longhorn should already be available from control plane"
     fi
 }
@@ -573,7 +575,7 @@ install_minio() {
     log_info "MinIO can be installed from control plane to any node"
     log_info ""
     log_info "To install MinIO on this or any node, run from control plane:"
-    log_info "  sudo $SCRIPT_DIR/storage/minio/install-minio.sh"
+    log_info "  sudo $PROJECT_ROOT/scripts/storage/minio/install-minio.sh"
     log_info ""
     log_info "The script will:"
     log_info "  - Let you select target node (control plane or worker)"
@@ -655,8 +657,8 @@ main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    if [ -f "$SCRIPT_DIR/../lib/validate-installation.sh" ]; then
-        if bash "$SCRIPT_DIR/../lib/validate-installation.sh" worker-node; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/validate-installation.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" worker-node; then
             log_success "Worker node validation passed!"
         else
             log_warn "Some validation tests failed (see above)"

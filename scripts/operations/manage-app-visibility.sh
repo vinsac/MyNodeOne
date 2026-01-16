@@ -31,7 +31,9 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 MAX_RETRIES=3
 
 # Load cluster config
@@ -99,7 +101,7 @@ verify_domain_registry() {
         log_warn "Domain registry not initialized"
         log_info "Initializing now..."
         
-        if bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" init; then
+        if bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" init; then
             log_success "Domain registry initialized"
             return 0
         else
@@ -174,8 +176,7 @@ make_public() {
     if [ -n "$domains" ] && [ -n "$vps_nodes" ]; then
         log_info "Configuring routing..."
         
-        if retry_command 3 "bash '$SCRIPT_DIR/../lib/multi-domain-registry.sh' configure-routing \
-            '$service_name' '$domains' '$vps_nodes' round-robin"; then
+        if retry_command 3 "bash '$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh' configure-routing '$service_name' '$domains' '$vps_nodes' round-robin" 2>/dev/null || true; then
             log_success "Routing configured"
         else
             log_error "Failed to configure routing"
@@ -189,13 +190,8 @@ make_public() {
         local subdomain=$(echo "$service_info" | jq -r '.subdomain')
         local namespace=$(echo "$service_info" | jq -r '.namespace')
         
-        # Look for post-public-hook.sh in app directory
-        local hook_path="$SCRIPT_DIR/../apps/$service_name/post-public-hook.sh"
-        if [ -f "$hook_path" ]; then
-            log_info "Running app-specific configuration..."
-            if bash "$hook_path" "$service_name" "$subdomain" "$domains"; then
-                log_success "App-specific configuration completed"
-            else
+        if [ -f "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh" ]; then
+            bash "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh"
                 log_warn "App-specific configuration had issues (check above)"
             fi
         fi

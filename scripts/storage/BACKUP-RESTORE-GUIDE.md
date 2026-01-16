@@ -67,7 +67,7 @@ configure_velero_backup() {
     if ! kubectl get svc minio -n minio &> /dev/null; then
         log_warn "MinIO not found, skipping Velero backup configuration"
         log_warn "Run this after MinIO is installed:"
-        log_warn "  sudo $SCRIPT_DIR/storage/velero/configure-backup.sh"
+        log_warn "  sudo $PROJECT_ROOT/scripts/storage/velero/configure-backup.sh"
         return 0
     fi
 }

@@ -16,11 +16,12 @@
 
 set -euo pipefail
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Detect actual user and home directory
-source "$SCRIPT_DIR/../lib/detect-actual-home.sh"
+source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 
 # Configuration
 MAX_RETRIES=3
@@ -491,8 +492,8 @@ main() {
     # Step 7: Auto-register in enterprise registry
     print_header "Step 7: Enterprise Registry Registration"
     
-    if [ -f "$SCRIPT_DIR/../setup/setup-management-node.sh" ]; then
-        bash "$SCRIPT_DIR/../setup/setup-management-node.sh" || true
+    if [ -f "$PROJECT_ROOT/scripts/setup/setup-management-node.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/setup/setup-management-node.sh" || true
     else
         log_warn "Auto-registration script not found"
         log_info "To manually register this laptop, run:"
@@ -551,7 +552,7 @@ main() {
     
     log_info "Installing Node Agent for pull-based config sync..."
     
-    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
         # Get API token from config if available
         # First check if it's in user's config.env (saved by fetch-cluster-info.sh)
         local user_config="${ACTUAL_HOME:-$HOME}/.mynodeone/config.env"
@@ -575,7 +576,7 @@ main() {
         
         # Call install-config-sync with ssh-user parameter for automatic token fetch
         # Arguments: node-type control-plane-ip api-token node-name ssh-user
-        if sudo bash "$SCRIPT_DIR/../lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "$(hostname)" "$CP_SSH_USER"; then
+        if sudo bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "$(hostname)" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Laptop will now pull config updates from control plane"
         else
@@ -594,8 +595,8 @@ main() {
     log_info "Running installation validation tests..."
     echo
     
-    if [ -f "$SCRIPT_DIR/../lib/validate-installation.sh" ]; then
-        if bash "$SCRIPT_DIR/../lib/validate-installation.sh" management-laptop; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/validate-installation.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" management-laptop; then
             echo
             log_success "All validation tests passed!"
             

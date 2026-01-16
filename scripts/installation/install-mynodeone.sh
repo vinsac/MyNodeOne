@@ -54,8 +54,9 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Detect actual user and their home directory (even when run with sudo)
 export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
@@ -1336,11 +1337,11 @@ show_documentation_info() {
     
     echo "📚 Documentation is available at:"
     echo
-    echo "  • Installation Guide: $PROJECT_ROOT/INSTALLATION.md"
-    echo "  • Getting Started: $PROJECT_ROOT/GETTING-STARTED.md"
-    echo "  • Architecture: $PROJECT_ROOT/docs/reference/architecture.md"
-    echo "  • Operations: $PROJECT_ROOT/docs/guides/operations.md"
-    echo "  • FAQ: $PROJECT_ROOT/FAQ.md"
+    echo "  • Installation Guide: $PROJECT_ROOT/docs/installation/INSTALLATION.md"
+    echo "  • Getting Started: $PROJECT_ROOT/docs/guides/GETTING-STARTED.md"
+    echo "  • Architecture: $PROJECT_ROOT/docs/architecture/ARCHITECTURE.md"
+    echo "  • Operations: $PROJECT_ROOT/docs/guides/ADMIN-GUIDE.md"
+    echo "  • FAQ: $PROJECT_ROOT/docs/reference/FAQ.md"
     echo
     echo "🌐 Web UI will be available after installation:"
     echo "  • Grafana (Monitoring): http://<control-plane-ip>:3000"
@@ -1348,7 +1349,7 @@ show_documentation_info() {
     echo "  • MinIO (S3 Storage): http://<control-plane-ip>:9000"
     echo
     echo "📖 For detailed storage options, see:"
-    echo "  • Storage Options: $PROJECT_ROOT/docs/reference/storage-guide.md"
+    echo "  • Storage Architecture: $PROJECT_ROOT/docs/architecture/STORAGE-ARCHITECTURE.md"
     echo
 }
 
@@ -1476,10 +1477,10 @@ main() {
         case "$NODE_TYPE" in
             control-plane)
                 print_info "Running control plane bootstrap..."
-                bash "$SCRIPT_DIR/bootstrap-control-plane.sh"
+                bash "$PROJECT_ROOT/scripts/installation/bootstrap-control-plane.sh"
                 
                 print_header "Final Step: Configuring Passwordless Sudo"
-                bash "$SCRIPT_DIR/../setup/setup-control-plane-sudo.sh"
+                bash "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh"
                 
                 # Final verification
                 print_info "Verifying passwordless sudo..."
@@ -1493,7 +1494,7 @@ main() {
                 ;;
             worker)
                 print_info "Running worker node setup..."
-                bash "$SCRIPT_DIR/../nodes/add-worker-node.sh"
+                bash "$PROJECT_ROOT/scripts/nodes/add-worker-node.sh"
                 ;;
             edge)
                 # VPS Edge Nodes are ONLY installed via orchestration from control plane
@@ -1515,12 +1516,12 @@ main() {
                 echo
                 
                 # Run the VPS setup script
-                bash "$SCRIPT_DIR/../setup/setup-vps-node.sh"
+                bash "$PROJECT_ROOT/scripts/setup/setup-vps-node.sh"
                 ;;
 
             management)
                 print_info "Running management laptop setup..."
-                bash "$SCRIPT_DIR/../setup/setup-management-laptop.sh"
+                bash "$PROJECT_ROOT/scripts/setup/setup-management-laptop.sh"
                 ;;
             *)
                 print_error "Unknown node type: $NODE_TYPE"

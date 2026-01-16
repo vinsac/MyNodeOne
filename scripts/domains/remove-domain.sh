@@ -30,8 +30,9 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOMAIN="${1:-}"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 clear
 echo ""
@@ -151,7 +152,7 @@ if [ -n "$AFFECTED_SERVICES" ]; then
             jq -r ".[\"$service\"].vps_nodes[]" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
         
         # Update routing
-        bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" configure-routing \
+        bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
             "$service" "$new_domains" "$vps_nodes" "round-robin" &>/dev/null || true
         
         log_success "✓ Updated $service"
@@ -176,7 +177,7 @@ log_success "Domain removed from registry"
 # Push updates to VPS
 echo ""
 log_info "Pushing updates to VPS nodes..."
-bash "$SCRIPT_DIR/../lib/sync-controller.sh" push || true
+bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push || true
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

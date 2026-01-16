@@ -417,9 +417,11 @@ echo "   • Restart: kubectl rollout restart deployment/immich-server -n $NAMES
 echo "   • Uninstall: kubectl delete namespace $NAMESPACE"
 echo ""
 
-# Configure local DNS automatically (if kubectl is available)
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+# Calculate project root from apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then

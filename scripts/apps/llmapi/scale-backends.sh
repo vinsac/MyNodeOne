@@ -8,8 +8,11 @@
 
 set -euo pipefail
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")" 
+# Calculate project root from apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 # Load cluster resource detection utilities
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"

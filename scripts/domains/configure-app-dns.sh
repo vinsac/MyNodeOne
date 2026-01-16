@@ -21,11 +21,11 @@ echo ""
 echo "This script is DEPRECATED and may cause duplicate DNS entries."
 echo ""
 echo "If you have enterprise registry installed, use instead:"
-echo "  sudo ./scripts/lib/service-registry.sh sync"
-echo "  sudo ./scripts/domains/sync-dns.sh"
+echo "  sudo $PROJECT_ROOT/scripts/lib/service-registry.sh sync"
+echo "  sudo $PROJECT_ROOT/scripts/domains/sync-dns.sh"
 echo ""
 echo "If you already have duplicate DNS entries, run:"
-echo "  sudo ./scripts/domains/fix-duplicate-dns.sh"
+echo "  sudo $PROJECT_ROOT/scripts/domains/fix-duplicate-dns.sh"
 echo ""
 echo "NOTE: Fresh installations (Nov 2024+) don't need this script."
 echo "      It's only for legacy systems."
@@ -165,7 +165,7 @@ done
 if [ ${#FOUND_APPS[@]} -eq 0 ]; then
     log_warn "No apps found. Install some apps first!"
     echo
-    echo "Try: sudo ./scripts/operations/app-store.sh"
+    echo "Try: sudo $PROJECT_ROOT/scripts/operations/app-store.sh"
     exit 0
 fi
 
@@ -215,8 +215,9 @@ if systemctl is-active --quiet dnsmasq; then
 fi
 
 # Create client setup script
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 log_info "Creating client DNS setup script..."
 

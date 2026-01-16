@@ -19,7 +19,10 @@ NC='\033[0m'
 
 # MyNodeOne root (detect from script location)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MYNODEONE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Calculate project root from external-apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+MYNODEONE_ROOT="$PROJECT_ROOT"
 
 # Get cluster domain from cluster-info ConfigMap (authoritative source)
 CLUSTER_DOMAIN=""

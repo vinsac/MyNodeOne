@@ -18,7 +18,9 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Helper functions
 log_info() {

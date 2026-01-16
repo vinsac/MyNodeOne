@@ -456,11 +456,12 @@ orchestrate_vps_installation() {
     # Final sync: Register VPS and update DNS
     print_info "Syncing service registry and DNS..."
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [ -f "$script_dir/service-registry.sh" ]; then
-        bash "$script_dir/service-registry.sh" sync 2>/dev/null || true
+    source "$script_dir/project-root.sh"
+    if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync 2>/dev/null || true
     fi
-    if [ -f "$(dirname "$script_dir")/sync-dns.sh" ]; then
-        bash "$(dirname "$script_dir")/sync-dns.sh" 2>/dev/null || true
+    if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" 2>/dev/null || true
     fi
     print_success "Service registry and DNS updated"
     

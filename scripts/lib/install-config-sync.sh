@@ -73,8 +73,9 @@ retry_command() {
 }
 
 # Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Detect actual user (multiple fallback methods)
 # Priority: SUDO_USER > logname > who am i > whoami

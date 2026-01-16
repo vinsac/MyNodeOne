@@ -9,12 +9,14 @@
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# Calculate project root from apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 # Load shared validation library
-source "$SCRIPT_DIR/../lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/paperless/lib/validation.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

@@ -9,13 +9,13 @@
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Source validation library
-if [ -f "$SCRIPT_DIR/../lib/validation.sh" ]; then
-    source "$SCRIPT_DIR/../lib/validation.sh"
+if [ -f "$PROJECT_ROOT/scripts/lib/validation.sh" ]; then
+    source "$PROJECT_ROOT/scripts/lib/validation.sh"
 fi
 
 # Colors
@@ -465,7 +465,7 @@ configure_cluster_info() {
         echo
         
         # Try to fetch cluster info before asking user
-        if bash "$SCRIPT_DIR/../lib/fetch-cluster-info.sh"; then
+        if bash "$PROJECT_ROOT/scripts/lib/fetch-cluster-info.sh"; then
             # Reload config after fetch
             if [ -f "$CONFIG_DIR/config.env" ]; then
                 source "$CONFIG_DIR/config.env"
@@ -877,8 +877,8 @@ show_next_steps() {
             echo
             
             # Run the dedicated laptop setup script
-            if [ -f "$SCRIPT_DIR/../setup/setup-laptop.sh" ]; then
-                bash "$SCRIPT_DIR/../setup/setup-laptop.sh"
+            if [ -f "$PROJECT_ROOT/scripts/setup/setup-laptop.sh" ]; then
+                bash "$PROJECT_ROOT/scripts/setup/setup-laptop.sh"
             else
                 echo "❌ setup-laptop.sh not found"
                 echo

@@ -131,8 +131,8 @@ print_header "Removing $NODE_NAME..."
 # Unregister from ConfigMap
 if [ -n "$VPS_IP" ]; then
     echo "Unregistering from domain-registry..."
-    if [ -f "$SCRIPT_DIR/../lib/multi-domain-registry.sh" ]; then
-        bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" unregister-vps "$VPS_IP"
+    if [ -f "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" unregister-vps "$VPS_IP"
     else
         print_warning "Registry script not found, skipping unregistration."
     fi

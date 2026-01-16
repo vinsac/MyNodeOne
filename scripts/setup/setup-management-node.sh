@@ -11,9 +11,12 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Source SSH utilities for ControlMaster support
-source "$SCRIPT_DIR/../lib/ssh-utils.sh"
+if [ -f "$PROJECT_ROOT/scripts/lib/ssh-utils.sh" ]; then
+    source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
+fi
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

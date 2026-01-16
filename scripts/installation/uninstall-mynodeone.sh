@@ -615,12 +615,23 @@ if [ "$KEEP_CONFIG" = false ]; then
             rm -f "$user_home/mynodeone-"*".txt"
             log_success "Removed credential files and join tokens"
         fi
+        
+        # Explicitly remove MinIO credentials if they exist
+        if [ -f "$user_home/mynodeone-minio-credentials.txt" ]; then
+            rm -f "$user_home/mynodeone-minio-credentials.txt"
+            log_success "Removed MinIO credentials from $user_home"
+        fi
     fi
     
     # Also check root's home directory
     if ls /root/mynodeone-*.txt &>/dev/null 2>&1; then
         rm -f /root/mynodeone-*.txt
         log_success "Removed root credential files and join tokens"
+    fi
+    
+    if [ -f "/root/mynodeone-minio-credentials.txt" ]; then
+        rm -f "/root/mynodeone-minio-credentials.txt"
+        log_success "Removed root MinIO credentials"
     fi
     
     # Remove user configs if running as sudo

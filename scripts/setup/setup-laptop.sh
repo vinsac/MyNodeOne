@@ -6,11 +6,9 @@
 
 set -e
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Source libraries
-source "$SCRIPT_DIR/../lib/ssh-utils.sh"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then
@@ -300,14 +298,14 @@ setup_local_dns() {
         log_info "Syncing DNS from service registry..."
         
         # Use centralized DNS sync script
-        if [ -f "$SCRIPT_DIR/../domains/sync-dns.sh" ]; then
-            bash "$SCRIPT_DIR/../domains/sync-dns.sh" || {
+        if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+            bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" || {
                 log_warn "DNS sync failed, you can retry later with:"
                 echo "  sudo ./scripts/domains/sync-dns.sh"
                 return
             }
         else
-            log_error "DNS sync script not found at: $SCRIPT_DIR/domains/sync-dns.sh"
+            log_error "DNS sync script not found at: $PROJECT_ROOT/scripts/domains/sync-dns.sh"
             log_info "Manual sync: Run 'sudo ./scripts/domains/sync-dns.sh' from MyNodeOne directory"
             return
         fi

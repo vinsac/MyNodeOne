@@ -19,6 +19,10 @@
 
 set -euo pipefail
 
+# Get script directory and project root using standardized utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -69,8 +73,8 @@ echo ""
 
 # Source SSH utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/../lib/ssh-utils.sh" ]; then
-    source "$SCRIPT_DIR/../lib/ssh-utils.sh"
+if [ -f "$PROJECT_ROOT/scripts/lib/ssh-utils.sh" ]; then
+    source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
 else
     log_error "Cannot find lib/ssh-utils.sh"
     exit 1

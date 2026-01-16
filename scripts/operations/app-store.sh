@@ -18,8 +18,10 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APPS_DIR="$SCRIPT_DIR/../apps"
+source "$SCRIPT_DIR/../lib/project-root.sh"
+APPS_DIR="$PROJECT_ROOT/scripts/apps"
 
 clear
 

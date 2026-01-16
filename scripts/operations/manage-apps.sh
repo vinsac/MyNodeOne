@@ -14,8 +14,10 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APPS_DIR="$SCRIPT_DIR/../../manifests/apps"
+source "$SCRIPT_DIR/../lib/project-root.sh"
+APPS_DIR="$PROJECT_ROOT/manifests/apps"
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -363,7 +365,7 @@ deploy_app() {
             deploy_redis
             ;;
         demo)
-            bash "$SCRIPT_DIR/deploy-demo-app.sh" deploy
+            bash "$PROJECT_ROOT/scripts/operations/deploy-demo-app.sh" deploy
             ;;
         *)
             log_error "Unknown application: $app"
@@ -399,7 +401,7 @@ remove_app() {
             log_success "Redis removed"
             ;;
         demo)
-            bash "$SCRIPT_DIR/deploy-demo-app.sh" remove
+            bash "$PROJECT_ROOT/scripts/operations/deploy-demo-app.sh" remove
             ;;
         *)
             log_error "Unknown application: $app"

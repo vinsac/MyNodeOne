@@ -32,11 +32,10 @@ if [ -z "${ACTUAL_USER:-}" ]; then
 fi
 
 if [ -z "${ACTUAL_HOME:-}" ]; then
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    else
-        export ACTUAL_HOME="$HOME"
-    fi
+    # Get script directory and project root using standardized utility
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$SCRIPT_DIR/../lib/project-root.sh"
+    export ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
 fi
 
 # Load configuration
@@ -135,7 +134,7 @@ if [[ -z "$DNS_ENTRIES" ]]; then
     echo "  • Connection to cluster failed"
     echo ""
     echo "Run this on control plane to initialize:"
-    echo "  sudo ./scripts/lib/service-registry.sh sync"
+    echo "  sudo $PROJECT_ROOT/scripts/lib/service-registry.sh sync"
     exit 0
 fi
 

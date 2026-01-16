@@ -8,10 +8,12 @@
 
 set -euo pipefail
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Show legal disclaimer
-source "$SCRIPT_DIR/../utils/show-disclaimer.sh"
+source "$PROJECT_ROOT/scripts/utils/show-disclaimer.sh"
 
 # Colors
 GREEN='\033[0;32m'
@@ -156,16 +158,16 @@ manage_storage() {
             read -p "Press Enter to continue..."
             ;;
         2)
-            if [ -f "$SCRIPT_DIR/../apps/llm-chat/install-llm-chat.sh" ]; then
-                bash "$SCRIPT_DIR/../apps/llm-chat/install-llm-chat.sh"
+            if [ -f "$PROJECT_ROOT/scripts/apps/llm-chat/install-llm-chat.sh" ]; then
+                bash "$PROJECT_ROOT/scripts/apps/llm-chat/install-llm-chat.sh"
             else
                 echo "LLM Chat script not found"
                 read -p "Press Enter to continue..."
             fi
             ;;
         3)
-            if [ -f "$SCRIPT_DIR/../apps/llm-chat/monitor-storage.sh" ]; then
-                bash "$SCRIPT_DIR/../apps/llm-chat/monitor-storage.sh"
+            if [ -f "$PROJECT_ROOT/scripts/apps/llm-chat/monitor-storage.sh" ]; then
+                bash "$PROJECT_ROOT/scripts/apps/llm-chat/monitor-storage.sh"
                 read -p "Press Enter to continue..."
             else
                 echo "Storage monitor script not found"
@@ -183,8 +185,8 @@ install_app() {
     echo "📦 Install Application"
     echo ""
     
-    if [ -f "$SCRIPT_DIR/app-store.sh" ]; then
-        bash "$SCRIPT_DIR/app-store.sh"
+    if [ -f "$PROJECT_ROOT/scripts/operations/app-store.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/operations/app-store.sh"
     else
         echo "App store not found"
         read -p "Press Enter to continue..."
@@ -196,8 +198,8 @@ setup_dashboard() {
     echo "🌐 Web Dashboard Setup"
     echo ""
     
-    if [ -f "$SCRIPT_DIR/../setup/setup-admin-dashboard.sh" ]; then
-        bash "$SCRIPT_DIR/../setup/setup-admin-dashboard.sh"
+    if [ -f "$PROJECT_ROOT/scripts/setup/setup-admin-dashboard.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/setup/setup-admin-dashboard.sh"
         read -p "Press Enter to continue..."
     else
         echo "Dashboard setup script not found"

@@ -23,7 +23,9 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # MinIO configuration
 MINIO_VERSION="RELEASE.2024-01-01T16-36-33Z"
@@ -927,7 +929,7 @@ verify_minio_installation() {
 register_minio_services() {
     log_info "Registering MinIO services for DNS..."
     
-    local REGISTRY_SCRIPT="$SCRIPT_DIR/../../lib/service-registry.sh"
+    local REGISTRY_SCRIPT="$PROJECT_ROOT/scripts/lib/service-registry.sh"
     if [ -f "$REGISTRY_SCRIPT" ]; then
         # Use preserved node name (TARGET_NODE may be IP in remote mode)
         local node_name="$TARGET_NODE_NAME"
@@ -965,7 +967,7 @@ register_minio_services() {
             return 1
         fi
         
-        local DNS_SYNC_SCRIPT="$SCRIPT_DIR/../../sync-dns.sh"
+        local DNS_SYNC_SCRIPT="$PROJECT_ROOT/scripts/domains/sync-dns.sh"
         if [[ -f "$DNS_SYNC_SCRIPT" ]]; then
             log_info "Triggering DNS sync..."
             bash "$DNS_SYNC_SCRIPT" 2>/dev/null || log_warn "DNS sync failed"

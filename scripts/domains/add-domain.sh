@@ -32,7 +32,9 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 clear
 echo ""
@@ -53,7 +55,7 @@ fi
 # Check if registries are initialized
 if ! kubectl get configmap -n kube-system domain-registry &>/dev/null; then
     log_error "Domain registry not initialized"
-    echo "Please run: sudo ./scripts/setup/setup-enterprise-registry.sh"
+    echo "Please run: sudo $PROJECT_ROOT/scripts/setup/setup-enterprise-registry.sh"
     exit 1
 fi
 
@@ -91,7 +93,7 @@ echo "  Step 2: Registering Domain"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain "$NEW_DOMAIN" "$DESCRIPTION"
+bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" register-domain "$NEW_DOMAIN" "$DESCRIPTION"
 log_success "Domain registered in cluster"
 echo ""
 
@@ -110,8 +112,8 @@ if [ -z "$VPS_NODES" ]; then
     log_warn "No VPS nodes registered yet"
     echo ""
     echo "To add a VPS node:"
-    echo "  1. Install VPS: sudo ./scripts/installation/install-mynodeone.sh → Option 3"
-    echo "  2. Or manually: sudo ./scripts/setup/setup-vps-node.sh"
+    echo "  1. Install VPS: sudo $PROJECT_ROOT/scripts/installation/install-mynodeone.sh → Option 3"
+    echo "  2. Or manually: sudo $PROJECT_ROOT/scripts/setup/setup-vps-node.sh"
     echo ""
     
     read -p "Do you want to continue without VPS? (y/n): " continue_choice
@@ -198,7 +200,7 @@ read -p "Selection: " service_selection
 if [ "$service_selection" = "none" ]; then
     log_info "Skipping service configuration"
     log_info "You can configure services later with:"
-    echo "  sudo ./scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
+    echo "  sudo $PROJECT_ROOT/scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
     echo ""
 else
     declare -a selected_services
@@ -246,7 +248,7 @@ else
             
             # Configure routing
             if [ -n "$all_vps" ]; then
-                bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" configure-routing \
+                bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
                     "$service" "$all_domains" "$all_vps" "round-robin" 2>/dev/null || true
                 log_success "✓ $service configured"
             fi
@@ -267,7 +269,7 @@ if [ -n "$SELECTED_VPS" ]; then
     echo ""
     
     log_info "Pushing configuration to VPS nodes..."
-    bash "$SCRIPT_DIR/../lib/sync-controller.sh" push || true
+    bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push || true
     log_success "Configuration pushed to all VPS nodes"
     echo ""
 fi
@@ -338,15 +340,15 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 echo "Add more services to this domain later:"
-echo "  sudo ./scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
+echo "  sudo $PROJECT_ROOT/scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
 echo ""
 
 echo "View all domains and routing:"
-echo "  sudo ./scripts/lib/multi-domain-registry.sh show"
+echo "  sudo $PROJECT_ROOT/scripts/lib/multi-domain-registry.sh show"
 echo ""
 
 echo "Remove a domain:"
-echo "  sudo ./scripts/domains/remove-domain.sh $NEW_DOMAIN"
+echo "  sudo $PROJECT_ROOT/scripts/domains/remove-domain.sh $NEW_DOMAIN"
 echo ""
 
 log_success "Setup complete! 🎉"

@@ -407,7 +407,8 @@ set -euo pipefail
 
 # Detect actual user context
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/../lib"
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh"
+LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
 if [[ -f "$LIB_DIR/detect-actual-home.sh" ]]; then
     source "$LIB_DIR/detect-actual-home.sh"

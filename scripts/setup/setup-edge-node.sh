@@ -34,9 +34,13 @@ if [ -z "${ACTUAL_HOME:-}" ]; then
     fi
 fi
 
+# Get script directory and project root using standardized utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
+
 # Source libraries
-source "$SCRIPT_DIR/../lib/preflight-checks.sh"
-source "$SCRIPT_DIR/../lib/ssh-utils.sh"
+source "$PROJECT_ROOT/scripts/lib/preflight-checks.sh"
+source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
 
 # Load configuration - inherit from parent or set fallback
 CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
@@ -528,9 +532,9 @@ auto_register_vps() {
     log_info "Registering VPS in enterprise registry..."
     
     # Check if setup script exists
-    if [ -f "$SCRIPT_DIR/../setup/setup-vps-node.sh" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/setup/setup-vps-node.sh" ]; then
         # Skip pre-flight checks since we already ran them
-        sudo -u "$ACTUAL_USER" bash "$SCRIPT_DIR/../setup/setup-vps-node.sh" --skip-preflight
+        sudo -u "$ACTUAL_USER" bash "$PROJECT_ROOT/scripts/setup/setup-vps-node.sh" --skip-preflight
         log_success "VPS auto-registration complete"
     else
         log_warn "Auto-registration script not found, skipping..."

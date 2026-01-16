@@ -31,7 +31,9 @@ log_error() {
     echo -e "${RED}[✗]${NC} $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/project-root.sh"
 REGISTRY_MANAGER="$SCRIPT_DIR/node-registry-manager.sh"
 
 # Detect actual user's home directory (for sudo compatibility)
@@ -503,8 +505,8 @@ periodic_reconciliation() {
         
         # Sync service registry (cleanup stale entries, discover new services)
         log_info "Syncing service registry..."
-        if [[ -f "$SCRIPT_DIR/service-registry.sh" ]]; then
-            if bash "$SCRIPT_DIR/service-registry.sh" sync 2>&1 | grep -q "Synced"; then
+        if [[ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]]; then
+            if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync 2>&1 | grep -q "Synced"; then
                 log_success "Service registry synced"
             else
                 log_warn "Service registry sync had issues (non-critical)"

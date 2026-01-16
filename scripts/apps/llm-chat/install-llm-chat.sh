@@ -9,12 +9,12 @@
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+source "$SCRIPT_DIR/../../lib/project-root.sh"
 
 # Load shared validation library
-source "$SCRIPT_DIR/../lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/llm-chat/lib/validation.sh"
 
 # Load cluster resource detection utilities
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"

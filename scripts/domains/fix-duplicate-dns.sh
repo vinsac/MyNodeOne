@@ -143,19 +143,21 @@ sudo sed -i '/demoapp\..*\.local/d' /etc/hosts 2>/dev/null || true
 log_success "Old entries removed"
 
 # Check if enterprise registry exists
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
-if [ ! -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
+if [ ! -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
     log_warn "Enterprise registry not found!"
     echo ""
     echo "To set up enterprise registry:"
-    echo "  sudo ./scripts/setup/setup-enterprise-registry.sh"
+    echo "  sudo $PROJECT_ROOT/scripts/setup/setup-enterprise-registry.sh"
     exit 1
 fi
 
 # Sync service registry
 log_info "Syncing service registry..."
-if bash "$SCRIPT_DIR/../lib/service-registry.sh" sync 2>/dev/null; then
+if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync 2>/dev/null; then
     log_success "Service registry synced"
 else
     log_warn "Could not sync (this is OK if no apps installed yet)"
@@ -163,7 +165,7 @@ fi
 
 # Export and update DNS
 log_info "Updating DNS from registry..."
-if bash "$SCRIPT_DIR/../lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/registry-dns.txt; then
+if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/registry-dns.txt; then
     sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
     {
         echo ""
@@ -193,7 +195,7 @@ echo ""
 
 log_info "If you see duplicate entries for the same app, you may need to:"
 echo "  1. Delete the demo app: kubectl delete namespace demo-apps"
-echo "  2. Redeploy: sudo ./scripts/operations/deploy-demo-app.sh"
+echo "  2. Redeploy: sudo $PROJECT_ROOT/scripts/operations/deploy-demo-app.sh"
 echo ""
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

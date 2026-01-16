@@ -7,9 +7,9 @@
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then
@@ -59,12 +59,12 @@ if ! command -v kubectl &> /dev/null; then
 fi
 
 # Source validation library
-if [ ! -f "$SCRIPT_DIR/../lib/service-validation.sh" ]; then
-    echo "❌ Validation library not found at: $SCRIPT_DIR/../lib/service-validation.sh"
+if [ ! -f "$PROJECT_ROOT/scripts/lib/service-validation.sh" ]; then
+    echo "❌ Validation library not found at: $PROJECT_ROOT/scripts/lib/service-validation.sh"
     exit 1
 fi
 
-source "$SCRIPT_DIR/../lib/service-validation.sh"
+source "$PROJECT_ROOT/scripts/lib/service-validation.sh"
 
 # Run comprehensive validation
 if verify_all_core_services "$CLUSTER_DOMAIN"; then
@@ -91,7 +91,7 @@ else
     echo ""
     echo "Common fixes:"
     echo "  • Restart failed pods: kubectl delete pod <pod-name> -n <namespace>"
-    echo "  • Re-run DNS setup: sudo $SCRIPT_DIR/../setup/setup-local-dns.sh"
+    echo "  • Re-run DNS setup: sudo bash \"$PROJECT_ROOT/scripts/setup/setup-local-dns.sh\""
     echo "  • Check MetalLB: kubectl get ipaddresspool -n metallb-system"
     echo "  • View logs: kubectl logs -n <namespace> <pod-name>"
     echo ""

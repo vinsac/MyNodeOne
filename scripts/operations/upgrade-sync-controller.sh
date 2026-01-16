@@ -47,14 +47,15 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Detect script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
-log_info "Repository: $REPO_ROOT"
+log_info "Repository: $PROJECT_ROOT"
 echo ""
 
 # Check current branch and version
-cd "$REPO_ROOT"
+cd "$PROJECT_ROOT"
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 CURRENT_COMMIT=$(git rev-parse --short HEAD)
 

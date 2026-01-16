@@ -23,9 +23,10 @@ CONTROL_PLANE_IP="${2:-}"
 SSH_USER="${3:-$(whoami)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # Source preflight checks
-source "$SCRIPT_DIR/../lib/preflight-checks.sh"
+source "$PROJECT_ROOT/scripts/lib/preflight-checks.sh"
 
 echo ""
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

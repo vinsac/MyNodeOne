@@ -9,9 +9,9 @@
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+source "$SCRIPT_DIR/../../lib/project-root.sh"
 
 # Load shared validation library
 source "$SCRIPT_DIR/../lib/validation.sh"

@@ -369,7 +369,7 @@ log_info "Step 10: Installing Node Agent..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
+if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
     # Get API token from config if available (set by VPS orchestrator)
     API_TOKEN="${API_TOKEN:-}"
     
@@ -385,7 +385,7 @@ if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
     
     # Call install-config-sync with ssh-user parameter for automatic token fetch
     # Arguments: node-type control-plane-ip api-token node-name ssh-user
-    if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "${NODE_NAME:-$(hostname)}" "$CP_SSH_USER"; then
+    if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "${NODE_NAME:-$(hostname)}" "$CP_SSH_USER"; then
         log_success "Node Agent installed"
         log_info "VPS will now pull config updates from control plane"
     else

@@ -342,7 +342,7 @@ echo ""
 
 # Auto-update VPS route if configure-vps-route.sh exists and user wants
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$SCRIPT_DIR/../vps/configure-vps-route.sh" ]]; then
+if [[ -f "$PROJECT_ROOT/scripts/vps/configure-vps-route.sh" ]]; then
     read -p "Configure VPS route now? [y/N]: " configure_vps
     if [[ "$configure_vps" =~ ^[Yy]$ ]]; then
         read -p "Enter subdomain for $APP_NAME (e.g., photos): " subdomain
@@ -350,7 +350,7 @@ if [[ -f "$SCRIPT_DIR/../vps/configure-vps-route.sh" ]]; then
         
         if [[ -n "$subdomain" ]] && [[ -n "$domain" ]]; then
             info "Configuring VPS route..."
-            bash "$SCRIPT_DIR/../vps/configure-vps-route.sh" "$APP_NAME" "$PROXY_PORT" "$subdomain" "$domain"
+            bash "$PROJECT_ROOT/scripts/vps/configure-vps-route.sh" "$APP_NAME" "$PROXY_PORT" "$subdomain" "$domain"
         fi
     fi
 fi

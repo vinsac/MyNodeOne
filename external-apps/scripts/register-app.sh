@@ -17,7 +17,9 @@ NC='\033[0m'
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Calculate project root from external-apps location
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 # Default values
 APP_NAME=""

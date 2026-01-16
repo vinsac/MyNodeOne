@@ -41,9 +41,9 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Get script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -108,7 +108,7 @@ log_success "Binary installed: /usr/local/bin/mynodeone-config-api"
 
 # Install systemd service
 log_info "Installing systemd service..."
-cp "$SCRIPT_DIR/../lib/mynodeone-config-api.service" /etc/systemd/system/
+cp "$PROJECT_ROOT/scripts/lib/mynodeone-config-api.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable mynodeone-config-api
 

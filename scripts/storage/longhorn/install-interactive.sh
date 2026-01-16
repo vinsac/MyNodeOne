@@ -41,12 +41,14 @@ log_error() {
 }
 
 # Detect script directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/../../lib"
+source "$SCRIPT_DIR/../lib/project-root.sh"
+LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
 # Source user detection library (defensive programming)
-if [[ -f "$LIB_DIR/detect-actual-home.sh" ]]; then
-    source "$LIB_DIR/detect-actual-home.sh"
+if [[ -f "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 else
     # Fallback: manual detection
     ACTUAL_USER="${SUDO_USER:-$(whoami)}"
@@ -672,8 +674,8 @@ main() {
     
     # Register Longhorn service in service registry
     log_info "Registering Longhorn UI in service registry..."
-    if command -v bash "$SCRIPT_DIR/../../lib/service-registry.sh" &>/dev/null; then
-        bash "$SCRIPT_DIR/../../lib/service-registry.sh" register_service \
+    if command -v bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" &>/dev/null; then
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register_service \
             "longhorn" \
             "longhorn" \
             "longhorn-system" \
@@ -683,9 +685,9 @@ main() {
     fi
     
     # Trigger DNS sync
-    if [[ -f "$SCRIPT_DIR/../../sync-dns.sh" ]]; then
+    if [[ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]]; then
         log_info "Syncing DNS entries..."
-        bash "$SCRIPT_DIR/../../sync-dns.sh" || log_warn "DNS sync failed"
+        bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" || log_warn "DNS sync failed"
     fi
     
     log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"

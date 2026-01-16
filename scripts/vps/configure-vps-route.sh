@@ -49,7 +49,8 @@ fi
 
 # Source node registry manager for VPS auto-detection
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REGISTRY_MANAGER="$SCRIPT_DIR/../lib/node-registry-manager.sh"
+source "$SCRIPT_DIR/../lib/project-root.sh"
+REGISTRY_MANAGER="$PROJECT_ROOT/scripts/lib/node-registry-manager.sh"
 
 # Parse arguments
 APP_NAME="$1"

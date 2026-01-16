@@ -69,14 +69,14 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🌐 Registering Service: $APP_NAME"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Get script directory and project root using standardized utility
+POST_INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$POST_INSTALL_DIR/../lib/project-root.sh"
+
 echo ""
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# 1. Register service in central registry
 log_info "Registering in service registry..."
 
-if bash "$SCRIPT_DIR/service-registry.sh" register \
+if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
     "$APP_NAME" "$SUBDOMAIN" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "$MAKE_PUBLIC" 2>&1; then
     log_success "Service registered in cluster"
 else
@@ -86,7 +86,7 @@ fi
 # 2. Update local DNS entries on control plane
 log_info "Updating local DNS on this machine..."
 
-DNS_ENTRIES=$(bash "$SCRIPT_DIR/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null || echo "")
+DNS_ENTRIES=$(bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null || echo "")
 
 if [[ -n "$DNS_ENTRIES" ]]; then
     # Backup /etc/hosts
@@ -180,7 +180,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                         
                         # Register domain
                         if command -v kubectl &>/dev/null; then
-                            bash "$SCRIPT_DIR/multi-domain-registry.sh" register-domain \
+                            bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" register-domain \
                                 "$user_domain" "Added during $APP_NAME installation" 2>/dev/null || true
                             log_success "Domain registered: $user_domain"
                         fi
@@ -224,17 +224,17 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                     
                     if [[ -n "$VPS_NODES" ]]; then
                         # Configure routing
-                        if bash "$SCRIPT_DIR/multi-domain-registry.sh" configure-routing \
+                        if bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
                             "$APP_NAME" "$selected_domains" "$VPS_NODES" "round-robin" 2>/dev/null; then
                             log_success "Public routing configured"
                         fi
                         
                         # Update service to mark as public
-                        bash "$SCRIPT_DIR/service-registry.sh" register \
+                        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
                             "$APP_NAME" "$SUBDOMAIN" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "true" 2>/dev/null || true
                         
                         # Trigger sync
-                        if bash "$SCRIPT_DIR/sync-controller.sh" push 2>/dev/null; then
+                        if bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push 2>/dev/null; then
                             log_success "Configuration pushed to VPS nodes"
                         else
                             log_warn "Auto-sync unavailable, use manual sync"

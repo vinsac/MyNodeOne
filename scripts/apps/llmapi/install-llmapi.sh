@@ -21,8 +21,11 @@
 
 set -euo pipefail
 
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+# Calculate project root from apps location
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -486,7 +489,7 @@ echo ""
 
 # Load centralized HF token management
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/hf-token.sh"
+source "$PROJECT_ROOT/scripts/lib/hf-token.sh"
 
 # HuggingFace Token (optional but recommended for faster downloads)
 HF_TOKEN=""
@@ -553,7 +556,7 @@ echo ""
 
 # Create namespace
 echo "📦 Creating namespace and PriorityClasses..."
-kubectl apply -f "$SCRIPT_DIR/../lib/priorityclass.yaml" 2>/dev/null || true
+kubectl apply -f "$PROJECT_ROOT/scripts/lib/priorityclass.yaml" 2>/dev/null || true
 kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
 
 # Deploy RBAC for gateway (allows model changes from Admin UI)

@@ -25,9 +25,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get project root directory
+# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/project-root.sh"
 
 # ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
 # If not set (standalone execution), detect them here
@@ -642,8 +642,8 @@ EOF
     
     # Register cluster node in node registry
     log_info "Registering cluster node in node registry..."
-    if [ -f "$SCRIPT_DIR/../lib/node-registry-manager.sh" ]; then
-        source "$SCRIPT_DIR/../lib/node-registry-manager.sh"
+    if [ -f "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" ]; then
+        source "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh"
         
         # Get Kubernetes node name (may differ from hostname)
         K8S_NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "$NODE_NAME")
@@ -1043,10 +1043,10 @@ install_longhorn() {
     log_info "Installing Longhorn storage (interactive)..."
     
     # Use new interactive installation script
-    if [ -f "$SCRIPT_DIR/storage/longhorn/install-interactive.sh" ]; then
-        bash "$SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+    if [ -f "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
     else
-        log_error "Longhorn installation script not found: $SCRIPT_DIR/storage/longhorn/install-interactive.sh"
+        log_error "Longhorn installation script not found: $PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
         log_warn "Falling back to basic installation..."
         
         # Fallback: basic installation
@@ -1432,7 +1432,7 @@ deploy_dashboard() {
     log_info "Deploying MyNodeOne Dashboard..."
     
     # Deploy the dashboard
-    if bash "$SCRIPT_DIR/../website/deploy-dashboard.sh" > /dev/null 2>&1; then
+    if bash "$PROJECT_ROOT/scripts/website/deploy-dashboard.sh" > /dev/null 2>&1; then
         log_success "Dashboard deployed - accessible at http://${CLUSTER_DOMAIN}.local"
     else
         log_warn "Dashboard deployment had issues, but continuing..."
@@ -1500,13 +1500,13 @@ initialize_service_registries() {
     echo
     
     log_info "Creating service registry..."
-    bash "$SCRIPT_DIR/../lib/service-registry.sh" init || true
+    bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" init || true
     
     log_info "Creating multi-domain registry..."
-    bash "$SCRIPT_DIR/../lib/multi-domain-registry.sh" init || true
+    bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" init || true
     
     log_info "Initializing enterprise node registry..."
-    bash "$SCRIPT_DIR/../lib/node-registry-manager.sh" init || {
+    bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" init || {
         log_warn "Could not initialize node registry (kubectl may not be ready yet)"
         log_info "Registry will be initialized on first node registration"
     }
@@ -1543,7 +1543,7 @@ initialize_service_registries() {
     fi
     
     log_info "Syncing existing services to registry..."
-    bash "$SCRIPT_DIR/../lib/service-registry.sh" sync || true
+    bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync || true
     
     # Register platform services in the registry
     log_info "Registering platform services..."
@@ -1553,7 +1553,7 @@ initialize_service_registries() {
     
     # Register Grafana
     if kubectl get svc -n monitoring kube-prometheus-stack-grafana &>/dev/null; then
-        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
             "kube-prometheus-stack-grafana" "grafana" "monitoring" \
             "kube-prometheus-stack-grafana" "80" "false" 2>/dev/null || \
             log_warn "Could not register Grafana (will retry later)"
@@ -1561,7 +1561,7 @@ initialize_service_registries() {
     
     # Register ArgoCD
     if kubectl get svc -n argocd argocd-server &>/dev/null; then
-        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
             "argocd-server" "argocd" "argocd" \
             "argocd-server" "80" "false" 2>/dev/null || \
             log_warn "Could not register ArgoCD (will retry later)"
@@ -1572,7 +1572,7 @@ initialize_service_registries() {
     
     # Register Longhorn (if LoadBalancer type)
     if kubectl get svc -n longhorn-system longhorn-frontend -o jsonpath='{.spec.type}' 2>/dev/null | grep -q "LoadBalancer"; then
-        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
             "longhorn-frontend" "longhorn" "longhorn-system" \
             "longhorn-frontend" "80" "false" 2>/dev/null || \
             log_warn "Could not register Longhorn (will retry later)"
@@ -1580,7 +1580,7 @@ initialize_service_registries() {
     
     # Register Dashboard
     if kubectl get svc -n mynodeone-dashboard dashboard &>/dev/null; then
-        bash "$SCRIPT_DIR/../lib/service-registry.sh" register \
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
             "dashboard" "${CLUSTER_DOMAIN}" "mynodeone-dashboard" \
             "dashboard" "80" "false" 2>/dev/null || \
             log_warn "Could not register Dashboard (will retry later)"
@@ -1639,7 +1639,7 @@ initialize_service_registries() {
     CONTROL_PLANE_USER="${SUDO_USER:-$(whoami)}"
     
     # Use sudo for registration (needs root to update ConfigMap)
-    if sudo bash "$SCRIPT_DIR/../lib/node-registry-manager.sh" register \
+    if sudo bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" register \
         "management_laptops" "$TAILSCALE_IP" "$CONTROL_PLANE_HOSTNAME" \
         "$CONTROL_PLANE_USER" "" "$PROJECT_ROOT"; then
         log_success "✓ Control plane registered for DNS sync"
@@ -1657,8 +1657,8 @@ initialize_service_registries() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
-        if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" control-plane; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" control-plane; then
             log_success "Config API Server installed"
             
             # Display API token for use on other nodes
@@ -2050,7 +2050,7 @@ offer_security_hardening() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo
         log_info "Deploying optional security enhancements..."
-        if bash "$SCRIPT_DIR/../setup/enable-security-hardening.sh"; then
+        if bash "$PROJECT_ROOT/scripts/setup/enable-security-hardening.sh"; then
             log_success "Optional security enhancements deployed!"
             echo
             echo "✅ Network policies active"
@@ -2058,14 +2058,14 @@ offer_security_hardening() {
             echo "✅ Traefik security headers configured"
         else
             log_warn "Deployment had issues. You can try again later with:"
-            echo "  sudo $SCRIPT_DIR/../setup/enable-security-hardening.sh"
+            echo "  sudo $PROJECT_ROOT/scripts/setup/enable-security-hardening.sh"
         fi
     else
         echo
         log_info "Skipping optional enhancements. Your cluster still has strong core security."
         echo
         log_info "You can add them anytime with:"
-        echo "  sudo $SCRIPT_DIR/../setup/enable-security-hardening.sh"
+        echo "  sudo $PROJECT_ROOT/scripts/setup/enable-security-hardening.sh"
     fi
 }
 
@@ -2110,7 +2110,7 @@ setup_local_dns() {
     local dns_success=false
     
     while [ $dns_retry -lt $dns_max_retries ]; do
-        if bash "$SCRIPT_DIR/../setup/setup-local-dns.sh"; then
+        if bash "$PROJECT_ROOT/scripts/setup/setup-local-dns.sh"; then
             dns_success=true
             break
         else
@@ -2168,8 +2168,8 @@ run_final_validation() {
     echo
     
     # Run unified validation script
-    if [ -f "$SCRIPT_DIR/../lib/validate-installation.sh" ]; then
-        if bash "$SCRIPT_DIR/../lib/validate-installation.sh" control-plane; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/validate-installation.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" control-plane; then
             echo
             log_success "🎉 INSTALLATION VALIDATION PASSED!"
             log_info "Your control plane is fully operational!"
@@ -2182,7 +2182,7 @@ run_final_validation() {
             log_error "❌ INSTALLATION VALIDATION FAILED"
             log_warn "Some components may need attention (see details above)"
             log_info "You can re-run validation anytime:"
-            echo "  sudo bash $SCRIPT_DIR/../lib/validate-installation.sh control-plane"
+            echo "  sudo bash $PROJECT_ROOT/scripts/lib/validate-installation.sh control-plane"
             
             # Save validation status
             echo "LAST_VALIDATION=$(date -Iseconds)" >> $ACTUAL_HOME/.mynodeone/config.env
@@ -2230,16 +2230,16 @@ offer_demo_app() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo
         log_info "Deploying demo application..."
-        if bash "$SCRIPT_DIR/../operations/deploy-demo-app.sh" deploy; then
+        if bash "$PROJECT_ROOT/scripts/operations/deploy-demo-app.sh" deploy; then
             log_success "Demo app deployment complete!"
         else
             log_warn "Demo app deployment had issues. You can deploy it later with:"
-            echo "  sudo $SCRIPT_DIR/../operations/deploy-demo-app.sh"
+            echo "  sudo $PROJECT_ROOT/scripts/operations/deploy-demo-app.sh"
         fi
     else
         echo
         log_info "Skipping demo app. You can deploy it anytime with:"
-        echo "  sudo $SCRIPT_DIR/../operations/deploy-demo-app.sh"
+        echo "  sudo $PROJECT_ROOT/scripts/operations/deploy-demo-app.sh"
     fi
 }
 
@@ -2274,7 +2274,7 @@ offer_llm_chat() {
         log_info "Deploying LLM chat application..."
         # Use the new app store installation script (auto-skips prompts for subdomain/VPS during bootstrap)
         export AUTO_INSTALL_MODE=true
-        if bash "$SCRIPT_DIR/../apps/llm-chat/install-llm-chat.sh"; then
+        if bash "$PROJECT_ROOT/scripts/apps/llm-chat/install-llm-chat.sh"; then
             log_success "LLM chat deployment complete!"
             echo
             log_info "LLM Chat installed locally. To add public internet access later:"
@@ -2419,8 +2419,8 @@ main() {
     echo
     log_info "Installing Config API Server for pull-based node sync..."
     
-    if [ -f "$SCRIPT_DIR/../lib/install-config-sync.sh" ]; then
-        if bash "$SCRIPT_DIR/../lib/install-config-sync.sh" control-plane; then
+    if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
+        if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" control-plane; then
             log_success "Config API Server installed"
             log_info "Nodes can now pull config updates via HTTP on port 8443"
             
@@ -2449,11 +2449,11 @@ main() {
     
     # Final sync: Ensure all services are registered and DNS is updated
     log_info "Final sync: Registering all services and updating DNS..."
-    if [ -f "$SCRIPT_DIR/../lib/service-registry.sh" ]; then
-        bash "$SCRIPT_DIR/../lib/service-registry.sh" sync 2>/dev/null || true
+    if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync 2>/dev/null || true
     fi
-    if [ -f "$SCRIPT_DIR/../domains/sync-dns.sh" ]; then
-        bash "$SCRIPT_DIR/../domains/sync-dns.sh" 2>/dev/null || true
+    if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" 2>/dev/null || true
     fi
     log_success "All services registered and DNS updated"
     echo
@@ -2466,9 +2466,9 @@ main() {
     echo
     log_info "Setting up passwordless sudo for cluster management..."
     
-    if [ -f "$SCRIPT_DIR/../setup/setup-control-plane-sudo.sh" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh" ]; then
         # Run with error handling (don't fail installation if this fails)
-        if bash "$SCRIPT_DIR/../setup/setup-control-plane-sudo.sh" 2>&1; then
+        if bash "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh" 2>&1; then
             log_success "✓ Passwordless sudo configured successfully"
         else
             local exit_code=$?

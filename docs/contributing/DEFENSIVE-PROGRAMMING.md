@@ -83,6 +83,222 @@ bash "$SCRIPT_DIR/subscript.sh" || {
 
 ---
 
+## Path Resolution and Project Root Management
+
+### The Problem
+Scripts need to reference:
+- Cross-directory resources (manifests, libraries, configs in different directories)
+- Co-located resources (manifests next to the script)
+- Sibling helper scripts (other scripts in same directory)
+
+Using relative paths like `../../manifests/app.yaml` is fragile and breaks when scripts are moved or called from different directories.
+
+### Standard Patterns
+
+#### Pattern 1: Bootstrap and Use PROJECT_ROOT (Most Common)
+```bash
+# Bootstrap: Find project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+
+# Now use PROJECT_ROOT for all cross-directory references
+source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
+kubectl apply -f "$PROJECT_ROOT/manifests/common/namespace.yaml"
+bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
+```
+
+**Why this works:**
+- `$SCRIPT_DIR` gives absolute path to script's directory
+- Calculate `$PROJECT_ROOT` relative to known script location
+- `project-root.sh` validates and exports `$PROJECT_ROOT` for all subsequent use
+- After bootstrap, **never use relative paths** - always use `$PROJECT_ROOT`
+
+#### Pattern 2: Local Module Resources (Self-Contained Apps)
+```bash
+# For scripts that manage co-located resources
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+
+# Use SCRIPT_DIR for manifests/configs that live alongside the script
+kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
+kubectl apply -f "$SCRIPT_DIR/manifests/redis.yaml"
+
+# Use PROJECT_ROOT for cross-directory references
+source "$PROJECT_ROOT/scripts/lib/service-registry.sh"
+```
+
+**When to use:**
+- App install scripts (`scripts/apps/llmapi/install-llmapi.sh`)
+- External app integration (`external-apps/myapp/deploy.sh`)
+- Self-contained modules with their own resource directories
+
+**Benefits:**
+- Keeps module resources bundled together
+- Makes modules portable and self-contained
+- Clear separation: `$SCRIPT_DIR` = local, `$PROJECT_ROOT` = global
+
+#### Pattern 3: Sibling Helper Scripts (Library Functions)
+```bash
+# For library scripts that need other scripts in same directory
+local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+local helper_script="$script_dir/setup-vps-ssh-keys.sh"
+
+if [ ! -f "$helper_script" ]; then
+    echo "Error: Helper script not found: $helper_script"
+    return 1
+fi
+
+# Copy or execute the helper
+scp "$helper_script" remote:/tmp/
+bash "$helper_script"
+```
+
+**When to use:**
+- Library functions in `scripts/lib/` that reference sibling utilities
+- Helper scripts that come in pairs/groups
+
+### Key Principles
+
+1. **Always bootstrap with SCRIPT_DIR → PROJECT_ROOT**
+   - Required because `project-root.sh` itself needs to be found
+   - This is the chicken-and-egg problem solution
+
+2. **Use PROJECT_ROOT for cross-directory references**
+   - ✅ `"$PROJECT_ROOT/scripts/lib/helper.sh"`
+   - ✅ `"$PROJECT_ROOT/manifests/common/config.yaml"`
+   - ❌ `"$SCRIPT_DIR/../../lib/helper.sh"` (fragile, breaks on moves)
+
+3. **Use SCRIPT_DIR for co-located resources**
+   - ✅ `"$SCRIPT_DIR/manifests/app.yaml"` (keeps module self-contained)
+   - ✅ `"$SCRIPT_DIR/config/defaults.conf"` (bundled with script)
+
+4. **Never hardcode absolute paths**
+   - ❌ `"/home/user/MyNodeOne/scripts/lib/helper.sh"` (not portable)
+   - ✅ `"$PROJECT_ROOT/scripts/lib/helper.sh"` (portable)
+
+5. **Export PROJECT_ROOT for subshells**
+   - Ensure child scripts inherit `$PROJECT_ROOT`
+   - Prevents duplicate detection in every script
+
+### Directory Structure Context
+
+```
+MyNodeOne/                          # PROJECT_ROOT
+├── scripts/
+│   ├── lib/
+│   │   ├── project-root.sh         # Detects and exports PROJECT_ROOT
+│   │   └── cluster-resources.sh    # Cross-directory reference: "$PROJECT_ROOT/scripts/lib/..."
+│   ├── apps/
+│   │   └── llmapi/
+│   │       ├── install-llmapi.sh   # Uses: SCRIPT_DIR for manifests/, PROJECT_ROOT for lib/
+│   │       └── manifests/          # Co-located resources
+│   │           ├── namespace.yaml  # Referenced via: "$SCRIPT_DIR/manifests/namespace.yaml"
+│   │           └── redis.yaml
+│   ├── operations/
+│   │   └── manage-apps.sh          # Uses: PROJECT_ROOT for everything
+│   └── domains/
+│       └── sync-dns.sh
+├── manifests/
+│   └── common/                     # Shared resources: "$PROJECT_ROOT/manifests/common/..."
+└── external-apps/
+    └── myapp/
+        ├── deploy.sh               # Bootstrap from different tree location
+        └── k8s/                    # Co-located: "$SCRIPT_DIR/k8s/..."
+```
+
+### Anti-Patterns to Avoid
+
+#### ❌ Multi-Level Relative Paths
+```bash
+# WRONG - fragile, breaks when script moves
+source "$SCRIPT_DIR/../../lib/helper.sh"
+kubectl apply -f "$SCRIPT_DIR/../../../manifests/app.yaml"
+```
+
+#### ❌ Using SCRIPT_DIR for Cross-Directory References
+```bash
+# WRONG - couples script to specific directory structure
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../lib/project-root.sh"  # Fragile!
+
+# RIGHT - use PROJECT_ROOT after bootstrap
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"  # Absolute from root
+```
+
+#### ❌ Skipping PROJECT_ROOT Detection
+```bash
+# WRONG - assumes script location
+source ../../lib/helper.sh
+
+# RIGHT - always detect project root first
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+```
+
+#### ❌ Hardcoded Absolute Paths
+```bash
+# WRONG - not portable across environments
+MANIFESTS_DIR="/home/vinay/MyNodeOne/manifests"
+
+# RIGHT - use PROJECT_ROOT
+MANIFESTS_DIR="$PROJECT_ROOT/manifests"
+```
+
+### Complete Example: App Install Script
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+# Bootstrap: Detect project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+
+# Load cross-directory libraries using PROJECT_ROOT
+source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
+source "$PROJECT_ROOT/scripts/lib/service-registry.sh"
+
+# Deploy co-located manifests using SCRIPT_DIR
+echo "Deploying app resources..."
+kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
+kubectl apply -f "$SCRIPT_DIR/manifests/redis.yaml"
+kubectl apply -f "$SCRIPT_DIR/manifests/app.yaml"
+
+# Call other scripts using PROJECT_ROOT
+echo "Syncing DNS..."
+bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
+
+# Register service using cross-directory library
+bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register "myapp" "myapp" "myapp" "myapp-svc" "80"
+
+echo "✓ Installation complete"
+```
+
+### Why This Matters
+
+**Maintainability:**
+- Scripts can be moved without breaking paths
+- Clear distinction between local and global resources
+- Easy to understand file organization
+
+**Portability:**
+- Works regardless of where MyNodeOne is cloned
+- No hardcoded paths or usernames
+- Can be packaged and distributed
+
+**Reliability:**
+- Absolute paths prevent "file not found" errors
+- Consistent path resolution across all scripts
+- Works when called from any directory (`cd /tmp && bash ~/MyNodeOne/scripts/install.sh`)
+
+---
+
 ## SSH Safety and Automation
 
 ### The Problem
@@ -450,5 +666,5 @@ main "$@"
 
 ---
 
-**Last Updated:** January 11, 2026  
+**Last Updated:** January 16, 2026  
 **Maintained by:** MyNodeOne Contributors

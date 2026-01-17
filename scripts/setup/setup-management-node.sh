@@ -11,7 +11,11 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/project-root.sh"
+
+# Bootstrap with fallback pattern (auto-discovers if path is wrong)
+source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Source SSH utilities for ControlMaster support
 if [ -f "$PROJECT_ROOT/scripts/lib/ssh-utils.sh" ]; then

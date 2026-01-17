@@ -16,7 +16,11 @@ NC='\033[0m' # No Color
 
 # Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/project-root.sh"
+
+# Bootstrap with fallback pattern (auto-discovers if path is wrong)
+source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 APPS_DIR="$PROJECT_ROOT/manifests/apps"
 
 log_info() {

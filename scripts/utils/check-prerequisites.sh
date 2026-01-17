@@ -18,7 +18,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/project-root.sh"
+
+# Bootstrap with fallback pattern (auto-discovers if path is wrong)
+source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Source the preflight checks library
 source "$PROJECT_ROOT/scripts/lib/preflight-checks.sh"
@@ -41,7 +45,11 @@ show_usage() {
 
 # Get absolute script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/project-root.sh"
+
+# Bootstrap with fallback pattern (auto-discovers if path is wrong)
+source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Detect actual user and home directory
 source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"

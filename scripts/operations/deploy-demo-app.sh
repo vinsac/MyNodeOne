@@ -215,7 +215,11 @@ EOF
         # Register with enterprise registry (if available)
         log_info "Registering demo app in service registry..."
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        source "$SCRIPT_DIR/../lib/project-root.sh"
+        
+        # Bootstrap with fallback pattern (auto-discovers if path is wrong)
+        source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+        source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+        source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
         
         # Load cluster domain - handle sudo correctly
         ACTUAL_HOME="${HOME}"
@@ -350,7 +354,11 @@ main() {
             # Sync service registry after deployment
             log_info "Syncing service registry..."
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            source "$SCRIPT_DIR/../lib/project-root.sh"
+            
+            # Bootstrap with fallback pattern (auto-discovers if path is wrong)
+            source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+            source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+            source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
             if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
                 bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync 2>/dev/null || true
             fi
@@ -361,7 +369,11 @@ main() {
             
             # Sync service registry after removal
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            source "$SCRIPT_DIR/../lib/project-root.sh"
+            
+            # Bootstrap with fallback pattern (auto-discovers if path is wrong)
+            source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+            source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+            source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
             if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
                 bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" sync 2>/dev/null || true
             fi

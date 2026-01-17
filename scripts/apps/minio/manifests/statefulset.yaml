@@ -46,7 +46,7 @@ spec:
         - name: MINIO_BROWSER
           value: "on"
         - name: MINIO_BROWSER_REDIRECT_URL
-          value: "http://minio-NODE_PLACEHOLDER.mynodeone.local:9001"
+          value: "http://minio-NODE_PLACEHOLDER.CLUSTER_DOMAIN_PLACEHOLDER.local:9001"
         - name: MINIO_API_CORS_ALLOW_ORIGIN
           value: "*"
         - name: MINIO_PROMETHEUS_AUTH_TYPE

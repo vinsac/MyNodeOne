@@ -398,6 +398,7 @@ log_info "Deploying MinIO StatefulSet..."
 cat "$MANIFESTS_DIR/statefulset.yaml" | \
     sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
     sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
+    sed "s/CLUSTER_DOMAIN_PLACEHOLDER/${CLUSTER_DOMAIN}/g" | \
     kubectl apply -f -
 log_success "StatefulSet deployed"
 

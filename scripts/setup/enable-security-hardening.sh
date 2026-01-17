@@ -235,14 +235,14 @@ print_summary() {
     echo "Next Steps:"
     echo "  1. Monitor audit logs: tail -f /var/log/k3s-audit.log"
     echo "  2. Re-encrypt existing secrets: kubectl get secrets --all-namespaces -o json | kubectl replace -f -"
-    echo "  3. Add security middleware to your apps (see traefik-security-headers.yaml)"
+    echo "  3. Add security middleware to your apps (see manifests/security/traefik-security-headers.yaml)"
     echo "  4. Review network policies for your applications"
-    echo "  5. Review SECURITY-AUDIT.md for remaining recommendations"
+    echo "  5. Review docs/security/SECURITY.md for security guidelines"
     echo
     echo "Documentation:"
-    echo "  - docs/security-best-practices.md"
-    echo "  - docs/password-management.md"
-    echo "  - SECURITY-AUDIT.md"
+    echo "  - docs/security/BEST-PRACTICES.md"
+    echo "  - docs/security/PASSWORD-MANAGEMENT.md"
+    echo "  - docs/security/SECURITY.md"
     echo
     log_success "Your cluster is now significantly more secure! 🔒"
 }

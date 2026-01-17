@@ -76,8 +76,19 @@ detect_available_disks() {
     # Log to stderr to not pollute stdout (which is captured)
     echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') Detecting available disks..." >&2
     
-    # Get OS disk
-    local os_disk=$(df / | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
+    # Get OS disk using df (reliable across all device types)
+    local os_disk=$(df / 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
+    
+    # Fallback to /boot if root detection fails
+    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
+        os_disk=$(df /boot 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
+    fi
+    
+    # Final safety check
+    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
+        echo -e "${RED}[ERROR]${NC} Could not detect OS disk" >&2
+        return 1
+    fi
     
     # Find real block devices by scanning /dev directly (avoid lsblk weirdness with symlinks)
     local real_devices=""

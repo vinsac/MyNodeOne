@@ -152,12 +152,19 @@ echo ""
 detect_available_disks() {
     local node_cmd_prefix="$1"
     
-    # Detect OS disk
-    local os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/$" | awk '{print $1}' | sed 's/p\?[0-9]*$//' | head -1)
-    if [ -z "$os_disk" ]; then
-        os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/boot" | awk '{print $1}' | sed 's/p\?[0-9]*$//' | head -1)
+    # Detect OS disk using df (more reliable than lsblk)
+    local os_disk=$($node_cmd_prefix df / 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
+    
+    # Fallback to /boot if root detection fails
+    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
+        os_disk=$($node_cmd_prefix df /boot 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
     fi
-    os_disk="/dev/$os_disk"
+    
+    # Final safety check
+    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
+        echo "ERROR: Could not detect OS disk" >&2
+        return 1
+    fi
     
     # Get Longhorn disks - convert mount paths to device paths
     local longhorn_mount_paths=$(kubectl get nodes.longhorn.io -n longhorn-system "$NODE_NAME" -o jsonpath='{range .spec.disks[*]}{.path}{"\n"}{end}' 2>/dev/null || echo "")

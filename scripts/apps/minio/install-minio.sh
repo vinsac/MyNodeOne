@@ -153,14 +153,25 @@ detect_available_disks() {
     local node_cmd_prefix="$1"
     
     # Detect OS disk
-    local os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/$" | awk '{print $1}' | sed 's/[0-9]*$//' | head -1)
+    local os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/$" | awk '{print $1}' | sed 's/p\?[0-9]*$//' | head -1)
     if [ -z "$os_disk" ]; then
-        os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/boot" | awk '{print $1}' | sed 's/[0-9]*$//' | head -1)
+        os_disk=$($node_cmd_prefix lsblk -n -o NAME,MOUNTPOINT | grep "/boot" | awk '{print $1}' | sed 's/p\?[0-9]*$//' | head -1)
     fi
     os_disk="/dev/$os_disk"
     
-    # Get Longhorn disks
-    local longhorn_disks=$(kubectl get nodes.longhorn.io -n longhorn-system "$NODE_NAME" -o jsonpath='{range .spec.disks[*]}{.path}{"\n"}{end}' 2>/dev/null || echo "")
+    # Get Longhorn disks - convert mount paths to device paths
+    local longhorn_mount_paths=$(kubectl get nodes.longhorn.io -n longhorn-system "$NODE_NAME" -o jsonpath='{range .spec.disks[*]}{.path}{"\n"}{end}' 2>/dev/null || echo "")
+    local longhorn_disks=""
+    while IFS= read -r mount_path; do
+        [[ -z "$mount_path" ]] && continue
+        # Get the device mounted at this path
+        local dev=$($node_cmd_prefix findmnt -n -o SOURCE "$mount_path" 2>/dev/null || echo "")
+        if [ -n "$dev" ]; then
+            # Strip partition number to get base device (e.g., /dev/sda1 -> /dev/sda)
+            local base_dev=$(echo "$dev" | sed 's/[0-9]*$//' | sed 's/p$//')
+            longhorn_disks+="$base_dev"$'\n'
+        fi
+    done <<< "$longhorn_mount_paths"
     
     # Detect physical disks
     local real_devices=$($node_cmd_prefix lsblk -d -n -o NAME,TYPE | grep disk | awk '{print "/dev/" $1}')
@@ -248,7 +259,7 @@ format_and_mount_disk() {
     
     # Add to fstab
     local uuid=$($node_cmd_prefix blkid -s UUID -o value "$partition")
-    $node_cmd_prefix "grep -q '$uuid' /etc/fstab || echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /etc/fstab"
+    $node_cmd_prefix bash -c "grep -q '$uuid' /etc/fstab || echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /etc/fstab"
     
     log_success "Disk mounted at $mount_path"
 }

@@ -273,8 +273,8 @@ if [ ${#available_disks[@]} -gt 0 ]; then
     disk_count=0
     for disk_info in "${available_disks[@]}"; do
         disk_count=$((disk_count + 1))
-        local disk_name=$(echo "$disk_info" | cut -d: -f1)
-        local disk_size=$(echo "$disk_info" | cut -d: -f2)
+        disk_name=$(echo "$disk_info" | cut -d: -f1)
+        disk_size=$(echo "$disk_info" | cut -d: -f2)
         echo "  $disk_count) $(basename $disk_name) ($disk_size)"
     done
 else

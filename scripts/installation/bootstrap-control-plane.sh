@@ -1643,13 +1643,8 @@ initialize_service_registries() {
             log_info "Enabling periodic local DNS sync..."
             if bash "$PROJECT_ROOT/scripts/setup/enable-local-dns-sync.sh" > /dev/null 2>&1; then
                 log_success "Local DNS sync timer enabled (updates every 1 minute)"
-            sudo systemctl restart mynodeone-sync-controller
-            sleep 2
-            if sudo systemctl is-active --quiet mynodeone-sync-controller; then
-                log_success "Sync controller service restarted successfully"
             else
-                log_error "Sync controller service failed to start"
-                log_error "Check logs: sudo journalctl -u mynodeone-sync-controller -n 50"
+                log_warn "Local DNS sync setup failed (non-critical)"
             fi
         fi
     fi

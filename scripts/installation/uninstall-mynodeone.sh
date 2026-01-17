@@ -544,13 +544,48 @@ echo
 # Step 9: Remove systemd services and VPS components
 log_info "[9/13] Removing systemd services and VPS components..."
 
-# Remove sync controller service (control plane)
+# Remove Config API V2 service (control plane)
+if [ -f /etc/systemd/system/mynodeone-config-api.service ]; then
+    systemctl stop mynodeone-config-api 2>/dev/null || true
+    systemctl disable mynodeone-config-api 2>/dev/null || true
+    rm -f /etc/systemd/system/mynodeone-config-api.service
+    systemctl daemon-reload
+    log_success "Removed Config API service"
+    
+    # Remove Config API V2 data files
+    if [ -f /etc/mynodeone/nodes-registry.json ]; then
+        rm -f /etc/mynodeone/nodes-registry.json
+        log_success "Removed node registry data (/etc/mynodeone/nodes-registry.json)"
+    fi
+    
+    if [ -f /etc/mynodeone/api-token ]; then
+        rm -f /etc/mynodeone/api-token
+        log_success "Removed API token (/etc/mynodeone/api-token)"
+    fi
+    
+    if [ -d /etc/mynodeone ] && [ -z "$(ls -A /etc/mynodeone)" ]; then
+        rmdir /etc/mynodeone 2>/dev/null || true
+        log_success "Removed /etc/mynodeone/ directory"
+    fi
+fi
+
+# Remove sync controller service (control plane - legacy V1)
 if [ -f /etc/systemd/system/mynodeone-sync-controller.service ]; then
     systemctl stop mynodeone-sync-controller 2>/dev/null || true
     systemctl disable mynodeone-sync-controller 2>/dev/null || true
     rm -f /etc/systemd/system/mynodeone-sync-controller.service
     systemctl daemon-reload
-    log_success "Removed sync controller service"
+    log_success "Removed sync controller service (legacy V1)"
+fi
+
+# Remove local DNS sync timer (control plane)
+if [ -f /etc/systemd/system/mynodeone-dns-sync.timer ]; then
+    systemctl stop mynodeone-dns-sync.timer 2>/dev/null || true
+    systemctl disable mynodeone-dns-sync.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/mynodeone-dns-sync.timer
+    rm -f /etc/systemd/system/mynodeone-dns-sync.service
+    systemctl daemon-reload
+    log_success "Removed DNS sync timer"
 fi
 
 # Remove VPS Traefik setup
@@ -726,6 +761,17 @@ if [ "$KEEP_CONFIG" = false ]; then
             rm -f "$cache_file"
         fi
     done
+    
+    # Remove Config API V2 data (if not already removed)
+    if [ -f /etc/mynodeone/nodes-registry.json ]; then
+        rm -f /etc/mynodeone/nodes-registry.json
+        log_success "Removed node registry data"
+    fi
+    
+    if [ -f /etc/mynodeone/api-token ]; then
+        rm -f /etc/mynodeone/api-token
+        log_success "Removed API token"
+    fi
     
     # Remove backup files
     rm -f ~/.mynodeone/*.backup.* /root/.mynodeone/*.backup.* 2>/dev/null || true

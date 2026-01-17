@@ -21,7 +21,8 @@ NC='\033[0m'
 # Script directory
 # Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/project-root.sh"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 
 # Backup configuration
 FULL_BACKUP_SCHEDULE="0 2 1 * *"     # 2:00 AM UTC on 1st of month (monthly full)

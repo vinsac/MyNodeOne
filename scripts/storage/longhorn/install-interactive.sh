@@ -43,7 +43,8 @@ log_error() {
 # Detect script directory
 # Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/project-root.sh"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/project-root.sh"
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
 # Source user detection library (defensive programming)

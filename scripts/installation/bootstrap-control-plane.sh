@@ -1611,21 +1611,38 @@ initialize_service_registries() {
         # Verify service actually started
         sleep 2
         if sudo systemctl is-active --quiet mynodeone-sync-controller; then
-            log_success "Sync controller service installed and started"
+            log_success "Sync controller service started successfully"
         else
-            log_error "Sync controller service failed to start"
-            log_error "Check logs: sudo journalctl -u mynodeone-sync-controller -n 50"
-            # Don't fail installation, but warn user
-            log_warn "Continuing installation, but sync controller needs attention"
+            log_warn "Sync controller service may not have started correctly"
+            log_info "Check status: sudo systemctl status mynodeone-sync-controller"
+        fi
+        
+        # Install local DNS sync timer (updates control plane /etc/hosts every 1 minute)
+        if [ ! -f /etc/systemd/system/mynodeone-local-dns-sync.timer ]; then
+            log_info "Enabling periodic local DNS sync..."
+            if bash "$PROJECT_ROOT/scripts/setup/enable-local-dns-sync.sh" > /dev/null 2>&1; then
+                log_success "Local DNS sync timer enabled (updates every 1 minute)"
+            else
+                log_warn "Local DNS sync setup failed (non-critical)"
+            fi
+        else
+            log_info "Local DNS sync timer already enabled"
         fi
     else
         log_info "Sync controller service already installed"
-        # Verify it's running
-        if sudo systemctl is-active --quiet mynodeone-sync-controller; then
-            log_success "Sync controller service is running"
+        # Ensure it's running
+        if ! sudo systemctl is-active --quiet mynodeone-sync-controller; then
+            log_info "Starting sync controller service..."
+            sudo systemctl start mynodeone-sync-controller
+        fi
+        
+        # Check if local DNS sync timer is already enabled
+        if [ -f /etc/systemd/system/mynodeone-local-dns-sync.timer ]; then
+            log_info "Local DNS sync timer already enabled"
         else
-            log_warn "Sync controller service exists but is not running"
-            log_info "Restarting service..."
+            log_info "Enabling periodic local DNS sync..."
+            if bash "$PROJECT_ROOT/scripts/setup/enable-local-dns-sync.sh" > /dev/null 2>&1; then
+                log_success "Local DNS sync timer enabled (updates every 1 minute)"
             sudo systemctl restart mynodeone-sync-controller
             sleep 2
             if sudo systemctl is-active --quiet mynodeone-sync-controller; then

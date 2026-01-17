@@ -810,7 +810,7 @@ setup_gpu_support() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # Use shared GPU setup script
-    local GPU_SETUP_SCRIPT="$SCRIPT_DIR/../lib/gpu-setup.sh"
+    local GPU_SETUP_SCRIPT="$PROJECT_ROOT/scripts/lib/gpu-setup.sh"
     if [ ! -f "$GPU_SETUP_SCRIPT" ]; then
         log_error "GPU setup script not found: $GPU_SETUP_SCRIPT"
         return 1
@@ -849,7 +849,7 @@ deploy_nvidia_device_plugin() {
     
     # Deploy the device plugin with runtimeClassName: nvidia
     # This ensures the plugin pod runs with nvidia runtime and can access GPU libraries
-    local LOCAL_MANIFEST="$SCRIPT_DIR/../manifests/gpu/nvidia-device-plugin.yaml"
+    local LOCAL_MANIFEST="$PROJECT_ROOT/manifests/gpu/nvidia-device-plugin.yaml"
     
     local PLUGIN_DEPLOYED=false
     if [ -f "$LOCAL_MANIFEST" ]; then

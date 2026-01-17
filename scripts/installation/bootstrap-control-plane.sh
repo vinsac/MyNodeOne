@@ -1435,8 +1435,10 @@ EOF
 deploy_dashboard() {
     log_info "Deploying MyNodeOne Dashboard..."
     
-    # Deploy the dashboard
-    if bash "$PROJECT_ROOT/scripts/website/deploy-dashboard.sh" > /dev/null 2>&1; then
+    # Deploy the dashboard (show errors but hide verbose output)
+    if bash "$PROJECT_ROOT/website/deploy-dashboard.sh" 2>&1 | grep -v "^✓\|^📦" | grep -E "error|Error|ERROR|failed|Failed|FAILED" >&2; then
+        log_warn "Dashboard deployment had issues, but continuing..."
+    elif bash "$PROJECT_ROOT/website/deploy-dashboard.sh" > /dev/null 2>&1; then
         log_success "Dashboard deployed - accessible at http://${CLUSTER_DOMAIN}.local"
     else
         log_warn "Dashboard deployment had issues, but continuing..."
@@ -1942,6 +1944,7 @@ print_summary() {
     echo
     echo "   📊 Grafana (Metrics & Logs):"
     echo "      URL: http://$GRAFANA_IP"
+    echo "      Also: http://grafana.${CLUSTER_DOMAIN}.local"
     echo "      Username: admin"
     echo "      Password: Run this command to get it:"
     echo "      kubectl get secret -n monitoring kube-prometheus-stack-grafana \\"
@@ -1949,10 +1952,12 @@ print_summary() {
     echo
     echo "   🚀 ArgoCD (GitOps Deployments):"
     echo "      URL: https://$ARGOCD_IP"
+    echo "      Also: https://argocd.${CLUSTER_DOMAIN}.local"
     echo "      Credentials: cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt"
     echo
     echo "   📦 Longhorn UI (Block Storage):"
     echo "      URL: $LONGHORN_URL"
+    echo "      Also: http://longhorn.${CLUSTER_DOMAIN}.local"
     echo "      (No authentication required - protected by Tailscale VPN)"
     echo
     echo "   📘 For complete access information, see:"

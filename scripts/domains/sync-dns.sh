@@ -54,15 +54,19 @@ echo "  🌐 Syncing DNS Entries from Control Plane"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Fetch cluster domain from cluster (authoritative source)
-if command -v kubectl &>/dev/null; then
+# Fetch cluster domain with priority: env var > ConfigMap > config file > default
+# Priority 1: Environment variable (set during installation before ConfigMap exists)
+if [[ -n "${CLUSTER_DOMAIN:-}" ]]; then
+    log_info "Using cluster domain from environment: $CLUSTER_DOMAIN"
+# Priority 2: ConfigMap (authoritative source after installation)
+elif command -v kubectl &>/dev/null; then
     CLUSTER_DOMAIN=$(kubectl get cm cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
     if [[ -n "$CLUSTER_DOMAIN" ]]; then
         log_info "Using cluster domain from cluster: $CLUSTER_DOMAIN"
     fi
 fi
 
-# Fallback to config file or default
+# Priority 3: Config file or default
 if [[ -z "$CLUSTER_DOMAIN" ]]; then
     CLUSTER_DOMAIN="mynodeone"
     log_warn "Could not fetch cluster domain from cluster, using: $CLUSTER_DOMAIN"

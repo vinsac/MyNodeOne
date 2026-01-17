@@ -97,10 +97,13 @@ Using relative paths like `../../manifests/app.yaml` is fragile and breaks when 
 
 #### Pattern 1: Bootstrap and Use PROJECT_ROOT (Most Common)
 ```bash
-# Bootstrap: Find project root
+# Bootstrap: Auto-discover project root (no manual counting needed!)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$PROJECT_ROOT/scripts/lib/project-root.sh"
+
+# Try common paths - project-root.sh auto-discovers if path is wrong
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Now use PROJECT_ROOT for all cross-directory references
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
@@ -110,9 +113,9 @@ bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
 
 **Why this works:**
 - `$SCRIPT_DIR` gives absolute path to script's directory
-- Calculate `$PROJECT_ROOT` relative to known script location
-- `project-root.sh` validates and exports `$PROJECT_ROOT` for all subsequent use
-- After bootstrap, **never use relative paths** - always use `$PROJECT_ROOT`
+- `project-root.sh` **automatically searches upward** to find project root
+- Even if you source from the wrong path, it self-corrects via upward search
+- After bootstrap, use the **two-rule pattern** below
 
 #### Pattern 2: Local Module Resources (Self-Contained Apps)
 ```bash
@@ -159,20 +162,52 @@ bash "$helper_script"
 - Library functions in `scripts/lib/` that reference sibling utilities
 - Helper scripts that come in pairs/groups
 
+### The Two-Rule Pattern (REQUIRED)
+
+After bootstrapping `$PROJECT_ROOT`, **ALL path references** must follow these two rules:
+
+#### Rule 1: Same Directory → Use $SCRIPT_DIR
+For files co-located with the current script:
+```bash
+# ✅ CORRECT - file is next to this script
+source "$SCRIPT_DIR/local-helper.sh"
+kubectl apply -f "$SCRIPT_DIR/manifests/namespace.yaml"
+```
+
+#### Rule 2: Cross-Directory → Use $PROJECT_ROOT  
+For files in different parts of the project tree:
+```bash
+# ✅ CORRECT - file is in different directory
+source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
+kubectl apply -f "$PROJECT_ROOT/manifests/common/config.yaml"
+bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
+```
+
+#### What NOT to Do
+```bash
+# ❌ WRONG - multi-level relative paths (fragile, breaks on moves)
+source "$SCRIPT_DIR/../../lib/helper.sh"
+kubectl apply -f "$SCRIPT_DIR/../../../manifests/app.yaml"
+
+# ❌ WRONG - hardcoded absolute paths (not portable)
+source "/home/user/MyNodeOne/scripts/lib/helper.sh"
+```
+
 ### Key Principles
 
-1. **Always bootstrap with SCRIPT_DIR → PROJECT_ROOT**
-   - Required because `project-root.sh` itself needs to be found
-   - This is the chicken-and-egg problem solution
+1. **Bootstrap is forgiving**
+   - `project-root.sh` auto-discovers via upward search
+   - Manual path counting errors are automatically corrected
+   - Just source from any common location
 
-2. **Use PROJECT_ROOT for cross-directory references**
-   - ✅ `"$PROJECT_ROOT/scripts/lib/helper.sh"`
-   - ✅ `"$PROJECT_ROOT/manifests/common/config.yaml"`
-   - ❌ `"$SCRIPT_DIR/../../lib/helper.sh"` (fragile, breaks on moves)
+2. **Two-rule pattern eliminates counting**
+   - Same directory → `$SCRIPT_DIR`
+   - Cross-directory → `$PROJECT_ROOT`
+   - No more `../..` path arithmetic needed
 
-3. **Use SCRIPT_DIR for co-located resources**
-   - ✅ `"$SCRIPT_DIR/manifests/app.yaml"` (keeps module self-contained)
-   - ✅ `"$SCRIPT_DIR/config/defaults.conf"` (bundled with script)
+3. **Self-documenting paths**
+   - `$SCRIPT_DIR` clearly indicates "local resource"
+   - `$PROJECT_ROOT` clearly indicates "shared resource"
 
 4. **Never hardcode absolute paths**
    - ❌ `"/home/user/MyNodeOne/scripts/lib/helper.sh"` (not portable)

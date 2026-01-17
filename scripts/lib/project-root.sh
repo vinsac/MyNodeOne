@@ -18,6 +18,23 @@
 detect_project_root() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
     
+    # Method 0: Search upward for project markers (MOST ROBUST - no counting!)
+    local search_dir="$script_dir"
+    while [ "$search_dir" != "/" ]; do
+        # Look for MyNodeOne project markers
+        if [ -d "$search_dir/scripts" ] && [ -f "$search_dir/scripts/lib/project-root.sh" ]; then
+            echo "$search_dir"
+            return 0
+        fi
+        # Also check for .git + scripts as marker
+        if [ -d "$search_dir/.git" ] && [ -d "$search_dir/scripts" ]; then
+            echo "$search_dir"
+            return 0
+        fi
+        search_dir="$(dirname "$search_dir")"
+    done
+    
+    # Fallback methods (for edge cases where upward search doesn't work)
     # Method 1: From scripts/ subdirectory (most common)
     if [[ "$script_dir" == */scripts/* ]]; then
         echo "$(cd "$script_dir/../.." && pwd)"

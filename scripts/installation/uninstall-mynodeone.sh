@@ -318,25 +318,56 @@ if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$NODE_TYPE" = "c
     else
         log_info "kubectl not available, skipping ConfigMap cleanup"
     fi
-elif [ "$NODE_TYPE" = "management" ]; then
-    log_info "[2/12] Skipping ConfigMap cleanup (management laptop - ConfigMaps live on control plane)"
+elif [ "$NODE_TYPE" = "management" ] || [ "$NODE_TYPE" = "vps" ] || [ "$NODE_TYPE" = "worker" ]; then
+    log_info "[2/12] Skipping ConfigMap cleanup ($NODE_TYPE - ConfigMaps live on control plane)"
     
-    # Unregister this laptop from the node registry on control plane
+    # Unregister this node from the node registry on control plane
     if command -v kubectl &> /dev/null && kubectl cluster-info &>/dev/null; then
-        laptop_ip=$(tailscale ip -4 2>/dev/null || echo "")
-        if [ -n "$laptop_ip" ]; then
-            log_info "Unregistering laptop from cluster node registry..."
-            # Remove from sync-controller-registry
+        node_ip=$(tailscale ip -4 2>/dev/null || echo "")
+        node_name="${NODE_NAME:-$(hostname)}"
+        
+        if [ -n "$node_ip" ]; then
+            log_info "Unregistering $NODE_TYPE from cluster node registry..."
+            
+            # Remove from sync-controller-registry ConfigMap
             registry=$(kubectl get configmap sync-controller-registry -n kube-system \
                 -o jsonpath='{.data.registry\.json}' 2>/dev/null || echo '{}')
             if [ -n "$registry" ] && [ "$registry" != "{}" ]; then
-                # Remove this laptop's entry
-                updated=$(echo "$registry" | jq --arg ip "$laptop_ip" \
-                    'del(.management_laptops[$ip])' 2>/dev/null || echo "$registry")
+                # Determine registry key based on node type
+                registry_key="management_laptops"
+                [ "$NODE_TYPE" = "vps" ] && registry_key="vps_nodes"
+                [ "$NODE_TYPE" = "worker" ] && registry_key="worker_nodes"
+                
+                # Remove this node's entry
+                updated=$(echo "$registry" | jq --arg key "$registry_key" --arg ip "$node_ip" \
+                    'del(.[$key][$ip])' 2>/dev/null || echo "$registry")
                 if [ "$updated" != "$registry" ]; then
                     kubectl patch configmap sync-controller-registry -n kube-system \
                         --type merge -p "{\"data\":{\"registry.json\":$(echo "$updated" | jq -c '.' | jq -Rs '.')}}" \
-                        2>/dev/null && log_success "Unregistered laptop ($laptop_ip) from node registry" || true
+                        2>/dev/null && log_success "Unregistered $NODE_TYPE ($node_ip) from sync-controller-registry" || true
+                fi
+            fi
+            
+            # Also remove from Config API V2 node registry (if it exists)
+            if command -v curl &> /dev/null; then
+                # Try to get control plane IP from config
+                control_ip=""
+                if [ -f "$CONFIG_FILE" ]; then
+                    source "$CONFIG_FILE" 2>/dev/null || true
+                    control_ip="${CONTROL_PLANE_IP:-}"
+                fi
+                
+                # Try to read API token
+                api_token=""
+                if [ -f "/etc/mynodeone/api-token" ]; then
+                    api_token=$(cat /etc/mynodeone/api-token 2>/dev/null || echo "")
+                fi
+                
+                if [ -n "$control_ip" ] && [ -n "$api_token" ] && [ -n "$node_name" ]; then
+                    log_info "Removing from Config API V2 node registry..."
+                    curl -X DELETE -H "X-API-Token: $api_token" \
+                        "http://${control_ip}:8443/api/v1/nodes/${node_name}" \
+                        2>/dev/null && log_success "Removed $node_name from Config API V2" || true
                 fi
             fi
         fi

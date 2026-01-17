@@ -55,6 +55,7 @@ source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
+MANIFESTS_DIR="$SCRIPT_DIR/manifests"
 
 # Load user detection
 if [[ -f "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh" ]]; then
@@ -287,7 +288,8 @@ echo "  0) Use OS folder: /var/lib/minio (no formatting needed)"
 
 if [ ${#available_disks[@]} -gt 0 ]; then
     echo ""
-    echo "Available physical disks (excluding OS and Longhorn):"
+    echo "Available physical disks:"
+    echo "⚠️  Note: Some disks may have existing installations (OS, Longhorn, etc.)"
     disk_count=0
     for disk_info in "${available_disks[@]}"; do
         disk_count=$((disk_count + 1))

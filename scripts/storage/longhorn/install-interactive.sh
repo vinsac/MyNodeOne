@@ -678,8 +678,8 @@ main() {
     
     # Register Longhorn service in service registry
     log_info "Registering Longhorn UI in service registry..."
-    if command -v bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" &>/dev/null; then
-        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register_service \
+    if [[ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]]; then
+        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
             "longhorn" \
             "longhorn" \
             "longhorn-system" \

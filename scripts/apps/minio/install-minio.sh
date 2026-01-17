@@ -333,8 +333,17 @@ elif [[ "$DISK_CHOICE" =~ ^[0-9]+$ ]] && [[ $DISK_CHOICE -ge 1 ]] && [[ $DISK_CH
     
     MINIO_PATH="/mnt/minio"
     
-    # Convert size to Kubernetes format (e.g., 18T -> 18Ti)
-    STORAGE_SIZE=$(echo "$DISK_SIZE_RAW" | sed 's/T$/Ti/; s/G$/Gi/')
+    # Convert size to Kubernetes format (e.g., 18.2T -> 18Ti, 100G -> 100Gi)
+    # Extract numeric value and unit, round down to avoid fractional bytes
+    STORAGE_SIZE=$(echo "$DISK_SIZE_RAW" | awk '{
+        val = $1;
+        unit = substr(val, length(val), 1);
+        num = substr(val, 1, length(val)-1);
+        num = int(num);  # Round down to integer
+        if (unit == "T") print num "Ti";
+        else if (unit == "G") print num "Gi";
+        else print val;
+    }')
     
     # Format and mount on target node
     format_and_mount_disk "$SELECTED_DISK" "$MINIO_PATH" "$NODE_CMD_PREFIX"
@@ -435,7 +444,7 @@ log_info "Registering in service discovery..."
 if [ -f "$LIB_DIR/service-registry.sh" ]; then
     bash "$LIB_DIR/service-registry.sh" register \
         "minio-${NODE_NAME}" \
-        "object-storage" \
+        "minio-${NODE_NAME}" \
         "$NAMESPACE" \
         "minio" \
         9000 \

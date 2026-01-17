@@ -206,10 +206,12 @@ echo ""
 
 # Verify DNS resolution works
 # Note: getent may use cached DNS, so we verify /etc/hosts directly
-if grep -q "dashboard.${CLUSTER_DOMAIN}.local" /etc/hosts 2>/dev/null; then
+# Check for any .local entry from this cluster domain (not hardcoded service name)
+if grep -q "\.${CLUSTER_DOMAIN}\.local" /etc/hosts 2>/dev/null; then
     log_success "DNS entries verified in /etc/hosts ✓"
-    # Test actual resolution (may fail due to DNS caching)
-    if getent hosts dashboard.${CLUSTER_DOMAIN}.local >/dev/null 2>&1; then
+    # Test actual resolution with first service (may fail due to DNS caching)
+    FIRST_SERVICE=$(echo "$DNS_ENTRIES" | head -1 | awk '{print $2}')
+    if [ -n "$FIRST_SERVICE" ] && getent hosts "$FIRST_SERVICE" >/dev/null 2>&1; then
         log_success "DNS resolution verified ✓"
     else
         log_info "DNS entries added successfully (resolution may take a moment due to caching)"

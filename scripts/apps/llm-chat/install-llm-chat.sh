@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/project-root.sh"
 
 # Load shared validation library
-source "$PROJECT_ROOT/scripts/apps/llm-chat/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
 
 # Load cluster resource detection utilities
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"

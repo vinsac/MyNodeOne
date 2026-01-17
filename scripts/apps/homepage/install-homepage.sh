@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
-source "$PROJECT_ROOT/scripts/apps/homepage/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

@@ -195,7 +195,7 @@ make_public() {
         local namespace=$(echo "$service_info" | jq -r '.namespace')
         
         if [ -f "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh" ]; then
-            bash "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh"
+            if ! bash "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh"; then
                 log_warn "App-specific configuration had issues (check above)"
             fi
         fi

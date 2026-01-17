@@ -440,6 +440,16 @@ if [ -f "$LIB_DIR/service-registry.sh" ]; then
         "minio" \
         9000 \
         true || log_warn "Service registration failed (non-critical)"
+    
+    # Update DNS on control plane to make domain accessible immediately
+    if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+        log_info "Updating DNS entries..."
+        if bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" --quiet 2>/dev/null; then
+            log_success "DNS entries updated"
+        else
+            log_warn "DNS update failed (run manually: sudo ./scripts/domains/sync-dns.sh)"
+        fi
+    fi
 fi
 
 # Save credentials to file

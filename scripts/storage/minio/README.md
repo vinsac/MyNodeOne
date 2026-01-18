@@ -34,6 +34,23 @@ MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 - HostPath PersistentVolume
 - Service discovery integration
 
+## ⚠️ Important: Version Constraint
+
+> [!CAUTION]
+> **Do NOT upgrade MinIO past `RELEASE.2025-04-22T22-12-26Z`**
+
+In early 2025, MinIO removed the full admin console from the Community Edition. Versions after April 2025 only show an object browser—no user management, IAM policies, or settings.
+
+**Current pinned version:** `minio/minio:RELEASE.2025-04-22T22-12-26Z`
+
+This is the **last version** that includes:
+- Identity management (Users, Groups, Policies)
+- Monitoring and audit logs
+- Configuration settings UI
+- Full administrative console
+
+For admin tasks on newer versions, you would need to use the `mc` CLI or MinIO's paid product (AIStor).
+
 ## Dual LoadBalancer Architecture
 
 MinIO uses **two separate LoadBalancer services** for enhanced security and flexibility:

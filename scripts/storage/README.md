@@ -9,7 +9,7 @@ scripts/storage/
 ├── README.md (this file)
 ├── longhorn/          # Longhorn block storage scripts
 ├── minio/             # MinIO object storage scripts
-│   └── install-worker.sh
+│   └── install-minio-worker.sh
 ├── velero/            # Velero backup scripts
 │   ├── install.sh
 │   └── configure-backup.sh
@@ -78,7 +78,7 @@ sudo ./scripts/storage/install-velero.sh
 
 **Usage:**
 ```bash
-sudo ./scripts/storage/install-minio-worker.sh
+sudo ./scripts/storage/minio/install-minio-worker.sh
 ```
 
 **Disk Detection:**
@@ -159,7 +159,7 @@ add-worker-node.sh
   ├─> disable_longhorn_on_worker()
   │     └─ Disable Longhorn scheduling on worker
   ├─> install_minio_worker()
-  │     └─> scripts/storage/install-minio-worker.sh
+  │     └─> scripts/storage/minio/install-minio-worker.sh
   │           ├─ Detect disks
   │           ├─ Install MinIO
   │           └─ Save credentials
@@ -272,7 +272,7 @@ kubectl logs -n minio -l app=minio
 df -h | grep longhorn-disks
 
 # Reinstall MinIO
-sudo ./scripts/storage/install-minio-worker.sh
+sudo ./scripts/storage/minio/install-minio-worker.sh
 ```
 
 ### Backup Storage Location Unavailable

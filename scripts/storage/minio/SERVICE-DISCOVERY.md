@@ -340,5 +340,5 @@ curl http://minio-<node-name>.mynodeone.local:9000/minio/health/live
 
 - **Service Registry:** `scripts/lib/service-registry.sh`
 - **DNS Sync:** `scripts/domains/sync-dns.sh`
-- **MinIO Credentials:** `scripts/storage/MINIO-CREDENTIALS.md`
+- **MinIO Credentials:** `scripts/storage/minio/CREDENTIALS.md`
 - **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE.md`

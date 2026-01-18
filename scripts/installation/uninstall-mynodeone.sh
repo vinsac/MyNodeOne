@@ -12,7 +12,7 @@
 # Options:
 #   --keep-config     Keep configuration files for reinstall
 #   --keep-data       Keep application data (PVCs)
-#   --full            Remove everything (configs + data)
+#   --full            Remove everything (configs + data) [Default]
 #   --help            Show this help message
 ###############################################################################
 
@@ -27,7 +27,7 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-# Default options
+# Default options (Full uninstall by default)
 KEEP_CONFIG=false
 KEEP_DATA=false
 INTERACTIVE=true
@@ -66,13 +66,13 @@ Usage: sudo ./scripts/installation/uninstall-mynodeone.sh [OPTIONS]
 OPTIONS:
     --keep-config       Keep configuration files (~/.mynodeone/)
     --keep-data         Keep application data (Longhorn volumes, PVCs)
-    --full              Remove everything (default if no options)
+    --full              Remove everything (Default behavior)
     --remove-tailscale  Also remove Tailscale (disconnect from network)
     --yes               Non-interactive mode (auto-confirm)
     --help              Show this help message
 
 EXAMPLES:
-    # Interactive uninstall (asks what to keep)
+    # Full uninstall (Default)
     sudo ./scripts/installation/uninstall-mynodeone.sh
 
     # Keep config for reinstall
@@ -216,7 +216,7 @@ echo
 
 # Interactive prompts if not set via arguments
 if [ "$INTERACTIVE" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$KEEP_DATA" = false ]; then
-    echo -e "${YELLOW}⚠️  What would you like to remove?${NC}"
+    echo -e "${YELLOW}⚠️  Full Uninstall Selected (Default)\nThis will remove all configurations and application data.${NC}"
     echo
     
     read -p "Remove Kubernetes cluster and all apps? [Y/n]: " -r

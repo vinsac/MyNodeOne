@@ -2468,6 +2468,38 @@ main() {
     fi
     echo
     
+    # Install Node Agent on Control Plane (Self-monitoring & Config Pull)
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Installing Node Agent (Control Plane)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    log_info "Installing Node Agent on control plane..."
+    
+    # Use the local installation script
+    if [ -f "$SCRIPT_DIR/install-node-agent.sh" ]; then
+        # Fetch the token we just generated/verified
+        local api_token=""
+        if [ -f /etc/mynodeone/api-token ]; then
+            api_token=$(cat /etc/mynodeone/api-token)
+        fi
+        
+        # Run agent installer
+        # We pass --control-plane-ip as Tailscale IP (which we have in env)
+        # Using node-type=laptop for control plane to ensure local DNS syncing behavior
+        if bash "$SCRIPT_DIR/install-node-agent.sh" \
+            --control-plane-ip "$TAILSCALE_IP" \
+            --node-type "laptop" \
+            --node-name "$NODE_NAME" \
+            --api-token "$api_token"; then
+            log_success "Node Agent installed on Control Plane"
+        else
+            log_warn "Node Agent installation failed"
+        fi
+    else
+        log_warn "Node Agent installer not found ($SCRIPT_DIR/install-node-agent.sh)"
+    fi
+    echo
+    
     # Final sync: Ensure all services are registered and DNS is updated
     log_info "Final sync: Registering all services and updating DNS..."
     if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then

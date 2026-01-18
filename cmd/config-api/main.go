@@ -30,7 +30,35 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"gopkg.in/yaml.v3"
 )
+
+var (
+	// Metrics
+	nodeCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "mynodeone_nodes_count",
+			Help: "Number of registered nodes by type and status",
+		},
+		[]string{"type", "status"},
+	)
+	configRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "mynodeone_config_requests_total",
+			Help: "Total number of config requests",
+		},
+		[]string{"node_type", "status"},
+	)
+)
+
+func init() {
+	// Register metrics
+	prometheus.MustRegister(nodeCount)
+	prometheus.MustRegister(configRequests)
+}
 
 // Configuration
 type Config struct {
@@ -75,6 +103,50 @@ type TraefikRoute struct {
 	Subdomain string `json:"subdomain"` // Subdomain (e.g., "open-webui" or "@" for root)
 	Domain    string `json:"domain"`    // Full domain (e.g., "open-webui.example.com")
 	Backend   string `json:"backend"`   // Backend URL (e.g., "100.72.41.208:80")
+}
+
+// Traefik Configuration Structs (for YAML generation)
+type TraefikConfig struct {
+	HTTP HTTPConfig `yaml:"http"`
+}
+
+type HTTPConfig struct {
+	Routers     map[string]Router     `yaml:"routers,omitempty"`
+	Services    map[string]Service    `yaml:"services,omitempty"`
+	Middlewares map[string]Middleware `yaml:"middlewares,omitempty"`
+}
+
+type Router struct {
+	Rule        string   `yaml:"rule"`
+	Service     string   `yaml:"service"`
+	EntryPoints []string `yaml:"entryPoints,omitempty"`
+	TLS         *TLS     `yaml:"tls,omitempty"`
+	Middlewares []string `yaml:"middlewares,omitempty"`
+}
+
+type TLS struct {
+	CertResolver string `yaml:"certResolver,omitempty"`
+}
+
+type Service struct {
+	LoadBalancer LoadBalancer `yaml:"loadBalancer"`
+}
+
+type LoadBalancer struct {
+	Servers []ServerURL `yaml:"servers"`
+}
+
+type ServerURL struct {
+	URL string `yaml:"url"`
+}
+
+type Middleware struct {
+	RedirectScheme *RedirectScheme `yaml:"redirectScheme,omitempty"`
+}
+
+type RedirectScheme struct {
+	Scheme    string `yaml:"scheme"`
+	Permanent bool   `yaml:"permanent"`
 }
 
 // ConfigResponse is the response for /api/v1/config/{type}
@@ -145,6 +217,30 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// Middleware: Metrics
+func (s *Server) metricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		next(rw, r)
+		duration := time.Since(start)
+
+		// Basic request logging
+		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+		log.Printf("%s %s %s (%d) %v", r.Method, r.URL.Path, clientIP, rw.status, duration)
+	}
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
 // GET /api/v1/health
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -179,8 +275,108 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update request metrics
+	configRequests.WithLabelValues(nodeType, "success").Inc()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// GET /api/v1/config/vps/traefik-config
+func (s *Server) handleTraefikConfig(w http.ResponseWriter, r *http.Request) {
+	// First get the routes
+	routes, err := s.getTraefikRoutes()
+	if err != nil {
+		log.Printf("Error getting routes: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate Traefik YAML configuration
+	config := s.generateTraefikConfig(routes)
+
+	// Marshal to YAML
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		log.Printf("Error marshaling YAML: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Add header comment
+	header := fmt.Sprintf("# MyNodeOne Routes (Generated via Config API)\n# Generated: %s\n\n", time.Now().Format(time.RFC3339))
+	
+	w.Header().Set("Content-Type", "application/x-yaml")
+	w.Write([]byte(header))
+	w.Write(data)
+}
+
+func (s *Server) generateTraefikConfig(routes []TraefikRoute) TraefikConfig {
+	config := TraefikConfig{
+		HTTP: HTTPConfig{
+			Routers:     make(map[string]Router),
+			Services:    make(map[string]Service),
+			Middlewares: make(map[string]Middleware),
+		},
+	}
+
+	// Add https-redirect middleware
+	config.HTTP.Middlewares["https-redirect"] = Middleware{
+		RedirectScheme: &RedirectScheme{
+			Scheme:    "https",
+			Permanent: true,
+		},
+	}
+
+	for _, route := range routes {
+		// Clean domain for key usage (replace dots with dashes)
+		// e.g. immich.example.com -> immich-example-com
+		// domain already contains the full domain (subdomain.domain)
+		// However, we need to handle the case where domain is just "domain.com" if subdomain was "@"
+		
+		safeDomain := strings.ReplaceAll(route.Domain, ".", "-")
+		
+		// HTTPS Router
+		routerName := fmt.Sprintf("%s-%s", route.Service, safeDomain)
+		config.HTTP.Routers[routerName] = Router{
+			Rule:        fmt.Sprintf("Host(`%s`)", route.Domain),
+			Service:     route.Service + "-service", // Suffix with -service to match V1
+			EntryPoints: []string{"websecure"},
+			TLS:         &TLS{CertResolver: "letsencrypt"},
+		}
+
+		// HTTP Router (Redirect)
+		httpRouterName := fmt.Sprintf("%s-%s-http", route.Service, safeDomain)
+		config.HTTP.Routers[httpRouterName] = Router{
+			Rule:        fmt.Sprintf("Host(`%s`)", route.Domain),
+			Service:     route.Service + "-service",
+			EntryPoints: []string{"web"},
+			Middlewares: []string{"https-redirect"},
+		}
+
+		// Service
+		serviceName := route.Service + "-service"
+		// Check if service already exists (to avoid overwriting if load balancing multiple backends)
+		// Current logic: simple overwrite or create. 
+		// V1 logic supports load balancing if multiple backends exist for same service name.
+		// Our getTraefikRoutes returns duplicated service entries if multiple exist?
+		// Actually getTraefikRoutes returns duplications only if multiple domains match.
+		// But if multiple IPs exist for same service... getTraefikRoutes handles logic per service registry entry.
+		// If service registry has multiple entries... wait, service registry is map[string]Service.
+		// So service name is unique in registry. So we only have one backend per service name usually.
+		// UNLESS we are using the V2 logic where multiple VPS nodes might exist?
+		// For now, simple assignment is fine and matches V1 most common case.
+		
+		config.HTTP.Services[serviceName] = Service{
+			LoadBalancer: LoadBalancer{
+				Servers: []ServerURL{
+					{URL: "http://" + route.Backend},
+				},
+			},
+		}
+	}
+
+	return config
 }
 
 // POST /api/v1/heartbeat
@@ -294,9 +490,30 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			UptimeSeconds: node.UptimeSeconds,
 		})
 	}
+	
+	// Update metrics
+	s.updateMetrics()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(NodesResponse{Nodes: nodes})
+}
+
+func (s *Server) updateMetrics() {
+	// Reset metrics
+	nodeCount.Reset()
+	
+	now := time.Now()
+	for _, node := range s.nodes {
+		elapsed := now.Sub(node.LastHeartbeat)
+		status := "online"
+		if elapsed > time.Duration(s.config.HeartbeatStaleSeconds)*time.Second {
+			status = "offline"
+		} else if elapsed > time.Duration(s.config.HeartbeatOnlineSeconds)*time.Second {
+			status = "stale"
+		}
+		
+		nodeCount.WithLabelValues(node.Type, status).Inc()
+	}
 }
 
 // getConfigForNodeType fetches config from Kubernetes ConfigMaps
@@ -608,10 +825,18 @@ func main() {
 	// Set up routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", server.handleHealth)
-	mux.HandleFunc("/api/v1/config/", server.authMiddleware(server.handleConfig))
-	mux.HandleFunc("/api/v1/heartbeat", server.authMiddleware(server.handleHeartbeat))
-	mux.HandleFunc("/api/v1/nodes", server.authMiddleware(server.handleNodes))
-	mux.HandleFunc("/api/v1/nodes/", server.authMiddleware(server.handleNodeDelete))
+	
+	// Config endpoints
+	mux.HandleFunc("/api/v1/config/vps/traefik-config", server.authMiddleware(server.metricsMiddleware(server.handleTraefikConfig)))
+	mux.HandleFunc("/api/v1/config/", server.authMiddleware(server.metricsMiddleware(server.handleConfig)))
+	
+	// Node management endpoints
+	mux.HandleFunc("/api/v1/heartbeat", server.authMiddleware(server.metricsMiddleware(server.handleHeartbeat)))
+	mux.HandleFunc("/api/v1/nodes", server.authMiddleware(server.metricsMiddleware(server.handleNodes)))
+	mux.HandleFunc("/api/v1/nodes/", server.authMiddleware(server.metricsMiddleware(server.handleNodeDelete)))
+
+	// Metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.BindIP, cfg.Port)

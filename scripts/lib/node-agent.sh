@@ -220,16 +220,12 @@ apply_dns_config() {
 
 # Apply Traefik routes (for VPS nodes)
 # Generates Traefik YAML matching V1 SSH-based sync format from multi-domain-registry.sh
+# Apply Traefik routes (for VPS nodes)
+# Fetches pre-rendered YAML from Config API
 apply_vps_config() {
     local config="$1"
     
-    # Validate config is valid JSON
-    if ! echo "$config" | jq -e '.' &>/dev/null; then
-        log_error "Invalid config JSON received"
-        return 1
-    fi
-    
-    # Extract routes count
+    # Check if there are routes in the JSON update (optimization to avoid unnecessary fetch)
     local route_count
     route_count=$(echo "$config" | jq -r '.routes | length' 2>/dev/null || echo "0")
     
@@ -238,15 +234,13 @@ apply_vps_config() {
         return 0
     fi
     
-    # Generate Traefik dynamic config
-    # Try multiple locations for Traefik config (priority order)
+    # Find Traefik config directory
     local traefik_config_dir="${TRAEFIK_CONFIG_DIR:-}"
     
     if [[ -z "$traefik_config_dir" ]]; then
-        # Check common locations - look for existing traefik directories
         local search_dirs=(
-            "/home/sammy/traefik/config"      # Common VPS user
-            "/home/ubuntu/traefik/config"     # Ubuntu default
+            "/home/sammy/traefik/config"
+            "/home/ubuntu/traefik/config"
             "/home/${SUDO_USER:-}/traefik/config"
             "$HOME/traefik/config"
             "/root/traefik/config"
@@ -260,138 +254,70 @@ apply_vps_config() {
             fi
         done
         
-        # Fallback to /etc/traefik/config if nothing found
         traefik_config_dir="${traefik_config_dir:-/etc/traefik/config}"
     fi
     
     local routes_file="$traefik_config_dir/mynodeone-routes.yml"
     local routes_file_tmp="${routes_file}.tmp.$$"
     
-    # Ensure directory exists with proper permissions
+    # Ensure directory exists
     if [[ ! -d "$traefik_config_dir" ]]; then
-        log_warn "Traefik config directory does not exist: $traefik_config_dir"
-        if ! mkdir -p "$traefik_config_dir" 2>/dev/null; then
-            log_error "Failed to create directory: $traefik_config_dir"
-            return 1
-        fi
+        mkdir -p "$traefik_config_dir" 2>/dev/null
         chmod 755 "$traefik_config_dir"
-        log_info "Created directory: $traefik_config_dir"
     fi
     
-    # Check directory is writable
     if [[ ! -w "$traefik_config_dir" ]]; then
         log_error "Directory not writable: $traefik_config_dir"
         return 1
     fi
     
-    # Get directory owner for proper file ownership
-    local dir_owner dir_group
-    dir_owner=$(stat -c '%U' "$traefik_config_dir" 2>/dev/null || echo "root")
-    dir_group=$(stat -c '%G' "$traefik_config_dir" 2>/dev/null || echo "root")
+    # Fetch pre-rendered YAML from Config API
+    log_info "Fetching Traefik config from API..."
+    local url=$(get_api_url "/api/v1/config/vps/traefik-config")
     
-    # Generate YAML to temp file first (atomic write pattern)
-    # Format matches V1 multi-domain-registry.sh export_vps_routing
-    cat > "$routes_file_tmp" <<EOF
-# MyNodeOne Routes (managed by node-agent)
-# Generated: $(date -Iseconds)
-# Format matches V1 SSH-based sync for consistency
-
-http:
-  routers:
-EOF
-
-    # Add HTTPS routers - format: {service}-{domain-dashed}
-    # Using jq to generate proper router names matching V1 format
-    echo "$config" | jq -r '.routes[]? | 
-        # Convert domain to dashed format (e.g., example.com -> example-com)
-        (.domain | gsub("\\."; "-")) as $domain_dashed |
-        "    " + .service + "-" + $domain_dashed + ":\n" +
-        "      rule: \"Host(`" + .domain + "`)\"\n" +
-        "      service: " + .service + "-service\n" +
-        "      entryPoints:\n" +
-        "        - websecure\n" +
-        "      tls:\n" +
-        "        certResolver: letsencrypt\n"' >> "$routes_file_tmp"
-
-    # Add HTTP routers for redirect - format: {service}-{domain-dashed}-http
-    echo "$config" | jq -r '.routes[]? | 
-        (.domain | gsub("\\."; "-")) as $domain_dashed |
-        "    " + .service + "-" + $domain_dashed + "-http:\n" +
-        "      rule: \"Host(`" + .domain + "`)\"\n" +
-        "      service: " + .service + "-service\n" +
-        "      entryPoints:\n" +
-        "        - web\n" +
-        "      middlewares:\n" +
-        "        - https-redirect\n"' >> "$routes_file_tmp"
-
-    # Add services section - format: {service}-service
-    cat >> "$routes_file_tmp" <<EOF
-  services:
-EOF
-
-    # Add services (deduplicated by service name)
-    echo "$config" | jq -r '[.routes[]? | .service] | unique | .[] as $svc |
-        # Find backend for this service (use first match)
-        ($ARGS.named.config | .routes[] | select(.service == $svc) | .backend) as $backend |
-        "    " + $svc + "-service:\n" +
-        "      loadBalancer:\n" +
-        "        servers:\n" +
-        "          - url: \"http://" + $backend + "\"\n"' --jsonargs config="$config" >> "$routes_file_tmp" 2>/dev/null || \
-    # Fallback if jsonargs not supported (older jq)
-    echo "$config" | jq -r '.routes | group_by(.service) | .[] | .[0] |
-        "    " + .service + "-service:\n" +
-        "      loadBalancer:\n" +
-        "        servers:\n" +
-        "          - url: \"http://" + .backend + "\"\n"' >> "$routes_file_tmp"
-
-    # Add middlewares for HTTP to HTTPS redirect - matches V1 format
-    cat >> "$routes_file_tmp" <<EOF
-  middlewares:
-    https-redirect:
-      redirectScheme:
-        scheme: https
-        permanent: true
-EOF
-
-    # Validate generated YAML is not empty/malformed
+    local fetch_status
+    if [[ -n "$API_TOKEN" ]]; then
+        fetch_status=$(curl -s -w "%{http_code}" -o "$routes_file_tmp" \
+            -H "X-API-Token: $API_TOKEN" \
+            -H "X-Node-Name: $NODE_NAME" \
+            "$url")
+    else
+        fetch_status=$(curl -s -w "%{http_code}" -o "$routes_file_tmp" \
+            -H "X-Node-Name: $NODE_NAME" \
+            "$url")
+    fi
+    
+    if [[ "$fetch_status" != "200" ]]; then
+        log_error "Failed to fetch Traefik config: HTTP $fetch_status"
+        rm -f "$routes_file_tmp"
+        return 1
+    fi
+    
+    # Validate YAML is not empty
     if [[ ! -s "$routes_file_tmp" ]]; then
-        log_error "Generated routes file is empty"
+        log_error "Fetched routes file is empty"
         rm -f "$routes_file_tmp"
         return 1
     fi
     
-    # Check YAML has required sections
-    if ! grep -q "routers:" "$routes_file_tmp" || ! grep -q "services:" "$routes_file_tmp"; then
-        log_error "Generated YAML missing required sections"
-        rm -f "$routes_file_tmp"
-        return 1
-    fi
-    
-    # Atomic move: rename temp file to final location
+    # Atomic move
     if ! mv "$routes_file_tmp" "$routes_file"; then
         log_error "Failed to write routes file: $routes_file"
         rm -f "$routes_file_tmp"
         return 1
     fi
     
-    # Set proper ownership to match directory owner (important when running as root)
-    if [[ "$dir_owner" != "root" ]] && [[ -n "$dir_owner" ]]; then
-        chown "${dir_owner}:${dir_group}" "$routes_file" 2>/dev/null || \
-            log_warn "Could not set ownership to ${dir_owner}:${dir_group}"
-    fi
-    
-    # Set secure but readable permissions (Traefik needs to read this)
+    # Set permissions
     chmod 644 "$routes_file"
     
-    log_success "Generated Traefik routes: $routes_file"
-    log_info "Routes configured: $route_count (V1-compatible format)"
-    log_info "File ownership: ${dir_owner}:${dir_group}, permissions: 644"
-    
-    # Reload Traefik if running
-    if command -v docker &>/dev/null && docker ps | grep -q traefik; then
-        # Traefik watches config files, no reload needed
-        log_info "Traefik will auto-reload config"
+    # Fix ownership if needed
+    local dir_owner=$(stat -c '%U' "$traefik_config_dir" 2>/dev/null || echo "root")
+    local dir_group=$(stat -c '%G' "$traefik_config_dir" 2>/dev/null || echo "root")
+    if [[ "$dir_owner" != "root" ]]; then
+        chown "${dir_owner}:${dir_group}" "$routes_file" 2>/dev/null || true
     fi
+    
+    log_success "Updated Traefik routes: $routes_file ($route_count routes)"
 }
 
 # Apply config based on node type

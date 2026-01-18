@@ -66,6 +66,7 @@ dist/
 build/
 *.tar.gz
 *.zip
+config-api
 
 # Generated client DNS setup script (created during installation)
 setup-client-dns.sh

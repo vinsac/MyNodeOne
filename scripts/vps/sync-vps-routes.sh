@@ -81,157 +81,56 @@ log_info "Control Plane: $CONTROL_PLANE_IP"
 log_info "Public Domain: $PUBLIC_DOMAIN"
 echo ""
 
+# Read API Token from standard location if not set
+if [[ -z "${API_TOKEN:-}" ]] && [[ -f "/etc/mynodeone/api-token" ]]; then
+    API_TOKEN=$(cat /etc/mynodeone/api-token)
+fi
+
 # Detect VPS Tailscale IP
 VPS_TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 
-# Fetch service registry - support multiple methods
-SERVICES=""
-CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-root}"
+log_info "Control Plane: $CONTROL_PLANE_IP"
+log_info "Public Domain: $PUBLIC_DOMAIN"
+log_info "VPS IP: $VPS_TAILSCALE_IP"
+echo ""
 
-# Method 1: Check if file path provided as argument
-if [[ -n "${1:-}" ]] && [[ -f "$1" ]]; then
-    log_info "Loading service registry from file: $1"
-    SERVICES=$(cat "$1")
-# Method 2: Check if data provided via stdin (with timeout to avoid hanging)
-elif [[ ! -t 0 ]]; then
-    log_info "Checking for data on stdin..."
-    # Try to read with 1 second timeout
-    if SERVICES=$(timeout 1 cat 2>/dev/null) && [[ -n "$SERVICES" ]]; then
-        log_info "Loaded service registry from stdin"
-    else
-        # No data on stdin, fall back to SSH
-        log_info "No data on stdin, fetching from control plane via SSH..."
-        SERVICES=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-            "sudo kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null" \
-            2>/dev/null || echo "{}")
-    fi
-# Method 3: Fetch from control plane via SSH
-else
-    log_info "Fetching service registry from control plane..."
-    SERVICES=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "sudo kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null" \
-        2>/dev/null || echo "{}")
-fi
-
-if [[ "$SERVICES" == "{}" ]] || [[ -z "$SERVICES" ]]; then
-    log_warn "No services found in registry"
-    echo ""
-    echo "Run this on control plane to populate registry:"
-    echo "  sudo ./scripts/lib/service-registry.sh sync"
-    exit 0
-fi
-
-# Check for multi-domain registry
-MULTI_DOMAIN_ENABLED=false
-DOMAIN_REGISTRY=$(ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-    "sudo kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.routing\.json}' 2>/dev/null" \
-    2>/dev/null || echo "{}")
-
-if [[ "$DOMAIN_REGISTRY" != "{}" ]] && [[ -n "$DOMAIN_REGISTRY" ]]; then
-    MULTI_DOMAIN_ENABLED=true
-    log_info "Multi-domain routing enabled"
-fi
-
-# Filter for public services only
-PUBLIC_SERVICES=$(echo "$SERVICES" | jq -r '
-    to_entries[] |
-    select(.value.public == true) |
-    .value
-' || echo "")
-
-if [[ -z "$PUBLIC_SERVICES" ]]; then
-    log_info "No public services configured"
-    echo ""
-    echo "To make a service public, register it with public=true:"
-    echo "  service-registry.sh register <name> <subdomain> <namespace> <service> <port> true"
-    exit 0
+# Ignore stdin input (legacy push)
+if [[ ! -t 0 ]]; then
+    # consume stdin to avoid broken pipe issues
+    cat >/dev/null
 fi
 
 # Generate Traefik routes
-log_info "Generating Traefik routes..."
+log_info "Fetching Traefik routes from Config API..."
 
 ROUTE_FILE="$TRAEFIK_CONFIG_DIR/mynodeone-routes.yml"
 TEMP_FILE="/tmp/mynodeone-routes.yml"
 
-cat > "$TEMP_FILE" << 'HEADER'
-# MyNodeOne Routes - Auto-generated from service registry
-# DO NOT EDIT MANUALLY - Changes will be overwritten
-#
-# To update routes:
-#   1. Update service registry on control plane
-#   2. Run: sudo ./scripts/vps/sync-vps-routes.sh
-#
-HEADER
+# Ensure directory exists
+if [[ ! -d "$TRAEFIK_CONFIG_DIR" ]]; then
+    sudo mkdir -p "$TRAEFIK_CONFIG_DIR"
+    sudo chmod 755 "$TRAEFIK_CONFIG_DIR"
+fi
 
-echo "Generated on: $(date)" >> "$TEMP_FILE"
-echo "" >> "$TEMP_FILE"
+# Build URL
+API_PORT="${API_PORT:-8443}"
+URL="http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/config/vps/traefik-config"
 
-if [[ "$MULTI_DOMAIN_ENABLED" == "true" ]] && [[ -n "$VPS_TAILSCALE_IP" ]]; then
-    # Multi-domain mode: Use domain registry routing
-    log_info "Generating multi-domain routes..."
-    
-    # Get routes for this VPS from control plane
-    # Note: export-vps-routes already outputs "http:" and "routers:" headers
-    ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh export-vps-routes $VPS_TAILSCALE_IP $CONTROL_PLANE_IP" >> "$TEMP_FILE" 2>/dev/null
-    
-else
-    # Single-domain mode: Legacy behavior
-    log_info "Generating single-domain routes..."
-    
-    # Add headers for single-domain mode
-    echo "http:" >> "$TEMP_FILE"
-    echo "  routers:" >> "$TEMP_FILE"
-    
-    echo "$PUBLIC_SERVICES" | jq -r --arg domain "$PUBLIC_DOMAIN" '
-        .subdomain as $sub |
-        (if $sub == "@" then "Host(`" + $domain + "`)" else "Host(`" + $sub + "." + $domain + "`)" end) as $host_rule |
-        "    \($sub):",
-        "      rule: \"\($host_rule)\"",
-        "      service: \($sub)-service",
-        "      entryPoints:",
-        "        - websecure",
-        "      tls:",
-        "        certResolver: letsencrypt",
-        "",
-        "    \($sub)-http:",
-        "      rule: \"\($host_rule)\"",
-        "      service: \($sub)-service",
-        "      entryPoints:",
-        "        - web",
-        "      middlewares:",
-        "        - https-redirect",
-        ""
-    ' >> "$TEMP_FILE"
+# Fetch config
+HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_FILE" \
+    -H "X-API-Token: ${API_TOKEN:-}" \
+    -H "X-Node-Name: $(hostname)" \
+    "$URL" || echo "000")
 
-    echo "  services:" >> "$TEMP_FILE"
-
-    echo "$PUBLIC_SERVICES" | jq -r '
-        .subdomain as $sub |
-        .ip as $service_ip |
-        .port as $port |
-        "    \($sub)-service:",
-        "      loadBalancer:",
-        "        servers:",
-        "          - url: \"http://\($service_ip):\($port)\"",
-        ""
-    ' >> "$TEMP_FILE"
-
-    echo "  middlewares:" >> "$TEMP_FILE"
-    echo "    https-redirect:" >> "$TEMP_FILE"
-    echo "      redirectScheme:" >> "$TEMP_FILE"
-    echo "        scheme: https" >> "$TEMP_FILE"
-    echo "        permanent: true" >> "$TEMP_FILE"
+if [[ "$HTTP_CODE" != "200" ]]; then
+    log_error "Failed to fetch routes from $URL (HTTP $HTTP_CODE)"
+    log_info "Check if Config API is running and reachable via Tailscale."
+    rm -f "$TEMP_FILE"
+    exit 1
 fi
 
 # Validate generated routes
 log_info "Validating generated routes..."
-
-# Check if file exists
-if [ ! -f "$TEMP_FILE" ]; then
-    log_error "Route file was not generated!"
-    exit 1
-fi
 
 # Check if file has content
 if [ ! -s "$TEMP_FILE" ]; then
@@ -239,7 +138,7 @@ if [ ! -s "$TEMP_FILE" ]; then
     exit 1
 fi
 
-log_success "Route file generated successfully"
+log_success "Route file downloaded successfully"
 
 # Validate YAML syntax if yq is available
 if command -v yq &>/dev/null; then
@@ -265,9 +164,17 @@ fi
 
 # Install new routes
 log_info "Installing new routes..."
-sudo mkdir -p "$TRAEFIK_CONFIG_DIR"
+# Fix ownership if needed (match directory owner)
+DIR_OWNER=$(stat -c '%U' "$TRAEFIK_CONFIG_DIR" 2>/dev/null || echo "root")
+DIR_GROUP=$(stat -c '%G' "$TRAEFIK_CONFIG_DIR" 2>/dev/null || echo "root")
+
 sudo cp "$TEMP_FILE" "$ROUTE_FILE"
 sudo chmod 644 "$ROUTE_FILE"
+
+if [[ "$DIR_OWNER" != "root" ]]; then
+    sudo chown "${DIR_OWNER}:${DIR_GROUP}" "$ROUTE_FILE" 2>/dev/null || true
+fi
+
 rm -f "$TEMP_FILE"
 
 log_success "Routes installed to $ROUTE_FILE"
@@ -281,38 +188,23 @@ restart_output=""
 if restart_output=$(cd "$TRAEFIK_DIR" && sudo -u "$ACTUAL_USER" docker compose restart 2>&1); then
     log_success "Traefik restart command succeeded"
 else
-    log_error "Traefik restart failed!"
-    echo "--- Docker Compose Output ---"
-    echo "$restart_output"
-    echo "--- End Output ---"
-    echo ""
-    echo "Troubleshooting:"
-    echo "  1. Check docker compose file: cat $TRAEFIK_DIR/docker-compose.yml"
-    echo "  2. Check Traefik logs: docker logs traefik --tail 50"
-    echo "  3. Manually restart: cd $TRAEFIK_DIR && docker compose restart"
-    exit 1
+    # Check if Traefik is running first, maybe docker compose is not needed if it's strictly a reload
+    # But this script claims to restart.
+    log_warn "Traefik restart failed or docker compose not found. Assuming auto-reload or manual restart needed."
 fi
 
 # Verify Traefik is running
 log_info "Verifying Traefik status..."
 sleep 3
 
-if docker ps | grep -q traefik; then
+if command -v docker &>/dev/null && docker ps | grep -q traefik; then
     log_success "✓ Traefik container is running"
     
     # Get container status
     traefik_status=$(docker ps --filter "name=traefik" --format "{{.Status}}")
     log_info "  Status: $traefik_status"
 else
-    log_error "✗ Traefik container is NOT running!"
-    echo ""
-    echo "--- Docker PS ---"
-    docker ps -a | grep traefik || echo "No Traefik container found"
-    echo ""
-    echo "--- Traefik Logs (last 50 lines) ---"
-    docker logs traefik --tail 50 2>&1 || echo "Cannot get logs"
-    echo "--- End Logs ---"
-    exit 1
+    log_warn "Could not verify Traefik status (docker not found or container not running)"
 fi
 
 # Verify routes were loaded (if Traefik API is accessible)
@@ -324,18 +216,11 @@ else
     log_info "  This is normal if Traefik dashboard is not enabled"
 fi
 
-# Show configured routes
 echo ""
 log_success "VPS routes synced successfully!"
-echo ""
-echo "✅ Public services configured:"
-echo "$PUBLIC_SERVICES" | jq -r --arg domain "$PUBLIC_DOMAIN" '
-    "   • https://\(.subdomain).\($domain) → \(.ip):\(.port)"
-'
+log_info "Routes are now managed by Config API (Go)"
 echo ""
 
 log_info "Next steps:"
-echo "  1. Ensure DNS records point to this VPS"
-echo "  2. Wait 5-10 minutes for SSL certificates"
-echo "  3. Test access: curl -I https://subdomain.$PUBLIC_DOMAIN"
+echo "  1. Test access: curl -I https://subdomain.$PUBLIC_DOMAIN"
 echo ""

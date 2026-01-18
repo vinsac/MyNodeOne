@@ -2,8 +2,6 @@
 
 MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 
-> **Note:** Use `scripts/apps/minio/` for MinIO installation. The `scripts/storage/minio/` directory contains an older Helm-based implementation and should not be used.
-
 ## Architecture
 
 - **Deployment:** Kubernetes StatefulSet (not systemd service)
@@ -102,7 +100,7 @@ The dual LoadBalancer setup provides security through **network isolation**, not
 ### Install on a Node
 
 ```bash
-sudo ./scripts/apps/minio/install-minio.sh
+sudo ./scripts/storage/minio/install-minio.sh
 ```
 
 The script will:
@@ -119,7 +117,7 @@ The script will:
 ```bash
 # On control plane
 cd ~/MyNodeOne
-sudo ./scripts/apps/minio/install-minio.sh
+sudo ./scripts/storage/minio/install-minio.sh
 
 # Select node: 2 (canada-pc-0001-1)
 # Select disk: 2 (Use OS folder)
@@ -133,7 +131,7 @@ Result:
 ### Example: Install on Control Plane
 
 ```bash
-sudo ./scripts/apps/minio/install-minio.sh
+sudo ./scripts/storage/minio/install-minio.sh
 
 # Select node: 1 (canada-pc-0001)
 # Select disk: 2 (Use OS folder)

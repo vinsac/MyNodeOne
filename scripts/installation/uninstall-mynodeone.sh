@@ -551,19 +551,27 @@ if [ -f /etc/systemd/system/mynodeone-config-api.service ]; then
     rm -f /etc/systemd/system/mynodeone-config-api.service
     systemctl daemon-reload
     log_success "Removed Config API service"
+fi
+
+# Remove Node Agent service (all nodes)
+if [ -f /etc/systemd/system/mynodeone-node-agent.service ]; then
+    systemctl stop mynodeone-node-agent 2>/dev/null || true
+    systemctl disable mynodeone-node-agent 2>/dev/null || true
+    rm -f /etc/systemd/system/mynodeone-node-agent.service
+    systemctl daemon-reload
+    log_success "Removed Node Agent service"
+fi
+
+# Remove etc files
+if [ -d /etc/mynodeone ]; then
+    # Remove files if they exist
+    rm -f /etc/mynodeone/nodes-registry.json 2>/dev/null || true
+    rm -f /etc/mynodeone/api-token 2>/dev/null || true
+    rm -f /etc/mynodeone/agent.env 2>/dev/null || true
+    rm -f /etc/mynodeone/.agent.state 2>/dev/null || true
     
-    # Remove Config API V2 data files
-    if [ -f /etc/mynodeone/nodes-registry.json ]; then
-        rm -f /etc/mynodeone/nodes-registry.json
-        log_success "Removed node registry data (/etc/mynodeone/nodes-registry.json)"
-    fi
-    
-    if [ -f /etc/mynodeone/api-token ]; then
-        rm -f /etc/mynodeone/api-token
-        log_success "Removed API token (/etc/mynodeone/api-token)"
-    fi
-    
-    if [ -d /etc/mynodeone ] && [ -z "$(ls -A /etc/mynodeone)" ]; then
+    # Remove directory if empty
+    if [ -z "$(ls -A /etc/mynodeone 2>/dev/null)" ]; then
         rmdir /etc/mynodeone 2>/dev/null || true
         log_success "Removed /etc/mynodeone/ directory"
     fi

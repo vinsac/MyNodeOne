@@ -666,6 +666,12 @@ main() {
     # Must run after labels are applied on control plane
     configure_kubectl_worker
     
+    # Export KUBECONFIG so sub-scripts can access the cluster
+    if [ -f "$ACTUAL_HOME/.kube/config" ]; then
+        export KUBECONFIG="$ACTUAL_HOME/.kube/config"
+        log_info "KUBECONFIG exported: $KUBECONFIG"
+    fi
+    
     # GPU setup - now that kubectl is ready, device plugin can be deployed
     setup_gpu
     

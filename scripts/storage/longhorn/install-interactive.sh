@@ -12,8 +12,19 @@
 # - Follows existing MyNodeOne patterns
 ###############################################################################
 
-# Ensure KUBECONFIG is set for kubectl and helm when running as root
-export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
+# Set KUBECONFIG appropriately based on node type and available configs
+# This ensures kubectl works on both control plane and worker nodes
+if [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+    # Control plane - use K3s server config (root has direct access)
+    export KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
+elif [ -n "${SUDO_USER:-}" ] && [ -f "/home/$SUDO_USER/.kube/config" ]; then
+    # Running with sudo - use actual user's config (common on workers)
+    export KUBECONFIG="/home/$SUDO_USER/.kube/config"
+elif [ -f "$HOME/.kube/config" ]; then
+    # Use current user's config
+    export KUBECONFIG="$HOME/.kube/config"
+fi
+# If none of the above exist, kubectl commands will fail gracefully with helpful error messages
 
 set -euo pipefail
 

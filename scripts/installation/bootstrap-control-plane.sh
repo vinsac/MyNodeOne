@@ -2483,17 +2483,25 @@ main() {
             api_token=$(cat /etc/mynodeone/api-token)
         fi
         
+        # Determine the best IP for the agent to reach the API
+        # On the control plane, 127.0.0.1 is always safer as a fallback
+        local agent_target_ip="${TAILSCALE_IP:-}"
+        if [ -z "$agent_target_ip" ]; then
+            agent_target_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
+        fi
+        
         # Run agent installer
-        # We pass --control-plane-ip as Tailscale IP (which we have in env)
         # Using node-type=laptop for control plane to ensure local DNS syncing behavior
         if bash "$SCRIPT_DIR/install-node-agent.sh" \
-            --control-plane-ip "$TAILSCALE_IP" \
+            --control-plane-ip "$agent_target_ip" \
             --node-type "laptop" \
             --node-name "$NODE_NAME" \
             --api-token "$api_token"; then
             log_success "Node Agent installed on Control Plane"
         else
             log_warn "Node Agent installation failed"
+            log_warn "You can install it manually later with:"
+            log_warn "  sudo ./scripts/installation/install-node-agent.sh --control-plane-ip 127.0.0.1 --node-type laptop --node-name $NODE_NAME"
         fi
     else
         log_warn "Node Agent installer not found ($SCRIPT_DIR/install-node-agent.sh)"

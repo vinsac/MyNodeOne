@@ -1114,7 +1114,7 @@ ssh-copy-id ${WORKER_USER}@${WORKER_IP}
 # This is the ONLY time you'll need the password!
 
 # Test passwordless SSH
-ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
+ssh ${WORKER_USER}@${WORKER_IP} 'echo "SSH key authentication successful"'
 # Should connect without password prompt
 ```
 
@@ -1124,7 +1124,7 @@ ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
 WORKER_IP="100.116.16.118"
 WORKER_USER="your-username"
 ssh-copy-id ${WORKER_USER}@${WORKER_IP}
-ssh ${WORKER_USER}@${WORKER_IP} "echo 'SSH key authentication successful!'"
+ssh ${WORKER_USER}@${WORKER_IP} 'echo "SSH key authentication successful"'
 ```
 
 **What happens without SSH?**

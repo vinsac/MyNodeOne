@@ -402,13 +402,21 @@ cat "$MANIFESTS_DIR/statefulset.yaml" | \
     kubectl apply -f -
 log_success "StatefulSet deployed"
 
-# Create Service
-log_info "Creating LoadBalancer service..."
+# Create API Service
+log_info "Creating API LoadBalancer service..."
 cat "$MANIFESTS_DIR/service.yaml" | \
     sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
     sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
     kubectl apply -f -
-log_success "Service created"
+log_success "API service created"
+
+# Create Console Service
+log_info "Creating Console LoadBalancer service..."
+cat "$MANIFESTS_DIR/service-console.yaml" | \
+    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
+    sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
+    kubectl apply -f -
+log_success "Console service created"
 
 # Wait for pod to be ready
 log_info "Waiting for MinIO pod to be ready..."
@@ -419,37 +427,60 @@ kubectl wait --for=condition=ready pod -l app=minio -n "$NAMESPACE" --timeout=30
 }
 log_success "MinIO pod is ready"
 
-# Get LoadBalancer IP
-log_info "Waiting for LoadBalancer IP..."
+# Get LoadBalancer IPs
+log_info "Waiting for LoadBalancer IPs..."
 sleep 5
 LB_IP=""
+LB_CONSOLE_IP=""
 for i in {1..30}; do
     LB_IP=$(kubectl get svc minio -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    if [ -n "$LB_IP" ]; then
+    LB_CONSOLE_IP=$(kubectl get svc minio-console -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    if [ -n "$LB_IP" ] && [ -n "$LB_CONSOLE_IP" ]; then
         break
     fi
     sleep 2
 done
 
 if [ -z "$LB_IP" ]; then
-    log_warn "LoadBalancer IP not assigned yet"
+    log_warn "API LoadBalancer IP not assigned yet"
     log_info "Check status with: kubectl get svc -n $NAMESPACE"
 else
-    log_success "LoadBalancer IP: $LB_IP"
+    log_success "API LoadBalancer IP: $LB_IP"
+fi
+
+if [ -z "$LB_CONSOLE_IP" ]; then
+    log_warn "Console LoadBalancer IP not assigned yet"
+    log_info "Check status with: kubectl get svc -n $NAMESPACE"
+else
+    log_success "Console LoadBalancer IP: $LB_CONSOLE_IP"
 fi
 
 # Register in service discovery
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 DOMAIN_NAME="minio-${NODE_NAME}.${CLUSTER_DOMAIN}.local"
+CONSOLE_DOMAIN_NAME="minio-console-${NODE_NAME}.${CLUSTER_DOMAIN}.local"
 log_info "Registering in service discovery..."
 if [ -f "$LIB_DIR/service-registry.sh" ]; then
+    # Register API service
     bash "$LIB_DIR/service-registry.sh" register \
         "minio-${NODE_NAME}" \
         "minio-${NODE_NAME}" \
         "$NAMESPACE" \
         "minio" \
         9000 \
-        true || log_warn "Service registration failed (non-critical)"
+        true || log_warn "API service registration failed (non-critical)"
+    
+    # Register Console service
+    bash "$LIB_DIR/service-registry.sh" register \
+        "minio-console-${NODE_NAME}" \
+        "minio-console-${NODE_NAME}" \
+        "$NAMESPACE" \
+        "minio-console" \
+        9001 \
+        true || log_warn "Console service registration failed (non-critical)"
+    
+    log_success "Registered: $DOMAIN_NAME → $LB_IP"
+    log_success "Registered: $CONSOLE_DOMAIN_NAME → $LB_CONSOLE_IP"
     
     # Update DNS on control plane to make domain accessible immediately
     if [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
@@ -469,16 +500,18 @@ MinIO Installation on Node: $NODE_NAME
 ======================================
 
 Namespace: $NAMESPACE
-Domain: $DOMAIN_NAME
-LoadBalancer IP: ${LB_IP:-pending}
+API Domain: $DOMAIN_NAME
+Console Domain: $CONSOLE_DOMAIN_NAME
+API LoadBalancer IP: ${LB_IP:-pending}
+Console LoadBalancer IP: ${LB_CONSOLE_IP:-pending}
 
 API Endpoints:
   - http://${DOMAIN_NAME}:9000
   - http://${LB_IP}:9000 (if IP assigned)
 
-Console:
-  - http://${DOMAIN_NAME}:9001
-  - http://${LB_IP}:9001 (if IP assigned)
+Console Endpoints:
+  - http://${CONSOLE_DOMAIN_NAME}:9001
+  - http://${LB_CONSOLE_IP}:9001 (if IP assigned)
 
 Credentials:
   Username: $MINIO_USER
@@ -491,21 +524,21 @@ Storage:
 Kubernetes Resources:
   Namespace: $NAMESPACE
   StatefulSet: minio
-  Service: minio (LoadBalancer)
+  Services: minio (API), minio-console (Console)
   PVC: minio-data
 
 Management Commands:
   # View pods
   kubectl get pods -n $NAMESPACE
   
-  # View service
+  # View services
   kubectl get svc -n $NAMESPACE
   
   # View logs
   kubectl logs -n $NAMESPACE -l app=minio
   
   # Access console
-  open http://${DOMAIN_NAME}:9001
+  open http://${CONSOLE_DOMAIN_NAME}:9001
   
   # Delete MinIO (if needed)
   kubectl delete namespace $NAMESPACE
@@ -523,9 +556,13 @@ echo -e "${GREEN}  MinIO Installation Complete!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "📍 Node: $NODE_NAME"
-echo "🌐 Domain: $DOMAIN_NAME"
+echo "🌐 API Domain: $DOMAIN_NAME"
+echo "🌐 Console Domain: $CONSOLE_DOMAIN_NAME"
 if [ -n "$LB_IP" ]; then
-    echo "📡 LoadBalancer IP: $LB_IP"
+    echo "📡 API LoadBalancer IP: $LB_IP"
+fi
+if [ -n "$LB_CONSOLE_IP" ]; then
+    echo "📡 Console LoadBalancer IP: $LB_CONSOLE_IP"
 fi
 echo ""
 echo "🔐 Credentials:"
@@ -534,10 +571,12 @@ echo "   Password: $MINIO_PASSWORD"
 echo ""
 echo "🌍 Access URLs:"
 echo "   API:     http://${DOMAIN_NAME}:9000"
-echo "   Console: http://${DOMAIN_NAME}:9001"
+echo "   Console: http://${CONSOLE_DOMAIN_NAME}:9001"
 if [ -n "$LB_IP" ]; then
     echo "   API:     http://${LB_IP}:9000"
-    echo "   Console: http://${LB_IP}:9001"
+fi
+if [ -n "$LB_CONSOLE_IP" ]; then
+    echo "   Console: http://${LB_CONSOLE_IP}:9001"
 fi
 echo ""
 echo "📄 Credentials saved to: $CREDS_FILE"

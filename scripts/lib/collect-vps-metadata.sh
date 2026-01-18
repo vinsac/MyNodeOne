@@ -15,6 +15,17 @@ set -euo pipefail
 # Output format (default: json)
 OUTPUT_FORMAT="${1:-json}"
 
+# Load configuration if available (to get VPS_LOCATION, NODE_NAME, etc.)
+# Check multiple possible locations on the VPS
+if [ -f "$HOME/.mynodeone/config.env" ]; then
+    source "$HOME/.mynodeone/config.env"
+elif [ -f "/root/.mynodeone/config.env" ]; then
+    source "/root/.mynodeone/config.env"
+elif [ -f "/etc/mynodeone/agent.env" ]; then
+    # Fallback to agent config if main config is missing
+    source "/etc/mynodeone/agent.env"
+fi
+
 # Detect OS information
 detect_os() {
     if [ -f /etc/os-release ]; then

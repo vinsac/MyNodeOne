@@ -212,23 +212,51 @@ EOF
 configure_kubectl_worker() {
     log_info "Configuring kubectl on worker node..."
     
-    # K3s agent nodes don't create /etc/rancher/k3s/k3s.yaml (only server nodes do)
-    # We need to generate kubeconfig manually for worker nodes
-    
     local KUBECONFIG_DEST="$ACTUAL_HOME/.kube/config"
+    
+    # 1. Check if kubectl already works (from interactive-setup)
+    if [ -f "$KUBECONFIG_DEST" ]; then
+        if sudo -u "$ACTUAL_USER" kubectl get nodes &>/dev/null; then
+            log_success "Working kubectl configuration already exists, preserving it."
+            return 0
+        fi
+        log_info "Existing kubeconfig found but cluster access failed. Attempting to fix..."
+    fi
+
+    # 2. Try to fetch admin k3s.yaml from control plane (most robust)
+    if [ -n "${CONTROL_PLANE_IP:-}" ] && [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
+        log_info "Attempting to fetch admin kubeconfig from control plane ($CONTROL_PLANE_IP)..."
+        
+        # Check if we have SSH access (ssh-copy-id should have been done)
+        if sudo -u "$ACTUAL_USER" ssh -o ConnectTimeout=5 -n "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$KUBECONFIG_DEST.tmp" 2>/dev/null; then
+            # Fix IP address in temp config
+            sed -i "s/127.0.0.1/$CONTROL_PLANE_IP/g" "$KUBECONFIG_DEST.tmp"
+            
+            # Verify the fetched config
+            if KUBECONFIG="$KUBECONFIG_DEST.tmp" kubectl get nodes &>/dev/null; then
+                mv "$KUBECONFIG_DEST.tmp" "$KUBECONFIG_DEST"
+                chown "$ACTUAL_USER:$ACTUAL_USER" "$KUBECONFIG_DEST"
+                chmod 600 "$KUBECONFIG_DEST"
+                log_success "Admin kubeconfig fetched successfully from control plane."
+                return 0
+            fi
+            rm -f "$KUBECONFIG_DEST.tmp"
+        fi
+        log_warn "Could not fetch admin kubeconfig via SSH."
+    fi
+
+    # 3. Fallback: Generate limited kubeconfig from local certificates
+    # K3s agent nodes don't create /etc/rancher/k3s/k3s.yaml
     
     # Create .kube directory
     mkdir -p "$ACTUAL_HOME/.kube"
     
-    # Generate kubeconfig for worker node
-    log_info "Generating kubeconfig for worker node..."
+    log_info "Generating fallback kubeconfig from local worker certificates..."
     
     # Wait for K3s agent to be ready
     sleep 5
     
     # Get cluster CA certificate from K3s server
-    # The server-ca.crt is the certificate authority for the K3s API server
-    local CA_CERT=""
     local CA_CERT_PATH="/var/lib/rancher/k3s/agent/server-ca.crt"
     
     if [ ! -f "$CA_CERT_PATH" ]; then
@@ -237,10 +265,9 @@ configure_kubectl_worker() {
         return 1
     fi
     
-    CA_CERT=$(cat "$CA_CERT_PATH" | base64 -w 0)
+    local CA_CERT=$(cat "$CA_CERT_PATH" | base64 -w 0)
     
     # Get client certificate and key for authentication
-    # Try multiple certificate locations
     local CLIENT_CERT=""
     local CLIENT_KEY=""
     
@@ -258,15 +285,6 @@ configure_kubectl_worker() {
         log_info "Using K3s kubelet certificates"
     else
         log_error "Could not find K3s client certificates"
-        log_warn "Attempted paths:"
-        log_warn "  - /var/lib/rancher/k3s/agent/client-k3s-controller.{crt,key}"
-        log_warn "  - /var/lib/rancher/k3s/agent/client-admin.{crt,key}"
-        log_warn "  - /var/lib/rancher/k3s/agent/client-kubelet.{crt,key}"
-        
-        # Try alternative: copy kubeconfig from control plane
-        log_info "Alternative: Copy kubeconfig from control plane:"
-        log_info "  scp ${CONTROL_PLANE_IP}:/etc/rancher/k3s/k3s.yaml ~/.kube/config"
-        log_info "  sed -i 's/127.0.0.1/${CONTROL_PLANE_IP}/g' ~/.kube/config"
         return 1
     fi
     
@@ -298,15 +316,14 @@ EOF
     # Set permissions
     chmod 600 "$KUBECONFIG_DEST"
     
-    log_success "Kubeconfig created at $KUBECONFIG_DEST"
+    log_success "Fallback kubeconfig created at $KUBECONFIG_DEST"
     
     # Test kubectl access
     if sudo -u "$ACTUAL_USER" kubectl get nodes &>/dev/null; then
         log_success "kubectl configured successfully on worker node"
-        log_info "Worker can now access cluster for MinIO credential sharing"
     else
         log_warn "kubectl configured but cluster access verification failed"
-        log_warn "MinIO installation may need manual credential configuration"
+        log_warn "Limited permissions may cause issues with GPU/Storage setup"
     fi
 }
 
@@ -536,8 +553,8 @@ setup_gpu() {
         lspci | grep -i nvidia | head -3
         echo ""
         
-        # Interactive GPU setup (no device plugin - that's on control plane)
-        bash "$PROJECT_ROOT/scripts/lib/gpu-setup.sh" --no-plugin
+        # Interactive GPU setup (will deploy device plugin if kubectl works)
+        bash "$PROJECT_ROOT/scripts/lib/gpu-setup.sh"
         GPU_EXIT_CODE=$?
         
         if [ $GPU_EXIT_CODE -eq 2 ]; then
@@ -632,8 +649,8 @@ main() {
     check_requirements
     verify_control_plane
     
-    # GPU setup early (may require reboot before continuing)
-    setup_gpu
+    # GPU setup handled later to allow device plugin deployment if kubectl works
+    # setup_gpu
     
     get_join_token
     install_dependencies
@@ -648,6 +665,9 @@ main() {
     # Configure kubectl - REQUIRED for Longhorn disk configuration
     # Must run after labels are applied on control plane
     configure_kubectl_worker
+    
+    # GPU setup - now that kubectl is ready, device plugin can be deployed
+    setup_gpu
     
     # Install storage and services
     install_longhorn  # Interactive Longhorn installation (formats/mounts disks, adds to cluster)

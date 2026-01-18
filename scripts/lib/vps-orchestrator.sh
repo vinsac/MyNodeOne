@@ -430,8 +430,7 @@ orchestrate_vps_installation() {
     print_info "Setting proper permissions on VPS..."
     execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod 600 $remote_home/.mynodeone/config.env" || return 1
     execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/installation/install-mynodeone.sh" || return 1
-    execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/*.sh" || return 1
-    execute_on_vps "$vps_tailscale_ip" "$vps_user" "chmod +x $remote_mynodeone/scripts/lib/*.sh" 2>/dev/null || true
+    execute_on_vps "$vps_tailscale_ip" "$vps_user" "find $remote_mynodeone/scripts -name '*.sh' -exec chmod +x {} +" || return 1
     echo
     
     # Step 8: Execute installation on VPS

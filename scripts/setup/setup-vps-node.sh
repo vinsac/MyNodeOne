@@ -34,6 +34,14 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Get script directory and project root using standardized utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Bootstrap with fallback pattern (auto-discovers if path is wrong)
+source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🌍 VPS Edge Node Local Setup"
@@ -51,7 +59,10 @@ fi
 
 # Ensure MyNodeOne repository is available
 log_info "Step 0: Ensuring MyNodeOne repository is available..."
-if [ ! -d "$ACTUAL_HOME/MyNodeOne" ]; then
+
+# The orchestrator transfers files to ~/mynodeone/
+# Check both lowercase and uppercase variations
+if [ ! -d "$ACTUAL_HOME/mynodeone" ] && [ ! -d "$ACTUAL_HOME/MyNodeOne" ]; then
     log_info "Cloning MyNodeOne repository..."
     if command -v git &> /dev/null; then
         sudo -u "$ACTUAL_USER" git clone https://github.com/vinsac/MyNodeOne.git "$ACTUAL_HOME/MyNodeOne" 2>&1 | grep -v "Cloning into" || true
@@ -66,13 +77,16 @@ else
     log_success "MyNodeOne repository already exists"
 fi
 
-# Create lowercase symlink for sync-controller compatibility
-if [ ! -L "$ACTUAL_HOME/mynodeone" ] && [ ! -d "$ACTUAL_HOME/mynodeone" ]; then
-    log_info "Creating symlink ~/mynodeone -> ~/MyNodeOne for sync compatibility..."
+# Create consistent symlinks for sync-controller compatibility
+# We want ~/mynodeone to exist even if it was cloned as ~/MyNodeOne or transferred
+if [ -d "$ACTUAL_HOME/MyNodeOne" ] && [ ! -d "$ACTUAL_HOME/mynodeone" ] && [ ! -L "$ACTUAL_HOME/mynodeone" ]; then
+    log_info "Creating symlink ~/mynodeone -> ~/MyNodeOne for compatibility..."
     sudo -u "$ACTUAL_USER" ln -s "$ACTUAL_HOME/MyNodeOne" "$ACTUAL_HOME/mynodeone"
     log_success "Symlink created"
-elif [ -L "$ACTUAL_HOME/mynodeone" ]; then
-    log_success "Symlink ~/mynodeone already exists"
+elif [ -d "$ACTUAL_HOME/mynodeone" ] && [ ! -d "$ACTUAL_HOME/MyNodeOne" ] && [ ! -L "$ACTUAL_HOME/MyNodeOne" ]; then
+    log_info "Creating symlink ~/MyNodeOne -> ~/mynodeone for compatibility..."
+    sudo -u "$ACTUAL_USER" ln -s "$ACTUAL_HOME/mynodeone" "$ACTUAL_HOME/MyNodeOne"
+    log_success "Symlink created"
 fi
 
 log_info "Running as: $ACTUAL_USER"
@@ -367,7 +381,7 @@ echo
 # Step 10: Install Node Agent for pull-based config sync
 log_info "Step 10: Installing Node Agent..."
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# PROJECT_ROOT is already defined at the top of the script via project-root.sh
 
 if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
     # Get API token from config if available (set by VPS orchestrator)

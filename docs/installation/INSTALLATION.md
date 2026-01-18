@@ -356,23 +356,24 @@ Run these commands in a terminal on your control plane machine:
 
 ### On Your VPS:
 
-1.  **Provision a Fresh VPS**
-    - Ubuntu 24.04 LTS (or 22.04/20.04)
-    - At least **8GB RAM required**
-    - A **public IPv4 address** assigned by your VPS provider (IPv6-only setups are not supported yet)
-    - SSH access working
+#### 1. Provision a Fresh VPS
 
-    For example, providers like Contabo offer suitable VPS plans with a public IPv4 address starting around USD $7 per month.
+- Ubuntu 24.04 LTS (or 22.04/20.04)
+- At least **8GB RAM required**
+- A **public IPv4 address** assigned by your VPS provider (IPv6-only setups are not supported yet)
+- SSH access working
 
-2.  **Create a Sudo User**
-    
-    From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `ssh root@YOUR_VPS_PUBLIC_IP` or `ssh admin@YOUR_VPS_PUBLIC_IP`). Once logged in, you will create your own sudo user.
+For example, providers like Contabo offer suitable VPS plans with a public IPv4 address starting around USD $7 per month.
 
-    In the examples below `sammy` is just an example username. Replace it with your own preferred username, and choose a username that is different from the one you use on your control plane. In these examples, `YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `203.0.113.10`), without any `<` or `>` characters.
+#### 2. Create a Sudo User
 
-    **Do not use root user** for security reasons.
+From a terminal on your control plane machine (or another machine with SSH access), connect to your VPS using the initial credentials from your provider (commonly `ssh root@YOUR_VPS_PUBLIC_IP` or `ssh admin@YOUR_VPS_PUBLIC_IP`). Once logged in, you will create your own sudo user.
 
-    ```bash
+In the examples below `sammy` is just an example username. Replace it with your own preferred username, and choose a username that is different from the one you use on your control plane. In these examples, `YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `203.0.113.10`), without any `<` or `>` characters.
+
+**Do not use root user** for security reasons.
+
+```bash
 # ON VPS (connected as root or admin):
 # 1. Create a new user (replace 'sammy' with your own username)
 adduser sammy
@@ -395,11 +396,11 @@ exit
 # ssh sammy@YOUR_VPS_PUBLIC_IP
 ```
 
-3.  **Install Tailscale on the VPS**
-    
-    From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@YOUR_VPS_PUBLIC_IP`). Once you are logged in, run the following commands on the VPS:
-    
-    ```bash
+#### 3. Install Tailscale on the VPS
+
+From a terminal on your control plane machine, SSH into the VPS as your new sudo user (for example, `sammy`) using its public IPv4 address (for example, `ssh sammy@YOUR_VPS_PUBLIC_IP`). Once you are logged in, run the following commands on the VPS:
+
+```bash
 # ON VPS (connected as your sudo user 'sammy'):
 # Install curl (if not already installed)
 sudo apt install -y curl
@@ -424,13 +425,16 @@ tailscale ip -4
 exit
 ```
 
---- 
+---
+---
 
 ## Installation Steps
 
-**All steps are performed FROM your Control Plane** - the VPS will be configured remotely.
+All steps are performed **FROM your Control Plane** - the VPS will be configured remotely.
 
 Open a fresh terminal window on your control plane machine before running the commands below.
+
+---
 
 ### Choose Your Installation Method
 
@@ -517,7 +521,7 @@ The orchestration automatically installs:
 - **Node Exporter**: Monitoring agent for Prometheus
 - **Fail2ban**: Protection against brute-force attacks
 
---- 
+---
 
 ## VPS Edge Node Installation Complete!
 
@@ -609,6 +613,8 @@ Wait 2-5 minutes for SSL certificates, then test:
 curl -I https://demo.yourdomain.com
 curl -I https://chat.yourdomain.com
 ```
+
+---
 
 ### Automated Sync System
 

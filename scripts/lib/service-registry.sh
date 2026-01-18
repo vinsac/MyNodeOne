@@ -189,6 +189,7 @@ sync_registry() {
         
         # Determine subdomain based on annotation or service name mapping
         local subdomain=""
+        local k8s_service_name="$name"
         if [[ -n "$annotation" ]]; then
             subdomain="$annotation"
         else
@@ -256,7 +257,7 @@ sync_registry() {
         local existing_public=$(echo "$registry" | jq -r --arg name "$name" '.[$name].public // false' 2>/dev/null)
         
         # Register service (preserve existing public flag)
-        if register_service "$name" "$subdomain" "$namespace" "$name" "$port" "$existing_public" 2>&1 | grep -q "Registered"; then
+        if register_service "$name" "$subdomain" "$namespace" "$k8s_service_name" "$port" "$existing_public" 2>&1 | grep -q "Registered"; then
             ((count++))
         else
             log_info "Failed to register $namespace/$name"

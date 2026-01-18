@@ -461,23 +461,23 @@ DOMAIN_NAME="minio-${NODE_NAME}.${CLUSTER_DOMAIN}.local"
 CONSOLE_DOMAIN_NAME="minio-console-${NODE_NAME}.${CLUSTER_DOMAIN}.local"
 log_info "Registering in service discovery..."
 if [ -f "$LIB_DIR/service-registry.sh" ]; then
-    # Register API service
+    # Register API service (default to private, can be made public via manage-app-visibility.sh)
     bash "$LIB_DIR/service-registry.sh" register \
         "minio-${NODE_NAME}" \
         "minio-${NODE_NAME}" \
         "$NAMESPACE" \
         "minio" \
         9000 \
-        true || log_warn "API service registration failed (non-critical)"
+        false || log_warn "API service registration failed (non-critical)"
     
-    # Register Console service
+    # Register Console service (default to private)
     bash "$LIB_DIR/service-registry.sh" register \
         "minio-console-${NODE_NAME}" \
         "minio-console-${NODE_NAME}" \
         "$NAMESPACE" \
         "minio-console" \
         9001 \
-        true || log_warn "Console service registration failed (non-critical)"
+        false || log_warn "Console service registration failed (non-critical)"
     
     log_success "Registered: $DOMAIN_NAME → $LB_IP"
     log_success "Registered: $CONSOLE_DOMAIN_NAME → $LB_CONSOLE_IP"

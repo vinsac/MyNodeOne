@@ -2,14 +2,16 @@
 
 MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 
+> **Note:** Use `scripts/apps/minio/` for MinIO installation. The `scripts/storage/minio/` directory contains an older Helm-based implementation and should not be used.
+
 ## Architecture
 
 - **Deployment:** Kubernetes StatefulSet (not systemd service)
 - **Isolation:** Per-node namespace (`minio-<nodename>`)
 - **Storage:** HostPath volumes (dedicated physical disk or OS folder)
-- **Network:** LoadBalancer service via MetalLB
+- **Network:** Dual LoadBalancer services (API + Console) via MetalLB
 - **Discovery:** Accessible via `.local` domain
-- **Credentials:** Independent per node
+- **Credentials:** Independent per node with full admin privileges
 
 ## Features
 
@@ -33,6 +35,67 @@ MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 - StatefulSet with node affinity
 - HostPath PersistentVolume
 - Service discovery integration
+
+## Dual LoadBalancer Architecture
+
+MinIO uses **two separate LoadBalancer services** for enhanced security and flexibility:
+
+### API Service
+- **Domain:** `minio-<nodename>.<domain>.local:9000`
+- **Purpose:** S3 API endpoints for programmatic access
+- **Use Cases:** 
+  - Application storage (Immich, Paperless, etc.)
+  - CLI tools (mc, aws-cli, s3cmd)
+  - Backup scripts
+  - Cross-cluster replication
+- **Public Exposure:** ✅ Safe to expose publicly for S3 API access
+
+### Console Service
+- **Domain:** `minio-console-<nodename>.<domain>.local:9001`
+- **Purpose:** Web-based admin UI with full privileges
+- **Features:**
+  - User/group management
+  - IAM policy configuration
+  - Bucket management
+  - Monitoring and metrics
+  - System settings
+- **Public Exposure:** ⚠️ Keep private (Tailscale-only access recommended)
+
+### Security Benefits
+
+**Separate IPs and Services:**
+- ✅ Expose API publicly without exposing admin console
+- ✅ Reduced attack surface (admin UI not on internet)
+- ✅ Independent firewall rules per service
+- ✅ Separate monitoring and rate limiting
+- ✅ Granular access control
+
+**Example: Selective Public Exposure**
+```bash
+# Expose only API service via VPS (public S3 access)
+sudo ./scripts/networking/manage-app-visibility.sh expose \
+  minio-canada-pc-0001 \
+  minio-canada-pc-0001 \
+  minio-canada-pc-0001.minicloud.local
+
+# Console remains private (Tailscale-only)
+# Access: http://minio-console-canada-pc-0001.minicloud.local:9001
+```
+
+Result:
+- **Public:** `https://minio-canada-pc-0001.yourdomain.com` (S3 API via VPS)
+- **Private:** `http://minio-console-canada-pc-0001.minicloud.local:9001` (Admin UI via Tailscale)
+
+### Admin Privileges
+
+**All MinIO installations have full admin privileges** regardless of node type:
+- ✅ Control plane installations: Full admin access
+- ✅ Worker node installations: Full admin access
+- ✅ Complete IAM policy management
+- ✅ User/group management capabilities
+- ✅ All console features enabled
+
+The dual LoadBalancer setup provides security through **network isolation**, not privilege restriction. Each MinIO instance is fully functional with complete administrative capabilities.
 
 ## Installation
 
@@ -87,23 +150,40 @@ Result:
 
 ```bash
 # API endpoint
-curl http://minio-<nodename>.mynodeone.local:9000/minio/health/live
+curl http://minio-<nodename>.<domain>.local:9000/minio/health/live
 
-# Console (web UI)
-open http://minio-<nodename>.mynodeone.local:9001
+# Console (web UI) - separate domain
+open http://minio-console-<nodename>.<domain>.local:9001
 ```
 
-### Via LoadBalancer IP
+### Via LoadBalancer IPs
+
+MinIO has **two separate LoadBalancer IPs**:
 
 ```bash
-# Get LoadBalancer IP
+# Get API LoadBalancer IP
 kubectl get svc minio -n minio-<nodename>
 
-# Access API
-curl http://<loadbalancer-ip>:9000/minio/health/live
+# Get Console LoadBalancer IP
+kubectl get svc minio-console -n minio-<nodename>
 
-# Access Console
-open http://<loadbalancer-ip>:9001
+# Access API via IP
+curl http://<api-loadbalancer-ip>:9000/minio/health/live
+
+# Access Console via IP
+open http://<console-loadbalancer-ip>:9001
+```
+
+Example output after installation:
+```
+📡 API LoadBalancer IP: 100.79.104.207
+📡 Console LoadBalancer IP: 100.79.104.208
+
+🌍 Access URLs:
+   API:     http://minio-canada-pc-0001.minicloud.local:9000
+   Console: http://minio-console-canada-pc-0001.minicloud.local:9001
+   API:     http://100.79.104.207:9000
+   Console: http://100.79.104.208:9001
 ```
 
 ### Using mc CLI
@@ -163,10 +243,12 @@ kubectl delete namespace minio-<nodename>
 
 # This will delete:
 # - StatefulSet
-# - Service (LoadBalancer)
+# - Services (API and Console LoadBalancers)
 # - PVC
 # - Secret
 # - All data in /var/lib/minio (if using OS folder)
+
+# Note: Both LoadBalancer IPs will be released back to MetalLB pool
 ```
 
 ## Storage

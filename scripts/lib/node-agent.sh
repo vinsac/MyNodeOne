@@ -57,6 +57,13 @@ load_config() {
     API_TOKEN="${API_TOKEN:-}"
     CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"  # Used for DNS entries (e.g., dashboard.{domain}.local)
     
+    # Load state (last applied version)
+    STATE_FILE="/etc/mynodeone/.agent.state"
+    if [[ -f "$STATE_FILE" ]]; then
+        CURRENT_CONFIG_VERSION=$(grep "^VERSION=" "$STATE_FILE" | cut -d'=' -f2 || echo "")
+        export CURRENT_CONFIG_VERSION
+    fi
+    
     # Validate required config
     if [[ -z "$CONTROL_PLANE_IP" ]]; then
         log_error "CONTROL_PLANE_IP is required"
@@ -363,6 +370,9 @@ run_agent() {
                     last_config_version="$new_version"
                     CURRENT_CONFIG_VERSION="$new_version"
                     export CURRENT_CONFIG_VERSION
+                    
+                    # Persist state
+                    echo "VERSION=$CURRENT_CONFIG_VERSION" > "$STATE_FILE"
                 fi
             fi
         fi
@@ -385,8 +395,15 @@ sync_once() {
     local config
     if config=$(fetch_config); then
         apply_config "$config"
+        
+        # Update and persist version
+        local new_version
+        new_version=$(echo "$config" | jq -r '.version' 2>/dev/null || echo "manual")
+        CURRENT_CONFIG_VERSION="$new_version"
+        echo "VERSION=$CURRENT_CONFIG_VERSION" > "$STATE_FILE"
+        
         send_heartbeat
-        log_success "Sync complete"
+        log_success "Sync complete (Version: $CURRENT_CONFIG_VERSION)"
     else
         log_error "Sync failed"
         exit 1

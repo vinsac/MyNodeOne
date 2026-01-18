@@ -911,10 +911,10 @@
                     const statusText = isReady ? 'Ready' : 'NotReady';
                     const roles = node.roles.length > 0 ? node.roles.join(', ') : 'worker';
                     
-                    // Calculate resource usage (simplified - would need metrics server for real data)
-                    const cpuUsage = Math.floor(Math.random() * 80); // Placeholder
-                    const ramUsage = Math.floor(Math.random() * 80); // Placeholder
-                    const storageUsage = Math.floor(Math.random() * 80); // Placeholder
+                    // Calculate resource usage
+                    const cpuUsage = node.usage ? node.usage.cpu : 0;
+                    const ramUsage = node.usage ? node.usage.memory : 0;
+                    const storageUsage = "N/A"; // Storage metrics not available from kubectl top
                     
                     nodesHtml += `
                         <div class="node-item" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">

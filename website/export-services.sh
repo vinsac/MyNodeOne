@@ -55,7 +55,14 @@ export_services() {
 
 # Export nodes function
 export_nodes() {
-    local nodes_json=$(kubectl get nodes -o json | jq -c '[
+    # Get node metrics (if accessible)
+    local metrics_json="{}"
+    if kubectl top nodes &>/dev/null; then
+        metrics_json=$(kubectl top nodes --no-headers | awk '{gsub("%","",$3); gsub("%","",$5); printf "\"%s\":{\"cpu\":%s,\"memory\":%s},", $1, $3, $5}' | sed 's/,$//')
+        metrics_json="{${metrics_json}}"
+    fi
+
+    local nodes_json=$(kubectl get nodes -o json | jq -c --argjson metrics "$metrics_json" '[
         .items[] | {
             name: .metadata.name,
             status: .status.conditions[] | select(.type=="Ready") | .status,
@@ -64,6 +71,7 @@ export_nodes() {
             kernel: .status.nodeInfo.kernelVersion,
             kubernetes: .status.nodeInfo.kubeletVersion,
             created: .metadata.creationTimestamp,
+            usage: ($metrics[.metadata.name] // {cpu: 0, memory: 0}),
             capacity: {
                 cpu: .status.capacity.cpu,
                 memory: .status.capacity.memory,
@@ -103,7 +111,7 @@ export_cluster() {
         }' 2>/dev/null || echo '{}')
     fi
     
-    local cluster_json=$(jq -c --arg total_nodes "$total_nodes" \
+    local cluster_json=$(jq -n -c --arg total_nodes "$total_nodes" \
         --arg ready_nodes "$ready_nodes" \
         --arg total_pods "$total_pods" \
         --arg running_pods "$running_pods" \
@@ -116,7 +124,7 @@ export_cluster() {
             total: ($total_pods | tonumber),
             running: ($running_pods | tonumber)
         },
-        storage: $storage_info,
+        storage: $storage,
         timestamp: now
     }')
     

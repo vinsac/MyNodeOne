@@ -44,7 +44,45 @@ log_success() {
 }
 
 log_warn() {
-    echo -e "${YELLOW}[⚠]${NC} $(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+# Get current Kubernetes node name robustly
+get_k8s_node_name() {
+    # 1. Use NODE_NAME from config if set and valid
+    if [[ -n "${NODE_NAME:-}" ]]; then
+        if kubectl get node "$NODE_NAME" &>/dev/null; then
+            echo "$NODE_NAME"
+            return 0
+        fi
+    fi
+
+    # 2. Try to match by local Tailscale IP (most reliable in our architecture)
+    local my_ip=$(tailscale ip -4 2>/dev/null | head -n1)
+    if [[ -n "$my_ip" ]]; then
+        local node=$(kubectl get nodes -o json | jq -r ".items[] | select(.status.addresses[] | select(.type==\"InternalIP\" and .address==\"$my_ip\")) | .metadata.name" 2>/dev/null)
+        if [[ -n "$node" ]]; then
+            echo "$node"
+            return 0
+        fi
+    fi
+
+    # 3. Try to match by hostname
+    local host_name=$(hostname)
+    if kubectl get node "$host_name" &>/dev/null; then
+        echo "$host_name"
+        return 0
+    fi
+
+    # 4. Fallback to first non-control-plane node if we are a worker
+    local fallback=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [[ -n "$fallback" ]]; then
+        echo "$fallback"
+        return 0
+    fi
+
+    # 5. Last resort: Just first node
+    kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || hostname
 }
 
 log_error() {
@@ -413,11 +451,11 @@ add_additional_disks() {
         return 0
     fi
     
-    # Get node name
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    # Get actual node name
+    local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping additional disk configuration"
-        return 0
+        return 1
     fi
     
     # Wait for Longhorn node CRD
@@ -525,7 +563,7 @@ fix_disk_reservations() {
         return 0
     fi
     
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping reservation optimization"
         return 0
@@ -588,7 +626,7 @@ register_in_node_registry() {
     fi
     
     # Get node name from Kubernetes
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect Kubernetes node name"
         return 0
@@ -643,15 +681,11 @@ main() {
         exit 1
     fi
     
-    # Check if Longhorn already installed
+    # Check if Longhorn already installed on cluster
+    local longhorn_installed=false
     if kubectl get namespace longhorn-system &>/dev/null; then
-        log_warn "Longhorn namespace already exists"
-        read -p "Reinstall Longhorn? [y/N]: " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Installation cancelled"
-            exit 0
-        fi
+        log_info "Longhorn detected on cluster (namespace exists)"
+        longhorn_installed=true
     fi
     
     # Interactive disk selection
@@ -660,10 +694,14 @@ main() {
     # Format and mount disks
     format_and_mount_disks
     
-    # Install Longhorn
-    install_longhorn_helm
+    # Install/Upgrade Longhorn ONLY if not already present or if forced
+    if [[ "$longhorn_installed" == "false" ]]; then
+        install_longhorn_helm
+    else
+        log_info "Skipping global Longhorn Helm installation (already present on cluster)"
+    fi
     
-    # Add additional disks
+    # Add additional disks (this is node-local)
     add_additional_disks
     
     # Fix disk UUID mismatches (if disks were reformatted)

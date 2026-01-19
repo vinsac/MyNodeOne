@@ -13,7 +13,7 @@ This guide has **4 independent sections** - one for each node type:
 | **[1. Control Plane](#section-1-control-plane-installation)** | First node (master) | **START HERE** - Always install this first |
 | **[2. VPS Edge Node](#section-2-vps-edge-node-installation)** | Public internet access | Add after control plane for public apps |
 | **[3. Management Laptop or Workstation](#section-3-management-laptop-or-workstation-setup)** | Admin workstation | Recommended - Control cluster from laptop |
-| **[4. Worker Node](#section-4-worker-node-installation-(optional))** | Additional compute | Optional - Add more resources to cluster |
+| **[4. Worker Node](#section-4-worker-node-installation)** | Additional compute | Optional - Add more resources to cluster |
 
 **Always start with Section 1 (Control Plane), then choose which other sections you need.**
 
@@ -936,7 +936,7 @@ sudo systemctl restart mynodeone-node-agent
 ---
 ---
 
-# SECTION 4: Worker Node Installation (Optional)
+# SECTION 4: Worker Node Installation
 
 **Add more compute resources to your cluster.**
 

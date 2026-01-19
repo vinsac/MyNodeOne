@@ -2009,10 +2009,10 @@ print_summary() {
     fi
     
     echo "📚 MORE RESOURCES:"
-    echo "   • Getting Started Guide: $PROJECT_ROOT/GETTING-STARTED.md"
-    echo "   • Operations Guide: $PROJECT_ROOT/docs/guides/operations.md"
-    echo "   • FAQ: $PROJECT_ROOT/FAQ.md"
-    echo "   • Troubleshooting: $PROJECT_ROOT/docs/guides/troubleshooting.md"
+    echo "   • Getting Started Guide: $PROJECT_ROOT/docs/guides/GETTING-STARTED.md"
+    echo "   • Operations Guide: $PROJECT_ROOT/docs/operations/ADMIN-GUIDE.md"
+    echo "   • FAQ: $PROJECT_ROOT/docs/reference/FAQ.md"
+    echo "   • Troubleshooting: $PROJECT_ROOT/docs/operations/troubleshooting.md"
     echo
     echo "💡 HELPFUL COMMANDS:"
     echo "   kubectl get all -A              # See everything"

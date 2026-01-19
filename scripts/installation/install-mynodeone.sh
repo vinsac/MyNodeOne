@@ -1347,13 +1347,6 @@ show_documentation_info() {
     echo "  • Operations: $PROJECT_ROOT/docs/guides/ADMIN-GUIDE.md"
     echo "  • FAQ: $PROJECT_ROOT/docs/reference/FAQ.md"
     echo
-    echo "🌐 Web UI will be available after installation:"
-    echo "  • Grafana (Monitoring): http://<control-plane-ip>:3000"
-    echo "  • ArgoCD (GitOps): https://<control-plane-ip>:8080"
-    echo "  • MinIO (S3 Storage): http://<control-plane-ip>:9000"
-    echo
-    echo "📖 For detailed storage options, see:"
-    echo "  • Storage Architecture: $PROJECT_ROOT/docs/architecture/STORAGE-ARCHITECTURE.md"
     echo
 }
 

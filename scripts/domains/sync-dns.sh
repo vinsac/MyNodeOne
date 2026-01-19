@@ -39,8 +39,12 @@ if [ -z "${ACTUAL_HOME:-}" ]; then
     source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
     source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
     source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
-    export ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
+    export ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6 2>/dev/null || echo "/home/$ACTUAL_USER")
 fi
+
+# Source K8s utilities for robust KUBECONFIG detection
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
+export_k8s_config || true
 
 # Load configuration
 CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
@@ -60,7 +64,8 @@ if [[ -n "${CLUSTER_DOMAIN:-}" ]]; then
     log_info "Using cluster domain from environment: $CLUSTER_DOMAIN"
 # Priority 2: ConfigMap (authoritative source after installation)
 elif command -v kubectl &>/dev/null; then
-    CLUSTER_DOMAIN=$(kubectl get cm cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+    # Ensure we use correct KUBECONFIG even under sudo
+    CLUSTER_DOMAIN=$(KUBECONFIG="${KUBECONFIG:-$ACTUAL_HOME/.kube/config}" kubectl get cm cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
     if [[ -n "$CLUSTER_DOMAIN" ]]; then
         log_info "Using cluster domain from cluster: $CLUSTER_DOMAIN"
     fi

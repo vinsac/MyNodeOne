@@ -2,12 +2,47 @@
 
 # Standardized KUBECONFIG detection logic
 export_k8s_config() {
+    # 1. Prefer explicit KUBECONFIG if already set and valid
+    if [ -n "${KUBECONFIG:-}" ] && [ -f "$KUBECONFIG" ]; then
+        return 0
+    fi
+
+    # 2. Try K3s system config (control plane/worker)
     if [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
         export KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
-    elif [ -n "${SUDO_USER:-}" ] && [ -f "/home/$SUDO_USER/.kube/config" ]; then
-        export KUBECONFIG="/home/$SUDO_USER/.kube/config"
-    elif [ -f "$HOME/.kube/config" ]; then
+        return 0
+    fi
+
+    # 3. Detect ACTUAL_HOME if not already set
+    if [ -z "${ACTUAL_HOME:-}" ]; then
+        local lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        if [ -f "$lib_dir/detect-actual-home.sh" ]; then
+            source "$lib_dir/detect-actual-home.sh"
+        else
+            # Minimal fallback if library is missing
+            local actual_user="${SUDO_USER:-$(whoami)}"
+            if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    export ACTUAL_HOME="/Users/$actual_user"
+                else
+                    export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6 2>/dev/null || echo "/home/$actual_user")
+                fi
+            else
+                export ACTUAL_HOME="$HOME"
+            fi
+        fi
+    fi
+
+    # 4. Check actual user's home
+    if [ -n "${ACTUAL_HOME:-}" ] && [ -f "$ACTUAL_HOME/.kube/config" ]; then
+        export KUBECONFIG="$ACTUAL_HOME/.kube/config"
+        return 0
+    fi
+
+    # 5. Fallback to current user's HOME
+    if [ -f "$HOME/.kube/config" ]; then
         export KUBECONFIG="$HOME/.kube/config"
+        return 0
     fi
     
     # Verify connectivity if possible

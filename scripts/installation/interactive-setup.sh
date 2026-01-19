@@ -17,10 +17,12 @@ source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
-# Source validation library
 if [ -f "$PROJECT_ROOT/scripts/lib/validation.sh" ]; then
     source "$PROJECT_ROOT/scripts/lib/validation.sh"
 fi
+
+# Source K8s utilities for robust detection
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
 # Colors
 RED='\033[0;31m'check_system
@@ -31,7 +33,8 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-# ACTUAL_USER and ACTUAL_HOME are inherited from the main mynodeone script
+# Source shared detection utility to ensure ACTUAL_USER/HOME are set
+source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 
 CONFIG_DIR="$ACTUAL_HOME/.mynodeone"
 CONFIG_FILE="$CONFIG_DIR/config.env"
@@ -506,6 +509,7 @@ configure_cluster_info() {
     
     # If this is not a control plane, try to get info from kubectl (only if we didn't just auto-fetch)
     if [ "$NODE_ROLE" != "Control Plane" ] && [ "$auto_fetched" = false ]; then
+        export_k8s_config || true
         if command -v kubectl &> /dev/null && kubectl cluster-info &> /dev/null; then
             print_info "Detected existing Kubernetes cluster connection"
             

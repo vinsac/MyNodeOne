@@ -18,6 +18,8 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 # Source SSH utilities for ControlMaster support
 source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
+# Source K8s utilities for robust detection
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
 # Load cluster configuration if it exists
 CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
@@ -319,8 +321,11 @@ fetch_kubeconfig() {
 test_cluster_connection() {
     log_info "Testing cluster connection..."
     
-    # Use ACTUAL_HOME explicitly to avoid root/user confusion
-    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
+    # Use robust detection to handle root/user confusion
+    export_k8s_config || {
+        log_error "Kubeconfig not found. Please ensure it was retrieved correctly."
+        exit 1
+    }
     
     if kubectl get nodes &>/dev/null; then
         log_success "Cluster connection successful!"

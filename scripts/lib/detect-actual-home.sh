@@ -17,7 +17,13 @@ ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 # Detect actual user's home directory
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     # Running under sudo - use actual user's home directory
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS detection via dscl
+        ACTUAL_HOME=$(dscl . -read "/Users/$SUDO_USER" NFSHomeDirectory | awk '{print $2}' 2>/dev/null || echo "/Users/$SUDO_USER")
+    else
+        # Linux detection via getent
+        ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6 2>/dev/null || echo "/home/$SUDO_USER")
+    fi
 else
     # Running normally (either as regular user or as root directly)
     ACTUAL_HOME="$HOME"

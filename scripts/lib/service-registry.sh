@@ -16,6 +16,13 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+# Get script directory and project root using standardized utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/project-root.sh" 2>/dev/null || source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null
+
+# Source K8s utilities for robust KUBECONFIG detection
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
+
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -411,6 +418,8 @@ export_traefik_routes() {
 }
 
 # Main command dispatcher
+export_k8s_config || true
+
 case "${1:-}" in
     init)
         init_registry

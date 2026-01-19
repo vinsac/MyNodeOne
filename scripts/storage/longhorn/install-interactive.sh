@@ -12,19 +12,13 @@
 # - Follows existing MyNodeOne patterns
 ###############################################################################
 
-# Set KUBECONFIG appropriately based on node type and available configs
-# This ensures kubectl works on both control plane and worker nodes
-if [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
-    # Control plane - use K3s server config (root has direct access)
-    export KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
-elif [ -n "${SUDO_USER:-}" ] && [ -f "/home/$SUDO_USER/.kube/config" ]; then
-    # Running with sudo - use actual user's config (common on workers)
-    export KUBECONFIG="/home/$SUDO_USER/.kube/config"
-elif [ -f "$HOME/.kube/config" ]; then
-    # Use current user's config
-    export KUBECONFIG="$HOME/.kube/config"
-fi
-# If none of the above exist, kubectl commands will fail gracefully with helpful error messages
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
+
+# Set KUBECONFIG appropriately
+export_k8s_config
 
 set -euo pipefail
 
@@ -47,56 +41,11 @@ log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-# Get current Kubernetes node name robustly
-get_k8s_node_name() {
-    # 1. Use NODE_NAME from config if set and valid
-    if [[ -n "${NODE_NAME:-}" ]]; then
-        if kubectl get node "$NODE_NAME" &>/dev/null; then
-            echo "$NODE_NAME"
-            return 0
-        fi
-    fi
-
-    # 2. Try to match by local Tailscale IP (most reliable in our architecture)
-    local my_ip=$(tailscale ip -4 2>/dev/null | head -n1)
-    if [[ -n "$my_ip" ]]; then
-        local node=$(kubectl get nodes -o json | jq -r ".items[] | select(.status.addresses[] | select(.type==\"InternalIP\" and .address==\"$my_ip\")) | .metadata.name" 2>/dev/null)
-        if [[ -n "$node" ]]; then
-            echo "$node"
-            return 0
-        fi
-    fi
-
-    # 3. Try to match by hostname
-    local host_name=$(hostname)
-    if kubectl get node "$host_name" &>/dev/null; then
-        echo "$host_name"
-        return 0
-    fi
-
-    # 4. Fallback to first non-control-plane node if we are a worker
-    local fallback=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [[ -n "$fallback" ]]; then
-        echo "$fallback"
-        return 0
-    fi
-
-    # 5. Last resort: Just first node
-    kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || hostname
-}
-
 log_error() {
     echo -e "${RED}[✗]${NC} $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
-# Detect script directory
-# Get script directory and project root using standardized utility
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Bootstrap with fallback pattern (auto-discovers if path is wrong)
-source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null
+# LIB_DIR setup
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
 # Source user detection library (defensive programming)
@@ -213,8 +162,7 @@ select_disks_for_longhorn() {
     local available_disks=($(detect_available_disks))
     
     if [[ ${#available_disks[@]} -eq 0 ]]; then
-        log_warn "No additional disks detected"
-        log_info "Longhorn will use OS disk: /var/lib/longhorn"
+        log_warn "No suitable physical disks detected. Longhorn will use /var/lib/longhorn."
         echo
         read -p "Continue with OS disk? [y/N]: " -n 1 -r
         echo
@@ -227,7 +175,7 @@ select_disks_for_longhorn() {
     fi
     
     echo
-    echo -e "${BLUE}💡 Option 1: Use OS disk (no additional drives needed)${NC}"
+    echo -e "${BLUE}Option 1: Use OS disk (no additional drives needed)${NC}"
     echo -e "  ${BLUE}0)${NC} Use OS disk only - /var/lib/longhorn ${YELLOW}(no formatting)${NC}"
     echo
     echo -e "${BLUE}💡 Option 2: Use dedicated physical disk(s)${NC}"
@@ -235,16 +183,16 @@ select_disks_for_longhorn() {
     echo
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    local disk_count=0
+    disk_count=0
     for disk_info in "${available_disks[@]}"; do
         disk_count=$((disk_count + 1))
-        local disk_name=$(echo "$disk_info" | cut -d: -f1)
-        local disk_size=$(echo "$disk_info" | cut -d: -f2)
-        local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
-        local disk_model=$(echo "$disk_info" | cut -d: -f4)
+        disk_name=$(echo "$disk_info" | cut -d: -f1)
+        disk_size=$(echo "$disk_info" | cut -d: -f2)
+        disk_fstype=$(echo "$disk_info" | cut -d: -f3)
+        disk_model=$(echo "$disk_info" | cut -d: -f4)
         
         # Build display string
-        local display="  $disk_count) $disk_name ($disk_size)"
+        display="  $disk_count) $disk_name ($disk_size)"
         
         if [[ -n "$disk_model" ]]; then
             display="$display - $disk_model"
@@ -297,7 +245,7 @@ select_disks_for_longhorn() {
         echo
         log_info "Selected ${#SELECTED_DISKS[@]} disk(s):"
         for disk in "${SELECTED_DISKS[@]}"; do
-            local disk_size=$(lsblk -d -n -o SIZE "$disk" 2>/dev/null || echo "Unknown")
+            disk_size=$(lsblk -d -n -o SIZE "$disk" 2>/dev/null || echo "Unknown")
             echo "  • $disk ($disk_size)"
         done
         echo
@@ -363,7 +311,7 @@ format_and_mount_disks() {
         # Add to fstab
         local uuid=$(blkid -s UUID -o value "$partition")
         if ! grep -q "$uuid" /etc/fstab; then
-            echo "UUID=$uuid $mount_point ext4 defaults,nofail 0 2" >> /etc/fstab
+            echo "UUID=$uuid $mount_point ext4 defaults,nofail 0 2" | tee -a /etc/fstab > /dev/null
         fi
         
         MOUNTED_DISKS+=("$mount_point")

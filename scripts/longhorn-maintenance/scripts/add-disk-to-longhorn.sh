@@ -1,17 +1,9 @@
-# Get script directory and project root using standardized utility
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source shared utilities
+source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
-# Bootstrap with fallback pattern (auto-discovers if path is wrong)
-source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null
-
-###############################################################################
-# Add Additional Disk to Longhorn
-# 
-# This script helps you add extra disks to Longhorn storage
-# Useful if you add new drives after initial installation
-###############################################################################
+# Set KUBECONFIG appropriately
+export_k8s_config
 
 set -euo pipefail
 
@@ -62,36 +54,8 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo
 
 # Get node name robustly
-get_k8s_node_name() {
-    # 1. Try to match by local Tailscale IP (most reliable)
-    local my_ip=$(tailscale ip -4 2>/dev/null | head -n1)
-    if [[ -n "$my_ip" ]]; then
-        local node=$(kubectl get nodes -o json | jq -r ".items[] | select(.status.addresses[] | select(.type==\"InternalIP\" and .address==\"$my_ip\")) | .metadata.name" 2>/dev/null)
-        if [[ -n "$node" ]]; then
-            echo "$node"
-            return 0
-        fi
-    fi
-
-    # 2. Try to match by hostname
-    local host_name=$(hostname)
-    if kubectl get node "$host_name" &>/dev/null; then
-        echo "$host_name"
-        return 0
-    fi
-
-    # 3. Fallback to first non-control-plane node
-    local fallback=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [[ -n "$fallback" ]]; then
-        echo "$fallback"
-        return 0
-    fi
-
-    # 4. Last resort: Just first node
-    kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || hostname
-}
-
 NODE_NAME=$(get_k8s_node_name)
+log_info "Node: $NODE_NAME"
 log_info "Node: $NODE_NAME"
 echo
 

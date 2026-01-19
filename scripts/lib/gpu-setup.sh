@@ -1,27 +1,10 @@
-#!/bin/bash
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/project-root.sh" 2>/dev/null || source "$SCRIPT_DIR/../lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
-###############################################################################
-# MyNodeOne GPU Setup Script
-#
-# Installs NVIDIA drivers and container toolkit for GPU workloads.
-# This enables Kubernetes pods to access NVIDIA GPUs.
-#
-# Usage:
-#   sudo ./scripts/lib/gpu-setup.sh              # Interactive mode
-#   sudo ./scripts/lib/gpu-setup.sh --auto       # Auto-detect and install
-#   sudo ./scripts/lib/gpu-setup.sh --skip       # Skip GPU setup
-#   sudo ./scripts/lib/gpu-setup.sh --check      # Check GPU status only
-#
-# What this installs (on host):
-#   - NVIDIA Driver (kernel module)
-#   - NVIDIA Container Toolkit (container GPU access)
-#   - NVIDIA Device Plugin for Kubernetes (optional, on control plane)
-#
-# What this does NOT install (comes in containers):
-#   - CUDA toolkit
-#   - cuDNN
-#   - PyTorch, TensorFlow, vLLM, etc.
-###############################################################################
+# Set KUBECONFIG appropriately
+export_k8s_config || true # Fallback is fine for host-only setup
 
 set -euo pipefail
 

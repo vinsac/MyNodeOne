@@ -1587,7 +1587,7 @@ initialize_service_registries() {
     # Register Dashboard
     if kubectl get svc -n mynodeone-dashboard dashboard &>/dev/null; then
         bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
-            "dashboard" "${CLUSTER_DOMAIN}" "mynodeone-dashboard" \
+            "dashboard" "" "mynodeone-dashboard" \
             "dashboard" "80" "false" 2>/dev/null || \
             log_warn "Could not register Dashboard (will retry later)"
     fi

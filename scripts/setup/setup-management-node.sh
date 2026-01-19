@@ -138,8 +138,6 @@ if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
         "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>/dev/null" || echo "")
     
     if [ -n "$MYNODEONE_PATH" ]; then
-        # Strip /scripts suffix if present (fix for incorrect ConfigMap path)
-        MYNODEONE_PATH="${MYNODEONE_PATH%/scripts}"
         log_success "Found authoritative path from cluster: $MYNODEONE_PATH"
     else
         # Fallback: search filesystem (for backwards compatibility)

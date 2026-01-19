@@ -489,9 +489,9 @@ read -p "Requests per minute [default: 60]: " DEFAULT_RPM
 DEFAULT_RPM="${DEFAULT_RPM:-60}"
 echo ""
 
-# Load centralized HF token management
+# Load HF token management
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$PROJECT_ROOT/scripts/lib/hf-token.sh"
+source "$SCRIPT_DIR/lib/hf-token.sh"
 
 # HuggingFace Token (optional but recommended for faster downloads)
 HF_TOKEN=""

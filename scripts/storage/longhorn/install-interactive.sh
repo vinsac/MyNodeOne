@@ -362,13 +362,15 @@ install_longhorn_helm() {
         --namespace longhorn-system \
         --version 1.5.3 \
         --set defaultSettings.defaultReplicaCount=1 \
-        --set defaultSettings.defaultDataPath="${default_path}" \
-        --set defaultSettings.replicaAutoBalance="best-effort" \
+        --set persistence.defaultClassParameter.numberOfReplicas=1 \
         --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
+        --set defaultSettings.autoSalvage=true \
+        --set defaultSettings.disableSchedulingOnCordonedNode=true \
+        --set defaultSettings.nodeDrainPolicy='block-if-contains-last-replica' \
+        --set defaultSettings.replicaSoftAntiAffinity=false \
+        --set defaultSettings.replicaZoneSoftAntiAffinity=true \
+        --set defaultSettings.defaultDataPath="$default_path" \
         --set defaultSettings.fastReplicaRebuildEnabled=true \
-        --set defaultSettings.storageOverProvisioningPercentage=200 \
-        --set defaultSettings.storageMinimalAvailablePercentage=10 \
-        --wait \
         --timeout 10m
     
     # Set as default storage class

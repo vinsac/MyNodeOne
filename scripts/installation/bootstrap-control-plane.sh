@@ -1066,6 +1066,7 @@ install_longhorn() {
             --namespace longhorn-system \
             --version 1.5.3 \
             --set defaultSettings.defaultReplicaCount=1 \
+            --set persistence.defaultClassParameter.numberOfReplicas=1 \
             --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
             --set defaultSettings.replicaAutoBalance="best-effort" \
             --set defaultSettings.fastReplicaRebuildEnabled=true \

@@ -602,8 +602,10 @@ fix_disk_reservations() {
         kubectl -n longhorn-system patch nodes.longhorn.io "$node_name" --type=merge \
             -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$optimal_reserved}}}}" &>/dev/null || true
         
-        local reserved_gb=$(awk "BEGIN {printf \"%.1f\", ($optimal_reserved / 1073741824)}")
-        log_info "  $disk_path: Reserved ${reserved_gb}GB"
+        # Verify the change
+        local actual_reserved=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json | jq -r ".spec.disks.\"$disk_name\".storageReserved // 0")
+        local reserved_gb=$(awk "BEGIN {printf \"%.1f\", ($actual_reserved / 1073741824)}")
+        log_info "  $disk_path: Reserved ${reserved_gb}GB (Verified)"
     done
     
     log_success "Disk reservations optimized"

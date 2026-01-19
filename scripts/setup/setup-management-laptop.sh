@@ -546,6 +546,9 @@ main() {
             REPO_PATH=$(kubectl get configmap -n kube-system cluster-info \
                 -o jsonpath='{.data.repo-path}' 2>/dev/null || echo "")
             
+            # Strip /scripts suffix if present (fix for incorrect ConfigMap path)
+            REPO_PATH="${REPO_PATH%/scripts}"
+            
             if [ -n "$REPO_PATH" ] && [ -n "${CONTROL_PLANE_IP:-}" ] && [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
                 # Run sync on control plane via SSH
                 ssh "${CONTROL_PLANE_SSH_USER}@${CONTROL_PLANE_IP}" \

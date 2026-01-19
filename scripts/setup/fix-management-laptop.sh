@@ -120,6 +120,9 @@ if [ -z "$CONTROL_PLANE_REPO_PATH" ]; then
     exit 1
 fi
 
+# Strip /scripts suffix if present (fix for incorrect ConfigMap path)
+CONTROL_PLANE_REPO_PATH="${CONTROL_PLANE_REPO_PATH%/scripts}"
+
 log_success "Found MyNodeOne at: $CONTROL_PLANE_REPO_PATH"
 
 # Get laptop repo path

@@ -685,7 +685,7 @@ main() {
     echo
     
     # Final summary
-    print_header "Setup Complete!"
+    print_header "Setup Complete"
     
     log_success "Management laptop configured for cluster: $CLUSTER_NAME"
     log_success "DNS configured for ${CLUSTER_DOMAIN}.local domain"

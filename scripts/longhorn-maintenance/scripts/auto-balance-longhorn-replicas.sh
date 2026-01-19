@@ -193,7 +193,7 @@ done
 
 echo
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-log_success "Rebalancing initiated!"
+log_success "Rebalancing initiated"
 log_info "  Volumes processed: $REBALANCED_COUNT"
 log_info "  Failed: $FAILED_COUNT"
 echo

@@ -218,7 +218,7 @@ EOF
     log_info "Waiting for node to register with cluster..."
     sleep 10
     
-    log_success "Successfully joined MyNodeOne cluster!"
+    log_success "Successfully joined MyNodeOne cluster"
 }
 
 # Configure kubectl on worker node
@@ -445,7 +445,7 @@ REGEOF
 }
 
 print_summary() {
-    log_success "Worker node successfully added to MyNodeOne!"
+    log_success "Worker node successfully added to MyNodeOne"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Worker Node Summary"
@@ -710,7 +710,7 @@ main() {
     
     if [ -f "$PROJECT_ROOT/scripts/lib/validate-installation.sh" ]; then
         if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" worker-node; then
-            log_success "Worker node validation passed!"
+            log_success "Worker node validation passed"
         else
             log_warn "Some validation tests failed (see above)"
         fi

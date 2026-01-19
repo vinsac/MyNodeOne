@@ -147,7 +147,7 @@ if [ ${#IMBALANCED_NODES[@]} -gt 0 ]; then
     echo
     log_warn "Note: Rebalancing causes I/O load and temporary performance impact"
 else
-    log_success "All nodes have balanced replica distribution!"
+    log_success "All nodes have balanced replica distribution"
 fi
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

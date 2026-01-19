@@ -16,12 +16,18 @@ MyNodeOne uses Longhorn for distributed block storage across Kubernetes nodes. T
 ### 1. Replica Count: `1`
 
 **Setting:** `defaultSettings.defaultReplicaCount=1`  
-**StorageClass Parameter:** `numberOfReplicas: "1"`
+**StorageClass Parameter:** `persistence.defaultClassParameter.numberOfReplicas=1`
 
 **What it does:**
 - Each PVC creates **1 replica** (single copy of data)
 - Data stored on a single node, not replicated across nodes
 - No synchronous replication over network
+
+**Important:** Both settings are required:
+- `defaultSettings.defaultReplicaCount=1` - Sets default for volumes created after installation
+- `persistence.defaultClassParameter.numberOfReplicas=1` - Sets the StorageClass parameter (overrides default)
+
+Without the StorageClass parameter, new PVCs will use the chart's default (3 replicas) even if defaultSettings is set to 1.
 
 **Why this matters:**
 - ✅ **Avoids rebuild storms** when nodes go offline temporarily
@@ -239,6 +245,7 @@ helm upgrade --install longhorn longhorn/longhorn \
     --namespace longhorn-system \
     --version 1.5.3 \
     --set defaultSettings.defaultReplicaCount=1 \
+    --set persistence.defaultClassParameter.numberOfReplicas=1 \
     --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
     --set defaultSettings.replicaAutoBalance="best-effort" \
     --wait
@@ -252,6 +259,7 @@ helm upgrade --install longhorn longhorn/longhorn \
     --namespace longhorn-system \
     --version 1.5.3 \
     --set defaultSettings.defaultReplicaCount=1 \
+    --set persistence.defaultClassParameter.numberOfReplicas=1 \
     --set defaultSettings.defaultDataPath="${default_path}" \
     --set defaultSettings.replicaAutoBalance="best-effort" \
     --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
@@ -268,7 +276,7 @@ helm upgrade --install longhorn longhorn/longhorn \
 Check current Longhorn settings:
 
 ```bash
-# Check default replica count
+# Check default replica count (global setting)
 kubectl get settings.longhorn.io default-replica-count -n longhorn-system -o yaml
 
 # Check replenishment wait interval
@@ -280,7 +288,7 @@ kubectl get settings.longhorn.io replica-auto-balance -n longhorn-system -o yaml
 # Check fast rebuild setting
 kubectl get settings.longhorn.io fast-replica-rebuild-enabled -n longhorn-system -o yaml
 
-# Check StorageClass
+# Check StorageClass (this is what actually applies to new PVCs)
 kubectl get storageclass longhorn -o yaml | grep -A 6 parameters
 ```
 
@@ -310,11 +318,17 @@ parameters:
 
 ### Issue: New PVCs still have 3 replicas
 
-**Cause:** StorageClass has old `numberOfReplicas: "3"` parameter
+**Cause:** StorageClass parameter `numberOfReplicas` is set to "3" (chart default)
 
-**Fix:**
+**Quick Fix:**
 ```bash
-# StorageClass parameters cannot be updated
+# Patch the StorageClass to use 1 replica
+kubectl patch storageclass longhorn -p '{"parameters":{"numberOfReplicas":"1"}}'
+```
+
+**Permanent Fix (if patch doesn't work):**
+```bash
+# StorageClass parameters cannot be updated in some cases
 # Must delete and recreate
 
 # 1. Delete old StorageClass
@@ -339,10 +353,13 @@ parameters:
   fsType: "ext4"
   dataLocality: "disabled"
 EOF
+```
 
-# 3. Update ConfigMap to prevent Longhorn from recreating old version
-sudo kubectl patch configmap longhorn-storageclass -n longhorn-system --type=merge \
-  -p '{"data":{"storageclass.yaml":"kind: StorageClass\napiVersion: storage.k8s.io/v1\nmetadata:\n  name: longhorn\n  annotations:\n    storageclass.kubernetes.io/is-default-class: \"true\"\nprovisioner: driver.longhorn.io\nallowVolumeExpansion: true\nreclaimPolicy: \"Delete\"\nvolumeBindingMode: Immediate\nparameters:\n  numberOfReplicas: \"1\"\n  staleReplicaTimeout: \"30\"\n  fromBackup: \"\"\n  fsType: \"ext4\"\n  dataLocality: \"disabled\"\n"}}'
+**Prevention:**
+Ensure both parameters are set during installation:
+```bash
+--set defaultSettings.defaultReplicaCount=1 \
+--set persistence.defaultClassParameter.numberOfReplicas=1
 ```
 
 ### Issue: Existing PVCs have 3 replicas

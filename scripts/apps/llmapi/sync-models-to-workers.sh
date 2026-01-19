@@ -348,7 +348,7 @@ sync_to_worker() {
     fi
     echo ""
     
-    success "All models synced to $node_ip successfully!"
+    success "All models synced to $node_ip successfully"
     echo ""
     return 0
 }

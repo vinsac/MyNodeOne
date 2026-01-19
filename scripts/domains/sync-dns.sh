@@ -220,7 +220,7 @@ if [ "$HOSTS_PERMS" != "644" ]; then
     sudo chmod 644 /etc/hosts
 fi
 
-log_success "DNS sync complete!"
+log_success "DNS sync complete"
 echo ""
 echo "✅ Updated $SERVICE_COUNT service entries:"
 echo -e "$DNS_ENTRIES" | sed 's/^/   /'

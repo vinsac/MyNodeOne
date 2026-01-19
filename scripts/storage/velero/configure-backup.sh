@@ -512,7 +512,7 @@ display_summary() {
     log_info "  ✓ Namespace configurations"
     log_info "  ✓ RBAC policies"
     echo
-    log_warn "⚠️  IMPORTANT: Velero backs up Kubernetes YAML, NOT your data!"
+    log_warn "⚠️  IMPORTANT: Velero backs up Kubernetes YAML, NOT your data"
     echo
     log_info "What is NOT Backed Up:"
     log_info "  ✗ Database contents (PostgreSQL, MySQL, etc.)"

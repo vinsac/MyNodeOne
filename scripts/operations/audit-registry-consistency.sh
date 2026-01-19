@@ -142,7 +142,7 @@ if echo "$DOMAIN_REGISTRY" | jq empty 2>/dev/null; then
             FIRST_KEY=$(echo "$DOMAIN_REGISTRY" | jq -r 'keys[0]')
             if [[ "$FIRST_KEY" != "domains" ]] && [[ "$FIRST_KEY" != "vps_nodes" ]]; then
                 log_warn "Appears to be old structure (domains at root level)"
-                log_warn "Migration needed!"
+                log_warn "Migration needed"
             fi
         fi
     fi

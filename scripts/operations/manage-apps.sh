@@ -139,7 +139,7 @@ spec:
     targetPort: 5432
 EOF
     
-    log_success "PostgreSQL deployed!"
+    log_success "PostgreSQL deployed"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  PostgreSQL Connection Info"
@@ -207,7 +207,7 @@ spec:
     targetPort: 6379
 EOF
     
-    log_success "Redis deployed!"
+    log_success "Redis deployed"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Redis Connection Info"
@@ -295,7 +295,7 @@ spec:
     targetPort: 3306
 EOF
     
-    log_success "MySQL deployed!"
+    log_success "MySQL deployed"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  MySQL Connection Info"

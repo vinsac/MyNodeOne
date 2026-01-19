@@ -86,7 +86,7 @@ log_info "Pulling latest changes from origin/$CURRENT_BRANCH..."
 if git pull origin "$CURRENT_BRANCH"; then
     NEW_COMMIT=$(git rev-parse --short HEAD)
     if [[ "$CURRENT_COMMIT" == "$NEW_COMMIT" ]]; then
-        log_success "Already up to date!"
+        log_success "Already up to date"
     else
         log_success "Updated from $CURRENT_COMMIT to $NEW_COMMIT"
     fi

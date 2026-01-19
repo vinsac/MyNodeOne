@@ -74,7 +74,7 @@ source "$PROJECT_ROOT/scripts/lib/service-validation.sh"
 if verify_all_core_services "$CLUSTER_DOMAIN"; then
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
-    log_success "🎉 CLUSTER IS HEALTHY!"
+    log_success "🎉 CLUSTER IS HEALTHY"
     echo "═══════════════════════════════════════════════════════════════"
     echo ""
     echo "All core services are:"

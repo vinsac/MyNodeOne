@@ -152,7 +152,7 @@ source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 if [ ! -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
-    log_warn "Enterprise registry not found!"
+    log_warn "Enterprise registry not found"
     echo ""
     echo "To set up enterprise registry:"
     echo "  sudo $PROJECT_ROOT/scripts/setup/setup-enterprise-registry.sh"

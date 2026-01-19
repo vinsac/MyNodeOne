@@ -267,7 +267,7 @@ detect_environment() {
     
     # Check for GPUs
     if lspci | grep -i nvidia &> /dev/null; then
-        print_info "NVIDIA GPU detected!"
+        print_info "NVIDIA GPU detected"
         HAS_GPU=true
     else
         HAS_GPU=false
@@ -489,7 +489,7 @@ configure_cluster_info() {
                 
                 if [ -n "$existing_cluster_name" ] && [ -n "$existing_cluster_domain" ]; then
                     auto_fetched=true
-                    print_success "Successfully auto-detected cluster configuration!"
+                    print_success "Successfully auto-detected cluster configuration"
                     print_info "  Cluster: $existing_cluster_name"
                     print_info "  Domain: ${existing_cluster_domain}.local"
                     if [ -n "${CONTROL_PLANE_IP:-}" ]; then
@@ -648,7 +648,7 @@ configure_storage() {
         echo "  4. Automatically format and mount your disks"
         echo
         print_info "You don't need to configure storage paths now."
-        print_info "The disk setup wizard will guide you through everything!"
+        print_info "The disk setup wizard will guide you through everything"
         echo
         
         if prompt_confirm "Ready to proceed?" "y"; then
@@ -691,7 +691,7 @@ configure_apps() {
         echo "  • Install helpful operators and tools"
         echo "  • Set up performance optimizations"
         echo
-        print_warning "Not sure? Just say YES to everything - you can always adjust later!"
+        print_warning "Not sure? Just say YES to everything - you can always adjust later"
         echo
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo
@@ -709,7 +709,7 @@ configure_apps() {
             else
                 print_info "No GPU detected. We'll configure CPU-based LLM support."
                 print_info "This works for smaller models (7B-13B parameters)."
-                print_info "Tip: You can add a GPU later for better performance!"
+                print_info "Tip: You can add a GPU later for better performance"
             fi
         else
             ENABLE_LLM=false
@@ -736,7 +736,7 @@ configure_apps() {
         echo
         if prompt_confirm "Plan to run databases?"; then
             ENABLE_DATABASES=true
-            print_success "Database support enabled!"
+            print_success "Database support enabled"
             print_info "You'll be able to easily deploy PostgreSQL, MySQL, MongoDB, Redis, etc."
         else
             ENABLE_DATABASES=false

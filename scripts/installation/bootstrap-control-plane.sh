@@ -1669,12 +1669,6 @@ initialize_service_registries() {
     fi
     
     # Install Config API Server (V2 sync system)
-    echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Installing Config API Server (Pull-Based Sync)"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    
     if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
         if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" control-plane; then
             log_success "Config API Server installed"

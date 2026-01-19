@@ -89,7 +89,7 @@ spec:
                   fi
                 done
               
-              echo "Backup completed successfully!"
+              echo "Backup completed successfully"
             envFrom:
             - secretRef:
                 name: backup-credentials

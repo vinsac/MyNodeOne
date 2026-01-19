@@ -106,7 +106,7 @@ echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/yourusernam
 sudo chmod 0440 /etc/sudoers.d/yourusername
 
 # Verify it works (should not prompt for a password)
-sudo -n echo "Success!"
+sudo -n echo "Success"
 ```
 
 #### 4. Tailscale (secure VPN networking)
@@ -387,8 +387,8 @@ sudo chmod 0440 /etc/sudoers.d/sammy
 
 # 4. Test passwordless sudo
 su - sammy
-sudo -n echo 'Sudo works!'
-# Expected: "Sudo works!" (no password prompt)
+sudo -n echo 'Sudo works'
+# Expected: "Sudo works" (no password prompt)
 
 # 5. Log out and reconnect as the new user
 exit
@@ -680,7 +680,7 @@ echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee "/etc/sudoers.d/${USER}-no
 sudo chmod 0440 "/etc/sudoers.d/${USER}-nopasswd"
 
 # Verify it works (should not prompt for a password)
-sudo -n echo "Passwordless sudo configured!"
+sudo -n echo "Passwordless sudo configured"
 ```
 
 ---
@@ -1050,7 +1050,7 @@ echo 'yourusername ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/yourusernam
 sudo chmod 0440 /etc/sudoers.d/yourusername
 
 # Verify it works (should not prompt for a password)
-sudo -n echo "Success!"
+sudo -n echo "Success"
 ```
 
 #### 4. Tailscale (secure VPN networking)

@@ -428,7 +428,7 @@ if [ -f "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" ]; then
         --tailscale-ip "$TAILSCALE_IP" \
         --ssh-user "$SSH_USER"
     
-    echo "Worker node registered successfully!"
+    echo "Worker node registered successfully"
 else
     echo "Error: Node registry manager not found"
     exit 1
@@ -491,7 +491,7 @@ print_summary() {
         echo
         echo "   📄 Credentials also saved to: $ACTUAL_HOME/mynodeone-minio-worker-credentials.txt"
         echo
-        echo "⚠️  IMPORTANT: Save these credentials to your password manager NOW!"
+        echo "⚠️  IMPORTANT: Save these credentials to your password manager NOW"
         echo "   Then delete the credentials file for security."
         echo
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -510,7 +510,7 @@ print_summary() {
     echo "     kubectl get nodes"
     echo "     ./scripts/nodes/nodes-status.sh"
     echo
-    echo "  4. This node will now receive workloads automatically!"
+    echo "  4. This node will now receive workloads automatically"
     echo "     vLLM pods will use pre-synced models for instant startup."
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

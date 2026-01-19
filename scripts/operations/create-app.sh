@@ -612,7 +612,7 @@ print_summary() {
         echo "     A    @    31.220.87.37"
         echo
     fi
-    echo "Your app will be automatically built and deployed on every push!"
+    echo "Your app will be automatically built and deployed on every push"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 

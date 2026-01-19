@@ -902,7 +902,7 @@ register_app() {
             echo "    2. MetalLB controller not running"
             echo "    3. Network configuration issue"
         else
-            echo "  Service not found - this is unexpected!"
+            echo "  Service not found - this is unexpected"
         fi
         
         echo ""
@@ -1299,7 +1299,7 @@ configure_public_access() {
 show_summary() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ✅ Deployment Complete!"
+    echo "  ✅ Deployment Complete"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     echo "📦 App: $APP_NAME"

@@ -288,7 +288,7 @@ rm -f "$ROUTE_FILE"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Route Configuration Complete!"
+echo "  Route Configuration Complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 success "$APP_NAME is now accessible at: https://${SUBDOMAIN}.${DOMAIN}"

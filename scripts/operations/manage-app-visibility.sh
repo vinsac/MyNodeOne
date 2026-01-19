@@ -592,7 +592,7 @@ main() {
             if make_public "$selected_service" "$selected_domains" "$selected_vps"; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "  ✅ Service is Now Public!"
+                echo "  ✅ Service is Now Public"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo ""
                 
@@ -625,7 +625,7 @@ main() {
             if make_private "$selected_service"; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "  ✅ Service is Now Private!"
+                echo "  ✅ Service is Now Private"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo ""
                 echo "  • http://${subdomain}.${CLUSTER_DOMAIN}.local (local access only)"

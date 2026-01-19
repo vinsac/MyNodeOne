@@ -266,7 +266,7 @@ cat >> "$PROJECT_ROOT/setup-app-dns-client.sh" <<'SCRIPT_EOF'
 echo "# End MyNodeOne Apps" | sudo tee -a "$HOSTS_FILE" > /dev/null
 
 echo ""
-echo "✅ DNS configured!"
+echo "✅ DNS configured"
 echo ""
 echo "You can now access:"
 SCRIPT_EOF
@@ -282,7 +282,7 @@ chmod +x "$PROJECT_ROOT/setup-app-dns-client.sh"
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ DNS Configuration Complete!"
+echo "  ✅ DNS Configuration Complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 echo "📍 On this control plane, you can now access:"

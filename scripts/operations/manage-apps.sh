@@ -150,7 +150,7 @@ EOF
     echo "  Username: postgres"
     echo "  Password: changeme123"
     echo
-    echo "  ⚠️  IMPORTANT: Change the default password!"
+    echo "  ⚠️  IMPORTANT: Change the default password"
     echo
     echo "  To remove: kubectl delete namespace databases"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -305,7 +305,7 @@ EOF
     echo "  Database: myapp"
     echo "  Root Password: changeme123"
     echo
-    echo "  ⚠️  IMPORTANT: Change the default password!"
+    echo "  ⚠️  IMPORTANT: Change the default password"
     echo
     echo "  To remove: kubectl delete deployment mysql -n databases"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

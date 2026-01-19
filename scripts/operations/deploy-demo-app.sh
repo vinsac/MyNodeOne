@@ -266,7 +266,7 @@ EOF
         
         echo
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  🎉 Demo Application Deployed Successfully!"
+        echo "  🎉 Demo Application Deployed Successfully"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo
         echo "  Access URL: $DEMO_URL"

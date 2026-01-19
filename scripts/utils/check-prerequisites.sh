@@ -97,7 +97,7 @@ esac
 exit_code=$?
 
 if [ $exit_code -eq 0 ]; then
-    echo "✅ Ready to proceed with $CHECK_TYPE installation!"
+    echo "✅ Ready to proceed with $CHECK_TYPE installation"
 else
     echo "❌ Prerequisites not met. Fix the issues above before installing."
 fi

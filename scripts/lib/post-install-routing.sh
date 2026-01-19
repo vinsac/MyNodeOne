@@ -268,7 +268,7 @@ fi
 # 4. Show access URLs
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ Service Registered Successfully!"
+echo "  ✅ Service Registered Successfully"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Access via:"

@@ -143,7 +143,7 @@ fi
 # If generate-only mode, exit here (keys are generated, copying will be done from laptop side)
 if [ "$MODE" = "generate-only" ]; then
     echo ""
-    echo "[SUCCESS] ✅ SSH keys generated successfully!"
+    echo "[SUCCESS] ✅ SSH keys generated successfully"
     echo "[INFO] Keys are ready at:"
     echo "  - Root: $ROOT_KEY_PATH"
     if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
@@ -268,4 +268,4 @@ if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
 fi
 
 echo ""
-echo "[SUCCESS] ✅ SSH keys configured and verified successfully!"
+echo "[SUCCESS] ✅ SSH keys configured and verified successfully"

@@ -840,7 +840,7 @@ show_next_steps() {
     
     case $NODE_TYPE in
         control-plane)
-            echo "✅ Your control plane configuration is saved!"
+            echo "✅ Your control plane configuration is saved"
             echo
             print_info "The installer will now continue automatically with:"
             echo

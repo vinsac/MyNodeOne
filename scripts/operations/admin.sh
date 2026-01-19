@@ -258,7 +258,7 @@ main_menu() {
             7) show_health ;;
             8) setup_dashboard ;;
             9) 
-                echo "Goodbye!"
+                echo "Goodbye"
                 exit 0
                 ;;
             *)

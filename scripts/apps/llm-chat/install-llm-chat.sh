@@ -92,7 +92,7 @@ if check_namespace_exists "$NAMESPACE"; then
     echo -e "${YELLOW}  LLM Chat Already Installed${NC}"
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo "LLM Chat is already installed in your cluster!"
+    echo "LLM Chat is already installed in your cluster"
     echo ""
     echo "Current status:"
     kubectl get pods -n "$NAMESPACE" 2>/dev/null || true
@@ -488,7 +488,7 @@ EOF
     echo "   2. Click 'Sign Up' and create your account"
     echo "   3. First user automatically becomes admin"
     echo "   4. Download a model (recommended: phi3:mini)"
-    echo "   5. Start chatting!"
+    echo "   5. Start chatting"
     echo ""
 
     # Update local DNS
@@ -837,7 +837,7 @@ if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}"
     kubectl patch deployment open-webui -n "$NAMESPACE" -p '{"spec":{"template":{"spec":{"priorityClassName":"system-cluster-critical"}}}}'
     
     echo ""
-    echo "✓ Resources upgraded!"
+    echo "✓ Resources upgraded"
     echo ""
     echo "New resource allocation:"
     echo "  Ollama:     $OLLAMA_REQ_MEM-$OLLAMA_LIMIT_MEM RAM, ${OLLAMA_REQ_CPU/000m/}-${OLLAMA_LIMIT_CPU/000m/} CPU cores"
@@ -848,9 +848,9 @@ if [ "${UPGRADE_RESOURCES:-false}" = "high" ] || [ "${UPGRADE_RESOURCES:-false}"
     echo "  Priority:   System-critical (highest)"
     echo ""
     if [ "$UPGRADE_RESOURCES" = "max" ]; then
-        echo "🚀 Result: 5-10x faster token generation!"
+        echo "🚀 Result: 5-10x faster token generation"
     else
-        echo "🚀 Result: 2-3x faster token generation!"
+        echo "🚀 Result: 2-3x faster token generation"
     fi
     echo ""
     echo "⏳ Pods will restart to apply changes..."
@@ -916,7 +916,7 @@ if [ "${EXPAND_STORAGE:-false}" = true ]; then
     kubectl wait --for=condition=ready pod -l app=ollama -n "$NAMESPACE" --timeout=120s 2>/dev/null || sleep 30
     
     echo ""
-    echo "✓ Storage expansion complete!"
+    echo "✓ Storage expansion complete"
     echo ""
     
     # Verify new size
@@ -927,7 +927,7 @@ if [ "${EXPAND_STORAGE:-false}" = true ]; then
         echo ""
     fi
     
-    echo "🎉 You can now download more models!"
+    echo "🎉 You can now download more models"
     echo ""
     sleep 3
 fi
@@ -967,7 +967,7 @@ if [ "${ENABLE_GPU:-false}" = true ]; then
     kubectl rollout status deployment/ollama -n "$NAMESPACE" --timeout=120s 2>/dev/null || sleep 30
     
     echo ""
-    echo "✅ GPU acceleration enabled!"
+    echo "✅ GPU acceleration enabled"
     echo ""
     
     # Verify GPU is being used
@@ -978,7 +978,7 @@ if [ "${ENABLE_GPU:-false}" = true ]; then
         echo ""
     fi
     
-    echo "🎉 Ollama now uses your NVIDIA GPU for inference!"
+    echo "🎉 Ollama now uses your NVIDIA GPU for inference"
     echo "   Large models (21GB+) will load into GPU VRAM"
     echo ""
     sleep 3
@@ -1017,7 +1017,7 @@ if [ "${DISABLE_GPU:-false}" = true ]; then
     kubectl rollout status deployment/ollama -n "$NAMESPACE" --timeout=120s 2>/dev/null || sleep 30
     
     echo ""
-    echo "✅ GPU acceleration disabled!"
+    echo "✅ GPU acceleration disabled"
     echo ""
     echo "🎉 Ollama now uses CPU only - GPU is available for other apps (e.g., LLMAPI)"
     echo ""
@@ -1085,7 +1085,7 @@ if [ "$ALREADY_INSTALLED" = false ] && [ "${AUTO_INSTALL_MODE:-false}" != "true"
         if [ -n "$OLLAMA_POD" ]; then
             kubectl exec -n "$NAMESPACE" "$OLLAMA_POD" -- ollama pull "$MODEL_NAME" && {
                 echo ""
-                echo "✓ Model $MODEL_NAME downloaded and ready!"
+                echo "✓ Model $MODEL_NAME downloaded and ready"
             } || {
                 echo ""
                 echo -e "${YELLOW}Model download had issues. You can download it later via the UI.${NC}"
@@ -1101,7 +1101,7 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  Installation Complete!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "🎉 LLM Chat is ready to use!"
+echo "🎉 LLM Chat is ready to use"
 echo ""
 echo "📊 Performance Optimizations:"
 echo "   ✅ High-priority scheduling (system-critical)"
@@ -1110,13 +1110,13 @@ echo "   ✅ Increased RAM allocation (4-16Gi for Ollama)"
 echo "   ✅ Parallel request handling (4 concurrent)"
 echo "   ✅ Multi-model support (2 models loaded)"
 echo ""
-echo "🚀 Result: Faster token generation and better responsiveness!"
+echo "🚀 Result: Faster token generation and better responsiveness"
 echo ""
 echo "💡 Quick Start:"
 echo "   1. Open: http://${APP_SUBDOMAIN:-open-webui}.${CLUSTER_DOMAIN}.local"
 echo "   2. Create your account (first user = admin)"
 echo "   3. Download a model if you skipped earlier"
-echo "   4. Start chatting with your private AI!"
+echo "   4. Start chatting with your private AI"
 echo ""
 echo "📚 Features:"
 echo "   • 100% Private (no data leaves your cluster)"

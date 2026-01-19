@@ -258,7 +258,7 @@ sudo ./scripts/domains/sync-dns.sh
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ Management Laptop Configured!"
+echo "  ✅ Management Laptop Configured"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

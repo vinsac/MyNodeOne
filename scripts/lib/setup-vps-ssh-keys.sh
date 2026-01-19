@@ -251,4 +251,4 @@ if [ "$REMOTE_ACTUAL_USER" != "root" ]; then
 fi
 
 echo ""
-echo "[SUCCESS] ✅ SSH keys configured and verified successfully!"
+echo "[SUCCESS] ✅ SSH keys configured and verified successfully"

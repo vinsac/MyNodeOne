@@ -182,7 +182,7 @@ install_traefik() {
     if [[ "$use_staging" =~ ^[Nn]$ ]]; then
         ACME_SERVER=""
         log_info "Using Let's Encrypt PRODUCTION mode"
-        echo "⚠️  Remember: Rate limits apply!"
+        echo "⚠️  Remember: Rate limits apply"
     else
         ACME_SERVER="      caServer: https://acme-staging-v02.api.letsencrypt.org/directory"
         log_info "Using Let's Encrypt STAGING mode (test certificates)"
@@ -497,7 +497,7 @@ print_summary() {
     echo "  4. View Traefik logs:"
     echo "     docker logs traefik -f"
     echo
-    echo "SSL certificates will be automatically obtained from Let's Encrypt!"
+    echo "SSL certificates will be automatically obtained from Let's Encrypt"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }

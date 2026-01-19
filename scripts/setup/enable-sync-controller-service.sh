@@ -126,7 +126,7 @@ systemctl status mynodeone-sync-controller --no-pager -l || true
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ Sync Controller Service Enabled!"
+echo "  ✅ Sync Controller Service Enabled"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

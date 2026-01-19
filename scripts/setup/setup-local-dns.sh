@@ -307,7 +307,7 @@ echo "${LONGHORN_IP}       longhorn.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOS
 echo "# End MyNodeOne services" | sudo tee -a "$HOSTS_FILE" > /dev/null
 
 echo ""
-echo "✅ Local DNS configured!"
+echo "✅ Local DNS configured"
 echo ""
 echo "You can now access services at:"
 echo "  • Dashboard:     http://${CLUSTER_DOMAIN}.local"
@@ -337,7 +337,7 @@ SCRIPT_EOF
 print_summary() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ✅ Local DNS Setup Complete!"
+    echo "  ✅ Local DNS Setup Complete"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     echo "🎯 On this control plane, you can now access:"
@@ -411,7 +411,7 @@ main() {
     if systemctl is-active --quiet dnsmasq 2>/dev/null; then
         echo "  ✓ No wildcard DNS check (dnsmasq handles .local domains)"
     elif getent hosts "$RANDOM_HOST" >/dev/null 2>&1; then
-        echo "  ✗ SECURITY WARNING: Wildcard DNS detected!"
+        echo "  ✗ SECURITY WARNING: Wildcard DNS detected"
         DNS_VALIDATION_OK=false
     else
         echo "  ✓ No wildcard DNS (secure)"

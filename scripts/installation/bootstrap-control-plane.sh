@@ -1709,7 +1709,7 @@ display_credentials() {
     echo "  🔐 IMPORTANT: YOUR SERVICE CREDENTIALS"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "⚠️  SAVE THESE CREDENTIALS NOW - They won't be shown again!"
+    echo "⚠️  SAVE THESE CREDENTIALS NOW - They won't be shown again"
     echo
     
     # Get IPs
@@ -1778,7 +1778,7 @@ display_credentials() {
     echo "  📝 CRITICAL SECURITY STEP"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "⚠️  IMPORTANT: Save these credentials NOW!"
+    echo "⚠️  IMPORTANT: Save these credentials NOW"
     echo
     echo "🔐 SAVE TO PASSWORD MANAGER:"
     echo "   Install on YOUR LAPTOP (not this machine):"
@@ -1865,7 +1865,7 @@ delete_credential_files() {
 
 print_summary() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🎉 MyNodeOne Control Plane Installed Successfully!"
+    echo "  🎉 MyNodeOne Control Plane Installed Successfully"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     echo "Installed Components:"
@@ -2029,7 +2029,7 @@ print_summary() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "🎉 CONGRATULATIONS! Your MyNodeOne cluster is ready!"
+    echo "🎉 CONGRATULATIONS! Your MyNodeOne cluster is ready"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
@@ -2037,7 +2037,7 @@ print_summary() {
 offer_security_hardening() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🔒 Core Security: Already Enabled!"
+    echo "  🔒 Core Security: Already Enabled"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     log_success "Your cluster has production-grade security built-in:"
@@ -2333,7 +2333,7 @@ display_final_credentials_unattended() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "📋 IMPORTANT: Copy ALL credentials above to your password manager NOW!"
+    echo "📋 IMPORTANT: Copy ALL credentials above to your password manager NOW"
     echo
     echo "Recommended password managers:"
     echo "  • 1Password (https://1password.com)"

@@ -204,7 +204,7 @@ configure_tailscale_routes() {
         
         log_success "Tailscale configured to accept subnet routes (DNS managed by system)"
         echo
-        echo "✅ Your laptop can now access LoadBalancer services!"
+        echo "✅ Your laptop can now access LoadBalancer services"
     else
         log_success "Tailscale is already configured correctly"
     fi
@@ -439,7 +439,7 @@ install_helpful_tools() {
 print_summary() {
     print_header "Setup Complete! 🎉"
     
-    echo "Your laptop is now configured to manage your MyNodeOne cluster!"
+    echo "Your laptop is now configured to manage your MyNodeOne cluster"
     echo
     echo "✅ kubectl installed and configured"
     echo "✅ Cluster connection tested"
@@ -483,11 +483,11 @@ print_summary() {
     echo "📚 Next Steps:"
     echo "  • Read docs/guides/POST_INSTALLATION_GUIDE.md for detailed examples"
     echo "  • Try AI-assisted development with Cursor or Windsurf"
-    echo "  • Deploy your first application!"
+    echo "  • Deploy your first application"
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    echo "💡 Tip: You can now work entirely from your laptop!"
+    echo "💡 Tip: You can now work entirely from your laptop"
     echo "   No need to SSH into the control plane for daily tasks."
     echo
 }
@@ -532,7 +532,7 @@ main() {
     print_header "MyNodeOne Laptop Setup"
     
     echo "This script will configure your laptop to manage your MyNodeOne cluster."
-    echo "You'll be able to deploy apps, monitor the cluster, and more - all from your laptop!"
+    echo "You'll be able to deploy apps, monitor the cluster, and more - all from your laptop"
     echo
     
     check_requirements

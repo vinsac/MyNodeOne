@@ -140,7 +140,7 @@ echo ""
 
 # Display summary
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ Enterprise Registry Setup Complete!"
+echo "  ✅ Enterprise Registry Setup Complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

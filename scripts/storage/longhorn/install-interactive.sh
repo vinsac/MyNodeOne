@@ -362,6 +362,7 @@ install_longhorn_helm() {
         --namespace longhorn-system \
         --version 1.5.3 \
         --set defaultSettings.defaultReplicaCount=1 \
+        --set persistence.defaultClass=true \
         --set persistence.defaultClassParameter.numberOfReplicas=1 \
         --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
         --set defaultSettings.autoSalvage=true \

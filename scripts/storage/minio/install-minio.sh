@@ -166,8 +166,8 @@ if kubectl get namespace "$NAMESPACE" &>/dev/null; then
 fi
 
 # SSH to node for disk operations (if not local)
-LOCAL_NODE=$(hostname)
-if [ "$NODE_NAME" = "$LOCAL_NODE" ] || [ "$NODE_NAME" = "$(hostname -s)" ]; then
+local_k8s_node=$(get_k8s_node_name)
+if [ "$NODE_NAME" = "$local_k8s_node" ] || [ "$NODE_NAME" = "$(hostname)" ] || [ "$NODE_NAME" = "$(hostname -s)" ]; then
     IS_LOCAL=true
     log_info "Installing on local node"
 else
@@ -311,7 +311,7 @@ format_and_mount_disk() {
     
     # Add to fstab
     local uuid=$($node_cmd_prefix blkid -s UUID -o value "$partition")
-    $node_cmd_prefix bash -c "grep -q '$uuid' /etc/fstab || echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /etc/fstab"
+    $node_cmd_prefix bash -c "grep -q '$uuid' /etc/fstab || echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' | tee -a /etc/fstab > /dev/null"
     
     log_success "Disk mounted at $mount_path"
 }

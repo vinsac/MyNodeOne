@@ -4,7 +4,7 @@
 # Configures your laptop to manage the cluster
 # No need to access control plane manually!
 
-set -e
+set -euo pipefail
 
 # Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,6 +13,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
+
+# Source SSH utilities for ControlMaster support
+source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
 
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then

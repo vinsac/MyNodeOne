@@ -134,7 +134,7 @@ log_info "Validating generated routes..."
 
 # Check if file has content
 if [ ! -s "$TEMP_FILE" ]; then
-    log_error "Route file is empty!"
+    log_error "Route file is empty"
     exit 1
 fi
 
@@ -145,7 +145,7 @@ if command -v yq &>/dev/null; then
     if yq eval "$TEMP_FILE" &>/dev/null; then
         log_success "YAML syntax is valid"
     else
-        log_error "Generated routes have invalid YAML syntax!"
+        log_error "Generated routes have invalid YAML syntax"
         echo "--- Invalid YAML ---"
         cat "$TEMP_FILE"
         echo "--- End ---"
@@ -217,7 +217,7 @@ else
 fi
 
 echo ""
-log_success "VPS routes synced successfully!"
+log_success "VPS routes synced successfully"
 log_info "Routes are now managed by Config API (Go)"
 echo ""
 

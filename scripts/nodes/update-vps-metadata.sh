@@ -236,7 +236,7 @@ source "$REGISTRY_MANAGER"
 # Call the update function
 if update_vps_metadata --name "$VPS_NAME" --metadata-json "$METADATA_JSON"; then
     echo
-    log_success "VPS metadata updated successfully!"
+    log_success "VPS metadata updated successfully"
     echo
     echo "Node: $VPS_NAME"
     echo "IP: $VPS_IP"

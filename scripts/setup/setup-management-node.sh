@@ -77,7 +77,7 @@ fi
 # Load configuration
 CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
 if [ ! -f "$CONFIG_FILE" ]; then
-    log_error "Configuration not found!"
+    log_error "Configuration not found"
     echo "Please run the management laptop setup first:"
     echo "  sudo ./scripts/installation/install-mynodeone.sh"
     echo "  (Select option 4: Management Workstation)"

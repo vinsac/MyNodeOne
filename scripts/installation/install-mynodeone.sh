@@ -83,7 +83,7 @@ cleanup_on_interrupt() {
     echo
     
     if [ "$CRITICAL_OPERATION" = true ]; then
-        print_warning "Interrupted during a critical operation!"
+        print_warning "Interrupted during a critical operation"
         echo "Your system may be in an inconsistent state."
         echo
         echo "To recover:"
@@ -672,7 +672,7 @@ select_individual_disks() {
     done
     
     if [ ${#SELECTED_DISKS[@]} -eq 0 ]; then
-        print_warning "No disks selected!"
+        print_warning "No disks selected"
         echo
         if prompt_confirm "Go back to disk selection menu?"; then
             select_disks_for_setup
@@ -915,7 +915,7 @@ setup_longhorn_disks() {
         
         # CRITICAL SAFETY CHECK: Never format OS disk
         if [ "$disk" = "$OS_DISK" ]; then
-            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED"
             print_error "This disk contains your Ubuntu installation. Skipping."
             continue
         fi
@@ -993,7 +993,7 @@ setup_longhorn_disks() {
         
         if mountpoint -q "$MOUNT_POINT"; then
             print_success "✓ Mounted $disk at $MOUNT_POINT"
-            print_success "  Disk is ready for use!"
+            print_success "  Disk is ready for use"
         else
             print_error ""
             print_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1064,7 +1064,7 @@ setup_minio_disks() {
         
         # CRITICAL SAFETY CHECK: Never format OS disk
         if [ "$disk" = "$OS_DISK" ]; then
-            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED"
             print_error "This disk contains your Ubuntu installation. Skipping."
             continue
         fi
@@ -1144,7 +1144,7 @@ setup_raid_array() {
     
     # Check if RAID device already exists
     if [ -e /dev/md0 ]; then
-        print_error "RAID device /dev/md0 already exists!"
+        print_error "RAID device /dev/md0 already exists"
         echo
         echo "Existing RAID configuration:"
         cat /proc/mdstat 2>/dev/null || echo "Could not read /proc/mdstat"
@@ -1263,7 +1263,7 @@ setup_individual_mounts() {
         
         # CRITICAL SAFETY CHECK: Never format OS disk
         if [ "$disk" = "$OS_DISK" ]; then
-            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED!"
+            print_error "CRITICAL: Attempted to format OS disk $disk - BLOCKED"
             print_error "This disk contains your Ubuntu installation. Skipping."
             continue
         fi
@@ -1473,7 +1473,7 @@ main() {
     echo
     
     echo
-    print_success "Configuration complete!"
+    print_success "Configuration complete"
     echo
     
     # Proceed with installation
@@ -1536,7 +1536,7 @@ main() {
         
         echo
         print_header "Installation Complete!"
-        print_success "Your MyNodeOne node has been set up successfully! 🎉"
+        print_success "Your MyNodeOne node has been set up successfully 🎉"
         echo
         echo "Next steps:"
         echo "  1. Review credentials in $ACTUAL_HOME/mynodeone-*-credentials.txt"

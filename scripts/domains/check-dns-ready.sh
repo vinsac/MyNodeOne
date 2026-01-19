@@ -94,7 +94,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if $all_match; then
-    log_success "DNS is properly configured!"
+    log_success "DNS is properly configured"
     echo ""
     echo "✅ All DNS servers return: $EXPECTED_IP"
     echo ""
@@ -104,7 +104,7 @@ if $all_match; then
     echo ""
     exit 0
 else
-    log_error "DNS is NOT properly configured!"
+    log_error "DNS is NOT properly configured"
     echo ""
     echo "❌ DNS Query Results:"
     for res in "${results[@]}"; do

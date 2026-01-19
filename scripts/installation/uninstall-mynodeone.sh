@@ -881,5 +881,5 @@ echo "   • Verify ConfigMaps removed: kubectl get cm -n kube-system 2>/dev/nul
 echo "   • Verify services stopped: sudo systemctl list-units | grep mynodeone"
 echo
 
-log_success "Uninstall complete!"
+log_success "Uninstall complete"
 echo

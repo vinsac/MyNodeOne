@@ -136,7 +136,7 @@ for NODE_NAME in $NODES; do
         TOLERANCE=$((1 * 1073741824))  # 1GB
         
         if [ "$STORAGE_RESERVED" -gt $((OPTIMAL_RESERVED + TOLERANCE)) ]; then
-            log_warn "    → Excessive reservation detected!"
+            log_warn "    → Excessive reservation detected"
             log_info "    → Optimal: ${OPTIMAL_GB} GB (${OPTIMAL_PCT}%)"
             log_info "    → Fixing..."
             

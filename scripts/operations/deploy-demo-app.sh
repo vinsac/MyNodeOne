@@ -194,7 +194,7 @@ spec:
     name: http
 EOF
     
-    log_success "Demo application deployed!"
+    log_success "Demo application deployed"
     
     log_info "Waiting for LoadBalancer IP assignment (this may take 30-60 seconds)..."
     sleep 10
@@ -294,7 +294,7 @@ undeploy_demo_app() {
     log_info "Deleting demo application namespace..."
     kubectl delete namespace demo-apps --ignore-not-found=true
     
-    log_success "Demo application removed!"
+    log_success "Demo application removed"
 }
 
 show_help() {

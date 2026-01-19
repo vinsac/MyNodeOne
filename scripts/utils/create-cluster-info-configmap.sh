@@ -159,11 +159,11 @@ kubectl create configmap cluster-info \
     --dry-run=client -o yaml | kubectl apply -f -
 
 if [ $? -eq 0 ]; then
-    log_success "cluster-info ConfigMap created successfully!"
+    log_success "cluster-info ConfigMap created successfully"
     echo
     log_info "Verify with: kubectl get configmap cluster-info -n kube-system -o yaml"
     echo
-    log_success "VPS installations can now auto-detect cluster settings!"
+    log_success "VPS installations can now auto-detect cluster settings"
 else
     log_error "Failed to create ConfigMap"
     exit 1

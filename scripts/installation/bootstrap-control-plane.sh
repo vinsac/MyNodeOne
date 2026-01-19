@@ -2194,7 +2194,7 @@ run_final_validation() {
         if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" control-plane; then
             echo
             log_success "🎉 INSTALLATION VALIDATION PASSED"
-            log_info "Your control plane is fully operational!"
+            log_info "Your control plane is fully operational"
             
             # Save validation timestamp
             echo "LAST_VALIDATION=$(date -Iseconds)" >> $ACTUAL_HOME/.mynodeone/config.env

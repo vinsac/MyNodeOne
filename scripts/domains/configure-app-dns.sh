@@ -163,7 +163,7 @@ for ns in "${APP_NAMESPACES[@]}"; do
 done
 
 if [ ${#FOUND_APPS[@]} -eq 0 ]; then
-    log_warn "No apps found. Install some apps first!"
+    log_warn "No apps found. Install some apps first"
     echo
     echo "Try: sudo $PROJECT_ROOT/scripts/operations/app-store.sh"
     exit 0

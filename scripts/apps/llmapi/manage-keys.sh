@@ -173,11 +173,11 @@ cmd_list() {
         local config=$(redis_cmd GET "$key")
         
         if [ -n "$config" ]; then
-            local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-            local scopes=$(echo "$config" | grep -o '"scopes":\[[^]]*\]' | sed 's/"scopes"://;s/\["//;s/"\]//;s/","/,/g')
+            local name=$(echo "$config" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"name"[[:space:]]*:[[:space:]]*"//;s/"$//')
+            local scopes=$(echo "$config" | grep -o '"scopes"[[:space:]]*:[[:space:]]*\[[^]]*\]' | sed 's/.*"scopes"[[:space:]]*:[[:space:]]*\[//;s/\]$//;s/"//g;s/[[:space:]]*,[[:space:]]*/,/g')
             [ -z "$scopes" ] && scopes="inference"  # Default for old keys
-            local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
-            local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
+            local tokens=$(echo "$config" | grep -o '"tokens_per_day"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
+            local rpm=$(echo "$config" | grep -o '"requests_per_minute"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
             
             if [ "$show_full" = true ]; then
                 # Show full key

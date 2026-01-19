@@ -541,7 +541,7 @@ setup_gpu() {
     fi
     
     echo ""
-    log_success "GPU setup complete!"
+    log_success "GPU setup complete"
     show_gpu_status
 }
 
@@ -644,7 +644,7 @@ main() {
             if [[ "$deploy_plugin" == "true" ]]; then
                 deploy_device_plugin
             fi
-            log_success "Container Toolkit setup complete!"
+            log_success "Container Toolkit setup complete"
             show_gpu_status
             ;;
     esac

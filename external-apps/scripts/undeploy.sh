@@ -47,7 +47,7 @@ echo ""
 kubectl get all -n "$APP_NAME" 2>/dev/null || true
 echo ""
 
-warn "This will permanently delete the app and all its data!"
+warn "This will permanently delete the app and all its data"
 read -p "Are you sure? [y/N]: " confirm
 
 if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -62,7 +62,7 @@ log "Removing app from MyNodeOne..."
 kubectl delete namespace "$APP_NAME" --wait=true
 
 echo ""
-success "App '$APP_NAME' removed successfully!"
+success "App '$APP_NAME' removed successfully"
 echo ""
 
 log "Cleanup tasks:"

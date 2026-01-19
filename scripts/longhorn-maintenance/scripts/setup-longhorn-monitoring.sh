@@ -99,7 +99,7 @@ fi
 
 echo
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-log_success "Longhorn disk monitoring configured!"
+log_success "Longhorn disk monitoring configured"
 echo
 log_info "Metrics are exported to: $TEXTFILE_DIR/longhorn_disk_balance.prom"
 log_info "Prometheus node-exporter will automatically collect these metrics"

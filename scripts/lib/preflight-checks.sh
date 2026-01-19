@@ -235,7 +235,7 @@ check_ip_conflict() {
         jq -r '.vps_nodes[]? | select(.tailscale_ip == \"$vps_ip\") | .hostname'" 2>/dev/null || echo "")
     
     if [ -n "$existing_vps" ] && [ "$existing_vps" != "$(hostname)" ]; then
-        preflight_log_error "IP conflict detected!"
+        preflight_log_error "IP conflict detected"
         echo "  IP $vps_ip is already registered to: $existing_vps"
         echo ""
         echo "  This usually means:"
@@ -314,7 +314,7 @@ run_preflight_checks() {
     
     if [ $total_failed -eq 0 ]; then
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        preflight_log_success "All pre-flight checks passed!"
+        preflight_log_success "All pre-flight checks passed"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         return 0

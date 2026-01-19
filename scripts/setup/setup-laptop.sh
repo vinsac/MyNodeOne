@@ -260,7 +260,7 @@ fetch_kubeconfig() {
         log_info "Found existing kubeconfig at $ACTUAL_HOME/.kube/config"
         log_info "Testing existing connection..."
         if KUBECONFIG="$ACTUAL_HOME/.kube/config" kubectl get nodes &>/dev/null; then
-            log_success "Existing cluster connection is working!"
+            log_success "Existing cluster connection is working"
             return 0
         fi
         log_warn "Existing kubeconfig is not working, will re-fetch"
@@ -328,7 +328,7 @@ test_cluster_connection() {
     }
     
     if kubectl get nodes &>/dev/null; then
-        log_success "Cluster connection successful!"
+        log_success "Cluster connection successful"
         echo
         kubectl get nodes
     else

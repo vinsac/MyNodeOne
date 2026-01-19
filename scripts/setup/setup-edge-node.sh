@@ -316,7 +316,7 @@ EOF
             log_warn "Port 443 not listening yet"
         fi
     else
-        log_error "Traefik failed to start!"
+        log_error "Traefik failed to start"
         echo ""
         echo "Check logs with:"
         echo "  docker logs traefik"

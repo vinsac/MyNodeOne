@@ -85,7 +85,7 @@ check_for_dns_wildcards() {
     if [ -d /etc/dnsmasq.d ]; then
         # Look for patterns like: address=/domain.local/IP (without subdomain)
         if grep -r "^address=/${domain}.local/" /etc/dnsmasq.d/ 2>/dev/null | grep -v "^#" | grep -v "/[a-z-]*\.${domain}\.local/"; then
-            log_dns_warn "Found potential wildcard DNS entry in dnsmasq config!"
+            log_dns_warn "Found potential wildcard DNS entry in dnsmasq config"
             log_dns_warn "This can cause undefined subdomains to resolve incorrectly"
             has_wildcards=true
         fi

@@ -505,7 +505,7 @@ EOF
     local saved_ip
     saved_ip=$(grep "^CONTROL_PLANE_IP=" /etc/mynodeone/agent.env 2>/dev/null | cut -d'=' -f2 || echo "")
     if [ -z "$saved_ip" ]; then
-        log_error "CONTROL_PLANE_IP not set in agent.env!"
+        log_error "CONTROL_PLANE_IP not set in agent.env"
     fi
     
     log_success "Node Agent configured (CLUSTER_DOMAIN=$cluster_domain)"

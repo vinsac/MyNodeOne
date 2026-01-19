@@ -300,7 +300,7 @@ verify_all_core_services() {
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
     if [ "$all_ok" = true ]; then
-        log_pass "✅ ALL SERVICES VALIDATED SUCCESSFULLY!"
+        log_pass "✅ ALL SERVICES VALIDATED SUCCESSFULLY"
         echo "═══════════════════════════════════════════════════════════════"
         return 0
     else

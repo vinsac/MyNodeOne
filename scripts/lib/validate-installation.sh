@@ -366,7 +366,7 @@ print_summary() {
     echo
     
     if [ $TESTS_FAILED -eq 0 ]; then
-        log_success "✅ All critical tests passed!"
+        log_success "✅ All critical tests passed"
         echo
         log_info "Your installation appears to be working correctly."
         
@@ -378,7 +378,7 @@ print_summary() {
         
         return 0
     else
-        log_error "❌ $TESTS_FAILED critical test(s) failed!"
+        log_error "❌ $TESTS_FAILED critical test(s) failed"
         echo
         log_info "Your installation has issues that need attention."
         log_info "Review the failed tests above and check logs:"

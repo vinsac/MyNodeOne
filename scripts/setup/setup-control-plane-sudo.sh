@@ -129,7 +129,7 @@ log_info "Verifying sudoers syntax..."
 if sudo visudo -c -f /etc/sudoers.d/mynodeone &>/dev/null; then
     log_success "Sudoers syntax verified"
 else
-    log_error "Sudoers configuration has syntax errors!"
+    log_error "Sudoers configuration has syntax errors"
     sudo rm -f /etc/sudoers.d/mynodeone
     exit 1
 fi
@@ -163,7 +163,7 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log_success "Passwordless sudo configured successfully!"
+log_success "Passwordless sudo configured successfully"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "✅ What was configured:"

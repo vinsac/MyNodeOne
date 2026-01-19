@@ -124,7 +124,7 @@ else
 fi
 
 echo ""
-log_success "Periodic local DNS sync enabled!"
+log_success "Periodic local DNS sync enabled"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Configuration"

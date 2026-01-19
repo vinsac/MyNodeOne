@@ -835,7 +835,7 @@ deploy_to_cluster() {
         deployment -n "$APP_NAME" --all 2>/dev/null || true
     
     echo ""
-    success "Deployment complete!"
+    success "Deployment complete"
 }
 
 # Register with MyNodeOne

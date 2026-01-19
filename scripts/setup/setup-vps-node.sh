@@ -414,7 +414,7 @@ echo
 
 # Final summary
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log_success "VPS Edge Node setup complete!"
+log_success "VPS Edge Node setup complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 echo "✓ Docker installed and running"

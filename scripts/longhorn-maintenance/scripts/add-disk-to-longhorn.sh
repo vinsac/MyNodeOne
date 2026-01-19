@@ -143,7 +143,7 @@ kubectl -n longhorn-system patch node "$NODE_NAME" --type='json' -p="[
 ]"
 
 if [ $? -eq 0 ]; then
-    log_success "Disk added successfully!"
+    log_success "Disk added successfully"
     echo
     log_info "Longhorn will start using this disk automatically."
     log_info "You can verify in the Longhorn UI at: http://$(tailscale ip -4):30080"

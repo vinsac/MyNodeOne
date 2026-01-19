@@ -619,7 +619,7 @@ main() {
     if [ -f "$PROJECT_ROOT/scripts/lib/validate-installation.sh" ]; then
         if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" management-laptop; then
             echo
-            log_success "All validation tests passed!"
+            log_success "All validation tests passed"
             
             # Save validation status
             echo "LAST_VALIDATION=$(date -Iseconds)" >> "$CONFIG_FILE"

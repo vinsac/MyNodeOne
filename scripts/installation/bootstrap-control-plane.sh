@@ -1336,7 +1336,7 @@ install_minio() {
     log_info "MinIO is now installed as an app (like Immich, LLM API)"
     log_info ""
     log_info "To install MinIO on this or any node:"
-    log_info "  sudo $SCRIPT_DIR/../apps/minio/install-minio.sh"
+    log_info "  sudo $SCRIPT_DIR/../storage/minio/install-minio.sh"
     log_info ""
     log_info "MinIO can be installed multiple times on different nodes"
     log_info "Each installation gets independent credentials and .local domain"

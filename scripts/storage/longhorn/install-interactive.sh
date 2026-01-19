@@ -372,6 +372,10 @@ install_longhorn_helm() {
         --set defaultSettings.replicaZoneSoftAntiAffinity=true \
         --set defaultSettings.defaultDataPath="$default_path" \
         --set defaultSettings.fastReplicaRebuildEnabled=true \
+        --set defaultSettings.replicaAutoBalance="best-effort" \
+        --set defaultSettings.storageOverProvisioningPercentage=200 \
+        --set defaultSettings.storageMinimalAvailablePercentage=10 \
+        --wait \
         --timeout 10m
     
     # Set as default storage class

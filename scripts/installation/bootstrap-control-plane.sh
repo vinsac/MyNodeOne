@@ -1167,7 +1167,7 @@ configure_tailscale_subnet_routes() {
     echo
     echo "Once approved, you can access services directly at:"
     echo "  • http://grafana.${CLUSTER_DOMAIN}.local"
-    echo "  • https://argocd.${CLUSTER_DOMAIN}.local"
+    echo "  • http://argocd.${CLUSTER_DOMAIN}.local"
     echo
     log_info "This step takes 30 seconds in Tailscale admin console"
     echo
@@ -1747,7 +1747,7 @@ display_credentials() {
     echo
     
     echo "🚀 ARGOCD (GitOps):"
-    echo "   URL: https://$ARGOCD_IP (also https://argocd.${CLUSTER_DOMAIN}.local)"
+    echo "   URL: https://$ARGOCD_IP (also http://argocd.${CLUSTER_DOMAIN}.local)"
     if [ -f $ACTUAL_HOME/mynodeone-argocd-credentials.txt ]; then
         cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt | grep -E "Username|Password" | sed 's/^/   /'
     fi
@@ -1964,7 +1964,7 @@ print_summary() {
     echo
     echo "   🚀 ArgoCD (GitOps Deployments):"
     echo "      URL: https://$ARGOCD_IP"
-    echo "      Also: https://argocd.${CLUSTER_DOMAIN}.local"
+    echo "      Also: http://argocd.${CLUSTER_DOMAIN}.local"
     echo "      Credentials: cat $ACTUAL_HOME/mynodeone-argocd-credentials.txt"
     echo
     echo "   📦 Longhorn UI (Block Storage):"

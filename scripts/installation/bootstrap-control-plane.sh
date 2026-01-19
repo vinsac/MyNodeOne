@@ -180,7 +180,7 @@ helm_install_safe() {
             esac
             
             if [ "$running_pods" -ge "$expected_pods" ]; then
-                log_success "$release_name has $running_pods running pod(s) - success!"
+                log_success "$release_name has $running_pods running pod(s) - success"
                 # Kill the helm process since we're done
                 kill $helm_pid 2>/dev/null || true
                 wait $helm_pid 2>/dev/null || true
@@ -332,7 +332,7 @@ install_tool_failsafe() {
     fi
     
     # All methods failed
-    log_error "CRITICAL: All $TOOL_NAME installation methods failed!"
+    log_error "CRITICAL: All $TOOL_NAME installation methods failed"
     return 1
 }
 
@@ -637,7 +637,7 @@ EOF
         echo -n "."
     done
     echo ""
-    log_success "Node $NODE_NAME is registered!"
+    log_success "Node $NODE_NAME is registered"
     
     # Label this node as control plane and worker
     kubectl label node "$NODE_NAME" node-role.kubernetes.io/worker=true --overwrite
@@ -978,7 +978,7 @@ install_helm() {
     
     # Check final result
     if [ "$success" = false ]; then
-        log_error "CRITICAL: All Helm installation methods failed!"
+        log_error "CRITICAL: All Helm installation methods failed"
         log_error "Attempted methods:"
         log_error "  1. Snap (if available)"
         log_error "  2. Official get-helm-3 script"
@@ -1329,7 +1329,7 @@ EOF
     
     log_success "Monitoring stack installed"
     log_warn "Grafana credentials saved to $ACTUAL_HOME/mynodeone-grafana-credentials.txt (chmod 600)"
-    log_warn "IMPORTANT: Save these credentials securely and delete the file!"
+    log_warn "IMPORTANT: Save these credentials securely and delete the file"
 }
 
 install_minio() {
@@ -1430,7 +1430,7 @@ EOF
     
     log_success "ArgoCD installed"
     log_warn "ArgoCD credentials saved to $ACTUAL_HOME/mynodeone-argocd-credentials.txt (chmod 600)"
-    log_warn "IMPORTANT: Save these credentials securely and delete the file!"
+    log_warn "IMPORTANT: Save these credentials securely and delete the file"
 }
 
 deploy_dashboard() {
@@ -1496,7 +1496,7 @@ EOF
     chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-join-token.txt
     
     log_success "Join token saved to $ACTUAL_HOME/mynodeone-join-token.txt (chmod 600)"
-    log_warn "IMPORTANT: This token grants cluster access. Store securely!"
+    log_warn "IMPORTANT: This token grants cluster access. Store securely"
 }
 
 initialize_service_registries() {
@@ -1694,7 +1694,7 @@ initialize_service_registries() {
     fi
     
     echo
-    log_success "Registry system ready!"
+    log_success "Registry system ready"
     log_info "  • Service registry: Tracks all cluster services"
     log_info "  • Multi-domain registry: Supports multiple domains and VPS"
     log_info "  • Sync controller (V1): SSH-based push to nodes"
@@ -1806,7 +1806,7 @@ display_credentials() {
             delete_credential_files
         else
             echo
-            log_error "Installation cannot proceed without confirming credential storage!"
+            log_error "Installation cannot proceed without confirming credential storage"
             log_error "For security, credential files MUST be deleted."
             echo
             echo "Options:"
@@ -1821,7 +1821,7 @@ display_credentials() {
                 log_error "Please save credentials and manually delete files:"
                 echo "  sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt"
                 echo
-                log_warn "WARNING: Leaving credential files on disk is a security risk!"
+                log_warn "WARNING: Leaving credential files on disk is a security risk"
                 return 1
             fi
         fi
@@ -2073,7 +2073,7 @@ offer_security_hardening() {
         echo
         log_info "Deploying optional security enhancements..."
         if bash "$PROJECT_ROOT/scripts/setup/enable-security-hardening.sh"; then
-            log_success "Optional security enhancements deployed!"
+            log_success "Optional security enhancements deployed"
             echo
             echo "✅ Network policies active"
             echo "✅ Resource quotas enforced"
@@ -2107,7 +2107,7 @@ setup_local_dns() {
     while [ $waited -lt $max_wait ]; do
         local pending=$(kubectl get svc -A -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | select(.status.loadBalancer.ingress == null) | .metadata.name' | wc -l)
         if [ "$pending" -eq 0 ]; then
-            log_success "All LoadBalancer IPs assigned!"
+            log_success "All LoadBalancer IPs assigned"
             break
         fi
         echo -n "."
@@ -2144,7 +2144,7 @@ setup_local_dns() {
     done
     
     if [ "$dns_success" = true ]; then
-        log_success "Local DNS setup complete!"
+        log_success "Local DNS setup complete"
         echo
         
         # Verify DNS resolution works
@@ -2161,7 +2161,7 @@ setup_local_dns() {
         echo
         
         if [ "$dns_ok" = true ]; then
-            log_success "DNS verification passed!"
+            log_success "DNS verification passed"
         else
             log_warn "Some DNS entries not resolving yet. May need a few seconds to propagate."
         fi
@@ -2193,7 +2193,7 @@ run_final_validation() {
     if [ -f "$PROJECT_ROOT/scripts/lib/validate-installation.sh" ]; then
         if bash "$PROJECT_ROOT/scripts/lib/validate-installation.sh" control-plane; then
             echo
-            log_success "🎉 INSTALLATION VALIDATION PASSED!"
+            log_success "🎉 INSTALLATION VALIDATION PASSED"
             log_info "Your control plane is fully operational!"
             
             # Save validation timestamp
@@ -2253,7 +2253,7 @@ offer_demo_app() {
         echo
         log_info "Deploying demo application..."
         if bash "$PROJECT_ROOT/scripts/operations/deploy-demo-app.sh" deploy; then
-            log_success "Demo app deployment complete!"
+            log_success "Demo app deployment complete"
         else
             log_warn "Demo app deployment had issues. You can deploy it later with:"
             echo "  sudo $PROJECT_ROOT/scripts/operations/deploy-demo-app.sh"
@@ -2297,7 +2297,7 @@ offer_llm_chat() {
         # Use the new app store installation script (auto-skips prompts for subdomain/VPS during bootstrap)
         export AUTO_INSTALL_MODE=true
         if bash "$PROJECT_ROOT/scripts/apps/llm-chat/install-llm-chat.sh"; then
-            log_success "LLM chat deployment complete!"
+            log_success "LLM chat deployment complete"
             echo
             log_info "LLM Chat installed locally. To add public internet access later:"
             echo "  sudo bash scripts/apps/llm-chat/install-llm-chat.sh"

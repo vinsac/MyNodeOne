@@ -22,6 +22,17 @@ if [ -f "$PROJECT_ROOT/scripts/lib/ssh-utils.sh" ]; then
     source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
 fi
 
+# Check for jq
+if ! command -v jq &> /dev/null; then
+    log_warn "jq not found. It is required for registration validation."
+    # setup-laptop.sh should have installed it, but we check again for safety
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v brew &> /dev/null; then brew install jq; fi
+    else
+        sudo apt-get update && sudo apt-get install -y jq
+    fi
+fi
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -114,25 +125,6 @@ if validate_ssh_early "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP" "control pla
 else
     log_error "SSH connection failed"
     exit 1
-fi
-
-# Install kubectl if not present
-if ! command -v kubectl &> /dev/null; then
-    log_info "Installing kubectl..."
-    
-    # Download kubectl
-    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" 2>/dev/null
-    
-    # Install it
-    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-    rm kubectl
-    
-    log_success "kubectl installed"
-    echo ""
-else
-    log_info "kubectl already installed"
-    echo ""
 fi
 
 # Check if we already have the path saved in config

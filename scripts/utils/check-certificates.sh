@@ -59,7 +59,12 @@ fi
 log_success "acme.json found"
 
 # Check permissions
-PERMS=$(stat -c %a "$ACME_FILE")
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    PERMS=$(stat -f "%OLp" "$ACME_FILE")
+else
+    PERMS=$(stat -c %a "$ACME_FILE")
+fi
+
 if [ "$PERMS" = "600" ]; then
     log_success "Permissions correct: $PERMS"
 else
@@ -70,7 +75,11 @@ else
 fi
 
 # Check file size
-SIZE=$(stat -c %s "$ACME_FILE")
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    SIZE=$(stat -f %z "$ACME_FILE")
+else
+    SIZE=$(stat -c %s "$ACME_FILE")
+fi
 if [ "$SIZE" -eq 0 ]; then
     log_warn "acme.json is empty (no certificates yet)"
     HAS_CERTS=false

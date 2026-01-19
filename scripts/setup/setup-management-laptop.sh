@@ -228,7 +228,11 @@ update_dns_entries() {
     sudo cp /etc/hosts "/etc/hosts.bak.$(date +%Y%m%d_%H%M%S)"
     
     # Remove old MyNodeOne entries
-    sudo sed -i '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sudo sed -i '' '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
+    else
+        sudo sed -i '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
+    fi
     
     # Add new entries
     {
@@ -648,7 +652,13 @@ main() {
         else
             log_warn "Agent CLUSTER_DOMAIN mismatch: $agent_domain (expected: $CLUSTER_DOMAIN)"
             log_warn "Fixing..."
-            sudo sed -i "s/^CLUSTER_DOMAIN=.*/CLUSTER_DOMAIN=$CLUSTER_DOMAIN/" /etc/mynodeone/agent.env
+        if [ -f "/etc/mynodeone/agent.env" ]; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sudo sed -i '' "s/^CLUSTER_DOMAIN=.*/CLUSTER_DOMAIN=$CLUSTER_DOMAIN/" /etc/mynodeone/agent.env
+            else
+                sudo sed -i "s/^CLUSTER_DOMAIN=.*/CLUSTER_DOMAIN=$CLUSTER_DOMAIN/" /etc/mynodeone/agent.env
+            fi
+        fi
         fi
     fi
     

@@ -93,6 +93,18 @@ check_requirements() {
             sudo apt-get update && sudo apt-get install -y openssh-client
         fi
     fi
+
+    # Check for jq
+    if ! command -v jq &> /dev/null; then
+        log_warn "jq not found. Installing..."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v brew &> /dev/null; then
+                brew install jq
+            fi
+        else
+            sudo apt-get update && sudo apt-get install -y jq
+        fi
+    fi
     
     log_success "Requirements check passed"
 }
@@ -265,7 +277,11 @@ fetch_kubeconfig() {
     
     # Update server address from 127.0.0.1 to control plane IP
     log_info "Configuring kubeconfig to use control plane IP..."
-    sed -i "s|https://127.0.0.1:6443|https://$CONTROL_PLANE_IP:6443|g" ~/.kube/config
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|https://127.0.0.1:6443|https://$CONTROL_PLANE_IP:6443|g" "$ACTUAL_HOME/.kube/config"
+    else
+        sed -i "s|https://127.0.0.1:6443|https://$CONTROL_PLANE_IP:6443|g" "$ACTUAL_HOME/.kube/config"
+    fi
     log_success "Kubeconfig configured for remote access"
 }
 
@@ -509,6 +525,29 @@ main() {
     fetch_service_ips
     setup_local_dns
     install_helpful_tools
+    
+    # Register laptop for automated DNS sync if requested
+    print_header "Cluster Registration"
+    echo "Would you like to register this laptop for automated DNS updates?"
+    echo "This enables the control plane to push new .local domains automatically."
+    echo
+    if prompt_confirm "Register laptop for auto-sync?" "y"; then
+        # Use existing SSH ControlMaster for registration
+        if [ -f "$PROJECT_ROOT/scripts/setup/setup-management-node.sh" ]; then
+            log_info "Registering laptop in cluster registry..."
+            
+            # Export variables needed by registration script
+            export CONTROL_PLANE_IP
+            export CONTROL_PLANE_SSH_USER="$CONTROL_PLANE_USER"
+            
+            # Run the registration script
+            # We don't need to pass CP-IP/USER again since we've established ControlMaster
+            bash "$PROJECT_ROOT/scripts/setup/setup-management-node.sh"
+        else
+            log_warn "Registration script not found: scripts/setup/setup-management-node.sh"
+        fi
+    fi
+
     print_summary
 }
 

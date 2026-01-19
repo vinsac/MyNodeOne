@@ -161,17 +161,29 @@ OLD_ENTRIES="${OLD_ENTRIES//[!0-9]/}"
 OLD_ENTRIES="${OLD_ENTRIES:-0}"
 
 # Method 1: Remove entries within MyNodeOne markers
-sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sudo sed -i '' '/# MyNodeOne Services/,/^$/d' /etc/hosts
+else
+    sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts
+fi
 
 # Method 2: Remove ANY entries ending with cluster domain (catches unmarked entries)
 # This handles entries like: 100.x.x.x something.mynodeone.local
-sudo sed -i "/\.${CLUSTER_DOMAIN}\.local/d" /etc/hosts
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sudo sed -i '' "/\.${CLUSTER_DOMAIN}\.local/d" /etc/hosts
+else
+    sudo sed -i "/\.${CLUSTER_DOMAIN}\.local/d" /etc/hosts
+fi
 
 # Method 3: Also clean up common variations and old domain names
-# This catches cases where the domain changed (e.g., mynodeone -> mynodeone)
+# This catches cases where the domain changed
 for old_domain in "mynodeone" "mynodeone"; do
     if [ "$old_domain" != "$CLUSTER_DOMAIN" ]; then
-        sudo sed -i "/\.${old_domain}\.local/d" /etc/hosts 2>/dev/null || true
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sudo sed -i '' "/\.${old_domain}\.local/d" /etc/hosts 2>/dev/null || true
+        else
+            sudo sed -i "/\.${old_domain}\.local/d" /etc/hosts 2>/dev/null || true
+        fi
     fi
 done
 
@@ -192,7 +204,12 @@ log_info "Adding new DNS entries..."
 SERVICE_COUNT=$(echo "$DNS_ENTRIES" | grep -v '^$' | wc -l)
 
 # Defensive check: Ensure /etc/hosts has correct permissions
-HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    HOSTS_PERMS=$(stat -f "%OLp" /etc/hosts 2>/dev/null || echo "unknown")
+else
+    HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+fi
+
 if [ "$HOSTS_PERMS" != "644" ]; then
     log_warn "/etc/hosts has permissions $HOSTS_PERMS, fixing to 644..."
     sudo chmod 644 /etc/hosts
@@ -218,7 +235,11 @@ if grep -q "\.${CLUSTER_DOMAIN}\.local" /etc/hosts 2>/dev/null; then
     fi
 else
     log_warn "DNS entries not found in /etc/hosts"
-    HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        HOSTS_PERMS=$(stat -f "%OLp" /etc/hosts 2>/dev/null || echo "unknown")
+    else
+        HOSTS_PERMS=$(stat -c "%a" /etc/hosts 2>/dev/null || echo "unknown")
+    fi
     log_warn "Current /etc/hosts permissions: $HOSTS_PERMS"
 fi
 

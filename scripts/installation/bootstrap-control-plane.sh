@@ -1448,8 +1448,8 @@ deploy_dashboard() {
 create_cluster_info() {
     log_info "Creating cluster information configmap..."
     
-    # Get absolute path to MyNodeOne repository
-    REPO_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    # Use PROJECT_ROOT which is already correctly set by project-root.sh at script startup
+    REPO_PATH="$PROJECT_ROOT"
     
     # Detect control plane user from repo path (e.g., /home/your-username/MyNodeOne -> your-username)
     CONTROL_PLANE_USER=$(echo "$REPO_PATH" | sed 's|/home/\([^/]*\)/.*|\1|')

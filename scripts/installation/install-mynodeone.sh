@@ -1524,8 +1524,9 @@ main() {
                 ;;
 
             management)
-                print_info "Running management laptop setup..."
-                bash "$PROJECT_ROOT/scripts/setup/setup-management-laptop.sh"
+                # Management laptop setup is already handled by interactive-setup.sh
+                # which is called earlier in the main function.
+                log_info "Management laptop setup completed via interactive wizard."
                 ;;
             *)
                 print_error "Unknown node type: $NODE_TYPE"

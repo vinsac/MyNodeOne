@@ -119,8 +119,9 @@ validate_kubeconfig() {
     fi
     
     # Test cluster connectivity
-    if ! KUBECONFIG="$kubeconfig" timeout $KUBECONFIG_TIMEOUT kubectl cluster-info &>/dev/null; then
-        log_debug "Cannot connect to cluster with kubeconfig"
+    export KUBECONFIG="$kubeconfig"
+    if ! timeout $KUBECONFIG_TIMEOUT kubectl cluster-info &>/dev/null; then
+        log_debug "Cannot connect to cluster with kubeconfig at $kubeconfig"
         return 1
     fi
     
@@ -152,7 +153,7 @@ fix_kubeconfig() {
         if validate_kubeconfig "$ACTUAL_HOME/.kube/config.new"; then
             mv "$ACTUAL_HOME/.kube/config.new" "$ACTUAL_HOME/.kube/config"
             chmod 600 "$ACTUAL_HOME/.kube/config"
-            chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config"
+            chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config" 2>/dev/null || true
             log_success "Kubeconfig updated and validated for user '$ACTUAL_USER'"
             return 0
         else
@@ -175,6 +176,7 @@ fetch_cluster_info() {
     local cluster_domain=""
     
     while [ $retries -gt 0 ]; do
+        export KUBECONFIG="$ACTUAL_HOME/.kube/config"
         cluster_name=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-name}' 2>/dev/null || echo "")
         cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
         
@@ -199,6 +201,7 @@ get_service_ips() {
     local service_name="$2"
     local ip=""
     
+    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
     ip=$(retry_command \
         "kubectl get svc -n $service_namespace $service_name -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null" \
         "Fetching IP for $service_namespace/$service_name")
@@ -211,6 +214,7 @@ update_dns_entries() {
     log_info "Updating DNS entries in /etc/hosts..."
     
     # Discover all LoadBalancer services
+    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
     local services=$(kubectl get svc -A -o json | jq -r '
         .items[] | 
         select(.spec.type == "LoadBalancer") | 
@@ -323,7 +327,13 @@ test_service_access() {
 # Install kubectl if missing
 install_kubectl() {
     if command -v kubectl &> /dev/null; then
-        log_success "kubectl already installed: $(kubectl version --client --short 2>/dev/null | head -n1)"
+        local k_version="unknown"
+        if command -v jq &>/dev/null; then
+            k_version=$(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion // .gitVersion // "unknown"')
+        else
+            k_version=$(kubectl version --client --short 2>/dev/null | head -n1 || echo "unknown")
+        fi
+        log_success "kubectl already installed: $k_version"
         return 0
     fi
     
@@ -448,6 +458,8 @@ main() {
     # Step 3: Test cluster connection
     print_header "Step 3: Cluster Connection Test"
     
+    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
+    
     if retry_command "kubectl get nodes" "Connecting to cluster"; then
         log_success "Connected to cluster"
         kubectl get nodes
@@ -524,6 +536,7 @@ main() {
     log_info "Ensuring all services are registered in DNS..."
     
     # Check if we can access the control plane
+    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
     if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null 2>&1; then
         # Sync service registry on control plane via kubectl
         if kubectl get configmap -n kube-system cluster-info &>/dev/null 2>&1; then
@@ -687,6 +700,7 @@ main() {
     echo "  • Longhorn:  http://longhorn.${CLUSTER_DOMAIN}.local"
     
     # Show app services if they exist
+    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
     if kubectl get svc -n demo-apps demo-chat-app &>/dev/null; then
         echo "  • Demo App:  http://demo.${CLUSTER_DOMAIN}.local"
     fi

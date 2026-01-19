@@ -14,21 +14,10 @@ source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
+# Source shared detection utility
+source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 # Source SSH utilities for ControlMaster support
 source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
-
-# Detect actual user and home directory
-if [ -z "${ACTUAL_USER:-}" ]; then
-    export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-fi
-
-if [ -z "${ACTUAL_HOME:-}" ]; then
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    else
-        export ACTUAL_HOME="$HOME"
-    fi
-fi
 
 # Load cluster configuration if it exists
 CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
@@ -72,6 +61,31 @@ print_header() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  $1"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+prompt_confirm() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local response
+    
+    if [ "$default" = "y" ]; then
+        read -p "$(echo -e ${GREEN}?${NC}) $prompt [Y/n]: " response
+        response="${response:-y}"
+    else
+        read -p "$(echo -e ${GREEN}?${NC}) $prompt [y/N]: " response
+        response="${response:-n}"
+    fi
+    
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
+prompt_input() {
+    local prompt="$1"
+    local var_name="$2"
+    local default="$3"
+    
+    read -p "$(echo -e ${GREEN}?${NC}) $prompt [$default]: " response
+    export "$var_name"="${response:-$default}"
 }
 
 check_requirements() {
@@ -567,6 +581,15 @@ main() {
             log_warn "Registration script not found: scripts/setup/setup-management-node.sh"
         fi
     fi
+
+    # Finalizing Permissions
+    print_header "Finalizing Permissions"
+    log_info "Ensuring correct ownership for config files..."
+    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.mynodeone" 2>/dev/null || true
+    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube" 2>/dev/null || true
+    sudo chmod 600 "$ACTUAL_HOME/.kube/config" 2>/dev/null || true
+    log_success "Permissions finalized for user '$ACTUAL_USER'"
+    echo
 
     print_summary
 }

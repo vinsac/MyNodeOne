@@ -133,7 +133,7 @@ fi
 CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
 
 # Select target node
-local current_node=$(get_k8s_node_name)
+current_node=$(get_k8s_node_name)
 echo "Available nodes (Current: $current_node):"
 echo ""
 kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,ROLES:.metadata.labels.node-role\\.kubernetes\\.io/worker --no-headers | nl

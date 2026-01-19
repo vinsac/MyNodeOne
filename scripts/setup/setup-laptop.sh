@@ -198,7 +198,11 @@ install_kubectl() {
     print_header "Installing kubectl"
     
     if command -v kubectl &> /dev/null; then
-        KUBECTL_VERSION=$(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*' | cut -d'"' -f4 || echo "unknown")
+        if command -v jq &>/dev/null; then
+            KUBECTL_VERSION=$(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion // .gitVersion // "unknown"')
+        else
+            KUBECTL_VERSION=$(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*' | cut -d'"' -f4 || echo "unknown")
+        fi
         log_success "kubectl already installed: $KUBECTL_VERSION"
         return
     fi
@@ -231,8 +235,20 @@ fetch_kubeconfig() {
     
     log_info "Retrieving kubeconfig from control plane..."
     
-    # Create .kube directory
-    mkdir -p ~/.kube
+    # Create .kube directory in actual home
+    mkdir -p "$ACTUAL_HOME/.kube"
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube" 2>/dev/null || true
+    
+    # Check if we already have a working kubeconfig (e.g. from fetch-cluster-info.sh)
+    if [ -f "$ACTUAL_HOME/.kube/config" ]; then
+        log_info "Found existing kubeconfig at $ACTUAL_HOME/.kube/config"
+        log_info "Testing existing connection..."
+        if KUBECONFIG="$ACTUAL_HOME/.kube/config" kubectl get nodes &>/dev/null; then
+            log_success "Existing cluster connection is working!"
+            return 0
+        fi
+        log_warn "Existing kubeconfig is not working, will re-fetch"
+    fi
     
     # K3s stores kubeconfig at /etc/rancher/k3s/k3s.yaml (requires sudo)
     echo
@@ -249,10 +265,11 @@ fetch_kubeconfig() {
     if ssh_with_control -t "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml"; then
         echo
         log_info "Downloading kubeconfig via SCP..."
-        if scp_with_control -q "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" ~/.kube/config; then
+        if scp_with_control -q "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" "$ACTUAL_HOME/.kube/config"; then
             # Clean up temp file on remote
             ssh_with_control "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "rm -f /tmp/k3s-config.yaml" 2>/dev/null || true
-            chmod 600 ~/.kube/config
+            chmod 600 "$ACTUAL_HOME/.kube/config"
+            chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config" 2>/dev/null || true
             log_success "Kubeconfig retrieved successfully"
         else
             log_error "Failed to download kubeconfig via SCP"
@@ -271,7 +288,7 @@ fetch_kubeconfig() {
         echo "Manual steps to fix:"
         echo "  1. SSH to control plane: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP"
         echo "  2. Copy kubeconfig: sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s.yaml && sudo chmod 644 /tmp/k3s.yaml"
-        echo "  3. Exit and run: scp $CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s.yaml ~/.kube/config"
+        echo "  3. Exit and run: scp $CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s.yaml $ACTUAL_HOME/.kube/config"
         exit 1
     fi
     
@@ -287,6 +304,9 @@ fetch_kubeconfig() {
 
 test_cluster_connection() {
     log_info "Testing cluster connection..."
+    
+    # Use ACTUAL_HOME explicitly to avoid root/user confusion
+    export KUBECONFIG="$ACTUAL_HOME/.kube/config"
     
     if kubectl get nodes &>/dev/null; then
         log_success "Cluster connection successful!"

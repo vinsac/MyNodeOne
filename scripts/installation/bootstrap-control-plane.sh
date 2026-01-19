@@ -2470,7 +2470,7 @@ main() {
     log_info "Installing Node Agent on control plane..."
     
     # Use the local installation script
-    if [ -f "$SCRIPT_DIR/install-node-agent.sh" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" ]; then
         # Fetch the token we just generated/verified
         local api_token=""
         if [ -f /etc/mynodeone/api-token ]; then
@@ -2486,7 +2486,7 @@ main() {
         
         # Run agent installer
         # Using node-type=laptop for control plane to ensure local DNS syncing behavior
-        if bash "$SCRIPT_DIR/install-node-agent.sh" \
+        if bash "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
             --control-plane-ip "$agent_target_ip" \
             --node-type "laptop" \
             --node-name "$NODE_NAME" \
@@ -2498,7 +2498,7 @@ main() {
             log_warn "  sudo ./scripts/installation/install-node-agent.sh --control-plane-ip 127.0.0.1 --node-type laptop --node-name $NODE_NAME"
         fi
     else
-        log_warn "Node Agent installer not found ($SCRIPT_DIR/install-node-agent.sh)"
+        log_warn "Node Agent installer not found ($PROJECT_ROOT/scripts/installation/install-node-agent.sh)"
     fi
     echo
     

@@ -85,7 +85,7 @@
 **Example:** Like a phone number for computers.
 
 **Tailscale IP:** Usually looks like `100.x.x.x` - your private address.
-**Public IP:** Regular internet address like `45.8.133.192` - visible to everyone.
+**Public IP:** Regular internet address like `192.0.2.100` - visible to everyone.
 
 ---
 

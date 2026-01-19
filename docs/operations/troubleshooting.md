@@ -254,7 +254,7 @@ kubectl describe certificate <cert-name>
 
 # Verify DNS
 dig myapp.com
-# Should point to VPS IP: 45.8.133.192 or 31.220.87.37
+# Should point to VPS IP: 192.0.2.100 or 31.220.87.37
 ```
 
 ### 5. Storage Issues

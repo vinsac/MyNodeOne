@@ -159,7 +159,7 @@ User
   │
   │ HTTPS
   ↓
-VPS Edge Node (45.8.133.192)
+VPS Edge Node (192.0.2.100)
   │
   │ Traefik (SSL termination, routing)
   ↓

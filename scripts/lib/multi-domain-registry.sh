@@ -435,7 +435,7 @@ Commands:
 
   register-vps <tailscale_ip> <public_ip> <region> <provider>
                                           Register a VPS edge node
-                                          Example: 100.68.225.92 45.8.133.192 eu contabo
+                                          Example: 100.68.225.92 192.0.2.100 eu contabo
 
   unregister-vps <tailscale_ip>           Unregister a VPS node
                                           Example: 100.68.225.92
@@ -460,7 +460,7 @@ Examples:
   multi-domain-registry.sh init
   multi-domain-registry.sh register-domain example.com "Main site"
   multi-domain-registry.sh register-domain test.org "Test site"
-  multi-domain-registry.sh register-vps 100.68.225.92 45.8.133.192 eu contabo
+  multi-domain-registry.sh register-vps 100.68.225.92 192.0.2.100 eu contabo
   multi-domain-registry.sh register-vps 100.70.123.45 167.99.1.1 us digitalocean
 
   # Configure routing

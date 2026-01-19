@@ -283,7 +283,7 @@ Point domain to multiple VPS IPs:
 
 ```
 # DNS Records
-A    @    45.8.133.192
+A    @    192.0.2.100
 A    @    31.220.87.37
 A    @    <new-vps-ip>
 ```

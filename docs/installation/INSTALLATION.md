@@ -450,7 +450,7 @@ sudo ./scripts/installation/install-vps-edge-node.sh \
   --name "vps-edge-01" \
   --tailscale-ip "100.80.255.123" \
   --user "sammy" \
-  --public-ip "45.8.133.192" \
+  --public-ip "192.0.2.100" \
   --domain "example.com" \
   --email "admin@example.com" \
   --location "NYC"
@@ -491,7 +491,7 @@ Choose **3) VPS Edge Node** and answer the prompts for VPS details
 1. **VPS Node Name** (e.g., `vps-edge-01`, `nyc-edge`)
 2. **VPS Tailscale IP** (e.g., `100.101.237.15`)
 3. **VPS SSH Username** (e.g., `sammy`)
-4. **VPS Public IPv4 Address** (e.g., `45.8.133.192`)
+4. **VPS Public IPv4 Address** (e.g., `192.0.2.100`)
 5. **VPS Primary Domain** (e.g., `example.com`)
 6. **SSL Email Address** (e.g., `admin@example.com`)
 7. **VPS Location** (Optional: e.g., `NYC`, `London`)
@@ -544,7 +544,7 @@ After installing your VPS, you can expose your applications to the internet.
 
 Point your domain to your VPS public IP using your domain registrar's DNS management page (for example, Name.com, GoDaddy, or Cloudflare):
 
-`YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `45.8.133.192`), without any `<` or `>` characters.
+`YOUR_VPS_PUBLIC_IP` is a placeholder – replace it with the public IPv4 address your VPS provider gives you (for example, `192.0.2.100`), without any `<` or `>` characters.
 
 ```
 Type: A

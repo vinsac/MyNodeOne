@@ -13,7 +13,7 @@ When you host multiple domains (e.g., `example.com` and `test.org`) on the same 
 │                           INTERNET                                       │
 │                                                                          │
 │  User visits: https://example.com                                 │
-│  DNS resolves to: 45.8.133.192 (your VPS)                               │
+│  DNS resolves to: 192.0.2.100 (your VPS)                               │
 └────────────────────────────────┬────────────────────────────────────────┘
                                  │
                                  ▼
@@ -53,7 +53,7 @@ Every HTTP/HTTPS request includes a **Host header** that specifies which domain 
 |---------|-------------|----------------|
 | `https://example.com/blog` | `example.com` | Route to blog service |
 | `https://test.org/app` | `test.org` | Route to test service |
-| `https://45.8.133.192/` | (none - IP only) | 404 or default page |
+| `https://192.0.2.100/` | (none - IP only) | 404 or default page |
 
 ### Generated Traefik Configuration
 
@@ -109,9 +109,9 @@ When multiple domains point to the same VPS IP address:
 
 ```
 DNS Records:
-  example.com    →  A  →  45.8.133.192
-  test.org      →  A  →  45.8.133.192
-  blog.example.com   →  A  →  45.8.133.192
+  example.com    →  A  →  192.0.2.100
+  test.org      →  A  →  192.0.2.100
+  blog.example.com   →  A  →  192.0.2.100
 ```
 
 **Request Flow:**
@@ -121,7 +121,7 @@ User: https://example.com
          │
          ▼
     ┌─────────────────────────────────────────────────────┐
-    │              VPS (45.8.133.192)                     │
+    │              VPS (192.0.2.100)                     │
     │                                                     │
     │  Traefik receives request:                         │
     │    Host: example.com                         │
@@ -148,7 +148,7 @@ Each domain gets:
 
 ### What happens when someone visits the VPS IP directly?
 
-If a user types `http://45.8.133.192` in their browser:
+If a user types `http://192.0.2.100` in their browser:
 
 1. **No Host header match** - The request contains an IP, not a domain
 2. **No router rule matches** - Traefik has no rule for this "host"
@@ -190,7 +190,7 @@ For high availability, you can point a domain to multiple VPS nodes using DNS ro
 ### DNS Configuration
 
 ```
-example.com    →  A  →  45.8.133.192  (VPS A - EU)
+example.com    →  A  →  192.0.2.100  (VPS A - EU)
 example.com    →  A  →  167.99.1.1    (VPS B - US)
 ```
 
@@ -201,7 +201,7 @@ example.com    →  A  →  167.99.1.1    (VPS B - US)
 │                           USER BROWSER                                   │
 │                                                                          │
 │  DNS query for example.com returns:                               │
-│    - 45.8.133.192 (VPS A)                                               │
+│    - 192.0.2.100 (VPS A)                                               │
 │    - 167.99.1.1   (VPS B)                                               │
 │                                                                          │
 │  Browser picks one (round-robin or random)                              │
@@ -212,7 +212,7 @@ example.com    →  A  →  167.99.1.1    (VPS B - US)
            ┌───────────────┐         ┌───────────────┐
            │    VPS A      │         │    VPS B      │
            │   (EU)        │         │   (US)        │
-           │ 45.8.133.192  │         │  167.99.1.1   │
+           │  192.0.2.100  │         │  167.99.1.1   │
            │               │         │               │
            │   Traefik     │         │   Traefik     │
            │   (identical  │         │   (identical  │
@@ -274,7 +274,7 @@ When using multiple VPS nodes for the same domain:
 | `https://example.com` | `example.com` | Routes to blog backend |
 | `https://test.org` | `test.org` | Routes to test backend |
 | `https://api.test.org` | `api.test.org` | Routes to API backend (if configured) |
-| `http://45.8.133.192` | (none) | 404 Not Found |
+| `http://192.0.2.100` | (none) | 404 Not Found |
 | `https://unknown.com` → VPS IP | `unknown.com` | 404 (no matching rule) |
 
 ---

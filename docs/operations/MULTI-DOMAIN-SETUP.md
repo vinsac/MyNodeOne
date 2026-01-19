@@ -57,7 +57,7 @@ sudo ./scripts/lib/multi-domain-registry.sh register-domain test.org "Test site"
 ```bash
 # Format: register-vps <tailscale_ip> <public_ip> <region> <provider>
 sudo ./scripts/lib/multi-domain-registry.sh register-vps \
-    100.68.225.92 45.8.133.192 eu contabo
+    100.68.225.92 192.0.2.100 eu contabo
 
 sudo ./scripts/lib/multi-domain-registry.sh register-vps \
     100.70.123.45 167.99.1.1 us digitalocean
@@ -130,7 +130,7 @@ Registered Domains:
   - test.org: Test site
 
 Registered VPS Nodes:
-  - 100.68.225.92 → 45.8.133.192 (eu)
+  - 100.68.225.92 → 192.0.2.100 (eu)
   - 100.70.123.45 → 167.99.1.1 (us)
 
 Service Routing:

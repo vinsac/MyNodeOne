@@ -76,7 +76,7 @@ MyNodeOne uses a **two-tier node architecture** to manage both Kubernetes cluste
 {
   "name": "vps-edge-0001",
   "ip": "100.99.197.116",
-  "public_ip": "45.8.133.192",
+  "public_ip": "192.0.2.100",
   "ssh_user": "sammy",
   "status": "online",
   "last_sync": "2026-01-10T10:00:00Z"

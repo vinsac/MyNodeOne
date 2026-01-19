@@ -608,7 +608,7 @@ print_summary() {
     echo
     if [ -n "$DOMAIN" ]; then
         echo "  5. Point your DNS to VPS IP addresses:"
-        echo "     A    @    45.8.133.192"
+        echo "     A    @    192.0.2.100"
         echo "     A    @    31.220.87.37"
         echo
     fi

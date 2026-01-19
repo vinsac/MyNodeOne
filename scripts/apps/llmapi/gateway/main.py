@@ -3113,10 +3113,8 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
     import secrets
     
     body = await request.json()
-    print(f"DEBUG: Received body: {body}")  # Debug logging
     name = body.get("name", "unnamed")
     scopes = body.get("scopes", ["inference"])  # Default to inference only
-    print(f"DEBUG: name={name}, scopes={scopes}")  # Debug logging
     
     # Validate scopes
     valid_scopes = ["inference", "metrics", "admin"]
@@ -3128,7 +3126,6 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
     
     requests_per_minute = body.get("requests_per_minute", 60)
     tokens_per_day = body.get("tokens_per_day", 100000)
-    print(f"DEBUG: rpm={requests_per_minute}, tokens={tokens_per_day}")  # Debug logging
     
     key_id = secrets.token_hex(16)
     api_key = f"sk-mynodeone-{key_id}"

@@ -2925,6 +2925,90 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 console.error('Failed to load stats:', e);
             }
         }
+        
+        // API Key Management Functions
+        async function createKey() {
+            const name = document.getElementById('key-name').value.trim();
+            const rpm = parseInt(document.getElementById('key-rpm').value) || 60;
+            const tokens = parseInt(document.getElementById('key-tokens').value) || 100000;
+            
+            // Get selected scopes
+            const scopes = [];
+            if (document.getElementById('scope-inference').checked) scopes.push('inference');
+            if (document.getElementById('scope-metrics').checked) scopes.push('metrics');
+            if (document.getElementById('scope-admin').checked) scopes.push('admin');
+            
+            if (!name) {
+                alert('Please enter a key name');
+                return;
+            }
+            
+            if (scopes.length === 0) {
+                alert('Please select at least one scope');
+                return;
+            }
+            
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/keys`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: name,
+                        requests_per_minute: rpm,
+                        tokens_per_day: tokens,
+                        scopes: scopes
+                    })
+                });
+                
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const resultDiv = document.getElementById('new-key-result');
+                    const keyValueEl = document.getElementById('new-key-value');
+                    
+                    keyValueEl.textContent = data.key;
+                    resultDiv.classList.remove('hidden');
+                    
+                    // Clear form
+                    document.getElementById('key-name').value = '';
+                    document.getElementById('key-rpm').value = '60';
+                    document.getElementById('key-tokens').value = '100000';
+                    document.getElementById('scope-inference').checked = true;
+                    document.getElementById('scope-metrics').checked = false;
+                    document.getElementById('scope-admin').checked = false;
+                    
+                    // Reload keys list
+                    loadKeys();
+                    
+                    alert('API key created! Save it now - this is the only time it will be shown.');
+                } else {
+                    const errData = await resp.json();
+                    alert('Failed to create key: ' + (errData.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to create key: ' + e.message);
+            }
+        }
+        
+        async function revokeKey(key) {
+            if (!confirm('Are you sure you want to revoke this API key? This action cannot be undone.')) return;
+            
+            try {
+                const resp = await adminFetch(`${API_BASE}/admin/keys/${encodeURIComponent(key)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (resp.ok) {
+                    alert('API key revoked successfully');
+                    loadKeys();
+                    loadStats();
+                } else {
+                    const errData = await resp.json();
+                    alert('Failed to revoke key: ' + (errData.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to revoke key: ' + e.message);
+            }
+        }
 
         // Validate API key and load everything on page load
         (async function() {

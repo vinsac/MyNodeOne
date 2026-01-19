@@ -770,7 +770,7 @@ else
 fi
 
 echo ""
-echo "✅ Deployment complete!"
+echo "✅ Deployment complete"
 echo ""
 DEPLOY_SCRIPT
 

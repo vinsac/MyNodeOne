@@ -164,7 +164,7 @@ orchestrate_vps_installation \
 
 if [ $? -eq 0 ]; then
     echo
-    echo "✅ VPS installation successful!"
+    echo "✅ VPS installation successful"
     echo
     
     # =========================================================================
@@ -402,7 +402,7 @@ if [ $? -eq 0 ]; then
     # Final Status
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     if [ "$VERIFICATION_PASSED" = true ] && [ "$REGISTRATION_FAILED" = false ]; then
-        echo "✅ VPS registration completed successfully!"
+        echo "✅ VPS registration completed successfully"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo
         echo "✅ VPS Edge Node: $VPS_NODE_NAME"
@@ -433,6 +433,6 @@ if [ $? -eq 0 ]; then
     fi
 else
     echo
-    echo "❌ VPS installation failed!"
+    echo "❌ VPS installation failed"
     exit 1
 fi

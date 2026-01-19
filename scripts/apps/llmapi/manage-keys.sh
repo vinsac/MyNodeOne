@@ -125,7 +125,7 @@ cmd_create() {
     echo "   Scopes:  $scopes"
     echo "   Quota:   $tokens tokens/day, $rpm requests/min"
     echo ""
-    echo "   Save this key securely - it cannot be retrieved later!"
+    echo "   Save this key securely - it cannot be retrieved later"
     echo ""
 }
 

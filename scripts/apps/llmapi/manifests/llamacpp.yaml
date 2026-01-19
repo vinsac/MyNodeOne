@@ -183,7 +183,7 @@ spec:
             echo "✓ Model will be reused on next pod restart/reinstall"
             echo "Size: $(echo $FINAL_SIZE | awk '{printf "%.1fG", $1/1024/1024/1024}')"
           else
-            echo "ERROR: Download failed!"
+            echo "ERROR: Download failed"
             exit 1
           fi
         env:

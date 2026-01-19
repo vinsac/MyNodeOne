@@ -670,7 +670,7 @@ main() {
     
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Longhorn Installation Complete!"
+    echo "  Longhorn Installation Complete"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     log_success "Longhorn is now the default storage class"

@@ -97,5 +97,5 @@ case $choice in
 esac
 
 echo ""
-echo "✅ Uninstallation complete!"
+echo "✅ Uninstallation complete"
 echo ""

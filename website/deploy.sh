@@ -109,7 +109,7 @@ if [ -z "$SERVICE_IP" ]; then
 fi
 
 echo
-echo "✓ MyNodeOne Documentation Website deployed successfully!"
+echo "✓ MyNodeOne Documentation Website deployed successfully"
 echo
 echo "Access it at: http://$SERVICE_IP"
 echo

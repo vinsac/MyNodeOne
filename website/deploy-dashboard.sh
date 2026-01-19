@@ -201,7 +201,7 @@ if [ -z "$SERVICE_IP" ]; then
 fi
 
 echo ""
-echo "✓ Dashboard deployed successfully!"
+echo "✓ Dashboard deployed successfully"
 echo ""
 echo "📍 Access at: http://$SERVICE_IP"
 echo "📍 Will also be available at: http://${CLUSTER_DOMAIN}.local (after DNS setup)"

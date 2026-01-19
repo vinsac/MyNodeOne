@@ -483,5 +483,5 @@ if [ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]; then
     source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "paperless" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "paperless"
 fi
 
-echo "✅ Installation complete!"
+echo "✅ Installation complete"
 echo ""

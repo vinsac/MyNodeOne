@@ -52,6 +52,10 @@ K3S_VERSION="v1.28.5+k3s1"
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source shared utilities
+source "$SCRIPT_DIR/../lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
+
 # Helper functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -87,6 +91,15 @@ check_requirements() {
     log_success "Node Name: $NODE_NAME"
     log_success "Tailscale IP: $TAILSCALE_IP"
     log_success "Control Plane: $CONTROL_PLANE_IP"
+    
+    # Verify we can resolve the node name via our new logic if it already exists
+    export_k8s_config || true
+    local detected_name=$(get_k8s_node_name 2>/dev/null || echo "")
+    if [[ -n "$detected_name" ]] && [[ "$detected_name" != "$NODE_NAME" ]]; then
+        log_warn "Identity mismatch: Config says '$NODE_NAME' but cluster sees '$detected_name'"
+        log_info "Proceeding with config name: $NODE_NAME"
+    fi
+    
     log_success "Prerequisites check passed"
 }
 

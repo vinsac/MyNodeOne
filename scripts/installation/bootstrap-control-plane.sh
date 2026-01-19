@@ -1868,7 +1868,6 @@ print_summary() {
     echo "  ✓ MetalLB (Load Balancer)"
     echo "  ✓ Traefik (Ingress Controller)"
     echo "  ✓ Longhorn (Distributed Storage)"
-    echo "  ✓ MinIO (Object Storage)"
     echo "  ✓ Prometheus + Grafana + Loki (Monitoring)"
     echo "  ✓ ArgoCD (GitOps)"
     echo "  ✓ Tailscale Subnet Routes (Network Access)"

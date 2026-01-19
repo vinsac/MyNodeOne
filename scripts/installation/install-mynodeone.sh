@@ -1535,7 +1535,7 @@ main() {
         esac
         
         echo
-        print_header "Installation Complete!"
+        print_header "Installation Complete"
         print_success "Your MyNodeOne node has been set up successfully 🎉"
         echo
         echo "Next steps:"

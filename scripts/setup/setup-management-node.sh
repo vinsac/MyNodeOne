@@ -193,7 +193,7 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
     # Pass laptop repo path so sync-controller knows where to run scripts
     log_info "Registering in enterprise registry..."
     ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd '$CONTROL_PLANE_REPO_PATH' && sudo SKIP_SSH_VALIDATION=true ./scripts/lib/node-registry-manager.sh register management_laptops \
+        "cd '$CONTROL_PLANE_REPO_PATH' && sudo SKIP_SSH_VALIDATION=true '$CONTROL_PLANE_REPO_PATH/scripts/lib/node-registry-manager.sh' register management_laptops \
         $TAILSCALE_IP $HOSTNAME $USERNAME 8080 '$LAPTOP_REPO_PATH'" 2>&1 | grep -v "Warning: Permanently added"
     
     if [ $? -eq 0 ]; then
@@ -217,6 +217,38 @@ if [ -n "$CONTROL_PLANE_REPO_PATH" ]; then
     fi
 fi
 
+# Install node agent for heartbeat and visibility in nodes-status
+echo ""
+log_info "Installing node agent for cluster visibility..."
+if [ -f "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" ]; then
+    # Fetch API token from control plane
+    API_TOKEN=$(ssh_with_control "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null || echo "")
+    
+    if [ -n "$API_TOKEN" ]; then
+        sudo "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
+            --control-plane-ip "$CONTROL_PLANE_IP" \
+            --node-type laptop \
+            --node-name "$HOSTNAME" \
+            --api-token "$API_TOKEN" \
+            --poll-interval 60
+        
+        if [ $? -eq 0 ]; then
+            log_success "Node agent installed - laptop will appear in nodes-status"
+        else
+            log_warn "Node agent installation failed - laptop won't appear in nodes-status"
+            log_warn "You can install it manually later with:"
+            log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $CONTROL_PLANE_IP"
+        fi
+    else
+        log_warn "Could not fetch API token - skipping node agent installation"
+        log_warn "Install manually later with:"
+        log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $CONTROL_PLANE_IP --ssh-user $CONTROL_PLANE_SSH_USER"
+    fi
+else
+    log_warn "Node agent installer not found - skipping"
+fi
+
 # Cleanup SSH ControlMaster
 cleanup_ssh_control_master "$CONTROL_PLANE_SSH_USER" "$CONTROL_PLANE_IP"
 
@@ -232,6 +264,7 @@ echo ""
 
 log_success "What's configured:"
 echo "  • Registered in control plane registry"
+echo "  • Node agent installed (sends heartbeats)"
 echo "  • DNS entries configured in /etc/hosts"
 echo "  • kubectl access to cluster"
 echo "  • Access services via .local domains"
@@ -242,6 +275,10 @@ log_info "How auto-sync works:"
 echo "  • When apps are installed, control plane pushes DNS updates"
 echo "  • Your laptop receives updates automatically via SSH"
 echo "  • New services become accessible within ~10 seconds"
+echo ""
+
+log_info "Check your laptop status:"
+echo "  ssh <control-plane-user>@<control-plane-ip> 'cd ~/MyNodeOne && ./scripts/nodes/nodes-status.sh'"
 echo ""
 
 log_info "Manual sync (if needed):"

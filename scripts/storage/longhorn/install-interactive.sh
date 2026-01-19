@@ -432,13 +432,17 @@ install_longhorn_helm() {
     log_success "Longhorn installed successfully"
 }
 
-# Add additional disks to Longhorn
-add_additional_disks() {
-    if [[ ${#MOUNTED_DISKS[@]} -le 1 ]]; then
+# Add disks to Longhorn node configuration
+# Arguments:
+#   $1: true if Longhorn was newly installed/upgraded via Helm, false if skipped
+add_node_disks_to_longhorn() {
+    local newly_installed="${1:-false}"
+    
+    if [[ ${#MOUNTED_DISKS[@]} -eq 0 ]]; then
         return 0
     fi
     
-    log_info "Configuring additional disks in Longhorn..."
+    log_info "Configuring disks in Longhorn..."
     
     # Wait for Longhorn to initialize
     sleep 10
@@ -458,22 +462,17 @@ add_additional_disks() {
         return 1
     fi
     
-    # Wait for Longhorn node CRD
-    local max_wait=30
-    local waited=0
-    while ! kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; do
-        sleep 2
-        waited=$((waited + 2))
-        if [[ $waited -ge $max_wait ]]; then
-            log_warn "Longhorn node CRD not ready, skipping additional disks"
-            return 1
-        fi
-    done
-    
-    # Add each additional disk
+    # Ensure node itself is schedulable
+    log_info "Ensuring node $node_name is schedulable in Longhorn..."
+    kubectl -n longhorn-system patch nodes.longhorn.io "$node_name" --type=merge \
+        -p '{"spec":{"allowScheduling":true}}' &>/dev/null || true
+
+    # Add each disk
     for i in "${!MOUNTED_DISKS[@]}"; do
-        if [[ $i -eq 0 ]]; then
-            continue  # Skip first disk (already configured)
+        # Skip first disk ONLY if it was already set as defaultDataPath during fresh Helm install
+        if [[ "$newly_installed" == "true" ]] && [[ $i -eq 0 ]]; then
+            log_info "Skipping first disk (handled by Helm defaultDataPath)"
+            continue
         fi
         
         local disk_path="${MOUNTED_DISKS[$i]}"
@@ -489,7 +488,7 @@ add_additional_disks() {
         fi
     done
     
-    log_success "Additional disks configured"
+    log_success "Longhorn disk configuration complete"
 }
 
 # Fix disk UUID mismatches (when disks are reformatted)
@@ -701,8 +700,12 @@ main() {
         log_info "Skipping global Longhorn Helm installation (already present on cluster)"
     fi
     
-    # Add additional disks (this is node-local)
-    add_additional_disks
+    # Add disks to Longhorn (this is node-local)
+    if [[ "$longhorn_installed" == "true" ]]; then
+        add_node_disks_to_longhorn "false"
+    else
+        add_node_disks_to_longhorn "true"
+    fi
     
     # Fix disk UUID mismatches (if disks were reformatted)
     fix_disk_uuid_mismatches

@@ -23,6 +23,15 @@
 # 6. Register in service discovery
 ###############################################################################
 
+# Set KUBECONFIG appropriately based on node type and available configs
+if [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+    export KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
+elif [ -n "${SUDO_USER:-}" ] && [ -f "/home/$SUDO_USER/.kube/config" ]; then
+    export KUBECONFIG="/home/$SUDO_USER/.kube/config"
+elif [ -f "$HOME/.kube/config" ]; then
+    export KUBECONFIG="$HOME/.kube/config"
+fi
+
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -45,6 +54,40 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[✗]${NC} $1"
+}
+
+# Get current Kubernetes node name robustly
+get_k8s_node_name() {
+    # 1. Use NODE_NAME from config if set and valid
+    if [[ -n "${NODE_NAME:-}" ]]; then
+        if kubectl get node "$NODE_NAME" &>/dev/null; then
+            echo "$NODE_NAME"
+            return 0
+        fi
+    fi
+
+    local my_ip=$(tailscale ip -4 2>/dev/null | head -n1)
+    if [[ -n "$my_ip" ]]; then
+        local node=$(kubectl get nodes -o json | jq -r ".items[] | select(.status.addresses[] | select(.type==\"InternalIP\" and .address==\"$my_ip\")) | .metadata.name" 2>/dev/null)
+        if [[ -n "$node" ]]; then
+            echo "$node"
+            return 0
+        fi
+    fi
+
+    local host_name=$(hostname)
+    if kubectl get node "$host_name" &>/dev/null; then
+        echo "$host_name"
+        return 0
+    fi
+
+    local fallback=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [[ -n "$fallback" ]]; then
+        echo "$fallback"
+        return 0
+    fi
+
+    kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || hostname
 }
 
 # Get script directory and project root using standardized utility
@@ -90,7 +133,8 @@ fi
 CLUSTER_DOMAIN=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "mynodeone")
 
 # Select target node
-echo "Available nodes:"
+local current_node=$(get_k8s_node_name)
+echo "Available nodes (Current: $current_node):"
 echo ""
 kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,ROLES:.metadata.labels.node-role\\.kubernetes\\.io/worker --no-headers | nl
 echo ""

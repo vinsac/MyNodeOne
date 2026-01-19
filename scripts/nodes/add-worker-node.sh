@@ -446,8 +446,16 @@ print_summary() {
     echo "Installed Components:"
     echo "  ✓ K3s agent (joined cluster)"
     echo "  ✓ Node Agent (pull-based config sync)"
-    echo "  ✓ MinIO (Object Storage for backups)"
-    echo "  ✓ Velero (Backup system configured)"
+    
+    # Check if Longhorn is actually configured with disks
+    if kubectl get nodes.longhorn.io "$NODE_NAME" -n longhorn-system &>/dev/null; then
+        echo "  ✓ Longhorn (Storage configured)"
+    fi
+    
+    # Only show NVIDIA if detected
+    if lspci | grep -qi nvidia; then
+        echo "  ✓ NVIDIA GPU (Driver & Device Plugin)"
+    fi
     echo
     
     # Display MinIO credentials if available

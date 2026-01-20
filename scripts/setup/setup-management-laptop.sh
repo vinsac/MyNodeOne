@@ -58,7 +58,7 @@ log_error() {
 
 log_debug() {
     if [ "${DEBUG:-false}" = "true" ]; then
-        echo -e "${CYAN}[DEBUG]${NC} $1"
+        echo -e "${CYAN}[INFO]${NC} $1"
     fi
 }
 

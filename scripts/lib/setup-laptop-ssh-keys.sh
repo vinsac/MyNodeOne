@@ -37,8 +37,8 @@ else
     REMOTE_ACTUAL_HOME=$(getent passwd "$REMOTE_ACTUAL_USER" | cut -d: -f6)
 fi
 
-echo "[DEBUG] Running as user: $REMOTE_ACTUAL_USER"
-echo "[DEBUG] Home dir: $REMOTE_ACTUAL_HOME"
+echo "[INFO] Running as user: $REMOTE_ACTUAL_USER"
+echo "[INFO] Home dir: $REMOTE_ACTUAL_HOME"
 
 ###############################################################################
 # 1. Ensure root user has a MyNodeOne-specific SSH key

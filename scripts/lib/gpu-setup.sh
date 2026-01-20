@@ -34,13 +34,13 @@ REBOOT_REQUIRED=false
 
 # Check if NVIDIA GPU is present
 detect_nvidia_gpu() {
-    log_info "[DEBUG] Running GPU detection with lspci..."
+    log_info "[INFO] Running GPU detection with lspci..."
     local gpu_found=$(lspci 2>/dev/null | grep -i "nvidia")
     if [ -n "$gpu_found" ]; then
-        log_info "[DEBUG] GPU found: $gpu_found"
+        log_info "[INFO] GPU found: $gpu_found"
         return 0
     else
-        log_warn "[DEBUG] No NVIDIA GPU found in lspci output"
+        log_warn "[INFO] No NVIDIA GPU found in lspci output"
         return 1
     fi
 }
@@ -568,13 +568,13 @@ main() {
     local mode="interactive"
     local deploy_plugin=true
     
-    log_info "[DEBUG] gpu-setup.sh started with args: $@"
+    log_info "[INFO] gpu-setup.sh started with args: $@"
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --auto)
-                log_info "[DEBUG] Setting mode to 'auto'"
+                log_info "[INFO] Setting mode to 'auto'"
                 mode="auto"
                 shift
                 ;;
@@ -616,23 +616,23 @@ main() {
         exit 1
     fi
     
-    log_info "[DEBUG] Entering mode: $mode"
+    log_info "[INFO] Entering mode: $mode"
     
     case "$mode" in
         interactive)
-            log_info "[DEBUG] Interactive mode - prompting user"
+            log_info "[INFO] Interactive mode - prompting user"
             if prompt_gpu_setup; then
                 setup_gpu "$deploy_plugin"
             fi
             ;;
         auto)
-            log_info "[DEBUG] Auto mode - detecting GPU"
+            log_info "[INFO] Auto mode - detecting GPU"
             if detect_nvidia_gpu; then
-                log_info "[DEBUG] GPU detected - proceeding with setup"
+                log_info "[INFO] GPU detected - proceeding with setup"
                 setup_gpu "$deploy_plugin"
             else
                 log_info "No NVIDIA GPU detected - skipping GPU setup"
-                log_info "[DEBUG] Exiting due to no GPU detection"
+                log_info "[INFO] Exiting due to no GPU detection"
             fi
             ;;
         driver-only)
@@ -652,8 +652,8 @@ main() {
 
 # Run if executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    log_info "[DEBUG] Script executed directly, calling main"
+    log_info "[INFO] Script executed directly, calling main"
     main "$@"
 else
-    log_info "[DEBUG] Script sourced, functions available"
+    log_info "[INFO] Script sourced, functions available"
 fi

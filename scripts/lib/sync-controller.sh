@@ -196,7 +196,7 @@ push_sync_to_node() {
     while [[ $attempt -le $max_retries ]]; do
         log_info "Attempt $attempt/$max_retries: Syncing to $node_ip..."
         
-        # Capture output for debugging
+        # Capture output for information
         local sync_output
         local sync_exit_code
         

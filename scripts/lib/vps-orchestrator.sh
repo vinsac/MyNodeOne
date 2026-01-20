@@ -270,30 +270,30 @@ transfer_to_vps() {
     
     print_info "Transferring $local_path to VPS..."
     
-    # DEBUG: Show file info
+    # INFO: Show file info
     if [ -f "$local_path" ]; then
-        echo "[DEBUG] File exists: $local_path"
-        echo "[DEBUG] File ownership: $(ls -lh "$local_path" | awk '{print $3":"$4}')"
-        echo "[DEBUG] File permissions: $(stat -c '%a' "$local_path")"
+        echo "[INFO] File exists: $local_path"
+        echo "[INFO] File ownership: $(ls -lh "$local_path" | awk '{print $3":"$4}')"
+        echo "[INFO] File permissions: $(stat -c '%a' "$local_path")"
         
         # Ensure the file is readable by ACTUAL_USER
         chmod 644 "$local_path" 2>/dev/null || true
-        echo "[DEBUG] After chmod 644: $(stat -c '%a' "$local_path")"
+        echo "[INFO] After chmod 644: $(stat -c '%a' "$local_path")"
     elif [ -d "$local_path" ]; then
-        echo "[DEBUG] Directory exists: $local_path"
-        echo "[DEBUG] Directory ownership: $(ls -ldh "$local_path" | awk '{print $3":"$4}')"
+        echo "[INFO] Directory exists: $local_path"
+        echo "[INFO] Directory ownership: $(ls -ldh "$local_path" | awk '{print $3":"$4}')"
     else
         print_error "Source path does not exist: $local_path"
         return 1
     fi
     
-    # DEBUG: Show variables
-    echo "[DEBUG] ACTUAL_USER: $ACTUAL_USER"
-    echo "[DEBUG] ACTUAL_HOME: $ACTUAL_HOME"
-    echo "[DEBUG] SSH key: $ssh_key"
-    echo "[DEBUG] SSH key exists: $([ -f "$ssh_key" ] && echo 'YES' || echo 'NO')"
-    echo "[DEBUG] VPS target: $vps_user@$vps_ip:$remote_path"
-    echo "[DEBUG] SCP command: sudo -u $ACTUAL_USER scp -i $ssh_key -o ConnectTimeout=10 -r $local_path $vps_user@$vps_ip:$remote_path"
+    # INFO: Show variables
+    echo "[INFO] ACTUAL_USER: $ACTUAL_USER"
+    echo "[INFO] ACTUAL_HOME: $ACTUAL_HOME"
+    echo "[INFO] SSH key: $ssh_key"
+    echo "[INFO] SSH key exists: $([ -f "$ssh_key" ] && echo 'YES' || echo 'NO')"
+    echo "[INFO] VPS target: $vps_user@$vps_ip:$remote_path"
+    echo "[INFO] SCP command: sudo -u $ACTUAL_USER scp -i $ssh_key -o ConnectTimeout=10 -r $local_path $vps_user@$vps_ip:$remote_path"
     
     while [ $retry_count -lt $max_retries ]; do
         # Capture error output for debugging
@@ -306,7 +306,7 @@ transfer_to_vps() {
         retry_count=$((retry_count + 1))
         if [ $retry_count -lt $max_retries ]; then
             print_warning "Transfer failed, retrying ($retry_count/$max_retries)..."
-            echo "[DEBUG] Error output: $error_output"
+            echo "[INFO] Error output: $error_output"
             sleep 2
         else
             # Show error on final failure

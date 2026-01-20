@@ -1458,12 +1458,15 @@ main() {
         fi
     fi
     
-    echo
-    print_info "💾 Storage Setup:"
-    echo "  • Longhorn will prompt for disk selection during installation"
-    echo "  • MinIO (optional) will prompt separately for its disks"
-    echo "  • You can skip disk setup and use OS disk (works fine for testing)"
-    echo
+    # Only show storage setup info for control-plane and worker nodes
+    if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
+        echo
+        print_info "💾 Storage Setup:"
+        echo "  • Longhorn will prompt for disk selection during installation"
+        echo "  • MinIO (optional) will prompt separately for its disks"
+        echo "  • You can skip disk setup and use OS disk (works fine for testing)"
+        echo
+    fi
     
     echo
     print_success "Configuration complete"

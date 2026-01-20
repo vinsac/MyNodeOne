@@ -58,23 +58,25 @@ echo "  🌐 Syncing DNS Entries from Control Plane"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Fetch cluster domain with priority: env var > ConfigMap > config file > default
-# Priority 1: Environment variable (set during installation before ConfigMap exists)
-if [[ -n "${CLUSTER_DOMAIN:-}" ]]; then
-    log_info "Using cluster domain from environment: $CLUSTER_DOMAIN"
-# Priority 2: ConfigMap (authoritative source after installation)
-elif command -v kubectl &>/dev/null; then
-    # Ensure we use correct KUBECONFIG even under sudo
-    CLUSTER_DOMAIN=$(KUBECONFIG="${KUBECONFIG:-$ACTUAL_HOME/.kube/config}" kubectl get cm cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
-    if [[ -n "$CLUSTER_DOMAIN" ]]; then
-        log_info "Using cluster domain from cluster: $CLUSTER_DOMAIN"
+# Fetch cluster domain with priority: config file > ConfigMap > default
+# Priority 1: Config file (already loaded above, most reliable source)
+if [[ -z "${CLUSTER_DOMAIN:-}" ]]; then
+    # Priority 2: ConfigMap (if kubectl is available and config file didn't have it)
+    if command -v kubectl &>/dev/null; then
+        # Ensure we use correct KUBECONFIG even under sudo
+        CLUSTER_DOMAIN=$(KUBECONFIG="${KUBECONFIG:-$ACTUAL_HOME/.kube/config}" kubectl get cm cluster-info -n kube-system -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+        if [[ -n "$CLUSTER_DOMAIN" ]]; then
+            log_info "Using cluster domain from cluster: $CLUSTER_DOMAIN"
+        fi
     fi
-fi
-
-# Priority 3: Config file or default
-if [[ -z "$CLUSTER_DOMAIN" ]]; then
-    CLUSTER_DOMAIN="mynodeone"
-    log_warn "Could not fetch cluster domain from cluster, using: $CLUSTER_DOMAIN"
+    
+    # Priority 3: Default fallback
+    if [[ -z "$CLUSTER_DOMAIN" ]]; then
+        CLUSTER_DOMAIN="mynodeone"
+        log_warn "Could not fetch cluster domain from cluster, using: $CLUSTER_DOMAIN"
+    fi
+else
+    log_info "Using cluster domain from config: $CLUSTER_DOMAIN"
 fi
 
 # Check if kubectl is configured
@@ -147,7 +149,9 @@ if [[ -z "$DNS_ENTRIES" ]]; then
     echo "  • Connection to cluster failed"
     echo ""
     echo "Run this on control plane to initialize:"
-    echo "  sudo $PROJECT_ROOT/scripts/lib/service-registry.sh sync"
+    # Use CONTROL_PLANE_REPO_PATH from config if available, otherwise use a generic path
+    CONTROL_PLANE_PATH="${CONTROL_PLANE_REPO_PATH:-~/MyNodeOne}"
+    echo "  sudo $CONTROL_PLANE_PATH/scripts/lib/service-registry.sh sync"
     exit 0
 fi
 

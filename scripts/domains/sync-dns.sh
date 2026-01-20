@@ -48,8 +48,17 @@ export_k8s_config || true
 
 # Load configuration
 CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+echo "[DEBUG] ACTUAL_USER=$ACTUAL_USER" >&2
+echo "[DEBUG] ACTUAL_HOME=$ACTUAL_HOME" >&2
+echo "[DEBUG] CONFIG_FILE=$CONFIG_FILE" >&2
+echo "[DEBUG] Config file exists: $([ -f "$CONFIG_FILE" ] && echo 'yes' || echo 'no')" >&2
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
+    echo "[DEBUG] Config file loaded" >&2
+    echo "[DEBUG] CLUSTER_DOMAIN after loading config: ${CLUSTER_DOMAIN:-<not set>}" >&2
+    echo "[DEBUG] CONTROL_PLANE_REPO_PATH after loading config: ${CONTROL_PLANE_REPO_PATH:-<not set>}" >&2
+else
+    echo "[DEBUG] Config file not found at $CONFIG_FILE" >&2
 fi
 
 echo ""
@@ -60,7 +69,9 @@ echo ""
 
 # Fetch cluster domain with priority: config file > ConfigMap > default
 # Priority 1: Config file (already loaded above, most reliable source)
+echo "[DEBUG] Checking CLUSTER_DOMAIN: ${CLUSTER_DOMAIN:-<empty>}" >&2
 if [[ -z "${CLUSTER_DOMAIN:-}" ]]; then
+    echo "[DEBUG] CLUSTER_DOMAIN is empty, trying ConfigMap..." >&2
     # Priority 2: ConfigMap (if kubectl is available and config file didn't have it)
     if command -v kubectl &>/dev/null; then
         # Ensure we use correct KUBECONFIG even under sudo

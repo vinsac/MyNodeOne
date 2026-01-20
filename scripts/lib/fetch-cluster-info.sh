@@ -244,11 +244,11 @@ REMOTE_SUDO_EOF
     
     log_success "Connected to control plane"
     
-    # Debug: Show raw output for troubleshooting
+    # Info: Show raw output for troubleshooting
     if [ "${DEBUG:-}" = "1" ]; then
-        log_info "DEBUG: Raw output from control plane:"
+        log_info "INFO: Raw output from control plane:"
         cat "$temp_output"
-        echo "---END DEBUG---"
+        echo "---END INFO---"
     fi
     
     # Extract values from output - handle both with and without terminal escape sequences
@@ -272,7 +272,7 @@ REMOTE_SUDO_EOF
     if [ -z "$cluster_name" ] || [ -z "$cluster_domain" ]; then
         log_error "Could not read cluster configuration from control plane"
         log_info "Make sure ~/.mynodeone/config.env exists on control plane"
-        log_info "DEBUG: Showing raw output for diagnosis:"
+        log_info "INFO: Showing raw output for diagnosis:"
         echo "--- START RAW OUTPUT ---"
         cat "$temp_output" | head -30
         echo "--- END RAW OUTPUT ---"

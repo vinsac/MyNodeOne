@@ -436,6 +436,199 @@ install_helpful_tools() {
     fi
 }
 
+register_laptop_with_cluster() {
+    local control_plane_user="$1"
+    local control_plane_ip="$2"
+    
+    print_header "Management Laptop Registration"
+    
+    # Get laptop details
+    local tailscale_ip=$(tailscale ip -4 2>/dev/null || echo "")
+    local hostname=$(hostname)
+    local username="$ACTUAL_USER"
+    
+    if [ -z "$tailscale_ip" ]; then
+        log_warn "Tailscale not detected - skipping registration"
+        log_info "Install Tailscale to enable automatic DNS sync"
+        return 1
+    fi
+    
+    log_info "Laptop Details:"
+    echo "  • Tailscale IP: $tailscale_ip"
+    echo "  • Hostname: $hostname"
+    echo "  • Username: $username"
+    echo ""
+    
+    log_info "Registering with control plane..."
+    echo ""
+    
+    # Check if we already have the path saved in config
+    local control_plane_repo_path="${CONTROL_PLANE_REPO_PATH:-}"
+    
+    if [ -z "$control_plane_repo_path" ]; then
+        # Try to get authoritative path from cluster configmap first
+        log_info "Fetching MyNodeOne path from cluster config..."
+        
+        control_plane_repo_path=$(ssh_with_control "$control_plane_user@$control_plane_ip" \
+            "sudo kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.repo-path}' 2>/dev/null" || echo "")
+        
+        if [ -n "$control_plane_repo_path" ]; then
+            log_success "Found authoritative path from cluster: $control_plane_repo_path"
+        else
+            # Fallback: search filesystem
+            log_info "No path in cluster config, searching filesystem..."
+            
+            control_plane_repo_path=$(ssh_with_control "$control_plane_user@$control_plane_ip" \
+                "find /root /home -maxdepth 3 -type d -name MyNodeOne 2>/dev/null | head -n 1" 2>/dev/null)
+            
+            if [ -z "$control_plane_repo_path" ]; then
+                log_warn "Could not auto-detect MyNodeOne path on control plane"
+                log_info "Trying standard locations..."
+                
+                for path in ~/MyNodeOne /root/MyNodeOne /opt/MyNodeOne; do
+                    if ssh_with_control "$control_plane_user@$control_plane_ip" "[ -d '$path' ]" 2>/dev/null; then
+                        control_plane_repo_path="$path"
+                        break
+                    fi
+                done
+            fi
+            
+            if [ -n "$control_plane_repo_path" ]; then
+                log_success "Found MyNodeOne at: $control_plane_repo_path"
+            fi
+        fi
+        
+        if [ -n "$control_plane_repo_path" ]; then
+            # Save the path for future use
+            if ! grep -q "CONTROL_PLANE_REPO_PATH" ~/.mynodeone/config.env 2>/dev/null; then
+                echo "CONTROL_PLANE_REPO_PATH=\"$control_plane_repo_path\"" >> ~/.mynodeone/config.env
+                log_info "Saved repo path to config for future use"
+            fi
+        else
+            log_warn "Could not find MyNodeOne on control plane"
+            log_info "Skipping registry registration (can be done manually later)"
+            return 1
+        fi
+    fi
+    
+    if [ -n "$control_plane_repo_path" ]; then
+        log_info "Using MyNodeOne at: $control_plane_repo_path"
+        
+        # Get laptop's repo path
+        local laptop_repo_path="$PROJECT_ROOT"
+        log_info "Laptop repo path: $laptop_repo_path"
+        
+        # Register using node registry manager
+        log_info "Registering in enterprise registry..."
+        ssh_with_control "$control_plane_user@$control_plane_ip" \
+            "cd '$control_plane_repo_path' && sudo SKIP_SSH_VALIDATION=true '$control_plane_repo_path/scripts/lib/node-registry-manager.sh' register management_laptops \
+            $tailscale_ip $hostname $username 8080 '$laptop_repo_path'" 2>&1 | grep -v "Warning: Permanently added"
+        
+        if [ $? -eq 0 ]; then
+            log_success "Laptop registered in sync controller"
+            
+            # Validate registration in ConfigMap
+            log_info "Validating registration..."
+            local laptop_check=$(ssh_with_control "$control_plane_user@$control_plane_ip" \
+                "sudo kubectl get cm sync-controller-registry -n kube-system -o jsonpath='{.data.registry\.json}' 2>/dev/null | jq -r '.management_laptops[] | select(.ip==\"$tailscale_ip\") | .ssh_user'" 2>/dev/null || echo "")
+            
+            if [ "$laptop_check" = "$username" ]; then
+                log_success "✓ Registration verified in ConfigMap"
+                log_success "✓ Registered with user: $laptop_check"
+            else
+                log_warn "⚠ Could not verify registration (expected user: $username, got: ${laptop_check:-none})"
+            fi
+        else
+            log_error "Registration failed"
+            return 1
+        fi
+    fi
+    
+    # Install node agent for heartbeat and visibility
+    echo ""
+    log_info "Installing node agent for cluster visibility..."
+    if [ -f "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" ]; then
+        # Fetch API token from control plane
+        local api_token=$(ssh_with_control "$control_plane_user@$control_plane_ip" \
+            "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null || echo "")
+        
+        if [ -n "$api_token" ]; then
+            sudo "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
+                --control-plane-ip "$control_plane_ip" \
+                --node-type laptop \
+                --node-name "$hostname" \
+                --api-token "$api_token" \
+                --poll-interval 60
+            
+            if [ $? -eq 0 ]; then
+                log_success "Node agent installed - laptop will appear in nodes-status"
+            else
+                log_warn "Node agent installation failed - laptop won't appear in nodes-status"
+                log_warn "You can install it manually later with:"
+                log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $control_plane_ip"
+            fi
+        else
+            log_warn "Could not fetch API token - skipping node agent installation"
+            log_warn "Install manually later with:"
+            log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $control_plane_ip --ssh-user $control_plane_user"
+        fi
+    else
+        log_warn "Node agent installer not found - skipping"
+    fi
+    
+    # Run initial DNS sync
+    echo ""
+    log_info "Running initial sync..."
+    sudo "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✅ Management Laptop Configured"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    log_success "What's configured:"
+    echo "  • Registered in control plane registry"
+    echo "  • Node agent installed (sends heartbeats)"
+    echo "  • DNS entries configured in /etc/hosts"
+    echo "  • kubectl access to cluster"
+    echo "  • Access services via .local domains"
+    echo "  • Automatic DNS sync enabled"
+    echo ""
+    
+    log_info "How auto-sync works:"
+    echo "  • When apps are installed, control plane pushes DNS updates"
+    echo "  • Your laptop receives updates automatically via SSH"
+    echo "  • New services become accessible within ~10 seconds"
+    echo ""
+    
+    log_info "Check your laptop status:"
+    echo "  ssh <control-plane-user>@<control-plane-ip> 'cd ~/MyNodeOne && ./scripts/nodes/nodes-status.sh'"
+    echo ""
+    
+    log_info "Manual sync (if needed):"
+    echo "  sudo $PROJECT_ROOT/scripts/domains/sync-dns.sh"
+    echo ""
+    
+    # Show current services
+    local local_domain="${CLUSTER_DOMAIN:-mynodeone}.local"
+    local service_count=$(grep "$local_domain" /etc/hosts 2>/dev/null | wc -l)
+    if [ -z "$service_count" ]; then
+        service_count=0
+    fi
+    log_info "Currently configured services: $service_count"
+    echo ""
+    
+    if [ "$service_count" -gt 0 ]; then
+        echo "Available services:"
+        grep "$local_domain" /etc/hosts | awk '{print "  • http://" $2}' | sort
+        echo ""
+    fi
+    
+    log_success "Management laptop registration complete! 🎉"
+    echo ""
+}
+
 print_summary() {
     print_header "Setup Complete! 🎉"
     
@@ -572,19 +765,10 @@ main() {
     echo
     if prompt_confirm "Register laptop for auto-sync?" "y"; then
         # Use existing SSH ControlMaster for registration
-        if [ -f "$PROJECT_ROOT/scripts/setup/setup-management-node.sh" ]; then
-            log_info "Registering laptop in cluster registry..."
-            
-            # Export variables needed by registration script
-            export CONTROL_PLANE_IP
-            export CONTROL_PLANE_SSH_USER="$CONTROL_PLANE_USER"
-            
-            # Run the registration script
-            # We don't need to pass CP-IP/USER again since we've established ControlMaster
-            bash "$PROJECT_ROOT/scripts/setup/setup-management-node.sh"
-        else
-            log_warn "Registration script not found: scripts/setup/setup-management-node.sh"
-        fi
+        log_info "Registering laptop in cluster registry..."
+        
+        # Call the integrated registration function
+        register_laptop_with_cluster "$CONTROL_PLANE_USER" "$CONTROL_PLANE_IP"
     fi
 
     # Finalizing Permissions

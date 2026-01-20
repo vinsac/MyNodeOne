@@ -166,7 +166,7 @@ echo ""
 echo "2. Register your management laptops:"
 echo "   On each laptop, run:"
 echo "   cd ~/MyNodeOne && git pull origin main"
-echo "   sudo ./scripts/setup/setup-management-node.sh"
+echo "   sudo ./scripts/setup/setup-laptop.sh"
 echo ""
 
 echo "3. Verify everything works:"

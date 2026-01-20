@@ -509,16 +509,11 @@ main() {
     done
     echo
     
-    # Step 7: Auto-register in enterprise registry
+    # Step 7: Enterprise Registry Registration
+    # NOTE: Registration functionality has been merged into setup-laptop.sh
+    # This step is kept as a placeholder for backward compatibility with the step numbering
     print_header "Step 7: Enterprise Registry Registration"
-    
-    if [ -f "$PROJECT_ROOT/scripts/setup/setup-management-node.sh" ]; then
-        bash "$PROJECT_ROOT/scripts/setup/setup-management-node.sh" || true
-    else
-        log_warn "Auto-registration script not found"
-        log_info "To manually register this laptop, run:"
-        echo "  sudo ./scripts/setup/setup-management-node.sh"
-    fi
+    log_info "Registration is now handled automatically by setup-laptop.sh"
     echo
     
     # Ensure correct ownership of config files

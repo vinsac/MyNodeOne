@@ -1519,7 +1519,7 @@ main() {
             management)
                 # Management laptop setup is already handled by interactive-setup.sh
                 # which is called earlier in the main function.
-                log_info "Management laptop setup completed via interactive wizard."
+                print_info "Management laptop setup completed via interactive wizard."
                 ;;
             *)
                 print_error "Unknown node type: $NODE_TYPE"

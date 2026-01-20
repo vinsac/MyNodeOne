@@ -19,10 +19,7 @@ Configures a VPS for edge node deployment.
 Sets up edge routing and public access configuration.
 
 ### `setup-laptop.sh`
-General laptop setup for MyNodeOne access.
-
-### `setup-management-node.sh`
-Configures a node for cluster management tasks.
+General laptop setup for MyNodeOne access. Includes automatic registration in enterprise registry for DNS sync.
 
 ## Infrastructure Setup
 

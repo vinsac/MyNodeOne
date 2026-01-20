@@ -173,6 +173,7 @@ apply_dns_config() {
     # Extract DNS entries
     local entries
     local domain="${CLUSTER_DOMAIN:-mynodeone}.local"
+    log_info "Extracting DNS entries for domain: $domain"
     entries=$(echo "$config" | jq -r --arg domain "$domain" '.dns_entries[]? | "\(.ip) \(.name).\($domain) \(.name)"' 2>/dev/null)
     
     if [[ -z "$entries" ]]; then
@@ -180,18 +181,29 @@ apply_dns_config() {
         return 0
     fi
     
+    local count
+    count=$(echo "$entries" | wc -l)
+    log_info "Preparing to apply $count DNS entries"
+    
+    # Log the entries being applied (first 3 for brevity)
+    log_info "Sample entries to apply:"
+    echo "$entries" | head -3 | while read -r line; do
+        log_info "  $line"
+    done
+    
     # Backup current hosts file
     local hosts_file="/etc/hosts"
     local backup_file="/etc/hosts.mynodeone.bak"
     
     if [[ ! -f "$backup_file" ]]; then
         cp "$hosts_file" "$backup_file"
+        log_info "Created backup: $backup_file"
     fi
     
     # Remove old MyNodeOne entries
     local temp_file
     temp_file=$(mktemp)
-    local domain="${CLUSTER_DOMAIN:-mynodeone}.local"
+    log_info "Removing old DNS entries from /etc/hosts"
     grep -v "# MyNodeOne" "$hosts_file" | grep -v ".${domain}" > "$temp_file" || true
     
     # Add new entries
@@ -200,6 +212,7 @@ apply_dns_config() {
     echo "$entries" >> "$temp_file"
     
     # Apply changes and ensure proper permissions (644 so all users can read)
+    log_info "Writing updated /etc/hosts"
     if [[ "$(id -u)" -eq 0 ]]; then
         mv "$temp_file" "$hosts_file"
         chmod 644 "$hosts_file"
@@ -220,9 +233,26 @@ apply_dns_config() {
         fi
     fi
     
-    local count
-    count=$(echo "$entries" | wc -l)
     log_success "Applied $count DNS entries to /etc/hosts"
+    
+    # Verify entries are actually in /etc/hosts
+    log_info "Verifying DNS entries in /etc/hosts..."
+    local verified_count
+    verified_count=$(grep -c "# MyNodeOne\|${domain}" "$hosts_file" 2>/dev/null || echo "0")
+    log_info "Found $verified_count lines with MyNodeOne or ${domain} in /etc/hosts"
+    
+    # Test DNS resolution for first entry
+    local first_entry_domain
+    first_entry_domain=$(echo "$entries" | head -1 | awk '{print $2}')
+    if [[ -n "$first_entry_domain" ]]; then
+        log_info "Testing DNS resolution for: $first_entry_domain"
+        if getent hosts "$first_entry_domain" >/dev/null 2>&1; then
+            log_success "DNS resolution test passed for $first_entry_domain"
+        else
+            log_error "DNS resolution FAILED for $first_entry_domain - entries may not be accessible!"
+            log_error "This could indicate a problem with /etc/hosts or nsswitch.conf"
+        fi
+    fi
 }
 
 # Apply Traefik routes (for VPS nodes)

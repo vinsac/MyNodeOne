@@ -1472,7 +1472,23 @@ main() {
     print_success "Configuration complete"
     echo
     
-    # Proceed with installation
+    # For management laptops, setup is already complete - skip installation prompt
+    if [ "$NODE_TYPE" = "management" ]; then
+        print_info "Management laptop setup completed via interactive wizard."
+        
+        echo
+        print_header "Setup Complete"
+        print_success "Your MyNodeOne node has been set up successfully 🎉"
+        echo
+        echo "Next steps:"
+        echo "  1. Review credentials in $ACTUAL_HOME/mynodeone-*-credentials.txt"
+        echo "  2. Check status: kubectl get nodes"
+        echo "  3. Deploy apps: kubectl apply -f manifests/examples/"
+        echo
+        return 0
+    fi
+    
+    # Proceed with installation for other node types
     if prompt_confirm "Proceed with installation?" "y"; then
         case "$NODE_TYPE" in
             control-plane)
@@ -1501,12 +1517,9 @@ main() {
                 if [ "${VPS_ORCHESTRATED:-false}" != "true" ]; then
                     print_error "VPS Edge Nodes must be installed from the Control Plane"
                     echo
-                    echo "For security reasons, VPS installation must be orchestrated from the control plane."
-                    echo
-                    echo "To install a VPS Edge Node:"
-                    echo "  1. SSH into your Control Plane"
-                    echo "  2. Run: sudo ./scripts/installation/install-vps-edge-node.sh --help"
-                    echo "  3. Provide required arguments (name, IP, user, domain)"
+                    print_info "To add a VPS edge node:"
+                    print_info "  1. SSH to your control plane"
+                    print_info "  2. Run: sudo ./scripts/setup/setup-edge-node.sh"
                     echo
                     exit 1
                 fi
@@ -1517,12 +1530,6 @@ main() {
                 
                 # Run the VPS setup script
                 bash "$PROJECT_ROOT/scripts/setup/setup-vps-node.sh"
-                ;;
-
-            management)
-                # Management laptop setup is already handled by interactive-setup.sh
-                # which is called earlier in the main function.
-                print_info "Management laptop setup completed via interactive wizard."
                 ;;
             *)
                 print_error "Unknown node type: $NODE_TYPE"

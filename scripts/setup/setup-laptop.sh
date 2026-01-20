@@ -579,7 +579,8 @@ register_laptop_with_cluster() {
     # Run initial DNS sync
     echo ""
     log_info "Running initial sync..."
-    sudo "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
+    # Pass ACTUAL_USER and ACTUAL_HOME to sudo so sync-dns.sh uses correct config
+    sudo ACTUAL_USER="$ACTUAL_USER" ACTUAL_HOME="$ACTUAL_HOME" "$PROJECT_ROOT/scripts/domains/sync-dns.sh"
     
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

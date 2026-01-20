@@ -613,8 +613,10 @@ register_laptop_with_cluster() {
     
     # Show current services
     local local_domain="${CLUSTER_DOMAIN:-mynodeone}.local"
-    local service_count=$(grep "$local_domain" /etc/hosts 2>/dev/null | wc -l)
-    if [ -z "$service_count" ]; then
+    # Extract unique service names (field 2 onwards, deduplicate)
+    local services=$(grep "# MyNodeOne" /etc/hosts 2>/dev/null | awk '{for(i=2;i<=NF;i++) if($i ~ /\.local$/) print $i}' | sort -u)
+    local service_count=$(echo "$services" | grep -c ".")
+    if [ -z "$service_count" ] || [ "$service_count" = "0" ]; then
         service_count=0
     fi
     log_info "Currently configured services: $service_count"
@@ -622,7 +624,9 @@ register_laptop_with_cluster() {
     
     if [ "$service_count" -gt 0 ]; then
         echo "Available services:"
-        grep "$local_domain" /etc/hosts | awk '{print "  • http://" $2}' | sort
+        echo "$services" | while read -r service; do
+            echo "  • http://$service"
+        done
         echo ""
     fi
     

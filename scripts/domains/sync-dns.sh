@@ -32,6 +32,11 @@ if [ -z "${ACTUAL_USER:-}" ]; then
 fi
 
 if [ -z "${ACTUAL_HOME:-}" ]; then
+    export ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6 2>/dev/null || echo "/home/$ACTUAL_USER")
+fi
+
+# Always ensure PROJECT_ROOT is set (needed for sourcing other scripts)
+if [ -z "${PROJECT_ROOT:-}" ]; then
     # Get script directory and project root using standardized utility
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
@@ -39,7 +44,6 @@ if [ -z "${ACTUAL_HOME:-}" ]; then
     source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
     source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
     source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
-    export ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6 2>/dev/null || echo "/home/$ACTUAL_USER")
 fi
 
 # Source K8s utilities for robust KUBECONFIG detection

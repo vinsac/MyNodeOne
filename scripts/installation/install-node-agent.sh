@@ -283,7 +283,26 @@ log_info "Creating agent configuration..."
 
 # Detect TRAEFIK_CONFIG_DIR for VPS nodes
 TRAEFIK_CONFIG_DIR=""
-CLUSTER_DOMAIN="mynodeone"
+
+# Fetch CLUSTER_DOMAIN from cluster config (defensive programming)
+CLUSTER_DOMAIN="mynodeone"  # Default fallback
+log_info "Detecting cluster domain from control plane..."
+
+# Try to fetch from control plane's config.env
+if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
+    DETECTED_DOMAIN=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+        "${SSH_USER}@${CONTROL_PLANE_IP}" \
+        "grep '^CLUSTER_DOMAIN=' ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '\"'" 2>/dev/null || echo "")
+    
+    if [[ -n "$DETECTED_DOMAIN" ]]; then
+        CLUSTER_DOMAIN="$DETECTED_DOMAIN"
+        log_info "Detected cluster domain from control plane: $CLUSTER_DOMAIN"
+    else
+        log_warn "Could not detect cluster domain from control plane, using default: $CLUSTER_DOMAIN"
+    fi
+else
+    log_warn "SSH user not provided, using default cluster domain: $CLUSTER_DOMAIN"
+fi
 
 if [[ "$NODE_TYPE" == "vps" ]]; then
     # Try to find existing Traefik config directory

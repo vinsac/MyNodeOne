@@ -55,6 +55,23 @@ load_config() {
     HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-60}"
     API_PORT="${API_PORT:-8443}"
     API_TOKEN="${API_TOKEN:-}"
+    
+    # Defensive: Try to load CLUSTER_DOMAIN from user config if not set in agent.env
+    if [[ -z "${CLUSTER_DOMAIN:-}" ]]; then
+        # Try to find user's config.env
+        for user_config in ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+            if [[ -f "$user_config" ]]; then
+                DETECTED_DOMAIN=$(grep '^CLUSTER_DOMAIN=' "$user_config" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"')
+                if [[ -n "$DETECTED_DOMAIN" ]]; then
+                    CLUSTER_DOMAIN="$DETECTED_DOMAIN"
+                    log_info "Loaded CLUSTER_DOMAIN from $user_config: $CLUSTER_DOMAIN"
+                    break
+                fi
+            fi
+        done
+    fi
+    
+    # Final fallback
     CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"  # Used for DNS entries (e.g., dashboard.{domain}.local)
     
     # Load state (last applied version)

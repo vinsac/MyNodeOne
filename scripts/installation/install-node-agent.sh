@@ -321,6 +321,9 @@ if [[ "$NODE_TYPE" == "vps" ]]; then
     fi
 fi
 
+log_success "Node agent will use cluster domain: $CLUSTER_DOMAIN"
+log_info "DNS entries will be created as: <service>.$CLUSTER_DOMAIN.local"
+
 cat > /etc/mynodeone/agent.env <<EOF
 # MyNodeOne Node Agent Configuration
 # Generated: $(date -Iseconds)

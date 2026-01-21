@@ -119,17 +119,18 @@ fs.inotify.max_user_watches=524288  # Supports file watching apps
 
 **Why needed:** LoadBalancer IPs (e.g., 100.118.5.208) are only accessible within cluster network. VPS needs NodePort on control plane's Tailscale IP.
 
-### **DNS Discovery** (in `update-laptop-dns.sh`)
+### **DNS Discovery** (automatic via node agent)
 ```bash
 # Reads Kubernetes annotation:
 annotations:
   mynodeone.local/subdomain: "media"
 
-# Generates DNS entry:
+# Generates DNS entry (synced automatically to all nodes):
 100.118.5.208    media.mynodeone.local    # jellyfin/jellyfin
 ```
 
 **Why needed:** Consistent subdomain across local and public access.
+**Note:** DNS entries are automatically synced to management laptops within 30-60 seconds via node agent.
 
 ---
 
@@ -596,11 +597,15 @@ ping media.mynodeone.local
 
 **Fix:**
 ```bash
-# Update DNS
-sudo ./scripts/domains/update-laptop-dns.sh
+# DNS should sync automatically within 60 seconds
+# If needed immediately, force a sync:
+sudo mynodeone-node-agent sync
 
 # Verify
 cat /etc/hosts | grep media.mynodeone.local
+
+# Check node agent status
+sudo systemctl status mynodeone-node-agent
 ```
 
 ---

@@ -139,17 +139,18 @@ The `sync-dns.sh` script reads the service registry and updates `/etc/hosts` on 
 ### DNS Propagation
 
 **Control Plane:**
-- ✅ Automatic - DNS entries added to `/etc/hosts`
-- ✅ Immediate - Available right after installation
+- ✅ Automatic - DNS entries added to `/etc/hosts` via node agent
+- ✅ Immediate - Available within 60 seconds of installation
 
 **Worker Nodes:**
-- ❌ Not automatic - Workers don't run `sync-dns.sh`
+- ✅ Automatic - Node agent syncs DNS to `/etc/hosts` (if node agent installed)
 - ✅ Can access via IP directly
 - ✅ Can access via cluster DNS (if using CoreDNS)
 
 **Management Laptops:**
-- ❌ Not automatic - Need manual DNS update
-- ✅ Can run `update-laptop-dns.sh` to sync
+- ✅ Automatic - Node agent polls control plane every 60 seconds and syncs DNS
+- ✅ New services appear within 30-60 seconds automatically
+- ✅ Can manually sync: `sudo mynodeone-node-agent sync` (if needed immediately)
 
 ---
 

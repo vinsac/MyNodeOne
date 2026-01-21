@@ -45,15 +45,17 @@ sudo ./scripts/domains/setup-local-dns.sh
 ```
 
 ### `sync-dns.sh`
-Synchronize DNS entries across all nodes.
+Synchronize DNS entries manually (mainly for troubleshooting).
 
 **Usage:**
 ```bash
 sudo ./scripts/domains/sync-dns.sh
 ```
 
-### `update-laptop-dns.sh`
-Update DNS configuration on management laptops.
+**Note:** DNS sync is now automatic via node agent. This script is mainly used for:
+- Initial setup
+- Manual troubleshooting
+- Force sync when needed immediately
 
 ### `configure-app-dns.sh`
 Configure DNS entries for deployed applications.

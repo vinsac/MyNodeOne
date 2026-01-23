@@ -128,13 +128,35 @@ log_info "Installing Node Agent..."
 
 # Install node agent binary
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/mynodeone-node-agent" ]; then
-    cp "$SCRIPT_DIR/mynodeone-node-agent" /usr/local/bin/
-    chmod +x /usr/local/bin/mynodeone-node-agent
-    log_success "Node Agent installed"
-else
-    log_error "Node agent binary not found at $SCRIPT_DIR/mynodeone-node-agent"
+
+# Check multiple locations for the node agent binary
+BINARY_SOURCE=""
+BINARY_LOCATIONS=(
+    "/usr/local/bin/mynodeone-node-agent"  # Already installed
+    "$SCRIPT_DIR/mynodeone-node-agent"     # Scripts directory (for fresh installs)
+    "$SCRIPT_DIR/../lib/node-agent.sh"     # Source script location
+)
+
+for location in "${BINARY_LOCATIONS[@]}"; do
+    if [ -f "$location" ]; then
+        BINARY_SOURCE="$location"
+        break
+    fi
+done
+
+if [ -z "$BINARY_SOURCE" ]; then
+    log_error "Node agent binary not found in any of these locations:"
+    printf '  - %s\n' "${BINARY_LOCATIONS[@]}"
     exit 1
+fi
+
+# Install to /usr/local/bin if not already there
+if [ ! -f "/usr/local/bin/mynodeone-node-agent" ] || [ "$BINARY_SOURCE" != "/usr/local/bin/mynodeone-node-agent" ]; then
+    cp "$BINARY_SOURCE" /usr/local/bin/mynodeone-node-agent
+    chmod +x /usr/local/bin/mynodeone-node-agent
+    log_success "Node Agent installed from $BINARY_SOURCE"
+else
+    log_success "Node Agent already installed"
 fi
 
 log_info "Configuring Node Agent..."

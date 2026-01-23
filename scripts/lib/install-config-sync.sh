@@ -349,8 +349,13 @@ install_node_agent_dependencies() {
 install_node_agent_binary() {
     log_info "Installing Node Agent..."
     
+    # Copy to /usr/local/bin for system use
     cp "$SCRIPT_DIR/node-agent.sh" /usr/local/bin/mynodeone-node-agent
     chmod +x /usr/local/bin/mynodeone-node-agent
+    
+    # Also copy to scripts/installation for install-node-agent.sh to find
+    cp "$SCRIPT_DIR/node-agent.sh" "$PROJECT_ROOT/scripts/installation/mynodeone-node-agent"
+    chmod +x "$PROJECT_ROOT/scripts/installation/mynodeone-node-agent"
     
     log_success "Node Agent installed"
 }

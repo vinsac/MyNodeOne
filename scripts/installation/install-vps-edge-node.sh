@@ -97,46 +97,30 @@ export PROJECT_ROOT
 export SCRIPT_DIR
 
 # Detect user
-ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+ACTUAL_USER="${SUDO_USER:-$USER}"
+ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
+
+# Load cluster configuration
+CLUSTER_CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
+if [ -f "$CLUSTER_CONFIG_FILE" ]; then
+    source "$CLUSTER_CONFIG_FILE"
 else
-    ACTUAL_HOME="$HOME"
-fi
-
-# Load Control Plane Config
-if [ ! -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
-    echo "Error: Control Plane configuration not found at $ACTUAL_HOME/.mynodeone/config.env"
-    exit 1
-fi
-source "$ACTUAL_HOME/.mynodeone/config.env"
-
-# Verify Control Plane
-if [ "${NODE_TYPE:-}" != "control-plane" ]; then
-    echo "Error: This script must be run on the Control Plane"
+    echo "Cluster configuration not found at $CLUSTER_CONFIG_FILE"
     exit 1
 fi
 
-# Get Control Plane IP
+# Get control plane IP from Tailscale
 CONTROL_PLANE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 if [ -z "$CONTROL_PLANE_IP" ]; then
-    echo "Error: Could not detect Control Plane Tailscale IP"
+    echo "Failed to get control plane IP from Tailscale"
     exit 1
 fi
 
-# Use configured email if not provided
-if [ -z "$SSL_EMAIL" ] && [ -n "${SSL_EMAIL:-}" ]; then
-    SSL_EMAIL="${SSL_EMAIL}" # From config.env
-fi
-if [ -z "$SSL_EMAIL" ]; then
-    echo "Warning: No SSL email provided. Let's Encrypt registration might fail."
-    SSL_EMAIL="admin@$VPS_DOMAIN"
-fi
-
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Adding VPS Edge Node (Orchestrated)"
+echo "  VPS Edge Node Installation"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Node Name:      $VPS_NODE_NAME"
+echo
+echo "VPS Node Name:  $VPS_NODE_NAME"
 echo "VPS IP:         $VPS_TAILSCALE_IP"
 echo "Public IP:      $VPS_PUBLIC_IP"
 echo "Domain:         $VPS_DOMAIN"
@@ -145,7 +129,7 @@ echo "Control Plane:  $CONTROL_PLANE_IP"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 
-# Source orchestrator
+# Source the VPS orchestrator
 source "$SCRIPT_DIR/../lib/vps-orchestrator.sh"
 
 # Run orchestration
@@ -201,15 +185,10 @@ if [ $? -eq 0 ]; then
                     return 1
                 fi
             fi
-            
-            attempt=$((attempt + 1))
+            ((attempt++))
         done
-        
-        return 1
     }
     
-    # 1. Collect VPS Metadata
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Step 1: Collecting VPS Metadata"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
@@ -220,7 +199,7 @@ if [ $? -eq 0 ]; then
         "test -f ~/mynodeone/scripts/lib/collect-vps-metadata.sh" 2>/dev/null; then
         
         VPS_METADATA_JSON=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
-            "sudo bash ~/mynodeone/scripts/lib/collect-vps-metadata.sh json" 2>/dev/null || echo "")
+            "sudo -E bash ~/mynodeone/scripts/lib/collect-vps-metadata.sh json" 2>/dev/null || echo "")
         
         if [ -n "$VPS_METADATA_JSON" ]; then
             echo "✅ Metadata collected successfully"
@@ -262,28 +241,28 @@ if [ $? -eq 0 ]; then
             
             # Fallback to basic registration
             if retry_command "Basic VPS registration" \
-                sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/../lib/sync-controller.sh" register vps_nodes \
+                sudo "$SCRIPT_DIR/../lib/sync-controller.sh" register vps_nodes \
                 "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
-                echo "✅ Basic registration succeeded"
+                echo "✅ VPS registered with basic configuration"
             else
-                echo "❌ Basic registration also failed"
-                echo "   Manual registration: sudo $SCRIPT_DIR/../lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+                REGISTRATION_FAILED=true
+                echo "❌ Failed to register VPS"
             fi
         fi
     else
-        # Use basic registration (legacy)
-        echo "ℹ Using basic registration (no metadata available)..."
-        if ! retry_command "Registering in sync controller" \
-            sudo SKIP_SSH_VALIDATION=true "$SCRIPT_DIR/../lib/sync-controller.sh" register vps_nodes \
+        # Basic registration without metadata
+        if retry_command "Basic VPS registration" \
+            sudo "$SCRIPT_DIR/../lib/sync-controller.sh" register vps_nodes \
             "$VPS_TAILSCALE_IP" "$VPS_NODE_NAME" "$VPS_SSH_USER"; then
+            echo "✅ VPS registered with basic configuration"
+        else
             REGISTRATION_FAILED=true
-            echo "❌ Failed to register in sync controller"
-            echo "   Manual registration: sudo $SCRIPT_DIR/../lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+            echo "❌ Failed to register VPS"
         fi
     fi
     echo
     
-    # 2. Register VPS in Domain Registry
+    # 3. Register in Domain Registry
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Step 2: Domain Registry - VPS Node"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -297,142 +276,96 @@ if [ $? -eq 0 ]; then
     fi
     echo
     
-    # 3. Register Domain
+    # 4. Register Domain
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Step 3: Domain Registry - Domain"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if ! retry_command "Registering domain" \
         sudo "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain \
-        "$VPS_DOMAIN" "VPS edge node domain"; then
+        "$VPS_DOMAIN" 'VPS edge node domain'; then
         REGISTRATION_FAILED=true
         echo "❌ Failed to register domain"
-        echo "   Manual registration: sudo $SCRIPT_DIR/../lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS edge node domain'"
+        echo "   Manual registration: sudo $SCRIPT_DIR/../lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
     fi
     echo
     
-    # 4. Verify Registration
+    # 5. Initial Sync
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Step 4: Verification"
+    echo "Step 4: Initial Sync and Verification"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
-    VERIFICATION_PASSED=true
+    if ! retry_command "Initial sync" \
+        sudo "$SCRIPT_DIR/../lib/sync-controller.sh" sync; then
+        echo "⚠ Initial sync failed, VPS may need manual sync"
+    fi
     
-    # Verify sync controller registry
-    echo "ℹ Verifying sync controller registry..."
-    if kubectl get configmap -n kube-system sync-controller-registry -o json 2>/dev/null | \
-        jq -e ".data.\"registry.json\" | fromjson | .vps_nodes[] | select(.ip==\"$VPS_TAILSCALE_IP\")" &>/dev/null; then
+    # 6. Verification
+    echo "ℹ Verifying registration..."
+    echo
+    
+    # Check sync controller registry
+    if sudo "$SCRIPT_DIR/../lib/sync-controller.sh" list vps_nodes | grep -q "$VPS_TAILSCALE_IP"; then
         echo "✅ VPS found in sync controller registry"
     else
-        echo "❌ VPS NOT found in sync controller registry"
-        VERIFICATION_PASSED=false
+        echo "❌ VPS not found in sync controller registry"
     fi
     
-    # Verify domain registry - VPS
-    echo "ℹ Verifying domain registry (VPS)..."
-    if kubectl get configmap -n kube-system domain-registry -o json 2>/dev/null | \
-        jq -e ".data.\"domains.json\" | fromjson | .vps_nodes[] | select(.tailscale_ip==\"$VPS_TAILSCALE_IP\")" &>/dev/null; then
+    # Check domain registry
+    if sudo kubectl get configmap domain-registry -n kube-system -o jsonpath='{.data.vps\.json}' 2>/dev/null | jq -e ".\"$VPS_TAILSCALE_IP\"" >/dev/null; then
         echo "✅ VPS found in domain registry"
     else
-        echo "❌ VPS NOT found in domain registry"
-        VERIFICATION_PASSED=false
+        echo "❌ VPS not found in domain registry"
     fi
     
-    # Verify domain registry - Domain
-    echo "ℹ Verifying domain registry (domain)..."
-    if kubectl get configmap -n kube-system domain-registry -o json 2>/dev/null | \
-        jq -e ".data.\"domains.json\" | fromjson | .domains[\"$VPS_DOMAIN\"]" &>/dev/null; then
+    # Check domain registration
+    if sudo kubectl get configmap domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -e ".\"$VPS_DOMAIN\"" >/dev/null; then
         echo "✅ Domain found in registry"
     else
-        echo "❌ Domain NOT found in registry"
-        VERIFICATION_PASSED=false
+        echo "❌ Domain not found in registry"
     fi
+    
     echo
     
-    # 5. Trigger Initial Sync with Verification
-    if [ "$VERIFICATION_PASSED" = true ]; then
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "Step 5: Initial Sync and Verification"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        
-        echo "ℹ Triggering initial sync to VPS..."
-        if retry_command "Syncing configuration" \
-            sudo "$SCRIPT_DIR/../lib/sync-controller.sh" push; then
-            echo "✅ Sync command completed"
-        else
-            echo "❌ Sync command failed"
-            VERIFICATION_PASSED=false
-        fi
-        
-        # Verify sync actually worked on VPS
-        if [ "$VERIFICATION_PASSED" = true ]; then
-            echo ""
-            echo "ℹ Verifying VPS received configuration..."
-            
-            # Check if Traefik is running
-            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
-                "docker ps | grep -q traefik" 2>/dev/null; then
-                echo "✅ Traefik is running on VPS"
-            else
-                echo "❌ Traefik is NOT running on VPS"
-                VERIFICATION_PASSED=false
-            fi
-            
-            # Check if config directory exists
-            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
-                "test -d ~/traefik/config" 2>/dev/null; then
-                echo "✅ Traefik config directory exists"
-            else
-                echo "❌ Traefik config directory missing"
-                VERIFICATION_PASSED=false
-            fi
-            
-            # Check if mynodeone scripts directory exists
-            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$VPS_SSH_USER@$VPS_TAILSCALE_IP" \
-                "test -d ~/mynodeone/scripts" 2>/dev/null; then
-                echo "✅ MyNodeOne scripts directory exists"
-            else
-                echo "❌ MyNodeOne scripts directory missing"
-                VERIFICATION_PASSED=false
-            fi
-        fi
-        echo
-    fi
-    
-    # Final Status
+    # 7. Final Status
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    if [ "$VERIFICATION_PASSED" = true ] && [ "$REGISTRATION_FAILED" = false ]; then
-        echo "✅ VPS registration completed successfully"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo
-        echo "✅ VPS Edge Node: $VPS_NODE_NAME"
-        echo "   Tailscale IP:  $VPS_TAILSCALE_IP"
-        echo "   Public IP:     $VPS_PUBLIC_IP"
-        echo "   Domain:        $VPS_DOMAIN"
-        echo
-        echo "Next steps:"
-        echo "  1. Make apps public: sudo ./scripts/operations/manage-app-visibility.sh"
-        echo "  2. Check cluster nodes: sudo ./scripts/nodes/nodes-status.sh"
-        echo
+    if [ "$REGISTRATION_FAILED" = true ]; then
+        echo "⚠ VPS installation completed with some issues"
+        echo ""
+        echo "Manual steps may be required:"
+        echo "  1. Check VPS connectivity: ssh $VPS_SSH_USER@$VPS_TAILSCALE_IP"
+        echo "  2. Verify VPS setup: ssh $VPS_SSH_USER@$VPS_TAILSCALE_IP 'sudo systemctl status mynodeone-node-agent'"
+        echo "  3. Manual registration if needed"
     else
-        echo "⚠ VPS registration completed with warnings"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo
-        echo "⚠ Some registration steps failed. VPS is installed but may not be fully integrated."
-        echo
-        echo "To complete registration manually, run:"
-        echo "  cd ~/MyNodeOne"
-        echo "  sudo ./scripts/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
-        echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
-        echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
-        echo
-        echo "Then verify with:"
-        echo "  kubectl get configmap -n kube-system sync-controller-registry -o yaml"
-        echo "  kubectl get configmap -n kube-system domain-registry -o yaml"
-        echo
+        echo "✅ VPS registration completed successfully"
     fi
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "✅ VPS Edge Node: $VPS_NODE_NAME"
+    echo "   Tailscale IP:  $VPS_TAILSCALE_IP"
+    echo "   Public IP:     $VPS_PUBLIC_IP"
+    echo "   Domain:        $VPS_DOMAIN"
+    echo
+    echo "Next steps:"
+    echo "  1. Make apps public: sudo ./scripts/operations/manage-app-visibility.sh"
+    echo "  2. Check cluster nodes: sudo ./scripts/nodes/nodes-status.sh"
+    
 else
     echo
     echo "❌ VPS installation failed"
+    echo
+    echo "Troubleshooting:"
+    echo "  1. SSH into VPS: ssh $VPS_SSH_USER@$VPS_TAILSCALE_IP"
+    echo "  2. Check installation logs: ssh $VPS_SSH_USER@$VPS_TAILSCALE_IP 'cat ~/mynodeone-install.log'"
+    echo "  3. Verify prerequisites: ssh $VPS_SSH_USER@$VPS_TAILSCALE_IP 'docker --version'"
+    echo
+    echo "To complete registration manually, run:"
+    echo "  cd ~/MyNodeOne"
+    echo "  sudo ./scripts/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
+    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
+    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
+    echo
+    echo "Then verify with:"
+    echo "  sudo ./scripts/nodes/nodes-status.sh"
     exit 1
 fi

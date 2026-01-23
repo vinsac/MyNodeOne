@@ -17,13 +17,27 @@ OUTPUT_FORMAT="${1:-json}"
 
 # Load configuration if available (to get VPS_LOCATION, NODE_NAME, etc.)
 # Check multiple possible locations on the VPS
-if [ -f "$HOME/.mynodeone/config.env" ]; then
-    source "$HOME/.mynodeone/config.env"
-elif [ -f "/root/.mynodeone/config.env" ]; then
-    source "/root/.mynodeone/config.env"
-elif [ -f "/etc/mynodeone/agent.env" ]; then
-    # Fallback to agent config if main config is missing
-    source "/etc/mynodeone/agent.env"
+CONFIG_LOADED=false
+
+# If running with sudo, try to find the actual user's config
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    if [ -f "$ACTUAL_USER_HOME/.mynodeone/config.env" ]; then
+        source "$ACTUAL_USER_HOME/.mynodeone/config.env"
+        CONFIG_LOADED=true
+    fi
+fi
+
+# If not loaded yet, try standard locations
+if [ "$CONFIG_LOADED" = false ]; then
+    if [ -f "$HOME/.mynodeone/config.env" ]; then
+        source "$HOME/.mynodeone/config.env"
+    elif [ -f "/root/.mynodeone/config.env" ]; then
+        source "/root/.mynodeone/config.env"
+    elif [ -f "/etc/mynodeone/agent.env" ]; then
+        # Fallback to agent config if main config is missing
+        source "/etc/mynodeone/agent.env"
+    fi
 fi
 
 # Detect OS information
@@ -48,7 +62,15 @@ detect_cpu() {
 # Detect RAM
 detect_ram() {
     if command -v free &>/dev/null; then
-        free -h | awk '/^Mem:/ {print $2}'
+        local ram_bytes=$(free -b | awk '/^Mem:/ {print $2}')
+        # Convert to human readable format
+        if [ "$ram_bytes" -gt 1073741824 ]; then
+            echo "$(echo "scale=1; $ram_bytes / 1073741824" | bc)Gi"
+        elif [ "$ram_bytes" -gt 1048576 ]; then
+            echo "$(echo "scale=1; $ram_bytes / 1048576" | bc)Mi"
+        else
+            echo "${ram_bytes}B"
+        fi
     else
         echo "Unknown"
     fi
@@ -56,42 +78,50 @@ detect_ram() {
 
 # Detect disk space
 detect_disk() {
-    df -h / | awk 'NR==2 {print $2}'
+    if command -v df &>/dev/null; then
+        df -h / | awk 'NR==2 {print $2}'
+    else
+        echo "Unknown"
+    fi
 }
 
-# Detect provider (heuristic-based)
+# Detect provider
 detect_provider() {
     local provider="unknown"
     
-    # Check DMI information
-    if [ -f /sys/class/dmi/id/sys_vendor ]; then
-        local vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || echo "")
+    # Check for common virtualization signatures
+    if [ -f /sys/class/dmi/id/product_name ]; then
         local product=$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo "")
-        
-        case "$vendor" in
+        case "$product" in
+            *VirtualBox*|*vbox*)
+                provider="virtualbox"
+                ;;
+            *VMware*|*vmware*)
+                provider="vmware"
+                ;;
+            *KVM*|*QEMU*)
+                provider="kvm"
+                ;;
+            *Xen*|*xen*)
+                provider="xen"
+                ;;
+            *Hyper-V*|*microsoft*)
+                provider="hyperv"
+                ;;
             *DigitalOcean*)
                 provider="digitalocean"
                 ;;
-            *Amazon*)
+            *Amazon*|*EC2*)
                 provider="aws"
                 ;;
             *Google*)
                 provider="gcp"
                 ;;
-            *Microsoft*)
-                provider="azure"
+            *Hetzner*)
+                provider="hetzner"
                 ;;
-            *QEMU*|*KVM*)
-                # Check for specific providers using hostname or other methods
-                if echo "$product" | grep -qi "vultr"; then
-                    provider="vultr"
-                elif echo "$product" | grep -qi "linode"; then
-                    provider="linode"
-                elif echo "$product" | grep -qi "hetzner"; then
-                    provider="hetzner"
-                else
-                    provider="kvm"
-                fi
+            *)
+                provider="kvm"
                 ;;
         esac
     fi
@@ -141,15 +171,11 @@ get_public_ip() {
     
     # Try multiple services
     if command -v curl &>/dev/null; then
-        public_ip=$(curl -s --connect-timeout 3 https://api.ipify.org 2>/dev/null || \
-                    curl -s --connect-timeout 3 https://ifconfig.me 2>/dev/null || \
-                    curl -s --connect-timeout 3 https://icanhazip.com 2>/dev/null || \
-                    echo "")
+        public_ip=$(curl -s --connect-timeout 2 ifconfig.me 2>/dev/null || echo "")
     fi
     
-    # Fallback to configured value
-    if [ -z "$public_ip" ]; then
-        public_ip="${VPS_PUBLIC_IP:-unknown}"
+    if [ -z "$public_ip" ] && command -v wget &>/dev/null; then
+        public_ip=$(wget -qO- --timeout=2 ifconfig.me 2>/dev/null || echo "")
     fi
     
     echo "$public_ip"
@@ -158,119 +184,105 @@ get_public_ip() {
 # Get Tailscale IP
 get_tailscale_ip() {
     if command -v tailscale &>/dev/null; then
-        tailscale ip -4 2>/dev/null || echo "unknown"
+        tailscale ip -4 2>/dev/null || echo ""
     else
-        echo "unknown"
+        echo ""
     fi
 }
 
-# Get Tailscale hostname
-get_tailscale_hostname() {
-    local ts_ip="$1"
-    if [ "$ts_ip" != "unknown" ]; then
-        echo "${ts_ip}.tailscale.net"
+# Get uptime
+get_uptime() {
+    if [ -f /proc/uptime ]; then
+        cat /proc/uptime | cut -d' ' -f1 | cut -d. -f1
     else
-        echo "unknown"
-    fi
-}
-
-# Check if Traefik is installed
-check_traefik() {
-    if docker ps 2>/dev/null | grep -q traefik; then
-        echo "true"
-    else
-        echo "false"
-    fi
-}
-
-# Get Traefik version
-get_traefik_version() {
-    if docker ps 2>/dev/null | grep -q traefik; then
-        docker inspect traefik 2>/dev/null | jq -r '.[0].Config.Image' | cut -d: -f2 || echo "unknown"
-    else
-        echo "not_installed"
+        echo "0"
     fi
 }
 
 # Get Docker version
 get_docker_version() {
     if command -v docker &>/dev/null; then
-        docker --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo "unknown"
+        docker --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown"
     else
-        echo "not_installed"
+        echo ""
     fi
 }
 
-# Get uptime in seconds
-get_uptime_seconds() {
-    cat /proc/uptime | awk '{print int($1)}'
+# Get node name (from config or hostname)
+get_node_name() {
+    echo "${NODE_NAME:-$(hostname)}"
 }
 
-# Main collection function
+# Main collection
 collect_metadata() {
-    local node_name="${NODE_NAME:-$(hostname)}"
+    local node_name=$(get_node_name)
     local provider=$(detect_provider)
     local region=$(detect_region "$provider")
-    local public_ip=$(get_public_ip)
-    local tailscale_ip=$(get_tailscale_ip)
-    local tailscale_hostname=$(get_tailscale_hostname "$tailscale_ip")
-    local os=$(detect_os)
+    local public_ip="${VPS_PUBLIC_IP:-$(get_public_ip)}"
+    local tailscale_ip="${TAILSCALE_IP:-$(get_tailscale_ip)}"
+    local tailscale_hostname="${tailscale_ip}.tailscale.net"
     local cpu=$(detect_cpu)
     local ram=$(detect_ram)
     local disk=$(detect_disk)
-    local traefik_enabled=$(check_traefik)
-    local traefik_version=$(get_traefik_version)
+    local os=$(detect_os)
     local docker_version=$(get_docker_version)
-    local uptime=$(get_uptime_seconds)
-    local timestamp=$(date -Iseconds)
+    local uptime=$(get_uptime)
+    local mynodeone_version="1.5.0"
     
-    if [ "$OUTPUT_FORMAT" = "json" ]; then
-        # Output as JSON
-        jq -n \
-            --arg name "$node_name" \
-            --arg role "edge" \
-            --arg location "$region" \
-            --arg provider "$provider" \
-            --arg public_ip "$public_ip" \
-            --arg tailscale_ip "$tailscale_ip" \
-            --arg tailscale_hostname "$tailscale_hostname" \
-            --arg os "$os" \
-            --arg cpu "$cpu" \
-            --arg ram "$ram" \
-            --arg disk "$disk" \
-            --arg traefik_enabled "$traefik_enabled" \
-            --arg traefik_version "$traefik_version" \
-            --arg docker_version "$docker_version" \
-            --argjson uptime "$uptime" \
-            --arg timestamp "$timestamp" \
-            '{
-                name: $name,
-                role: $role,
-                location: $location,
-                provider: $provider,
-                public_ip: $public_ip,
-                tailscale_ip: $tailscale_ip,
-                tailscale_hostname: $tailscale_hostname,
-                hardware: {
-                    cpu: $cpu,
-                    ram: $ram,
-                    disk: $disk,
-                    os: $os
-                },
-                traefik: {
-                    enabled: ($traefik_enabled == "true"),
-                    version: $traefik_version
-                },
-                installation: {
-                    docker_version: $docker_version,
-                    mynodeone_version: "1.5.0"
-                },
-                uptime_seconds: $uptime,
-                last_updated: $timestamp
-            }'
-    else
-        # Output as environment variables
-        cat <<EOF
+    # Check if Traefik is running
+    local traefik_enabled="false"
+    local traefik_version=""
+    if command -v docker &>/dev/null; then
+        if docker ps --format 'table {{.Names}}' | grep -q "^traefik$" 2>/dev/null; then
+            traefik_enabled="true"
+            traefik_version=$(docker exec traefik traefik version 2>/dev/null | grep -oE 'Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+' | cut -d: -f2 | xargs || echo "unknown")
+        fi
+    fi
+    
+    # Output in requested format
+    case "$OUTPUT_FORMAT" in
+        json)
+            jq -n \
+                --arg name "$node_name" \
+                --arg role "edge" \
+                --arg location "$region" \
+                --arg provider "$provider" \
+                --arg public_ip "$public_ip" \
+                --arg tailscale_ip "$tailscale_ip" \
+                --arg tailscale_hostname "$tailscale_hostname" \
+                --argjson hardware "$(jq -n \
+                    --arg cpu "$cpu" \
+                    --arg ram "$ram" \
+                    --arg disk "$disk" \
+                    --arg os "$os" \
+                    '{cpu: $cpu, ram: $ram, disk: $disk, os: $os}')" \
+                --argjson traefik "$(jq -n \
+                    --arg enabled "$traefik_enabled" \
+                    --arg version "$traefik_version" \
+                    '{enabled: ($enabled == "true"), version: $version}')" \
+                --argjson installation "$(jq -n \
+                    --arg docker_version "$docker_version" \
+                    --arg mynodeone_version "$mynodeone_version" \
+                    '{docker_version: $docker_version, mynodeone_version: $mynodeone_version}')" \
+                --argjson uptime "$uptime" \
+                --arg last_updated "$(date -Iseconds)" \
+                '{
+                    name: $name,
+                    role: $role,
+                    location: $location,
+                    provider: $provider,
+                    public_ip: $public_ip,
+                    tailscale_ip: $tailscale_ip,
+                    tailscale_hostname: $tailscale_hostname,
+                    hardware: $hardware,
+                    traefik: $traefik,
+                    installation: $installation,
+                    uptime_seconds: $uptime,
+                    last_updated: $last_updated
+                }'
+            ;;
+        env)
+            cat <<EOF
 VPS_NODE_NAME="$node_name"
 VPS_ROLE="edge"
 VPS_LOCATION="$region"
@@ -278,17 +290,23 @@ VPS_PROVIDER="$provider"
 VPS_PUBLIC_IP="$public_ip"
 VPS_TAILSCALE_IP="$tailscale_ip"
 VPS_TAILSCALE_HOSTNAME="$tailscale_hostname"
-VPS_OS="$os"
 VPS_CPU="$cpu"
 VPS_RAM="$ram"
 VPS_DISK="$disk"
+VPS_OS="$os"
 VPS_TRAEFIK_ENABLED="$traefik_enabled"
 VPS_TRAEFIK_VERSION="$traefik_version"
 VPS_DOCKER_VERSION="$docker_version"
-VPS_UPTIME_SECONDS="$uptime"
-VPS_LAST_UPDATED="$timestamp"
+VPS_MYNODEONE_VERSION="$mynodeone_version"
+VPS_UPTIME="$uptime"
 EOF
-    fi
+            ;;
+        *)
+            echo "Unknown output format: $OUTPUT_FORMAT"
+            echo "Usage: $0 [json|env]"
+            exit 1
+            ;;
+    esac
 }
 
 # Run collection

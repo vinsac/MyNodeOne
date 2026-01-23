@@ -259,6 +259,17 @@ fi
 
 chmod 600 /etc/mynodeone/agent.env
 
+# Set proper ownership if running with sudo
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    # Get the actual user's home directory
+    ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
+    if [ -n "$ACTUAL_USER_HOME" ]; then
+        # Ensure the actual user can read the config
+        chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/agent.env
+        log_info "Config ownership set for user: $SUDO_USER"
+    fi
+fi
+
 log_success "Config created: /etc/mynodeone/agent.env"
 
 log_info "Installing systemd service..."

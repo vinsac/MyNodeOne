@@ -197,6 +197,16 @@ install_config_api_service() {
         log_info "Generating API token..."
         openssl rand -hex 32 > /etc/mynodeone/api-token
         chmod 600 /etc/mynodeone/api-token
+        
+        # Set proper ownership if running with sudo
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
+            if [ -n "$ACTUAL_USER_HOME" ]; then
+                chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/api-token
+                log_info "API token ownership set for user: $SUDO_USER"
+            fi
+        fi
+        
         log_success "API token generated"
     fi
     
@@ -491,6 +501,17 @@ EOF
     fi
     
     chmod 600 /etc/mynodeone/agent.env
+    
+    # Set proper ownership if running with sudo
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        # Get the actual user's home directory
+        ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
+        if [ -n "$ACTUAL_USER_HOME" ]; then
+            # Ensure the actual user can read the config
+            chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/agent.env
+            log_info "Config ownership set for user: $SUDO_USER"
+        fi
+    fi
     
     # Defensive verification: Ensure agent.env has correct values
     local saved_domain

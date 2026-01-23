@@ -38,6 +38,10 @@ log_error() {
 
 # Load configuration
 load_config() {
+    # Source the central config paths utility
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$script_dir/config-paths.sh"
+    
     local config_file="${AGENT_CONFIG_FILE:-/etc/mynodeone/agent.env}"
     
     if [[ -f "$config_file" ]]; then
@@ -58,17 +62,11 @@ load_config() {
     
     # Defensive: Try to load CLUSTER_DOMAIN from user config if not set in agent.env
     if [[ -z "${CLUSTER_DOMAIN:-}" ]]; then
-        # Try to find user's config.env
-        for user_config in ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
-            if [[ -f "$user_config" ]]; then
-                DETECTED_DOMAIN=$(grep '^CLUSTER_DOMAIN=' "$user_config" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"')
-                if [[ -n "$DETECTED_DOMAIN" ]]; then
-                    CLUSTER_DOMAIN="$DETECTED_DOMAIN"
-                    log_info "Loaded CLUSTER_DOMAIN from $user_config: $CLUSTER_DOMAIN"
-                    break
-                fi
-            fi
-        done
+        DETECTED_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
+        if [[ -n "$DETECTED_DOMAIN" ]]; then
+            CLUSTER_DOMAIN="$DETECTED_DOMAIN"
+            log_info "Loaded CLUSTER_DOMAIN from user config: $CLUSTER_DOMAIN"
+        fi
     fi
     
     # Final fallback

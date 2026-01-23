@@ -15,28 +15,26 @@ set -euo pipefail
 # Output format (default: json)
 OUTPUT_FORMAT="${1:-json}"
 
+# Source the central config paths utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config-paths.sh"
+
 # Load configuration if available (to get VPS_LOCATION, NODE_NAME, etc.)
-# Check multiple possible locations on the VPS
 CONFIG_LOADED=false
 
-# If running with sudo, try to find the actual user's config
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    if [ -f "$ACTUAL_USER_HOME/.mynodeone/config.env" ]; then
-        source "$ACTUAL_USER_HOME/.mynodeone/config.env"
-        CONFIG_LOADED=true
-    fi
+# Try to find and load the primary user config
+PRIMARY_CONFIG=$(get_primary_user_config 2>/dev/null || echo "")
+if [ -f "$PRIMARY_CONFIG" ]; then
+    source "$PRIMARY_CONFIG"
+    CONFIG_LOADED=true
 fi
 
-# If not loaded yet, try standard locations
+# If not loaded yet, try agent config as fallback
 if [ "$CONFIG_LOADED" = false ]; then
-    if [ -f "$HOME/.mynodeone/config.env" ]; then
-        source "$HOME/.mynodeone/config.env"
-    elif [ -f "/root/.mynodeone/config.env" ]; then
-        source "/root/.mynodeone/config.env"
-    elif [ -f "/etc/mynodeone/agent.env" ]; then
-        # Fallback to agent config if main config is missing
-        source "/etc/mynodeone/agent.env"
+    AGENT_CONFIG=$(find_agent_config)
+    if [ -f "$AGENT_CONFIG" ]; then
+        source "$AGENT_CONFIG"
+        CONFIG_LOADED=true
     fi
 fi
 

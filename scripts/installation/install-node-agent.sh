@@ -142,38 +142,9 @@ log_info "Configuring Node Agent..."
 # Create config directory
 mkdir -p /etc/mynodeone
 
-# Utility function to find MyNodeOne config files
-# This centralizes config file path logic
-find_config_files() {
-    local config_files=()
-    
-    # Check actual user's home if running with sudo
-    if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-        ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
-        if [[ -n "$ACTUAL_USER_HOME" && -f "$ACTUAL_USER_HOME/.mynodeone/config.env" ]]; then
-            config_files+=("$ACTUAL_USER_HOME/.mynodeone/config.env")
-        fi
-    fi
-    
-    # Check current user's home
-    if [[ -n "${HOME:-}" && -f "$HOME/.mynodeone/config.env" ]]; then
-        config_files+=("$HOME/.mynodeone/config.env")
-    fi
-    
-    # Check all user homes (for multi-user systems)
-    for user_home in /home/*/.mynodeone/config.env; do
-        if [[ -f "$user_home" ]]; then
-            config_files+=("$user_home")
-        fi
-    done
-    
-    # Check root's home
-    if [[ -f "/root/.mynodeone/config.env" ]]; then
-        config_files+=("/root/.mynodeone/config.env")
-    fi
-    
-    echo "${config_files[@]}"
-}
+# Source the central config paths utility
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/config-paths.sh"
 
 # Detect TRAEFIK_CONFIG_DIR for VPS nodes
 TRAEFIK_CONFIG_DIR=""
@@ -194,30 +165,22 @@ if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
     else
         log_warn "Could not detect cluster domain from control plane, checking local config..."
         # Fallback: Check local config when SSH fails
-        for config_file in $(find_config_files); do
-            LOCAL_DOMAIN=$(grep '^CLUSTER_DOMAIN=' "$config_file" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
-            if [[ -n "$LOCAL_DOMAIN" ]]; then
-                CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-                log_info "Detected cluster domain from local config: $CLUSTER_DOMAIN"
-                break
-            fi
-        done
-        if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
+        LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
+        if [[ -n "$LOCAL_DOMAIN" ]]; then
+            CLUSTER_DOMAIN="$LOCAL_DOMAIN"
+            log_info "Detected cluster domain from local config: $CLUSTER_DOMAIN"
+        else
             log_warn "Could not detect cluster domain locally, using default: $CLUSTER_DOMAIN"
         fi
     fi
 else
     # SSH not available (e.g., installing on control plane itself), check local config first
     log_info "SSH not available, checking local config for cluster domain..."
-    for config_file in $(find_config_files); do
-        LOCAL_DOMAIN=$(grep '^CLUSTER_DOMAIN=' "$config_file" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
-        if [[ -n "$LOCAL_DOMAIN" ]]; then
-            CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-            log_info "Detected cluster domain from local config: $CLUSTER_DOMAIN"
-            break
-        fi
-    done
-    if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
+    LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
+    if [[ -n "$LOCAL_DOMAIN" ]]; then
+        CLUSTER_DOMAIN="$LOCAL_DOMAIN"
+        log_info "Detected cluster domain from local config: $CLUSTER_DOMAIN"
+    else
         log_warn "Could not detect cluster domain locally, using default: $CLUSTER_DOMAIN"
     fi
 fi

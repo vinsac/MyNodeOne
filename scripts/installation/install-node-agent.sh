@@ -179,7 +179,7 @@ log_info "Detecting cluster domain from control plane..."
 if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
     DETECTED_DOMAIN=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
         "${SSH_USER}@${CONTROL_PLANE_IP}" \
-        "grep '^CLUSTER_DOMAIN=' ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '\"'" 2>/dev/null || echo "")
+        "grep '^CLUSTER_DOMAIN=' ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"'" 2>/dev/null || echo "")
     
     if [[ -n "$DETECTED_DOMAIN" ]]; then
         CLUSTER_DOMAIN="$DETECTED_DOMAIN"
@@ -333,9 +333,9 @@ attempt=1
 
 while [ $attempt -le $max_attempts ]; do
     # Check if node is registered
-    if curl -s -H "Authorization: Bearer $API_TOKEN" \
+    if curl -s -H "X-API-Token: $API_TOKEN" \
         "http://$CONTROL_PLANE_IP:$API_PORT/api/v1/nodes" | \
-        jq -e ".[] | select(.name == \"$NODE_NAME\")" >/dev/null 2>&1; then
+        jq -e ".nodes[]? | select(.name == \"$NODE_NAME\")" >/dev/null 2>&1; then
         log_success "Heartbeat verification passed - node registered with control plane"
         break
     else

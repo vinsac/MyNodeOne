@@ -305,24 +305,24 @@ if [ $? -eq 0 ]; then
     echo
     
     # Check sync controller registry
-    if sudo "$SCRIPT_DIR/../lib/sync-controller.sh" health | grep -q "$VPS_TAILSCALE_IP"; then
+    if sudo "$SCRIPT_DIR/../lib/sync-controller.sh" health | grep -q "$VPS_NODE_NAME"; then
         echo "✅ VPS found in sync controller registry"
     else
         echo "❌ VPS not found in sync controller registry"
     fi
     
     # Check domain registry
-    if sudo kubectl get configmap domain-registry -n kube-system -o jsonpath='{.data.vps\.json}' 2>/dev/null | jq -e ".\"$VPS_TAILSCALE_IP\"" >/dev/null; then
+    if sudo kubectl get configmap domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -e ".vps_nodes[] | select(.tailscale_ip == \"$VPS_TAILSCALE_IP\")" >/dev/null; then
         echo "✅ VPS found in domain registry"
     else
         echo "❌ VPS not found in domain registry"
     fi
     
     # Check domain registration
-    if sudo kubectl get configmap domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -e ".\"$VPS_DOMAIN\"" >/dev/null; then
-        echo "✅ Domain found in registry"
-    else
+    if sudo kubectl get configmap domain-registry -n kube-system -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq ".domains.\"$VPS_DOMAIN\"" | grep -q "null"; then
         echo "❌ Domain not found in registry"
+    else
+        echo "✅ Domain found in registry"
     fi
     
     echo

@@ -87,7 +87,7 @@ fi
 # Check if domain exists
 if ! kubectl get configmap -n kube-system domain-registry \
     -o jsonpath="{.data.domains\.json}" 2>/dev/null | \
-    jq -e ".[\"$DOMAIN\"]" &>/dev/null; then
+    jq -e ".domains["$DOMAIN"]" &>/dev/null; then
     log_error "Domain $DOMAIN not found in registry"
     exit 1
 fi

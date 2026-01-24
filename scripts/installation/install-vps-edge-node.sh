@@ -305,7 +305,8 @@ if [ $? -eq 0 ]; then
     echo
     
     # Check sync controller registry
-    if sudo "$SCRIPT_DIR/../lib/sync-controller.sh" health | grep -q "$VPS_NODE_NAME"; then
+    echo "DEBUG: VPS_NODE_NAME='$VPS_NODE_NAME'"
+    if [ -n "$VPS_NODE_NAME" ] && sudo "$SCRIPT_DIR/../lib/sync-controller.sh" health | grep -q "$VPS_NODE_NAME"; then
         echo "✅ VPS found in sync controller registry"
     else
         echo "❌ VPS not found in sync controller registry"

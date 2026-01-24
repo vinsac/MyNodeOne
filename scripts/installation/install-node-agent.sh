@@ -205,12 +205,12 @@ source "$SCRIPT_DIR/../lib/config-paths.sh"
 # Detect TRAEFIK_CONFIG_DIR for VPS nodes
 TRAEFIK_CONFIG_DIR=""
 
-# Fetch CLUSTER_DOMAIN from cluster config (defensive programming)
+# Fetch CLUSTER_DOMAIN from cluster config
 CLUSTER_DOMAIN="mynodeone"  # Default fallback
-log_info "Detecting cluster domain from control plane..."
+log_info "Detecting cluster domain..."
 log_debug "SSH_USER=${SSH_USER:-'not set'}, CONTROL_PLANE_IP=${CONTROL_PLANE_IP:-'not set'}"
 
-# Try to fetch from control plane's config.env
+# Method 1: Try SSH fetch from control plane (highest priority)
 if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
     log_debug "Attempting to fetch cluster domain via SSH from control plane..."
     DETECTED_DOMAIN=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
@@ -221,57 +221,20 @@ if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
         CLUSTER_DOMAIN="$DETECTED_DOMAIN"
         log_success "Detected cluster domain from control plane: $CLUSTER_DOMAIN"
     else
-        log_warn "Could not detect cluster domain from control plane, checking local config..."
-        log_debug "SSH command returned empty or failed"
-        # Fallback: Check local config when SSH fails
-        LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
-        log_debug "get_config_value returned: '${LOCAL_DOMAIN:-'empty'}'"
-        if [[ -n "$LOCAL_DOMAIN" ]]; then
-            CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-            log_success "Detected cluster domain from local config: $CLUSTER_DOMAIN"
-        else
-            log_warn "Could not detect cluster domain locally, using default: $CLUSTER_DOMAIN"
-            log_debug "All detection methods failed, falling back to default"
-        fi
+        log_debug "SSH fetch failed, falling back to local config detection"
     fi
-else
-    # SSH not available (e.g., installing on control plane itself), check local config first
-    log_info "SSH not available, checking local config for cluster domain..."
-    log_debug "Checking for local user config files..."
+fi
+
+# Method 2: Local config detection (uses improved get_config_value with proper priority)
+if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
+    log_debug "Checking local config files for cluster domain..."
+    LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
     
-    # Check for user config first (highest priority for cluster-wide settings)
-    USER_CONFIG=$(get_primary_user_config 2>/dev/null || echo "")
-    log_debug "Primary user config found: ${USER_CONFIG:-'none'}"
-    
-    if [[ -n "$USER_CONFIG" && -f "$USER_CONFIG" ]]; then
-        LOCAL_DOMAIN=$(grep "^CLUSTER_DOMAIN=" "$USER_CONFIG" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
-        log_debug "CLUSTER_DOMAIN from user config: '${LOCAL_DOMAIN:-'not found'}'"
-        if [[ -n "$LOCAL_DOMAIN" ]]; then
-            CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-            log_success "Detected cluster domain from user config: $CLUSTER_DOMAIN"
-        else
-            log_debug "CLUSTER_DOMAIN not found in user config"
-        fi
-    fi
-    
-    # If still not found, try agent config as fallback
-    if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
-        log_debug "Checking agent config as fallback..."
-        AGENT_CONFIG=$(find_agent_config)
-        log_debug "Agent config found: ${AGENT_CONFIG:-'none'}"
-        
-        if [[ -n "$AGENT_CONFIG" && -f "$AGENT_CONFIG" ]]; then
-            LOCAL_DOMAIN=$(grep "^CLUSTER_DOMAIN=" "$AGENT_CONFIG" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
-            log_debug "CLUSTER_DOMAIN from agent config: '${LOCAL_DOMAIN:-'not found'}'"
-            if [[ -n "$LOCAL_DOMAIN" && "$LOCAL_DOMAIN" != "mynodeone" ]]; then
-                CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-                log_success "Detected cluster domain from agent config: $CLUSTER_DOMAIN"
-            fi
-        fi
-    fi
-    
-    if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
-        log_warn "Could not detect cluster domain locally, using default: $CLUSTER_DOMAIN"
+    if [[ -n "$LOCAL_DOMAIN" ]]; then
+        CLUSTER_DOMAIN="$LOCAL_DOMAIN"
+        log_success "Detected cluster domain from local config: $CLUSTER_DOMAIN"
+    else
+        log_warn "Could not detect cluster domain, using default: $CLUSTER_DOMAIN"
         log_debug "This indicates a possible configuration issue - user config should contain CLUSTER_DOMAIN"
     fi
 fi

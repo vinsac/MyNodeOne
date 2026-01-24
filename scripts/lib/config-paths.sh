@@ -159,23 +159,51 @@ log_debug() {
 
 # Get a value from a config file
 # Usage: get_config_value "CLUSTER_DOMAIN" "/path/to/config.env"
+# Priority: User config > Agent config (for cluster-wide settings)
 get_config_value() {
     local key="$1"
     local config_file="${2:-}"
     
-    # If no config file specified, find the primary one
+    # If no config file specified, find configs in proper priority order
     if [[ -z "$config_file" ]]; then
+        # Priority 1: User config (highest priority for cluster settings)
         config_file=$(get_primary_user_config 2>/dev/null || echo "")
-    fi
-    
-    # If still no config file, try agent config as fallback
-    if [[ -z "$config_file" || ! -f "$config_file" ]]; then
-        config_file=$(find_agent_config)
+        log_debug "Primary user config: ${config_file:-'none'}"
+        
+        # Priority 2: Check other user configs if primary not found
+        if [[ -z "$config_file" || ! -f "$config_file" ]]; then
+            for user_home in /home/*/.mynodeone/config.env; do
+                if [[ -f "$user_home" ]]; then
+                    config_file="$user_home"
+                    log_debug "Found alternative user config: $config_file"
+                    break
+                fi
+            done
+        fi
+        
+        # Priority 3: Root user config
+        if [[ -z "$config_file" || ! -f "$config_file" ]]; then
+            if [[ -f "/root/.mynodeone/config.env" ]]; then
+                config_file="/root/.mynodeone/config.env"
+                log_debug "Using root user config: $config_file"
+            fi
+        fi
+        
+        # Priority 4: Agent config (lowest priority, fallback only)
+        if [[ -z "$config_file" || ! -f "$config_file" ]]; then
+            config_file=$(find_agent_config)
+            log_debug "Using agent config as fallback: ${config_file:-'none'}"
+        fi
     fi
     
     # Extract the value
     if [[ -f "$config_file" ]]; then
-        grep "^${key}=" "$config_file" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo ""
+        local value=$(grep "^${key}=" "$config_file" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
+        log_debug "get_config_value('$key') from '$config_file': '${value:-'not found'}'"
+        echo "$value"
+    else
+        log_debug "No config file found for key: $key"
+        echo ""
     fi
 }
 

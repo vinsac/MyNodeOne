@@ -50,6 +50,13 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+log_debug() {
+    # Only show debug if DEBUG environment variable is set
+    if [[ -n "${DEBUG:-}" ]]; then
+        echo -e "${YELLOW}[DEBUG]${NC} $1"
+    fi
+}
+
 # Retry logic for commands
 retry_command() {
     local max_attempts="$1"
@@ -440,21 +447,45 @@ configure_node_agent() {
         poll_interval=30  # VPS nodes poll more frequently
     fi
     
-    # Get cluster domain from local config (for DNS entries)
+    # Get cluster domain using centralized config detection
     local cluster_domain="mynodeone"
-    local config_file="$ACTUAL_HOME/.mynodeone/config.env"
-    log_info "Looking for cluster domain in: $config_file"
-    if [ -f "$config_file" ]; then
-        local configured_domain
-        configured_domain=$(grep "^CLUSTER_DOMAIN=" "$config_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "")
-        if [ -n "$configured_domain" ]; then
-            cluster_domain="$configured_domain"
-            log_info "Using cluster domain from config: $cluster_domain"
+    log_info "Detecting cluster domain for Node Agent configuration..."
+    
+    # Try SSH fetch first if ssh_user provided (VPS nodes usually have this)
+    if [[ -n "$ssh_user" && -n "$control_plane_ip" ]]; then
+        log_debug "Attempting to fetch cluster domain via SSH from control plane..."
+        local detected_domain
+        detected_domain=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+            "${ssh_user}@${control_plane_ip}" \
+            "grep '^CLUSTER_DOMAIN=' ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '\"'" 2>/dev/null || echo "")
+        
+        if [[ -n "$detected_domain" ]]; then
+            cluster_domain="$detected_domain"
+            log_success "Detected cluster domain from control plane: $cluster_domain"
         else
-            log_warn "CLUSTER_DOMAIN not found in config, using default: $cluster_domain"
+            log_debug "SSH fetch failed, checking local config"
         fi
-    else
-        log_warn "Config file not found: $config_file, using default domain: $cluster_domain"
+    fi
+    
+    # Fallback to local config detection
+    if [[ "$cluster_domain" == "mynodeone" ]]; then
+        log_debug "Checking local config for cluster domain..."
+        
+        # Source config-paths.sh to use get_config_value function
+        if [[ -f "$PROJECT_ROOT/scripts/lib/config-paths.sh" ]]; then
+            source "$PROJECT_ROOT/scripts/lib/config-paths.sh"
+            local local_domain
+            local_domain=$(get_config_value "CLUSTER_DOMAIN")
+            
+            if [[ -n "$local_domain" ]]; then
+                cluster_domain="$local_domain"
+                log_success "Detected cluster domain from local config: $cluster_domain"
+            else
+                log_warn "Could not detect cluster domain, using default: $cluster_domain"
+            fi
+        else
+            log_warn "config-paths.sh not found, using default domain: $cluster_domain"
+        fi
     fi
     
     # For VPS nodes, detect Traefik config directory

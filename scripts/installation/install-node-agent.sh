@@ -159,6 +159,17 @@ else
     log_success "Node Agent already installed"
 fi
 
+# Install config-paths.sh dependency for Node Agent
+if [ ! -f "/usr/local/bin/config-paths.sh" ]; then
+    if [ -f "$SCRIPT_DIR/../lib/config-paths.sh" ]; then
+        cp "$SCRIPT_DIR/../lib/config-paths.sh" /usr/local/bin/
+        chmod +x /usr/local/bin/config-paths.sh
+        log_success "config-paths.sh dependency installed"
+    else
+        log_warn "config-paths.sh not found, Node Agent may not work properly"
+    fi
+fi
+
 log_info "Configuring Node Agent..."
 
 # Create config directory

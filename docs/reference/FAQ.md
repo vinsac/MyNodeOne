@@ -1,5 +1,140 @@
 # MyNodeOne - Frequently Asked Questions
 
+## Installation Issues
+
+### "command not found" errors during installation
+
+**Problem**: Scripts don't have execute permissions after cloning
+
+**Solution**: 
+```bash
+# Fix permissions for all scripts
+find ~/MyNodeOne -name "*.sh" -exec chmod +x {} \;
+
+# Or run the permission fix script
+sudo ./scripts/setup/fix-script-permissions.sh
+```
+
+**Prevention**: Scripts now include proper permissions in the repository
+
+### VPS installation shows "Initial sync failed"
+
+**Problem**: Node Agent can't start due to missing dependencies
+
+**Symptoms**:
+```
+mynodeone-node-agent: line 43: /usr/local/bin/config-paths.sh: No such file or directory
+```
+
+**Solution**:
+```bash
+# Manual fix (for existing installations)
+ssh user@vps-ip "sudo cp ~/mynodeone/scripts/lib/config-paths.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/config-paths.sh && sudo chown root:root /usr/local/bin/config-paths.sh"
+
+# Restart Node Agent
+ssh user@vps-ip "sudo systemctl restart mynodeone-node-agent"
+```
+
+**Prevention**: Fixed in install-node-agent.sh (commit 01dfe16)
+
+### VPS shows "VPS not found in sync controller registry"
+
+**Problem**: Verification logic using wrong search criteria
+
+**Symptoms**:
+```
+❌ VPS not found in sync controller registry
+❌ VPS not found in domain registry
+```
+
+**Solution**: This is now fixed with ConfigMap-based verification (commit 947742c)
+
+### Node Agent heartbeat failures
+
+**Problem**: Node Agent can't authenticate with control plane
+
+**Symptoms**:
+```
+[ERROR] CONTROL_PLANE_IP is required
+Unauthorized: Invalid API token
+```
+
+**Solution**:
+```bash
+# Check API token
+sudo cat /etc/mynodeone/api-token
+
+# Verify Node Agent config
+sudo cat /etc/mynodeone/agent.env
+
+# Check Node Agent status
+sudo mynodeone-node-agent status
+```
+
+### remove-domain.sh fails with jq errors
+
+**Problem**: Incorrect JSON path in domain registry queries
+
+**Symptoms**:
+```
+jq: error: Cannot index array with string "domain-name"
+```
+
+**Solution**: Fixed in scripts/domains/remove-domain.sh (commit 947742c)
+
+## Node Agent & Sync Issues
+
+### Node Agent keeps restarting
+
+**Problem**: Missing config-paths.sh dependency
+
+**Diagnosis**:
+```bash
+# Check Node Agent logs
+sudo journalctl -u mynodeone-node-agent -f
+
+# Look for this error:
+mynodeone-node-agent: line 43: /usr/local/bin/config-paths.sh: No such file or directory
+```
+
+**Solution**: See "VPS installation shows 'Initial sync failed'" above
+
+### Heartbeat not reaching control plane
+
+**Problem**: Network or authentication issues
+
+**Diagnosis**:
+```bash
+# On VPS: Check Node Agent status
+sudo mynodeone-node-agent status
+
+# On Control Plane: Check for heartbeats
+sudo journalctl -u mynodeone-config-api -f | grep heartbeat
+```
+
+**Common Causes**:
+- API token mismatch
+- Network connectivity (Tailscale)
+- Control plane API server not running
+
+### Config not syncing to VPS
+
+**Problem**: V2 sync system not working
+
+**Diagnosis**:
+```bash
+# Check if Node Agent is pulling config
+sudo journalctl -u mynodeone-config-api -f | grep "config.*request"
+
+# Check sync controller health
+sudo ./scripts/lib/sync-controller.sh health
+```
+
+**Expected Behavior**:
+- Config requests every 30 seconds
+- Heartbeats every 60 seconds
+- V2 sync nodes skip SSH push
+
 ## General Questions
 
 ### What is MyNodeOne?

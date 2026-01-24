@@ -1,5 +1,145 @@
 # MyNodeOne Troubleshooting Guide
 
+## Node Agent & Sync Issues
+
+### Node Agent Fails to Start
+
+**Symptoms**:
+```
+mynodeone-node-agent: line 43: /usr/local/bin/config-paths.sh: No such file or directory
+```
+
+**Root Cause**: Missing dependency file during Node Agent installation
+
+**Solution**:
+```bash
+# Copy missing dependency
+sudo cp ~/mynodeone/scripts/lib/config-paths.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/config-paths.sh
+sudo chown root:root /usr/local/bin/config-paths.sh
+
+# Restart Node Agent
+sudo systemctl restart mynodeone-node-agent
+
+# Verify it's running
+sudo systemctl status mynodeone-node-agent
+```
+
+**Prevention**: Fixed in install-node-agent.sh (commit 01dfe16)
+
+### Heartbeat Not Reaching Control Plane
+
+**Symptoms**:
+- Node Agent shows "Connection: OK" but no heartbeats in control plane logs
+- VPS shows as "offline" in sync controller health
+
+**Diagnosis**:
+```bash
+# On VPS: Check Node Agent status
+sudo mynodeone-node-agent status
+
+# On Control Plane: Check API server status
+sudo systemctl status mynodeone-config-api
+
+# Check for heartbeats on control plane
+sudo journalctl -u mynodeone-config-api -f | grep heartbeat
+```
+
+**Common Causes & Solutions**:
+
+1. **API Token Mismatch**:
+   ```bash
+   # Check VPS token
+   sudo cat /etc/mynodeone/agent.env | grep API_TOKEN
+   
+   # Check control plane token
+   sudo cat /etc/mynodeone/api-token
+   
+   # Update VPS token if needed
+   sudo sed -i "s/API_TOKEN=.*/API_TOKEN=$(sudo cat /etc/mynodeone/api-token)/" /etc/mynodeone/agent.env
+   sudo systemctl restart mynodeone-node-agent
+   ```
+
+2. **Network Connectivity**:
+   ```bash
+   # Test Tailscale connectivity
+   ping <control-plane-tailscale-ip>
+   
+   # Test API endpoint
+   curl -H "Authorization: Bearer $(sudo cat /etc/mynodeone/api-token)" \
+        https://<control-plane-ip>:8443/api/v1/health
+   ```
+
+3. **API Server Not Running**:
+   ```bash
+   # On control plane
+   sudo systemctl restart mynodeone-config-api
+   sudo systemctl status mynodeone-config-api
+   ```
+
+### V2 Sync System Not Working
+
+**Expected Behavior**:
+- Config requests every 30 seconds
+- Heartbeats every 60 seconds
+- V2 sync nodes skip SSH push
+
+**Diagnosis**:
+```bash
+# Check if Node Agent is pulling config
+sudo journalctl -u mynodeone-config-api -f | grep "config.*request"
+
+# Check sync controller health
+sudo ./scripts/lib/sync-controller.sh health
+
+# Verify V2 sync is active
+sudo ./scripts/lib/sync-controller.sh health | grep "V2 sync"
+```
+
+**Common Issues**:
+
+1. **Node Agent Not Pulling Config**:
+   ```bash
+   # Check Node Agent logs
+   sudo journalctl -u mynodeone-node-agent -f | grep -E "(config|heartbeat)"
+   
+   # Manual config request test
+   curl -H "Authorization: Bearer $(sudo cat /etc/mynodeone/api-token)" \
+        https://<control-plane-ip>:8443/api/v1/config/vps
+   ```
+
+2. **SSH Fallback Triggering When It Shouldn't**:
+   ```bash
+   # Check if node is recognized as V2 sync
+   sudo ./scripts/lib/sync-controller.sh push | grep "V2 sync"
+   
+   # Should see: "Node <ip> is using V2 sync (Node Agent active) - skipping SSH push"
+   ```
+
+### VPS Registration Verification Failures
+
+**Symptoms**:
+```
+❌ VPS not found in sync controller registry
+❌ VPS not found in domain registry
+❌ Domain not found in registry
+```
+
+**Root Cause**: Verification logic using wrong search criteria or JSON paths
+
+**Solution**: Fixed with ConfigMap-based verification (commit 947742c)
+
+**Manual Verification**:
+```bash
+# Check sync controller registry
+sudo kubectl get configmap sync-controller-registry -n kube-system \
+  -o jsonpath='{.data.registry\.json}' | jq .
+
+# Check domain registry
+sudo kubectl get configmap domain-registry -n kube-system \
+  -o jsonpath='{.data.domains\.json}' | jq .
+```
+
 ## Quick Diagnostics
 
 ### Health Check Script

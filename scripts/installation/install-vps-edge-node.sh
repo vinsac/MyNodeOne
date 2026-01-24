@@ -305,8 +305,9 @@ if [ $? -eq 0 ]; then
     echo
     
     # Check sync controller registry
-    echo "DEBUG: VPS_NODE_NAME='$VPS_NODE_NAME'"
-    if [ -n "$VPS_NODE_NAME" ] && sudo "$SCRIPT_DIR/../lib/sync-controller.sh" health | grep -q "$VPS_NODE_NAME"; then
+    if sudo kubectl get configmap sync-controller-registry -n kube-system \
+        -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
+        jq -e ".vps_nodes[]? | select((.name // \"\") == \"$VPS_NODE_NAME\" or (.tailscale_ip // \"\") == \"$VPS_TAILSCALE_IP\" or (.ip // \"\") == \"$VPS_TAILSCALE_IP\")" >/dev/null; then
         echo "✅ VPS found in sync controller registry"
     else
         echo "❌ VPS not found in sync controller registry"

@@ -296,7 +296,7 @@ if [ $? -eq 0 ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if ! retry_command "Initial sync" \
-        sudo "$SCRIPT_DIR/../lib/sync-controller.sh" sync; then
+        sudo "$SCRIPT_DIR/../lib/sync-controller.sh" push; then
         echo "⚠ Initial sync failed, VPS may need manual sync"
     fi
     
@@ -305,7 +305,7 @@ if [ $? -eq 0 ]; then
     echo
     
     # Check sync controller registry
-    if sudo "$SCRIPT_DIR/../lib/sync-controller.sh" list vps_nodes | grep -q "$VPS_TAILSCALE_IP"; then
+    if sudo "$SCRIPT_DIR/../lib/sync-controller.sh" health | grep -q "$VPS_TAILSCALE_IP"; then
         echo "✅ VPS found in sync controller registry"
     else
         echo "❌ VPS not found in sync controller registry"

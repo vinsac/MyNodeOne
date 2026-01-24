@@ -553,11 +553,13 @@ register_laptop_with_cluster() {
             "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null || echo "")
         
         if [ -n "$api_token" ]; then
+            log_debug "Installing Node Agent with SSH access for domain detection..."
             sudo "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
                 --control-plane-ip "$control_plane_ip" \
                 --node-type laptop \
                 --node-name "$hostname" \
                 --api-token "$api_token" \
+                --ssh-user "$control_plane_user" \
                 --poll-interval 60
             
             if [ $? -eq 0 ]; then

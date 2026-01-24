@@ -133,6 +133,30 @@ config_exists() {
     [[ -f "$config_file" && -r "$config_file" ]]
 }
 
+# Logging functions for consistent output
+log_info() {
+    echo "[INFO] $*" >&2
+}
+
+log_success() {
+    echo "[SUCCESS] $*" >&2
+}
+
+log_warn() {
+    echo "[WARN] $*" >&2
+}
+
+log_error() {
+    echo "[ERROR] $*" >&2
+}
+
+log_debug() {
+    # Only show debug if DEBUG environment variable is set
+    if [[ -n "${DEBUG:-}" ]]; then
+        echo "[DEBUG] $*" >&2
+    fi
+}
+
 # Get a value from a config file
 # Usage: get_config_value "CLUSTER_DOMAIN" "/path/to/config.env"
 get_config_value() {

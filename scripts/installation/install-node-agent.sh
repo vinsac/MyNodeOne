@@ -41,6 +41,13 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+log_debug() {
+    # Only show debug if DEBUG environment variable is set
+    if [[ -n "${DEBUG:-}" ]]; then
+        echo -e "${YELLOW}[DEBUG]${NC} $1"
+    fi
+}
+
 # Default values
 CONTROL_PLANE_IP=""
 NODE_NAME=""
@@ -102,8 +109,23 @@ if [ -z "$NODE_TYPE" ]; then echo "Missing required argument: --node-type"; REQU
 if [ -z "$API_TOKEN" ]; then echo "Missing required argument: --api-token"; REQUIRED_MISSING=true; fi
 
 if [ "$REQUIRED_MISSING" = true ]; then
+    echo "Usage: $0 --control-plane-ip <ip> --node-name <name> --node-type <type> --api-token <token> [--ssh-user <user>] [--cluster-domain <domain>]"
     exit 1
 fi
+
+# Debug logging for installation tracking
+log_debug "=== Node Agent Installation Parameters ==="
+log_debug "CONTROL_PLANE_IP: $CONTROL_PLANE_IP"
+log_debug "NODE_NAME: $NODE_NAME"
+log_debug "NODE_TYPE: $NODE_TYPE"
+log_debug "SSH_USER: ${SSH_USER:-'not set'}"
+log_debug "CLUSTER_DOMAIN: ${CLUSTER_DOMAIN:-'not set (will auto-detect)'}"
+log_debug "API_PORT: $API_PORT"
+log_debug "POLL_INTERVAL: $POLL_INTERVAL"
+log_debug "API_TOKEN: ${API_TOKEN:0:10}..."  # Show only first 10 chars for security
+log_debug "Current user: $(whoami)"
+log_debug "Current home: $HOME"
+log_debug "========================================"
 
 # Check root
 if [ "$EUID" -ne 0 ]; then 
@@ -186,38 +208,76 @@ TRAEFIK_CONFIG_DIR=""
 # Fetch CLUSTER_DOMAIN from cluster config (defensive programming)
 CLUSTER_DOMAIN="mynodeone"  # Default fallback
 log_info "Detecting cluster domain from control plane..."
+log_debug "SSH_USER=${SSH_USER:-'not set'}, CONTROL_PLANE_IP=${CONTROL_PLANE_IP:-'not set'}"
 
 # Try to fetch from control plane's config.env
 if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
+    log_debug "Attempting to fetch cluster domain via SSH from control plane..."
     DETECTED_DOMAIN=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
         "${SSH_USER}@${CONTROL_PLANE_IP}" \
         "grep '^CLUSTER_DOMAIN=' ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '\"'" 2>/dev/null || echo "")
     
     if [[ -n "$DETECTED_DOMAIN" ]]; then
         CLUSTER_DOMAIN="$DETECTED_DOMAIN"
-        log_info "Detected cluster domain from control plane: $CLUSTER_DOMAIN"
+        log_success "Detected cluster domain from control plane: $CLUSTER_DOMAIN"
     else
         log_warn "Could not detect cluster domain from control plane, checking local config..."
+        log_debug "SSH command returned empty or failed"
         # Fallback: Check local config when SSH fails
         LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
+        log_debug "get_config_value returned: '${LOCAL_DOMAIN:-'empty'}'"
         if [[ -n "$LOCAL_DOMAIN" ]]; then
             CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-            log_info "Detected cluster domain from local config: $CLUSTER_DOMAIN"
+            log_success "Detected cluster domain from local config: $CLUSTER_DOMAIN"
         else
             log_warn "Could not detect cluster domain locally, using default: $CLUSTER_DOMAIN"
+            log_debug "All detection methods failed, falling back to default"
         fi
     fi
 else
     # SSH not available (e.g., installing on control plane itself), check local config first
     log_info "SSH not available, checking local config for cluster domain..."
-    LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
-    if [[ -n "$LOCAL_DOMAIN" ]]; then
-        CLUSTER_DOMAIN="$LOCAL_DOMAIN"
-        log_info "Detected cluster domain from local config: $CLUSTER_DOMAIN"
-    else
+    log_debug "Checking for local user config files..."
+    
+    # Check for user config first (highest priority for cluster-wide settings)
+    USER_CONFIG=$(get_primary_user_config 2>/dev/null || echo "")
+    log_debug "Primary user config found: ${USER_CONFIG:-'none'}"
+    
+    if [[ -n "$USER_CONFIG" && -f "$USER_CONFIG" ]]; then
+        LOCAL_DOMAIN=$(grep "^CLUSTER_DOMAIN=" "$USER_CONFIG" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
+        log_debug "CLUSTER_DOMAIN from user config: '${LOCAL_DOMAIN:-'not found'}'"
+        if [[ -n "$LOCAL_DOMAIN" ]]; then
+            CLUSTER_DOMAIN="$LOCAL_DOMAIN"
+            log_success "Detected cluster domain from user config: $CLUSTER_DOMAIN"
+        else
+            log_debug "CLUSTER_DOMAIN not found in user config"
+        fi
+    fi
+    
+    # If still not found, try agent config as fallback
+    if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
+        log_debug "Checking agent config as fallback..."
+        AGENT_CONFIG=$(find_agent_config)
+        log_debug "Agent config found: ${AGENT_CONFIG:-'none'}"
+        
+        if [[ -n "$AGENT_CONFIG" && -f "$AGENT_CONFIG" ]]; then
+            LOCAL_DOMAIN=$(grep "^CLUSTER_DOMAIN=" "$AGENT_CONFIG" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"' || echo "")
+            log_debug "CLUSTER_DOMAIN from agent config: '${LOCAL_DOMAIN:-'not found'}'"
+            if [[ -n "$LOCAL_DOMAIN" && "$LOCAL_DOMAIN" != "mynodeone" ]]; then
+                CLUSTER_DOMAIN="$LOCAL_DOMAIN"
+                log_success "Detected cluster domain from agent config: $CLUSTER_DOMAIN"
+            fi
+        fi
+    fi
+    
+    if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
         log_warn "Could not detect cluster domain locally, using default: $CLUSTER_DOMAIN"
+        log_debug "This indicates a possible configuration issue - user config should contain CLUSTER_DOMAIN"
     fi
 fi
+
+log_info "Final cluster domain: $CLUSTER_DOMAIN"
+log_debug "This will be used for DNS entries: <service>.$CLUSTER_DOMAIN.local"
 
 if [[ "$NODE_TYPE" == "vps" ]]; then
     # Try to find existing Traefik config directory

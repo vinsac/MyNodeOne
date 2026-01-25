@@ -329,7 +329,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/etc/mynodeone
+ReadWritePaths=/etc/mynodeone /etc/hosts
 
 [Install]
 WantedBy=multi-user.target

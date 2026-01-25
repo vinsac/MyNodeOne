@@ -38,9 +38,11 @@ sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/dashboard.html" 
 
 echo "✓ Dashboard will load services dynamically from /api/services.json"
 
-# Create ConfigMap with templated dashboard HTML
+# Create ConfigMap with all dashboard HTML files
 kubectl create configmap dashboard-html \
     --from-file=index.html="$TEMP_HTML" \
+    --from-file=app-store.html="$SCRIPT_DIR/app-store.html" \
+    --from-file=scripts.html="$SCRIPT_DIR/scripts.html" \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 

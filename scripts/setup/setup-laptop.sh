@@ -654,13 +654,11 @@ print_summary() {
     if [ "$USE_LOCAL_DNS" = true ]; then
         echo "  • Grafana:  http://grafana.${CLUSTER_DOMAIN}.local"
         echo "  • ArgoCD:   https://argocd.${CLUSTER_DOMAIN}.local"
-        echo "  • MinIO:    http://minio.${CLUSTER_DOMAIN}.local:9001"
         echo "  • Longhorn: http://longhorn.${CLUSTER_DOMAIN}.local"
     else
         if [ -n "$GRAFANA_IP" ]; then
             echo "  • Grafana:  http://$GRAFANA_IP"
             echo "  • ArgoCD:   https://$ARGOCD_IP"
-            echo "  • MinIO:    http://$MINIO_CONSOLE_IP:9001"
             echo "  • Longhorn: http://$LONGHORN_IP"
         else
             echo "  • Run: kubectl get svc -A | grep LoadBalancer"
@@ -680,7 +678,7 @@ print_summary() {
     echo "  • Use VS Code/Cursor with Kubernetes extensions"
     echo
     echo "📚 Next Steps:"
-    echo "  • Read docs/guides/POST_INSTALLATION_GUIDE.md for detailed examples"
+    echo "  • Read docs/installation/POST_INSTALLATION_GUIDE.md for detailed examples"
     echo "  • Try AI-assisted development with Cursor or Windsurf"
     echo "  • Deploy your first application"
     echo

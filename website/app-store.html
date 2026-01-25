@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyNodeOne App Store - One-Click App Installation</title>
+    <meta name="description" content="Install popular self-hosted applications with a single command on your MyNodeOne cluster.">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="%23ffffff10"/><circle cx="75" cy="75" r="1" fill="%23ffffff10"/><circle cx="50" cy="10" r="0.5" fill="%23ffffff15"/><circle cx="10" cy="50" r="0.5" fill="%23ffffff15"/><circle cx="90" cy="30" r="0.5" fill="%23ffffff15"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>') repeat;
+            opacity: 0.3;
+            z-index: -1;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 50px;
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 3.5em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-weight: 800;
+        }
+        
+        .header p {
+            font-size: 1.4em;
+            opacity: 0.95;
+            font-weight: 300;
+            margin-bottom: 20px;
+        }
+        
+        .nav-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-button {
+            padding: 12px 25px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .nav-button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .nav-button.active {
+            background: rgba(255,255,255,0.4);
+            border-color: rgba(255,255,255,0.6);
+        }
+        
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .app-card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            cursor: pointer;
+        }
+        
+        .app-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 45px rgba(0,0,0,0.3);
+        }
+        
+        .app-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .app-name {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .app-description {
+            color: #666;
+            font-size: 1em;
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+        
+        .app-category {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .install-button {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        
+        .app-card:hover .install-button {
+            background: #5a6fd8;
+            transform: scale(1.05);
+        }
+        
+        .install-button:hover {
+            background: #4c5fd5;
+        }
+        
+        .info-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 40px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .info-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        
+        .info-section p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        
+        .requirements-list {
+            background: #f0f8ff;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            margin-top: 20px;
+        }
+        
+        .requirements-list h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .requirements-list ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .requirements-list li {
+            padding: 8px 0;
+            color: #666;
+            position: relative;
+            padding-left: 25px;
+        }
+        
+        .requirements-list li:before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            padding: 20px;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .app-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 MyNodeOne App Store</h1>
+            <p>Install popular self-hosted applications with a single command</p>
+            <p style="color: #667eea; font-weight: 600; font-size: 1.1em;">
+                ✨ Each app gets its own easy-to-remember address like <code style="background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 4px;">jellyfin.mynodeone.local</code>
+            </p>
+            <div class="nav-buttons">
+                <a href="dashboard.html" class="nav-button">🚀 Dashboard</a>
+                <a href="app-store.html" class="nav-button active">📦 App Store</a>
+                <a href="scripts.html" class="nav-button">🔧 Scripts</a>
+                <a href="index.html" class="nav-button">🏠 Home</a>
+                <a href="https://github.com/vinsac/MyNodeOne" class="nav-button">📖 GitHub</a>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <h2>🚀 One-Click Installation</h2>
+            <p>Choose from our curated collection of popular self-hosted applications. Each app is pre-configured for MyNodeOne with automatic SSL, storage provisioning, and networking.</p>
+            
+            <div class="requirements-list">
+                <h3>📋 Installation Requirements:</h3>
+                <ul>
+                    <li>SSH into your control plane first</li>
+                    <li>Navigate to the MyNodeOne repository</li>
+                    <li>Run the installation command shown in the popup</li>
+                    <li>Each app includes automatic SSL, storage, and networking</li>
+                    <li>Apps are monitored and can be managed through the dashboard</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="app-grid">
+            <div class="app-card" onclick="showInstallCommand('jellyfin')">
+                <div class="app-icon">📺</div>
+                <div class="app-category">Media</div>
+                <div class="app-name">Jellyfin</div>
+                <div class="app-description">Open source media server for organizing and streaming your movies, TV shows, and music</div>
+                <button class="install-button">Install Jellyfin</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('immich')">
+                <div class="app-icon">📸</div>
+                <div class="app-category">Photos</div>
+                <div class="app-name">Immich</div>
+                <div class="app-description">Self-hosted photo and video backup solution, Google Photos alternative</div>
+                <button class="install-button">Install Immich</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('nextcloud')">
+                <div class="app-icon">☁️</div>
+                <div class="app-category">Productivity</div>
+                <div class="app-name">Nextcloud</div>
+                <div class="app-description">Cloud storage and collaboration platform with file sharing, calendar, and office suite</div>
+                <button class="install-button">Install Nextcloud</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('mattermost')">
+                <div class="app-icon">💬</div>
+                <div class="app-category">Communication</div>
+                <div class="app-name">Mattermost</div>
+                <div class="app-description">Team chat and collaboration platform, Slack alternative for secure communication</div>
+                <button class="install-button">Install Mattermost</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('paperless')">
+                <div class="app-icon">📄</div>
+                <div class="app-category">Document Management</div>
+                <div class="app-name">Paperless-ngx</div>
+                <div class="app-description">Document management system to scan, index, and archive all your physical documents</div>
+                <button class="install-button">Install Paperless-ngx</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('homepage')">
+                <div class="app-icon">🏠</div>
+                <div class="app-category">Dashboard</div>
+                <div class="app-name">Homepage</div>
+                <div class="app-description">Beautiful dashboard for organizing and accessing all your services in one place</div>
+                <button class="install-button">Install Homepage</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('llm-chat')">
+                <div class="app-icon">🤖</div>
+                <div class="app-category">AI</div>
+                <div class="app-name">LLM Chat</div>
+                <div class="app-description">AI chat interface with local LLMs (Open WebUI + Ollama)</div>
+                <button class="install-button">Install LLM Chat</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('llmapi')">
+                <div class="app-icon">🔌</div>
+                <div class="app-category">AI</div>
+                <div class="app-name">LLM API</div>
+                <div class="app-description">OpenAI-compatible API service for local LLM inference</div>
+                <button class="install-button">Install LLM API</button>
+            </div>
+            
+            <div class="app-card" onclick="showInstallCommand('minio')">
+                <div class="app-icon">💾</div>
+                <div class="app-category">Storage</div>
+                <div class="app-name">MinIO</div>
+                <div class="app-description">S3-compatible object storage for building cloud-native applications</div>
+                <button class="install-button">Install MinIO</button>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p style="font-size: 1.1em; font-weight: 700; margin-bottom: 15px;"><strong>📦 MyNodeOne App Store</strong> - One-Click App Installation</p>
+            <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; flex-wrap: wrap;">
+                <a href="dashboard.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🚀 Dashboard</a>
+                <a href="app-store.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📦 App Store</a>
+                <a href="scripts.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🔧 Scripts</a>
+                <a href="index.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🏠 Home</a>
+                <a href="https://github.com/vinsac/MyNodeOne" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📖 GitHub</a>
+            </div>
+            <p style="margin-top: 20px; opacity: 0.8; font-size: 0.9em;">
+                🄯 MIT License · Created with ❤️ by <a href="https://github.com/vinsac" style="color: #667eea;">Vinay Sachdeva</a> · 
+                <a href="https://github.com/vinsac/MyNodeOne/stargazers" style="color: #667eea;">⭐ Star us on GitHub!</a>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        function showInstallCommand(appName) {
+            const commands = {
+                'jellyfin': 'sudo ./scripts/apps/jellyfin/install-jellyfin.sh',
+                'immich': 'sudo ./scripts/apps/immich/install-immich.sh',
+                'nextcloud': 'sudo ./scripts/apps/nextcloud/install-nextcloud.sh',
+                'mattermost': 'sudo ./scripts/apps/mattermost/install-mattermost.sh',
+                'paperless': 'sudo ./scripts/apps/paperless/install-paperless.sh',
+                'homepage': 'sudo ./scripts/apps/homepage/install-homepage.sh',
+                'llm-chat': 'sudo ./scripts/deploy-llm-chat.sh',
+                'llmapi': 'sudo ./scripts/apps/llmapi/install-llmapi.sh',
+                'minio': 'sudo ./scripts/apps/minio/install-minio.sh'
+            };
+            
+            const appUrls = {
+                'jellyfin': 'http://jellyfin.mynodeone.local',
+                'immich': 'http://immich.mynodeone.local',
+                'nextcloud': 'http://nextcloud.mynodeone.local',
+                'mattermost': 'http://mattermost.mynodeone.local',
+                'paperless': 'http://paperless.mynodeone.local',
+                'homepage': 'http://homepage.mynodeone.local',
+                'llm-chat': 'http://llm-chat.mynodeone.local',
+                'llmapi': 'http://llmapi.mynodeone.local',
+                'minio': 'http://minio.mynodeone.local'
+            };
+            
+            const command = commands[appName] || 'Check scripts/apps/ directory';
+            const accessUrl = appUrls[appName] || 'Check installation output for URL';
+            
+            const message = `To install ${appName}, run this command in your terminal:\n\n${command}\n\nAfter installation, access at:\n${accessUrl}\n\nNote: SSH into your control plane first!`;
+            alert(message);
+        }
+    </script>
+</body>
+</html>

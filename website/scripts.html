@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyNodeOne Management Scripts - Cluster Administration Tools</title>
+    <meta name="description" content="Complete collection of MyNodeOne management scripts for cluster administration, deployment, and operations.">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="%23ffffff10"/><circle cx="75" cy="75" r="1" fill="%23ffffff10"/><circle cx="50" cy="10" r="0.5" fill="%23ffffff15"/><circle cx="10" cy="50" r="0.5" fill="%23ffffff15"/><circle cx="90" cy="30" r="0.5" fill="%23ffffff15"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>') repeat;
+            opacity: 0.3;
+            z-index: -1;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 50px;
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 3.5em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-weight: 800;
+        }
+        
+        .header p {
+            font-size: 1.4em;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+        
+        .nav-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-button {
+            padding: 12px 25px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .nav-button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .nav-button.active {
+            background: rgba(255,255,255,0.4);
+            border-color: rgba(255,255,255,0.6);
+        }
+        
+        .scripts-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 40px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .section-title {
+            font-size: 2em;
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        .category-title {
+            font-size: 1.5em;
+            color: #667eea;
+            margin-bottom: 20px;
+            font-weight: 600;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .script-item {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            margin: 15px 0;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        
+        .script-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .script-icon {
+            font-size: 2.5em;
+            margin-right: 20px;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .script-info {
+            flex: 1;
+        }
+        
+        .script-name {
+            font-weight: 600;
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .script-desc {
+            color: #666;
+            font-size: 1em;
+            line-height: 1.4;
+        }
+        
+        .script-command {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin-left: 20px;
+            max-width: 400px;
+            word-break: break-all;
+            border: 1px solid #4a5568;
+        }
+        
+        .copy-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-left: 10px;
+            transition: background 0.3s ease;
+        }
+        
+        .copy-button:hover {
+            background: #5a6fd8;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 40px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .info-box h2 {
+            color: #1976d2;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .info-box p {
+            color: #1976d2;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            padding: 20px;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .script-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .script-command {
+                margin-left: 0;
+                margin-top: 15px;
+                max-width: 100%;
+            }
+            
+            .copy-button {
+                margin-left: 0;
+                margin-top: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 MyNodeOne Management Scripts</h1>
+            <p>Complete collection of cluster administration and deployment tools</p>
+            <div class="nav-buttons">
+                <a href="dashboard.html" class="nav-button">🚀 Dashboard</a>
+                <a href="app-store.html" class="nav-button">📦 App Store</a>
+                <a href="scripts.html" class="nav-button active">🔧 Scripts</a>
+                <a href="index.html" class="nav-button">🏠 Home</a>
+                <a href="https://github.com/vinsac/MyNodeOne" class="nav-button">📖 GitHub</a>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h2>🚀 Getting Started with Scripts</h2>
+            <p>All scripts should be run from the MyNodeOne repository directory on your control plane node.</p>
+            <p>Most scripts require sudo privileges for system-level operations. Always review scripts before execution.</p>
+        </div>
+        
+        <div class="scripts-section">
+            <h2 class="section-title">📦 Installation & Setup Scripts</h2>
+            
+            <h3 class="category-title">🚀 Initial Setup</h3>
+            
+            <div class="script-item">
+                <div class="script-icon">🚀</div>
+                <div class="script-info">
+                    <div class="script-name">bootstrap-control-plane.sh</div>
+                    <div class="script-desc">Initial setup - Install Kubernetes, storage, monitoring, and GitOps</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/installation/bootstrap-control-plane.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/installation/bootstrap-control-plane.sh')">Copy</button>
+                </div>
+            </div>
+            
+            <h3 class="category-title">➕ Node Management</h3>
+            
+            <div class="script-item">
+                <div class="script-icon">➕</div>
+                <div class="script-info">
+                    <div class="script-name">add-worker-node.sh</div>
+                    <div class="script-desc">Add more machines to your cluster for increased capacity</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/nodes/add-worker-node.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/nodes/add-worker-node.sh')">Copy</button>
+                </div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🌐</div>
+                <div class="script-info">
+                    <div class="script-name">setup-edge-node.sh</div>
+                    <div class="script-desc">Configure VPS as edge node for public access</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/setup/setup-edge-node.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/setup/setup-edge-node.sh')">Copy</button>
+                </div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">💻</div>
+                <div class="script-info">
+                    <div class="script-name">setup-laptop.sh</div>
+                    <div class="script-desc">Configure management laptop with kubectl and access</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/setup/setup-laptop.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/setup/setup-laptop.sh')">Copy</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="scripts-section">
+            <h2 class="section-title">🔧 Operations & Management</h2>
+            
+            <h3 class="category-title">📊 Cluster Operations</h3>
+            
+            <div class="script-item">
+                <div class="script-icon">📊</div>
+                <div class="script-info">
+                    <div class="script-name">cluster-status.sh</div>
+                    <div class="script-desc">Check cluster health, nodes, pods, and resources</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">./scripts/operations/cluster-status.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('./scripts/operations/cluster-status.sh')">Copy</button>
+                </div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🔑</div>
+                <div class="script-info">
+                    <div class="script-name">show-credentials.sh</div>
+                    <div class="script-desc">Display service URLs and login credentials</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/utils/show-credentials.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/utils/show-credentials.sh')">Copy</button>
+                </div>
+            </div>
+            
+            <div class="script-item">
+                <div class="script-icon">🛠️</div>
+                <div class="script-info">
+                    <div class="script-name">create-app.sh</div>
+                    <div class="script-desc">Scaffold new application with manifests and configuration</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">./scripts/operations/create-app.sh myapp</div>
+                    <button class="copy-button" onclick="copyToClipboard('./scripts/operations/create-app.sh myapp')">Copy</button>
+                </div>
+            </div>
+            
+            <h3 class="category-title">🤖 AI & ML Deployment</h3>
+            
+            <div class="script-item">
+                <div class="script-icon">🤖</div>
+                <div class="script-info">
+                    <div class="script-name">deploy-llm-chat.sh</div>
+                    <div class="script-desc">Deploy local AI chat (Open WebUI + Ollama)</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/deploy-llm-chat.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/deploy-llm-chat.sh')">Copy</button>
+                </div>
+            </div>
+            
+            <h3 class="category-title">🔒 Security</h3>
+            
+            <div class="script-item">
+                <div class="script-icon">🔒</div>
+                <div class="script-info">
+                    <div class="script-name">enable-security-hardening.sh</div>
+                    <div class="script-desc">Apply production security policies and encryption</div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div class="script-command">sudo ./scripts/setup/enable-security-hardening.sh</div>
+                    <button class="copy-button" onclick="copyToClipboard('sudo ./scripts/setup/enable-security-hardening.sh')">Copy</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="scripts-section">
+            <h2 class="section-title">📱 Application Installation Scripts</h2>
+            <p style="color: #666; margin-bottom: 20px; text-align: center;">Individual application installation scripts are also available in the <code>scripts/apps/</code> directory. For a more user-friendly experience, use the <a href="app-store.html" style="color: #667eea;">App Store</a>.</p>
+        </div>
+        
+        <div class="footer">
+            <p style="font-size: 1.1em; font-weight: 700; margin-bottom: 15px;"><strong>🔧 MyNodeOne Management Scripts</strong> - Cluster Administration Tools</p>
+            <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; flex-wrap: wrap;">
+                <a href="dashboard.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🚀 Dashboard</a>
+                <a href="app-store.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📦 App Store</a>
+                <a href="scripts.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🔧 Scripts</a>
+                <a href="index.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🏠 Home</a>
+                <a href="https://github.com/vinsac/MyNodeOne" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📖 GitHub</a>
+            </div>
+            <p style="margin-top: 20px; opacity: 0.8; font-size: 0.9em;">
+                🄯 MIT License · Created with ❤️ by <a href="https://github.com/vinsac" style="color: #667eea;">Vinay Sachdeva</a> · 
+                <a href="https://github.com/vinsac/MyNodeOne/stargazers" style="color: #667eea;">⭐ Star us on GitHub!</a>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                // Show success feedback
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.background = '#28a745';
+                
+                setTimeout(function() {
+                    button.textContent = originalText;
+                    button.style.background = '#667eea';
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+                alert('Failed to copy to clipboard. Please copy manually.');
+            });
+        }
+    </script>
+</body>
+</html>

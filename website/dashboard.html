@@ -344,6 +344,9 @@
             <p>Real-time Cluster Management & Infrastructure Monitoring</p>
             <div class="nav-buttons">
                 <a href="index.html" class="nav-button">🏠 Home</a>
+                <a href="dashboard.html" class="nav-button">🚀 Dashboard</a>
+                <a href="app-store.html" class="nav-button">📦 App Store</a>
+                <a href="scripts.html" class="nav-button">🔧 Scripts</a>
                 <a href="https://github.com/vinsac/MyNodeOne" class="nav-button">📖 GitHub</a>
                 <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" class="nav-button">📚 Docs</a>
                 <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" class="nav-button">❓ FAQ</a>
@@ -443,7 +446,7 @@
                         <div style="background: #e8f5e8; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #2e7d32; font-weight: 600;">✅ Running: 8</div>
                     </div>
                 </div>
-                <ul class="service-list">
+                <ul class="service-list" id="services-list">
                     <li class="service-item">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Public</span>
@@ -472,36 +475,8 @@
                         </div>
                         <a href="http://longhorn.mynodeone.local" class="service-link">Open →</a>
                     </li>
-                    <li class="service-item">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Public</span>
-                            <span class="service-name">Jellyfin</span>
-                        </div>
-                        <a href="http://jellyfin.mynodeone.local" class="service-link">Open →</a>
-                    </li>
-                    <li class="service-item">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
-                            <span class="service-name">MinIO Console</span>
-                        </div>
-                        <a href="http://minio.mynodeone.local" class="service-link">Open →</a>
-                    </li>
-                    <li class="service-item">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
-                            <span class="service-name">Nextcloud</span>
-                        </div>
-                        <a href="http://nextcloud.mynodeone.local" class="service-link">Open →</a>
-                    </li>
-                    <li class="service-item">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
-                            <span class="service-name">Immich</span>
-                        </div>
-                        <a href="http://immich.mynodeone.local" class="service-link">Open →</a>
-                    </li>
-                    <!-- MinIO services will be dynamically added here by JavaScript -->
-                    <div id="minio-services-container"></div>
+                    <!-- Additional services will be dynamically loaded here -->
+                    <div id="dynamic-services-container"></div>
                 </ul>
             </div>
             
@@ -512,13 +487,13 @@
                     <div class="card-title">Quick Actions</div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <button onclick="alert('Run: sudo ./scripts/nodes/add-worker-node.sh')" 
+                    <button onclick="window.location.href='app-store.html'" 
                             style="padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
-                        ➕ Add Worker Node
+                        📦 Browse App Store
                     </button>
-                    <button onclick="alert('Run: sudo ./scripts/operations/cluster-status.sh')" 
+                    <button onclick="window.location.href='scripts.html'" 
                             style="padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
-                        📊 Check Cluster Status
+                        🔧 View Management Scripts
                     </button>
                     <button onclick="alert('Run: sudo ./scripts/utils/show-credentials.sh')" 
                             style="padding: 12px; background: #ffc107; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
@@ -528,264 +503,28 @@
             </div>
         </div>
         
-        <!-- Use Cases Section -->
+        <!-- Quick Links -->
         <div class="card" style="grid-column: 1 / -1;">
             <div class="card-header">
-                <div class="card-icon">🎯</div>
-                <div class="card-title">Use Cases & Solutions</div>
+                <div class="card-icon">🔗</div>
+                <div class="card-title">Quick Links</div>
             </div>
-            <p style="color: #666; margin-bottom: 20px;">Discover how MyNodeOne solves real-world challenges across different industries and use cases</p>
-            
-            <div class="app-grid">
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🏢</div>
-                    <div class="app-name">Enterprise SaaS</div>
-                    <div class="app-description">Finance data compliance & isolation</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🔧</div>
-                    <div class="app-name">Dev/Test/QA</div>
-                    <div class="app-description">Unlimited dev environments</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🎓</div>
-                    <div class="app-name">Education</div>
-                    <div class="app-description">Teaching Kubernetes hands-on</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🏠</div>
-                    <div class="app-name">Personal Cloud</div>
-                    <div class="app-description">Replace $500/year subscriptions</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🚀</div>
-                    <div class="app-name">Small SaaS</div>
-                    <div class="app-description">Zero cloud bills for startups</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🔌</div>
-                    <div class="app-name">API Products</div>
-                    <div class="app-description">Self-hosted API infrastructure</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">📊</div>
-                    <div class="app-name">Data Analytics</div>
-                    <div class="app-description">Jupyter + Spark + ML pipelines</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-                
-                <div class="app-card" onclick="window.open('https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md')">
-                    <div class="app-icon">🛠️</div>
-                    <div class="app-name">Internal Tools</div>
-                    <div class="app-description">Consolidate company SaaS tools</div>
-                    <button class="install-button" style="background: #4CAF50;">Learn More</button>
-                </div>
-            </div>
-            
-            <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px;">
-                <p style="margin: 0; color: #1976d2; font-weight: 600;">
-                    💰 Save $5K-$200K/year depending on your use case | <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/DOCUMENTATION-INDEX.md" style="color: #1976d2; text-decoration: underline;">View All Documentation →</a>
-                </p>
+            <div class="quick-links">
+                <a href="app-store.html" class="quick-link">📦 App Store</a>
+                <a href="scripts.html" class="quick-link">🔧 Management Scripts</a>
+                <a href="https://github.com/vinsac/MyNodeOne" class="quick-link">📖 Documentation</a>
+                <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" class="quick-link">❓ FAQ</a>
             </div>
         </div>
         
-        <!-- One-Click Apps Section -->
-        <div class="card" style="grid-column: 1 / -1;">
-            <div class="card-header">
-                <div class="card-icon">📦</div>
-                <div class="card-title">One-Click App Installation</div>
-            </div>
-            <p style="color: #666; margin-bottom: 10px;">Install popular self-hosted applications with a single command</p>
-            <p style="color: #667eea; font-weight: 600; margin-bottom: 20px;">
-                ✨ Each app gets its own easy-to-remember address like <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">jellyfin.mynodeone.local</code>
-            </p>
-            
-            <div class="app-grid">
-                <div class="app-card" onclick="showInstallCommand('jellyfin')">
-                    <div class="app-icon">📺</div>
-                    <div class="app-name">Jellyfin</div>
-                    <div class="app-description">Open source media server</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('immich')">
-                    <div class="app-icon">📸</div>
-                    <div class="app-name">Immich</div>
-                    <div class="app-description">Google Photos alternative</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('nextcloud')">
-                    <div class="app-icon">☁️</div>
-                    <div class="app-name">Nextcloud</div>
-                    <div class="app-description">Cloud storage & collaboration</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('mattermost')">
-                    <div class="app-icon">💬</div>
-                    <div class="app-name">Mattermost</div>
-                    <div class="app-description">Team chat (Slack alternative)</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('paperless')">
-                    <div class="app-icon">📄</div>
-                    <div class="app-name">Paperless-ngx</div>
-                    <div class="app-description">Document management</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('homepage')">
-                    <div class="app-icon">🏠</div>
-                    <div class="app-name">Homepage</div>
-                    <div class="app-description">Dashboard for services</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('llm-chat')">
-                    <div class="app-icon">🤖</div>
-                    <div class="app-name">LLM Chat</div>
-                    <div class="app-description">AI chat interface (Open WebUI)</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('llmapi')">
-                    <div class="app-icon">🔌</div>
-                    <div class="app-name">LLM API</div>
-                    <div class="app-description">OpenAI-compatible API service</div>
-                    <button class="install-button">Install</button>
-                </div>
-                
-                <div class="app-card" onclick="showInstallCommand('minio')">
-                    <div class="app-icon">💾</div>
-                    <div class="app-name">MinIO</div>
-                    <div class="app-description">S3-compatible object storage</div>
-                    <button class="install-button">Install</button>
-                </div>
-            </div>
-            
-            <div style="margin-top: 25px; padding: 15px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #667eea;">
-                <p style="margin: 0; color: #333; font-weight: 600; margin-bottom: 8px;">📋 Installation Requirements:</p>
-                <ul style="margin: 0; padding-left: 20px; color: #666; font-size: 0.9em;">
-                    <li>SSH into your control plane first</li>
-                    <li>Navigate to the MyNodeOne repository</li>
-                    <li>Run the installation command shown in the popup</li>
-                    <li>Each app includes automatic SSL, storage, and networking</li>
-                </ul>
-            </div>
-        </div>
-        
-        <!-- Available Scripts Section -->
-        <div class="scripts-section">
-            <h2 style="margin-bottom: 20px; color: #333;">🔧 Available Management Scripts</h2>
-            
-            <div class="script-item">
-                <div class="script-icon">🚀</div>
-                <div class="script-info">
-                    <div class="script-name">bootstrap-control-plane.sh</div>
-                    <div class="script-desc">Initial setup - Install Kubernetes, storage, monitoring, and GitOps</div>
-                </div>
-                <div class="script-command">sudo ./scripts/installation/bootstrap-control-plane.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">➕</div>
-                <div class="script-info">
-                    <div class="script-name">add-worker-node.sh</div>
-                    <div class="script-desc">Add more machines to your cluster for increased capacity</div>
-                </div>
-                <div class="script-command">sudo ./scripts/nodes/add-worker-node.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">🌐</div>
-                <div class="script-info">
-                    <div class="script-name">setup-edge-node.sh</div>
-                    <div class="script-desc">Configure VPS as edge node for public access</div>
-                </div>
-                <div class="script-command">sudo ./scripts/setup/setup-edge-node.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">💻</div>
-                <div class="script-info">
-                    <div class="script-name">setup-laptop.sh</div>
-                    <div class="script-desc">Configure management laptop with kubectl and access</div>
-                </div>
-                <div class="script-command">sudo ./scripts/setup/setup-laptop.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">📊</div>
-                <div class="script-info">
-                    <div class="script-name">cluster-status.sh</div>
-                    <div class="script-desc">Check cluster health, nodes, pods, and resources</div>
-                </div>
-                <div class="script-command">./scripts/operations/cluster-status.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">🔑</div>
-                <div class="script-info">
-                    <div class="script-name">show-credentials.sh</div>
-                    <div class="script-desc">Display service URLs and login credentials</div>
-                </div>
-                <div class="script-command">sudo ./scripts/utils/show-credentials.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">🛠️</div>
-                <div class="script-info">
-                    <div class="script-name">create-app.sh</div>
-                    <div class="script-desc">Scaffold new application with manifests and configuration</div>
-                </div>
-                <div class="script-command">./scripts/operations/create-app.sh myapp</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">🤖</div>
-                <div class="script-info">
-                    <div class="script-name">deploy-llm-chat.sh</div>
-                    <div class="script-desc">Deploy local AI chat (Open WebUI + Ollama)</div>
-                </div>
-                <div class="script-command">sudo ./scripts/deploy-llm-chat.sh</div>
-            </div>
-            
-            <div class="script-item">
-                <div class="script-icon">🔒</div>
-                <div class="script-info">
-                    <div class="script-name">enable-security-hardening.sh</div>
-                    <div class="script-desc">Apply production security policies and encryption</div>
-                </div>
-                <div class="script-command">sudo ./scripts/setup/enable-security-hardening.sh</div>
-            </div>
-        </div>
-        
-        <!-- Documentation Links -->
-        <div class="quick-links">
-            <a href="https://github.com/vinsac/MyNodeOne" class="quick-link">📖 Documentation</a>
-            <a href="https://github.com/vinsac/MyNodeOne/blob/main/FAQ.md" class="quick-link">❓ FAQ</a>
-            <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/troubleshooting.md" class="quick-link">🔧 Troubleshooting</a>
-            <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/architecture.md" class="quick-link">🏗️ Architecture</a>
-        </div>
         
         <div class="footer">
             <p style="font-size: 1.1em; font-weight: 700; margin-bottom: 15px;"><strong>🚀 MyNodeOne Dashboard</strong> - Real-time Cluster Management</p>
             <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; flex-wrap: wrap;">
                 <a href="index.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🏠 Home</a>
+                <a href="dashboard.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🚀 Dashboard</a>
+                <a href="app-store.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📦 App Store</a>
+                <a href="scripts.html" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">🔧 Scripts</a>
                 <a href="https://github.com/vinsac/MyNodeOne" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📖 GitHub</a>
                 <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">📚 Docs</a>
                 <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" style="color: white; text-decoration: none; font-weight: 600; opacity: 0.9; transition: opacity 0.3s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.9'">❓ FAQ</a>
@@ -938,25 +677,25 @@
         }
         
         function renderServices(services) {
-            const container = document.getElementById('minio-services-container');
+            const container = document.getElementById('dynamic-services-container');
             if (!container) return;
             
             container.innerHTML = '';
             
-            // Filter and render MinIO console services
-            const minioServices = services.filter(s => s.name.startsWith('minio-console-'));
+            // Filter and render additional services that are not in the static list
+            const staticServices = ['grafana', 'argocd', 'prometheus', 'longhorn'];
+            const additionalServices = services.filter(s => !staticServices.includes(s.name.toLowerCase()));
             
-            minioServices.forEach(service => {
+            additionalServices.forEach(service => {
                 const li = document.createElement('li');
                 li.className = 'service-item';
                 
                 const span = document.createElement('span');
                 span.className = 'service-name';
-                span.textContent = `MinIO Console (${service.name})`;
+                span.textContent = service.name;
                 
                 const link = document.createElement('a');
-                const domain = window.location.hostname.split('.').slice(-2).join('.');
-                link.href = `http://${service.subdomain}.${domain}:${service.port || 9001}`;
+                link.href = service.url || `http://${service.name}.mynodeone.local`;
                 link.className = 'service-link';
                 link.textContent = 'Open →';
                 
@@ -965,7 +704,7 @@
                 container.appendChild(li);
             });
             
-            console.log(`Loaded ${minioServices.length} MinIO service(s) dynamically`);
+            console.log(`Loaded ${additionalServices.length} additional service(s) dynamically`);
         }
         
         // Load cluster data on page load

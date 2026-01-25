@@ -313,6 +313,16 @@ if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$NODE_TYPE" = "c
             log_success "Removed sync-controller-registry ConfigMap" || true
         kubectl delete configmap cluster-info -n kube-system --ignore-not-found=true 2>/dev/null && \
             log_success "Removed cluster-info ConfigMap" || true
+
+        # Remove Longhorn StorageClasses (cluster-scoped)
+        # Important: StorageClass parameters are immutable; leaving an old StorageClass
+        # can cause new installs to keep wrong defaults (e.g., numberOfReplicas=3).
+        if kubectl get storageclass &>/dev/null; then
+            for sc in $(kubectl get storageclass -o name 2>/dev/null | grep -E '^storageclass\.storage\.k8s\.io/longhorn($|-)'); do
+                kubectl delete "$sc" --ignore-not-found=true 2>/dev/null || true
+            done
+            log_success "Removed Longhorn StorageClass(es)"
+        fi
         
         log_success "ConfigMaps cleaned"
     else

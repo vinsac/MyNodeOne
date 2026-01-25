@@ -314,9 +314,6 @@ if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$NODE_TYPE" = "c
         kubectl delete configmap cluster-info -n kube-system --ignore-not-found=true 2>/dev/null && \
             log_success "Removed cluster-info ConfigMap" || true
 
-        # Remove Longhorn StorageClasses (cluster-scoped)
-        # Important: StorageClass parameters are immutable; leaving an old StorageClass
-        # can cause new installs to keep wrong defaults (e.g., numberOfReplicas=3).
         if kubectl get storageclass &>/dev/null; then
             for sc in $(kubectl get storageclass -o name 2>/dev/null | grep -E '^storageclass\.storage\.k8s\.io/longhorn($|-)'); do
                 kubectl delete "$sc" --ignore-not-found=true 2>/dev/null || true
@@ -380,6 +377,23 @@ elif [ "$NODE_TYPE" = "management" ] || [ "$NODE_TYPE" = "vps" ] || [ "$NODE_TYP
                         2>/dev/null && log_success "Removed $node_name from Config API V2" || true
                 fi
             fi
+        fi
+    fi
+    if [ "$NODE_TYPE" = "worker" ] && [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ]; then
+        DELETE_CLUSTER_SC=false
+        if [ "$INTERACTIVE" = true ]; then
+            echo
+            read -p "Also delete cluster-scoped Longhorn StorageClass(es)? This affects the whole cluster. [y/N]: " -r
+            [[ $REPLY =~ ^[Yy]$ ]] && DELETE_CLUSTER_SC=true
+        elif [ "${FORCE_DELETE_CLUSTER_SC:-false}" = "true" ]; then
+            DELETE_CLUSTER_SC=true
+        fi
+
+        if [ "$DELETE_CLUSTER_SC" = true ] && kubectl get storageclass &>/dev/null; then
+            for sc in $(kubectl get storageclass -o name 2>/dev/null | grep -E '^storageclass\.storage\.k8s\.io/longhorn($|-)'); do
+                kubectl delete "$sc" --ignore-not-found=true 2>/dev/null || true
+            done
+            log_success "Removed Longhorn StorageClass(es)"
         fi
     fi
 elif [ "$KEEP_CONFIG" = true ]; then

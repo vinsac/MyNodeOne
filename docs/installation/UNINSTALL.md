@@ -85,6 +85,9 @@ Also removes Tailscale from the machine.
 | ConfigMaps (registries) | Removed | Kept | Removed |
 | Configuration files | Removed | Kept | Removed |
 | Application data (PVCs) | Removed | Removed | Kept |
+| Longhorn StorageClasses | Removed | Removed | Removed |
+| MinIO namespaces & PVs | Removed | Removed | Removed |
+| MinIO data paths (/mnt/minio) | Removed | Removed | Kept |
 | DNS configurations | Removed | Removed | Removed |
 | Systemd services | Removed | Removed | Removed |
 | Node Agent service | Removed | Removed | Removed |
@@ -106,6 +109,9 @@ sudo ./scripts/installation/uninstall-mynodeone.sh
 This removes:
 - K3s server and all cluster data
 - Longhorn storage system
+- Longhorn StorageClasses (all variants)
+- MinIO namespaces (minio-*) and PersistentVolumes
+- MinIO data paths (/mnt/minio, /var/lib/minio) unless --keep-data
 - Sync controller service
 - Node Agent service
 - All ConfigMaps and service registries
@@ -123,7 +129,9 @@ sudo ./scripts/installation/uninstall-mynodeone.sh
 This removes:
 - K3s agent
 - Node Agent service
+- Longhorn StorageClasses (with confirmation or FORCE_DELETE_CLUSTER_SC=true)
 - Local storage mounts (unmounted)
+- MinIO data paths (/mnt/minio, /var/lib/minio) unless --keep-data
 - SSH configurations
 - DNS configurations
 
@@ -165,6 +173,8 @@ After uninstall, you may want to manually remove:
 ```bash
 # Remove formatted disk data (WARNING: This permanently deletes data)
 sudo rm -rf /mnt/longhorn-disks/
+sudo rm -rf /mnt/minio/
+sudo rm -rf /var/lib/minio/
 
 # Remove Tailscale
 sudo apt remove tailscale
@@ -183,6 +193,25 @@ sudo rm -rf /etc/traefik
 sudo systemctl list-units | grep mynodeone
 sudo systemctl reset-failed mynodeone-node-agent 2>/dev/null || true
 ```
+
+## Important Notes
+
+### Longhorn StorageClass Cleanup
+- **Control Plane**: Automatically removes all Longhorn StorageClasses during uninstall
+- **Worker Nodes**: Prompts for confirmation before removing cluster-scoped StorageClasses
+- **Override**: Use `FORCE_DELETE_CLUSTER_SC=true` to skip confirmation on worker nodes
+
+### MinIO Cleanup
+- **Namespaces**: All `minio-*` namespaces are removed from the cluster
+- **PersistentVolumes**: All `minio-data-*` PVs are deleted
+- **Node Data**: Mount points are unmounted and data paths removed unless `--keep-data`
+- **fstab Entries**: MinIO mount entries are automatically removed from `/etc/fstab`
+
+### Why These Cleanups Matter
+- **Prevents Configuration Drift**: Stale StorageClasses can cause replica count issues on reinstall
+- **Ensures Clean Reinstall**: Removes all Kubernetes resources that might conflict
+- **Security**: Removes credentials and sensitive data paths
+- **Storage Space**: Frees up disk space used by old data
 
 ---
 

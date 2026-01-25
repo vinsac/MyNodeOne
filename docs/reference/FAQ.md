@@ -950,6 +950,65 @@ kubectl get svc -A | grep LoadBalancer
 **Cause:** Longhorn issues or disk full
 **Solution:** Check Longhorn UI, verify disk space with `df -h`
 
+### My PVCs have 3 replicas instead of 1
+
+**Cause:** Longhorn StorageClass created with wrong parameters
+**Symptoms:**
+- New PVCs show 3 replicas in Longhorn UI
+- `kubectl get sc longhorn -o yaml` shows `numberOfReplicas: "3"`
+
+**Solution (Automatic):**
+The installation scripts now automatically detect and fix this issue:
+```bash
+# Reinstall Longhorn to trigger automatic fix
+cd MyNodeOne
+sudo ./scripts/storage/longhorn/install-interactive.sh
+```
+
+**Solution (Manual):**
+```bash
+# Check current setting
+kubectl get sc longhorn -o jsonpath='{.parameters.numberOfReplicas}'
+
+# Fix if wrong (should be "1")
+kubectl delete sc longhorn
+kubectl apply -f - <<'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"
+  dataLocality: "disabled"
+EOF
+```
+
+**Prevention:**
+- Use the updated installation scripts (includes defensive verification)
+- The installer automatically fixes StorageClass parameters after Helm installation
+
+### Why does Longhorn wait 5 days to rebuild replicas?
+
+**Purpose:** Prevents unnecessary network traffic over limited bandwidth connections
+- **Home/Tailscale networks**: Limited bandwidth, high latency
+- **Temporary disconnections**: Common in home environments
+- **Rebuild storms**: Can saturate network when nodes reconnect
+
+**Override if needed:**
+```bash
+# Change to 1 hour (3600 seconds)
+kubectl patch settings.longhorn.io replica-replenishment-wait-interval -n longhorn-system -p '{"value":"3600"}'
+```
+
 ### App not accessible from internet
 
 **Cause:** VPS routing not configured

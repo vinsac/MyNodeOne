@@ -214,6 +214,33 @@ Next steps:
   3. Deploy apps: kubectl apply -f manifests/examples/
 ```
 
+### What Happens During Installation
+
+The installer automatically handles these complex tasks:
+
+#### Storage Setup (Longhorn)
+- **Installs Longhorn** with single-replica configuration
+- **Verifies StorageClass parameters** to ensure `numberOfReplicas: "1"`
+- **Automatically fixes** incorrect StorageClass if detected
+- **Configures 5-day replica rebuild delay** for network efficiency
+
+#### Security Hardening
+- **Network policies** for pod isolation
+- **Pod security standards** to enforce best practices
+- **Resource quotas** to prevent resource exhaustion
+- **Audit logging** for security monitoring
+
+#### Service Registry
+- **Config API** for service discovery
+- **DNS setup** for `.local` domain access
+- **LoadBalancer** configuration via MetalLB
+
+#### Defensive Features
+- **Automatic verification** of critical components
+- **Retry logic** for network-dependent operations
+- **Graceful error handling** with clear messages
+- **Rollback capability** if installation fails
+
 
 ### Step 3: (Optional) Apply Security Hardening
 

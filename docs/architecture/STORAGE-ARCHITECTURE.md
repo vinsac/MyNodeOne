@@ -263,6 +263,8 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: longhorn
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
 provisioner: driver.longhorn.io
 allowVolumeExpansion: true
 reclaimPolicy: Delete
@@ -270,12 +272,39 @@ volumeBindingMode: Immediate
 parameters:
   numberOfReplicas: "1"
   staleReplicaTimeout: "30"     # 30 minutes
-  replicaReplenishmentWaitInterval: "432000"  # 5 days (432000 seconds)
   fromBackup: ""
-  fsType: "xfs"
+  fsType: "ext4"
+  dataLocality: "disabled"
 ```
 
+### StorageClass Parameter Immutability
+
+**Important**: Kubernetes StorageClass parameters cannot be modified after creation. If Longhorn creates the StorageClass with incorrect parameters, it must be deleted and recreated.
+
+### Defensive Installation Process
+
+The installation scripts include automatic verification and correction of StorageClass parameters:
+
+1. **Helm Installation**: Installs Longhorn with correct system settings
+2. **Post-Install Verification**: Checks if StorageClass has `numberOfReplicas: "1"`
+3. **Automatic Fix**: If wrong, deletes and recreates StorageClass with correct parameters
+4. **Retry Logic**: Waits up to 30 seconds for StorageClass to be available
+
+This ensures that even if Longhorn creates the wrong StorageClass initially, the installation automatically corrects it before completing.
+
 ### Key Longhorn Settings
+
+#### System Settings (via Helm values)
+- `defaultSettings.defaultReplicaCount=1` - Default for new volumes
+- `defaultSettings.replicaReplenishmentWaitInterval=432000` - 5 days before rebuild
+- `defaultSettings.replicaAutoBalance="best-effort"` - Automatic balancing
+- `defaultSettings.fastReplicaRebuildEnabled=true` - Fast rebuild when needed
+
+#### StorageClass Parameters
+- `numberOfReplicas: "1"` - Single replica per PVC
+- `staleReplicaTimeout: "30"` - Mark replica as stale after 30 minutes
+- `fsType: "ext4"` - Filesystem type
+- `dataLocality: "disabled"` - No data locality preference
 
 #### staleReplicaTimeout: "30" (30 minutes)
 - **Purpose**: How long Longhorn waits before marking a replica as "stale"

@@ -320,6 +320,14 @@ if [ "$REMOVE_K8S" = true ] && [ "$KEEP_CONFIG" = false ] && [ "$NODE_TYPE" = "c
             done
             log_success "Removed Longhorn StorageClass(es)"
         fi
+
+        for ns in $(kubectl get namespace -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep '^minio-'); do
+            kubectl delete namespace "$ns" --ignore-not-found=true --wait=true 2>/dev/null || true
+        done
+
+        for pv in $(kubectl get pv -o name 2>/dev/null | grep -E '^persistentvolume/minio-data-'); do
+            kubectl delete "$pv" --ignore-not-found=true 2>/dev/null || true
+        done
         
         log_success "ConfigMaps cleaned"
     else
@@ -479,6 +487,29 @@ if [ -d /mnt/longhorn-disks ]; then
     fi
 else
     log_info "No Longhorn disks found"
+fi
+
+if [ "$KEEP_DATA" = false ]; then
+    if mountpoint -q /mnt/minio 2>/dev/null; then
+        umount /mnt/minio 2>/dev/null || umount -l /mnt/minio 2>/dev/null || true
+        log_success "Unmounted /mnt/minio"
+    fi
+
+    if grep -q "[[:space:]]/mnt/minio[[:space:]]" /etc/fstab 2>/dev/null; then
+        cp /etc/fstab /etc/fstab.bak.$(date +%Y%m%d_%H%M%S)
+        sed -i '/\/mnt\/minio/d' /etc/fstab
+        log_success "Removed MinIO fstab entries"
+    fi
+
+    if [ -d /mnt/minio ]; then
+        rm -rf /mnt/minio 2>/dev/null || true
+        log_success "Removed /mnt/minio"
+    fi
+
+    if [ -d /var/lib/minio ]; then
+        rm -rf /var/lib/minio 2>/dev/null || true
+        log_success "Removed /var/lib/minio"
+    fi
 fi
 echo
 

@@ -29,7 +29,7 @@ This guide teaches you:
 - If you are completely new to the terminal, start with [TERMINAL-BASICS.md](TERMINAL-BASICS.md).
 - When you are ready to install, follow [INSTALLATION.md](../installation/INSTALLATION.md) for the full step-by-step guide.
 - After installation, use [CLUSTER-MANAGEMENT.md](../operations/CLUSTER-MANAGEMENT.md) and [../reference/FAQ.md](../reference/FAQ.md) to run and troubleshoot your cluster.
-- For a complete documentation map, see [../reference/DOCUMENTATION-INDEX.md](../reference/DOCUMENTATION-INDEX.md).
+- For a complete documentation map, see [../DOCUMENTATION-INDEX.md](../DOCUMENTATION-INDEX.md).
 
 ## Networking
 

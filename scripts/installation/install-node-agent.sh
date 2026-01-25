@@ -195,8 +195,11 @@ fi
 
 log_info "Configuring Node Agent..."
 
-# Create config directory
+# Create config directory with correct ownership
 mkdir -p /etc/mynodeone
+chmod 700 /etc/mynodeone
+chown root:root /etc/mynodeone
+log_debug "Created /etc/mynodeone directory with root:root ownership"
 
 # Source the central config paths utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -302,7 +305,10 @@ if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         # Ensure the actual user can read the config
         chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/agent.env
         log_info "Config ownership set for user: $SUDO_USER"
+        log_debug "Changed /etc/mynodeone/agent.env ownership to $SUDO_USER:$SUDO_USER"
     fi
+else
+    log_debug "No sudo user detected, keeping root ownership for agent.env"
 fi
 
 log_success "Config created: /etc/mynodeone/agent.env"

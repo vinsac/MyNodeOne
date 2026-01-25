@@ -195,9 +195,11 @@ build_config_api() {
 install_config_api_service() {
     log_info "Installing Config API systemd service..."
     
-    # Create config directory
+    # Create config directory with correct ownership
     mkdir -p /etc/mynodeone
     chmod 700 /etc/mynodeone
+    chown root:root /etc/mynodeone
+    log_debug "Created /etc/mynodeone directory with root:root ownership"
     
     # Generate API token if not exists
     if [ ! -f /etc/mynodeone/api-token ]; then
@@ -215,6 +217,8 @@ install_config_api_service() {
         fi
         
         log_success "API token generated"
+    else
+        log_debug "API token already exists"
     fi
     
     # Copy service file
@@ -372,6 +376,45 @@ install_node_agent_binary() {
     log_success "Node Agent installed"
 }
 
+install_node_agent_support_files() {
+    log_info "Installing Node Agent support files..."
+
+    local src=""
+    local candidates=(
+        "$SCRIPT_DIR/config-paths.sh"
+        "$PROJECT_ROOT/scripts/lib/config-paths.sh"
+    )
+
+    for c in "${candidates[@]}"; do
+        if [[ -f "$c" ]]; then
+            src="$c"
+            break
+        fi
+    done
+
+    if [[ -z "$src" ]]; then
+        log_error "config-paths.sh not found in expected locations"
+        log_error "Checked:"
+        for c in "${candidates[@]}"; do
+            log_error "  - $c"
+        done
+        log_error "Node Agent will NOT be able to start without config-paths.sh"
+        return 1
+    fi
+
+    log_debug "config-paths.sh source: $src"
+    cp "$src" /usr/local/bin/config-paths.sh
+    chmod +x /usr/local/bin/config-paths.sh
+    chown root:root /usr/local/bin/config-paths.sh
+
+    if [[ ! -f "/usr/local/bin/config-paths.sh" ]]; then
+        log_error "Failed to install /usr/local/bin/config-paths.sh"
+        return 1
+    fi
+
+    log_success "Support files installed (config-paths.sh)"
+}
+
 # Try to acquire API token via SSH (with retries)
 acquire_api_token_via_ssh() {
     local control_plane_ip="$1"
@@ -437,9 +480,11 @@ configure_node_agent() {
     
     log_info "Configuring Node Agent..."
     
-    # Create config directory
+    # Create config directory with correct ownership
     mkdir -p /etc/mynodeone
     chmod 700 /etc/mynodeone
+    chown root:root /etc/mynodeone
+    log_debug "Ensured /etc/mynodeone directory has root:root ownership"
     
     # Determine poll interval based on node type
     local poll_interval=60
@@ -541,7 +586,10 @@ EOF
             # Ensure the actual user can read the config
             chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/agent.env
             log_info "Config ownership set for user: $SUDO_USER"
+            log_debug "Changed /etc/mynodeone/agent.env ownership to $SUDO_USER:$SUDO_USER"
         fi
+    else
+        log_debug "No sudo user detected, keeping root ownership for agent.env"
     fi
     
     # Defensive verification: Ensure agent.env has correct values
@@ -770,6 +818,12 @@ install_node_agent() {
     # Check if already installed
     if check_node_agent_installed; then
         log_success "Node Agent already installed"
+
+        # Ensure required support files exist even for older installs
+        install_node_agent_support_files || {
+            log_error "Failed to install Node Agent support files"
+            return 1
+        }
         
         # Update config if needed
         configure_node_agent "$node_type" "$control_plane_ip" "$api_token" "$node_name"
@@ -794,6 +848,12 @@ install_node_agent() {
     # Install binary
     install_node_agent_binary || {
         log_error "Failed to install Node Agent"
+        return 1
+    }
+
+    # Install support files required for Node Agent startup
+    install_node_agent_support_files || {
+        log_error "Failed to install Node Agent support files"
         return 1
     }
     

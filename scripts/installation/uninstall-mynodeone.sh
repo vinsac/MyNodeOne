@@ -513,10 +513,10 @@ if [ -f /etc/hosts ]; then
     log_success "Removed /etc/hosts entries (cleaned all .local domains)"
 fi
 
-# Remove dnsmasq configs
+# Remove ALL domain-specific dnsmasq configs (not just mynodeone*)
+# Users can name their clusters anything (base, space, universal, etc.)
 if [ -d /etc/dnsmasq.d ]; then
-    rm -f /etc/dnsmasq.d/*-apps.conf 2>/dev/null || true
-    rm -f /etc/dnsmasq.d/mynodeone*.conf 2>/dev/null || true
+    rm -f /etc/dnsmasq.d/*.conf 2>/dev/null || true
     if systemctl is-active --quiet dnsmasq 2>/dev/null; then
         systemctl restart dnsmasq 2>/dev/null || true
     fi

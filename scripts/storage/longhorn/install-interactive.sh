@@ -381,6 +381,62 @@ install_longhorn_helm() {
     # Set as default storage class
     kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
     
+    # Verify and fix StorageClass parameters (defensive programming)
+    log_info "Verifying Longhorn StorageClass configuration..."
+    local max_wait=30
+    local wait_count=0
+    local replicas_correct=false
+    
+    while [ $wait_count -lt $max_wait ]; do
+        if kubectl get storageclass longhorn &>/dev/null; then
+            local current_replicas=$(kubectl get storageclass longhorn -o jsonpath='{.parameters.numberOfReplicas}' 2>/dev/null || echo "3")
+            if [ "$current_replicas" = "1" ]; then
+                replicas_correct=true
+                break
+            else
+                log_warn "StorageClass has wrong replica count ($current_replicas), fixing..."
+                # Delete and recreate with correct parameters
+                kubectl delete storageclass longhorn --ignore-not-found=true
+                kubectl apply -f - <<'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"
+  dataLocality: "disabled"
+EOF
+                if [ $? -eq 0 ]; then
+                    replicas_correct=true
+                    break
+                else
+                    log_error "Failed to recreate StorageClass, retrying..."
+                fi
+            fi
+        else
+            log_info "Waiting for StorageClass to be created..."
+        fi
+        sleep 2
+        wait_count=$((wait_count + 2))
+    done
+    
+    if [ "$replicas_correct" = true ]; then
+        log_success "StorageClass correctly configured with numberOfReplicas=1"
+    else
+        log_error "Failed to configure StorageClass after $max_wait seconds"
+        log_error "Manual intervention required: check 'kubectl get sc longhorn -o yaml'"
+        return 1
+    fi
+    
     # Expose UI via LoadBalancer
     kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'
     

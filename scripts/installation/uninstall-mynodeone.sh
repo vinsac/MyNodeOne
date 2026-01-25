@@ -530,6 +530,15 @@ if systemctl is-failed --quiet dnsmasq 2>/dev/null; then
     log_success "Stopped and disabled dnsmasq"
 fi
 
+# Remove systemd-resolved configuration
+if [ -d /etc/systemd/resolved.conf.d ]; then
+    rm -f /etc/systemd/resolved.conf.d/*.conf 2>/dev/null || true
+    if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+        systemctl restart systemd-resolved 2>/dev/null || true
+        log_success "Removed systemd-resolved configuration"
+    fi
+fi
+
 # Remove Avahi configs
 if [ -f /etc/avahi/services/mynodeone.service ]; then
     rm -f /etc/avahi/services/mynodeone.service
@@ -594,6 +603,29 @@ if [ -f /etc/systemd/system/mynodeone-dns-sync.timer ]; then
     rm -f /etc/systemd/system/mynodeone-dns-sync.service
     systemctl daemon-reload
     log_success "Removed DNS sync timer"
+fi
+
+# Remove external system services enabled during installation
+# These services are enabled by bootstrap-control-plane.sh but not MyNodeOne-specific
+if systemctl is-enabled --quiet iscsid 2>/dev/null; then
+    systemctl stop iscsid 2>/dev/null || true
+    systemctl disable iscsid 2>/dev/null || true
+    log_success "Stopped and disabled iscsid"
+fi
+
+if systemctl is-enabled --quiet fail2ban 2>/dev/null; then
+    systemctl stop fail2ban 2>/dev/null || true
+    systemctl disable fail2ban 2>/dev/null || true
+    log_success "Stopped and disabled fail2ban"
+fi
+
+if systemctl is-enabled --quiet coredns-dns-guardian.timer 2>/dev/null; then
+    systemctl stop coredns-dns-guardian.timer 2>/dev/null || true
+    systemctl disable coredns-dns-guardian.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/coredns-dns-guardian.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/coredns-dns-guardian.service 2>/dev/null || true
+    systemctl daemon-reload
+    log_success "Removed coredns-dns-guardian"
 fi
 
 # Remove VPS Traefik setup
@@ -797,7 +829,11 @@ if [ "$KEEP_CONFIG" = false ]; then
     # Remove Docker volumes (Traefik)
     if command -v docker &> /dev/null; then
         docker volume ls -q 2>/dev/null | grep traefik | xargs -r docker volume rm 2>/dev/null || true
-        log_success "Removed Docker volumes"
+        # Remove any MyNodeOne-related Docker networks
+        docker network ls -q 2>/dev/null | grep mynodeone | xargs -r docker network rm 2>/dev/null || true
+        # Clean up unused Docker resources
+        docker system prune -f 2>/dev/null || true
+        log_success "Removed Docker volumes and networks"
     fi
     
     log_success "Additional cleanup completed"

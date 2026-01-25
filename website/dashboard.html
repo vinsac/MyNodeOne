@@ -57,30 +57,97 @@
             font-weight: 300;
         }
         
-        .nav-buttons {
-            margin-top: 30px;
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
+        .navbar {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 15px 30px;
+            margin: 30px 0;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
         
-        .nav-button {
-            padding: 12px 25px;
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .nav-brand {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav-menu {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .nav-item {
+            position: relative;
+        }
+        
+        .nav-link {
+            padding: 10px 20px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            font-weight: 500;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-link:hover {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .nav-link.active {
             background: rgba(255,255,255,0.2);
             color: white;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 25px;
-            text-decoration: none;
             font-weight: 600;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
         }
         
-        .nav-button:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        .nav-divider {
+            width: 1px;
+            height: 30px;
+            background: rgba(255,255,255,0.2);
+            margin: 0 15px;
+        }
+        
+        .nav-external {
+            opacity: 0.7;
+        }
+        
+        .nav-external:hover {
+            opacity: 1;
+        }
+        
+        @media (max-width: 768px) {
+            .nav-container {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .nav-menu {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .nav-divider {
+                display: none;
+            }
         }
         
         .dashboard {
@@ -342,21 +409,51 @@
         <div class="header">
             <h1>🚀 MyNodeOne</h1>
             <p>Private Cloud Infrastructure Management</p>
-            <div class="nav-buttons">
-                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-bottom: 15px;">
-                    <span style="color: rgba(255,255,255,0.7); font-size: 0.9em; font-weight: 600;">📊 DASHBOARD PAGES:</span>
-                    <a href="index.html" class="nav-button">🏠 Home</a>
-                    <a href="dashboard.html" class="nav-button active">🚀 Cluster Status</a>
-                    <a href="app-store.html" class="nav-button">📦 App Store</a>
-                    <a href="scripts.html" class="nav-button">🔧 Scripts</a>
-                </div>
-                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
-                    <span style="color: rgba(255,255,255,0.7); font-size: 0.9em; font-weight: 600;">🔗 EXTERNAL LINKS:</span>
-                    <a href="https://github.com/vinsac/MyNodeOne" class="nav-button" style="background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);">📖 GitHub</a>
-                    <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" class="nav-button" style="background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);">📚 Docs</a>
-                    <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" class="nav-button" style="background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);">❓ FAQ</a>
+        <div class="navbar">
+            <div class="nav-container">
+                <a href="index.html" class="nav-brand">
+                    🚀 MyNodeOne
+                </a>
+                <div class="nav-menu">
+                    <div class="nav-item">
+                        <a href="index.html" class="nav-link active">
+                            🏠 Home
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="dashboard.html" class="nav-link">
+                            📊 Cluster Status
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="app-store.html" class="nav-link">
+                            📦 App Store
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="scripts.html" class="nav-link">
+                            🔧 Scripts
+                        </a>
+                    </div>
+                    <div class="nav-divider"></div>
+                    <div class="nav-item">
+                        <a href="https://github.com/vinsac/MyNodeOne" class="nav-link nav-external" target="_blank">
+                            📖 GitHub
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/guides/GETTING-STARTED.md" class="nav-link nav-external" target="_blank">
+                            📚 Docs
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="https://github.com/vinsac/MyNodeOne/blob/main/docs/reference/FAQ.md" class="nav-link nav-external" target="_blank">
+                            ❓ FAQ
+                        </a>
+                    </div>
                 </div>
             </div>
+        </div>
         </div>
         
         <div class="dashboard">
@@ -370,23 +467,23 @@
                     Manage your private cloud infrastructure with ease. Monitor cluster health, deploy applications, and access all your services from one central location.
                 </p>
                 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 30px;">
-                    <div style="text-align: center; padding: 25px; background: #f8f9fa; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer;" onmouseover="this.style.borderColor='#667eea'; this.style.transform='translateY(-5px)';" onmouseout="this.style.borderColor='transparent'; this.style.transform='translateY(0)';" onclick="window.location.href='dashboard.html'">
-                        <div style="font-size: 3em; margin-bottom: 15px;">📊</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 30px;">
+                    <div style="text-align: center; padding: 30px 20px; background: #f8f9fa; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer; min-height: 180px; display: flex; flex-direction: column; justify-content: center;" onmouseover="this.style.borderColor='#667eea'; this.style.transform='translateY(-5px)';" onmouseout="this.style.borderColor='transparent'; this.style.transform='translateY(0)';" onclick="window.location.href='dashboard.html'">
+                        <div style="font-size: 3.5em; margin-bottom: 20px;">📊</div>
                         <div style="font-size: 1.3em; font-weight: 700; color: #333; margin-bottom: 10px;">Cluster Status</div>
-                        <div style="color: #666; font-size: 0.95em;">Monitor nodes, pods, and system resources</div>
+                        <div style="color: #666; font-size: 0.95em; line-height: 1.4;">Monitor nodes, pods, and system resources</div>
                     </div>
                     
-                    <div style="text-align: center; padding: 25px; background: #f8f9fa; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer;" onmouseover="this.style.borderColor='#667eea'; this.style.transform='translateY(-5px)';" onmouseout="this.style.borderColor='transparent'; this.style.transform='translateY(0)';" onclick="window.location.href='app-store.html'">
-                        <div style="font-size: 3em; margin-bottom: 15px;">📦</div>
+                    <div style="text-align: center; padding: 30px 20px; background: #f8f9fa; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer; min-height: 180px; display: flex; flex-direction: column; justify-content: center;" onmouseover="this.style.borderColor='#667eea'; this.style.transform='translateY(-5px)';" onmouseout="this.style.borderColor='transparent'; this.style.transform='translateY(0)';" onclick="window.location.href='app-store.html'">
+                        <div style="font-size: 3.5em; margin-bottom: 20px;">📦</div>
                         <div style="font-size: 1.3em; font-weight: 700; color: #333; margin-bottom: 10px;">App Store</div>
-                        <div style="color: #666; font-size: 0.95em;">Install self-hosted applications</div>
+                        <div style="color: #666; font-size: 0.95em; line-height: 1.4;">Install self-hosted applications</div>
                     </div>
                     
-                    <div style="text-align: center; padding: 25px; background: #f8f9fa; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer;" onmouseover="this.style.borderColor='#667eea'; this.style.transform='translateY(-5px)';" onmouseout="this.style.borderColor='transparent'; this.style.transform='translateY(0)';" onclick="window.location.href='scripts.html'">
-                        <div style="font-size: 3em; margin-bottom: 15px;">🔧</div>
+                    <div style="text-align: center; padding: 30px 20px; background: #f8f9fa; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer; min-height: 180px; display: flex; flex-direction: column; justify-content: center;" onmouseover="this.style.borderColor='#667eea'; this.style.transform='translateY(-5px)';" onmouseout="this.style.borderColor='transparent'; this.style.transform='translateY(0)';" onclick="window.location.href='scripts.html'">
+                        <div style="font-size: 3.5em; margin-bottom: 20px;">🔧</div>
                         <div style="font-size: 1.3em; font-weight: 700; color: #333; margin-bottom: 10px;">Management Scripts</div>
-                        <div style="color: #666; font-size: 0.95em;">Cluster administration tools</div>
+                        <div style="color: #666; font-size: 0.95em; line-height: 1.4;">Cluster administration tools</div>
                     </div>
                 </div>
             </div>

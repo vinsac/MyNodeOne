@@ -955,6 +955,34 @@ kubectl get svc -A | grep LoadBalancer
 **Cause:** VPS routing not configured
 **Solution:** Update `/etc/traefik/dynamic/mynodeone-routes.yml` on VPS
 
+### Worker validation fails even though the node joined
+
+**Symptoms:**
+- Node shows up in `kubectl get nodes` as Ready
+- Validation script says "Node not registered" or fails checks
+- The worker script completed successfully
+
+**Cause:** 
+The validation script uses the machine's `hostname` to check registration, but the worker may have joined the cluster with a different `NODE_NAME` from your configuration file.
+
+**Solution:**
+1. Use the exact label command printed by the worker script (it uses the correct NODE_NAME from your config)
+2. If you already applied labels with the wrong name, re-run with the correct Kubernetes node name:
+   ```bash
+   # Check what name Kubernetes knows
+   kubectl get nodes
+   
+   # Re-label with the correct name
+   kubectl label node <ACTUAL_NODE_NAME> node-role.kubernetes.io/worker=true
+   kubectl label node <ACTUAL_NODE_NAME> mynodeone.io/location=<location>
+   ```
+
+**Prevention:**
+- Always copy the label command directly from the worker script output
+- Ensure your config's NODE_NAME matches the machine's hostname if you prefer consistency
+
+See: [Node Management - Worker Validation Fails](../operations/NODE-MANAGEMENT.md#worker-validation-fails)
+
 ## Maintenance Questions
 
 ### How often should I update?

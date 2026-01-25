@@ -960,9 +960,12 @@ sudo systemctl restart mynodeone-node-agent
 - **MinIO shared credentials**: Reading admin credentials from Kubernetes secrets (if using K8s-based MinIO)
 - **Service registration**: Registering MinIO endpoints in the cluster
 
-The installation script automatically:
-1. Waits for node labels to be applied on control plane
-2. Generates kubeconfig using K3s agent certificates
+The installation script automatically configures kubectl using a two-step process:
+
+1. **Fetch from control plane (preferred)**: Attempts to copy the admin kubeconfig from the control plane via SSH and updates the server address to the control plane IP
+2. **Fallback to local certificates**: If SSH fetch fails, generates a kubeconfig from the local K3s agent's certificates (server CA and client certificates)
+
+The script then:
 3. Creates `~/.kube/config` with proper permissions
 4. Verifies kubectl access to the cluster
 5. Proceeds with Longhorn installation (which requires kubectl to add disks)

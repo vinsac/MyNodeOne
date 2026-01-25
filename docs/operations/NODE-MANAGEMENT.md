@@ -387,6 +387,40 @@ kubectl get pods --all-namespaces --field-selector spec.nodeName=<node-name>
 kubectl delete pod <pod-name> -n <namespace> --force --grace-period=0
 ```
 
+### Worker Validation Fails
+
+**Symptoms:**
+- Node successfully joined the cluster (`kubectl get nodes` shows it)
+- Validation script reports "Node not registered" or fails node checks
+- Node appears Ready in Kubernetes but validation says otherwise
+
+**Cause:**
+Validation uses the machine's `hostname` to check node registration, but the worker may have joined with a different `NODE_NAME` from your configuration.
+
+**Solutions:**
+
+1. **Use the exact NODE_NAME from config when labeling:**
+   ```bash
+   # The worker script prints this exact command - use it verbatim
+   kubectl label node <NODE_NAME_FROM_CONFIG> node-role.kubernetes.io/worker=true
+   kubectl label node <NODE_NAME_FROM_CONFIG> mynodeone.io/location=<location>
+   ```
+
+2. **Check for name mismatch:**
+   ```bash
+   # See what name Kubernetes knows
+   kubectl get nodes
+   
+   # See what the validation script expects
+   hostname
+   ```
+
+3. **If names differ, either:**
+   - Re-run the label command with the correct Kubernetes node name
+   - Or ensure your config's NODE_NAME matches the machine's hostname
+
+**Note:** Validation uses `hostname` for simplicity. The worker script warns if NODE_NAME (config) differs from the detected cluster name, but proceeds with the config name.
+
 ---
 
 ## Best Practices

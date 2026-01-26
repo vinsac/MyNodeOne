@@ -268,11 +268,11 @@ if [ $? -eq 0 ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if ! retry_command "Registering VPS in domain registry" \
-        sudo "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-vps \
+        sudo "$SCRIPT_DIR/../domains/multi-domain-registry.sh" register-vps \
         "$VPS_TAILSCALE_IP" "$VPS_PUBLIC_IP" "$VPS_LOCATION" "unknown"; then
         REGISTRATION_FAILED=true
         echo "❌ Failed to register VPS in domain registry"
-        echo "   Manual registration: sudo $SCRIPT_DIR/../lib/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
+        echo "   Manual registration: sudo $SCRIPT_DIR/../domains/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
     fi
     echo
     
@@ -282,11 +282,11 @@ if [ $? -eq 0 ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if ! retry_command "Registering domain" \
-        sudo "$SCRIPT_DIR/../lib/multi-domain-registry.sh" register-domain \
+        sudo "$SCRIPT_DIR/../domains/multi-domain-registry.sh" register-domain \
         "$VPS_DOMAIN" 'VPS edge node domain'; then
         REGISTRATION_FAILED=true
         echo "❌ Failed to register domain"
-        echo "   Manual registration: sudo $SCRIPT_DIR/../lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
+        echo "   Manual registration: sudo $SCRIPT_DIR/../domains/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
     fi
     echo
     

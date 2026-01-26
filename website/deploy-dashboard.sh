@@ -47,9 +47,10 @@ kubectl create configmap dashboard-html \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 
-# Create ConfigMap with exporter script
+# Create ConfigMap with exporter script and nodes status script
 kubectl create configmap dashboard-exporter \
     --from-file=export-services.sh="$SCRIPT_DIR/export-services.sh" \
+    --from-file=nodes-status.sh="$SCRIPT_DIR/../scripts/nodes/nodes-status.sh" \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 

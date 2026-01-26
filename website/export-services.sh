@@ -55,75 +55,80 @@ export_services() {
 
 # Export nodes function
 export_nodes() {
-    # Try to get comprehensive node data from Config API first
-    local config_api_nodes="{}"
-    local control_plane_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
-    local api_port="8443"
-    
-    # Get API token
-    local api_token=""
-    if [[ -r "/etc/mynodeone/api-token" ]]; then
-        api_token=$(cat "/etc/mynodeone/api-token")
-        echo "[$(date)] API token found and readable"
-    else
-        echo "[$(date)] API token not found or not readable"
-    fi
-    
-    # Fetch from Config API
-    if [[ -n "$api_token" ]]; then
-        config_api_nodes=$(curl -s -H "X-API-Token: $api_token" "http://${control_plane_ip}:${api_port}/api/v1/nodes" 2>/dev/null || echo "{}")
-    fi
-    
-    # Check if Config API returned valid data
-    if [[ "$config_api_nodes" != "{}" ]] && echo "$config_api_nodes" | jq -e '.nodes' &>/dev/null; then
-        # Use Config API data - includes VPS nodes and management laptops
-        echo "$config_api_nodes" > "$OUTPUT_DIR/nodes.json.tmp"
-        mv "$OUTPUT_DIR/nodes.json.tmp" "$OUTPUT_DIR/nodes.json"
+    # Try to get comprehensive node data from nodes-status.sh script first
+    if [[ -x "/scripts/nodes-status.sh" ]]; then
+        echo "[$(date)] Using nodes-status.sh script for comprehensive node data"
         
-        local count=$(echo "$config_api_nodes" | jq '.nodes | length')
-        echo "[$(date)] Exported $count nodes from Config API"
-    else
-        # Fallback to Kubernetes nodes only
-        echo "[$(date)] Config API unavailable, falling back to Kubernetes nodes"
+        # Run nodes-status.sh script and capture output
+        local nodes_output=$(timeout 15 /scripts/nodes-status.sh 2>/dev/null || echo "")
         
-        # Get node metrics (if accessible)
-        local metrics_json="{}"
-        if kubectl top nodes &>/dev/null; then
-            metrics_json=$(kubectl top nodes --no-headers | awk '{gsub("%","",$3); gsub("%","",$5); printf "\"%s\":{\"cpu\":%s,\"memory\":%s},", $1, $3, $5}' | sed 's/,$//')
-            metrics_json="{${metrics_json}}"
+        if [[ -n "$nodes_output" ]] && echo "$nodes_output" | grep -q "Total:"; then
+            # Parse the output to create a JSON structure
+            local total_nodes=$(echo "$nodes_output" | grep "Total:" | awk '{print $2}')
+            local online_nodes=$(echo "$nodes_output" | grep "Total:" | awk '{print $5}')
+            
+            # Create a simple JSON structure with node count
+            local nodes_json=$(jq -n --arg total "$total_nodes" --arg online "$online_nodes" '{
+                nodes: [
+                    {
+                        name: "cluster-nodes",
+                        type: "summary",
+                        status: "online",
+                        total_nodes: ($total | tonumber),
+                        online_nodes: ($online | tonumber),
+                        last_heartbeat: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                    }
+                ]
+            }')
+            
+            echo "$nodes_json" > "$OUTPUT_DIR/nodes.json.tmp"
+            mv "$OUTPUT_DIR/nodes.json.tmp" "$OUTPUT_DIR/nodes.json"
+            
+            echo "[$(date)] Exported $total_nodes total nodes ($online_nodes online) from nodes-status.sh"
+            return
         fi
-
-        local nodes_json=$(kubectl get nodes -o json | jq -c --argjson metrics "$metrics_json" '[
-            .items[] | {
-                name: .metadata.name,
-                status: .status.conditions[] | select(.type=="Ready") | .status,
-                roles: .metadata.labels // {} | with_entries(select(.key | endswith("-node"))) | keys,
-                os: .status.nodeInfo.osImage,
-                kernel: .status.nodeInfo.kernelVersion,
-                kubernetes: .status.nodeInfo.kubeletVersion,
-                created: .metadata.creationTimestamp,
-                usage: ($metrics[.metadata.name] // {cpu: 0, memory: 0}),
-                capacity: {
-                    cpu: .status.capacity.cpu,
-                    memory: .status.capacity.memory,
-                    storage: .status.capacity["ephemeral-storage"],
-                    pods: .status.capacity.pods
-                },
-                allocatable: {
-                    cpu: .status.allocatable.cpu,
-                    memory: .status.allocatable.memory,
-                    storage: .status.allocatable["ephemeral-storage"],
-                    pods: .status.allocatable.pods
-                }
-            }
-        ]')
-        
-        echo "$nodes_json" > "$OUTPUT_DIR/nodes.json.tmp"
-        mv "$OUTPUT_DIR/nodes.json.tmp" "$OUTPUT_DIR/nodes.json"
-        
-        local count=$(echo "$nodes_json" | jq 'length')
-        echo "[$(date)] Exported $count Kubernetes nodes (fallback)"
     fi
+    
+    # Fallback to Kubernetes nodes only
+    echo "[$(date)] nodes-status.sh not available, falling back to Kubernetes nodes"
+    
+    # Get node metrics (if accessible)
+    local metrics_json="{}"
+    if kubectl top nodes &>/dev/null; then
+        metrics_json=$(kubectl top nodes --no-headers | awk '{gsub("%","",$3); gsub("%","",$5); printf '""%s"":{"cpu":%s,"memory":%s},", $1, $3, $5}' | sed 's/,$//')
+        metrics_json="{${metrics_json}}"
+    fi
+
+    local nodes_json=$(kubectl get nodes -o json | jq -c --argjson metrics "$metrics_json" '[
+        .items[] | {
+            name: .metadata.name,
+            status: .status.conditions[] | select(.type=="Ready") | .status,
+            roles: .metadata.labels // {} | with_entries(select(.key | endswith("-node"))) | keys,
+            os: .status.nodeInfo.osImage,
+            kernel: .status.nodeInfo.kernelVersion,
+            kubernetes: .status.nodeInfo.kubeletVersion,
+            created: .metadata.creationTimestamp,
+            usage: ($metrics[.metadata.name] // {cpu: 0, memory: 0}),
+            capacity: {
+                cpu: .status.capacity.cpu,
+                memory: .status.capacity.memory,
+                storage: .status.capacity["ephemeral-storage"],
+                pods: .status.capacity.pods
+            },
+            allocatable: {
+                cpu: .status.allocatable.cpu,
+                memory: .status.allocatable.memory,
+                storage: .status.allocatable["ephemeral-storage"],
+                pods: .status.allocatable.pods
+            }
+        }
+    ]')
+    
+    echo "$nodes_json" > "$OUTPUT_DIR/nodes.json.tmp"
+    mv "$OUTPUT_DIR/nodes.json.tmp" "$OUTPUT_DIR/nodes.json"
+    
+    local count=$(echo "$nodes_json" | jq 'length')
+    echo "[$(date)] Exported $count Kubernetes nodes (fallback)"
 }
 
 # Export cluster overview function

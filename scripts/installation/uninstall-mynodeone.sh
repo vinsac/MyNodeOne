@@ -175,6 +175,11 @@ detect_node_type() {
             fi
         elif command -v kubectl &> /dev/null; then
             node_type="management"
+        elif [ -f "/etc/mynodeone/node-type" ]; then
+            node_type=$(cat /etc/mynodeone/node-type 2>/dev/null || echo "unknown")
+        elif systemctl is-active --quiet traefik 2>/dev/null && [ ! -d "/var/lib/rancher/k3s" ]; then
+            # VPS nodes typically have Traefik but not k3s
+            node_type="vps"
         fi
     fi
     
@@ -360,6 +365,16 @@ elif [ "$NODE_TYPE" = "management" ] || [ "$NODE_TYPE" = "vps" ] || [ "$NODE_TYP
                     kubectl patch configmap sync-controller-registry -n kube-system \
                         --type merge -p "{\"data\":{\"registry.json\":$(echo "$updated" | jq -c '.' | jq -Rs '.')}}" \
                         2>/dev/null && log_success "Unregistered $NODE_TYPE ($node_ip) from sync-controller-registry" || true
+                fi
+            fi
+            
+            # Remove VPS from domain registry (if this is a VPS node)
+            if [ "$NODE_TYPE" = "vps" ] && [ -f "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" ]; then
+                log_info "Removing VPS from domain registry..."
+                if bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" unregister-vps "$node_ip" &>/dev/null; then
+                    log_success "Removed VPS ($node_ip) from domain-registry"
+                else
+                    log_warn "Could not remove from domain-registry (may not exist)"
                 fi
             fi
             

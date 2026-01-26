@@ -53,6 +53,17 @@ kubectl create configmap dashboard-exporter \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 
+# Create Secret for API token access
+if [[ -f "/etc/mynodeone/api-token" ]]; then
+    kubectl create secret generic dashboard-api-token \
+        --from-file=api-token="/etc/mynodeone/api-token" \
+        --namespace="$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    echo "✓ API token secret created"
+else
+    echo "⚠️ API token not found, will use Kubernetes nodes only"
+fi
+
 # Clean up temp file
 rm -f "$TEMP_HTML"
 
@@ -156,6 +167,9 @@ spec:
           mountPath: /api
         - name: exporter-script
           mountPath: /scripts
+        - name: api-token
+          mountPath: /etc/mynodeone
+          readOnly: true
         resources:
           requests:
             memory: "16Mi"
@@ -173,6 +187,10 @@ spec:
         configMap:
           name: dashboard-exporter
           defaultMode: 0755
+      - name: api-token
+        secret:
+          secretName: dashboard-api-token
+          optional: true
 ---
 apiVersion: v1
 kind: Service

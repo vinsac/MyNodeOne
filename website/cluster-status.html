@@ -266,6 +266,11 @@
             color: white;
         }
         
+        .status-stale {
+            background: #ffc107;
+            color: #212529;
+        }
+        
         .status-notready {
             background: #dc3545;
             color: white;
@@ -532,18 +537,18 @@
         // Load all cluster data dynamically
         async function loadClusterData() {
             try {
+                // Load comprehensive node status from Config API
+                const nodesResponse = await fetch('/api/nodes.json');
+                if (nodesResponse.ok) {
+                    const nodesData = await nodesResponse.json();
+                    updateNodeStatus(nodesData);
+                }
+                
                 // Load cluster overview
                 const clusterResponse = await fetch('/api/cluster.json');
                 if (clusterResponse.ok) {
                     const clusterData = await clusterResponse.json();
                     updateClusterOverview(clusterData);
-                }
-                
-                // Load node status
-                const nodesResponse = await fetch('/api/nodes.json');
-                if (nodesResponse.ok) {
-                    const nodesData = await nodesResponse.json();
-                    updateNodeStatus(nodesData);
                 }
                 
                 // Load services
@@ -604,35 +609,90 @@
             if (nodeListElement && nodesData) {
                 let nodesHtml = '';
                 
-                nodesData.forEach(node => {
-                    const isReady = node.status === 'True';
-                    const statusColor = isReady ? '#28a745' : '#dc3545';
-                    const statusText = isReady ? 'Ready' : 'NotReady';
-                    const roles = node.roles.length > 0 ? node.roles.join(', ') : 'worker';
-                    
-                    // Calculate resource usage
-                    const cpuUsage = node.usage ? node.usage.cpu : 0;
-                    const ramUsage = node.usage ? node.usage.memory : 0;
-                    const storageUsage = "N/A"; // Storage metrics not available from kubectl top
-                    
-                    nodesHtml += `
-                        <div class="node-item" style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
-                            <div class="node-header">
-                                <div class="node-name">${node.name}</div>
-                                <div class="node-status ${isReady ? 'status-ready' : 'status-notready'}">${statusText}</div>
+                // Check if this is Config API data (has nodes array) or kubectl data
+                if (nodesData.nodes && Array.isArray(nodesData.nodes)) {
+                    // Config API format - includes VPS nodes and management laptops
+                    nodesData.nodes.forEach(node => {
+                        const isOnline = node.status === 'online';
+                        const statusColor = isOnline ? '#28a745' : node.status === 'stale' ? '#ffc107' : '#dc3545';
+                        const statusText = node.status.charAt(0).toUpperCase() + node.status.slice(1);
+                        const nodeType = node.type || 'unknown';
+                        
+                        nodesHtml += `
+                            <div class="node-item" style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
+                                <div class="node-header">
+                                    <div class="node-name">${node.name}</div>
+                                    <div class="node-status ${isOnline ? 'status-ready' : node.status === 'stale' ? 'status-stale' : 'status-notready'}">${statusText}</div>
+                                </div>
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${nodeType.toUpperCase()} • ${node.ip || 'N/A'}</div>
+                                <div class="node-details">
+                                    <div>Type: <span style="color: #333; font-weight: 600;">${nodeType}</span></div>
+                                    <div>Last Seen: <span style="color: #666; font-weight: 600;">${formatLastSeen(node.last_heartbeat)}</span></div>
+                                    <div>Config: <span style="color: #333; font-weight: 600;">v${node.config_version || 'N/A'}</span></div>
+                                </div>
                             </div>
-                            <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${roles} • ${node.os}</div>
-                            <div class="node-details">
-                                <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${cpuUsage}%</span></div>
-                                <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${ramUsage}%</span></div>
-                                <div>Storage: <span style="color: ${storageUsage > 70 ? '#dc3545' : storageUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${storageUsage}%</span></div>
-                                <div>K8s: <span style="color: #333; font-weight: 600;">${node.kubernetes}</span></div>
+                        `;
+                    });
+                } else {
+                    // Kubernetes kubectl format - fallback
+                    nodesData.forEach(node => {
+                        const isReady = node.status === 'True';
+                        const statusColor = isReady ? '#28a745' : '#dc3545';
+                        const statusText = isReady ? 'Ready' : 'NotReady';
+                        const roles = node.roles.length > 0 ? node.roles.join(', ') : 'worker';
+                        
+                        // Calculate resource usage
+                        const cpuUsage = node.usage ? node.usage.cpu : 0;
+                        const ramUsage = node.usage ? node.usage.memory : 0;
+                        const storageUsage = "N/A"; // Storage metrics not available from kubectl top
+                        
+                        nodesHtml += `
+                            <div class="node-item" style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
+                                <div class="node-header">
+                                    <div class="node-name">${node.name}</div>
+                                    <div class="node-status ${isReady ? 'status-ready' : 'status-notready'}">${statusText}</div>
+                                </div>
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${roles} • ${node.os}</div>
+                                <div class="node-details">
+                                    <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${cpuUsage}%</span></div>
+                                    <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${ramUsage}%</span></div>
+                                    <div>Storage: <span style="color: ${storageUsage > 70 ? '#dc3545' : storageUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${storageUsage}%</span></div>
+                                    <div>K8s: <span style="color: #333; font-weight: 600;">${node.kubernetes}</span></div>
+                                </div>
                             </div>
-                        </div>
-                    `;
-                });
+                        `;
+                    });
+                }
                 
                 nodeListElement.innerHTML = nodesHtml;
+            }
+        }
+        
+        function formatLastSeen(timestamp) {
+            if (!timestamp || timestamp === 'null' || timestamp === 'never') {
+                return 'Never';
+            }
+            
+            try {
+                const date = new Date(timestamp);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffSecs = Math.floor(diffMs / 1000);
+                const diffMins = Math.floor(diffSecs / 60);
+                const diffHours = Math.floor(diffMins / 60);
+                const diffDays = Math.floor(diffHours / 24);
+                
+                if (diffSecs < 60) {
+                    return `${diffSecs}s ago`;
+                } else if (diffMins < 60) {
+                    return `${diffMins}m ago`;
+                } else if (diffHours < 24) {
+                    return `${diffHours}h ago`;
+                } else {
+                    return `${diffDays}d ago`;
+                }
+            } catch (error) {
+                return 'Unknown';
             }
         }
         

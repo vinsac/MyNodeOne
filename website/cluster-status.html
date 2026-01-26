@@ -424,11 +424,11 @@
                     <div class="card-icon">🛠️</div>
                     <div class="card-title">Services Status</div>
                 </div>
-                <div style="margin-bottom: 15px;">
+                <div id="services-summary" style="margin-bottom: 15px;">
                     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                        <div style="background: #e3f2fd; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #1976d2; font-weight: 600;">🌐 Public: 1</div>
-                        <div style="background: #f3e5f5; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #7b1fa2; font-weight: 600;">🔒 Private: 7</div>
-                        <div style="background: #e8f5e8; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #2e7d32; font-weight: 600;">✅ Running: 8</div>
+                        <div style="background: #e3f2fd; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #1976d2; font-weight: 600;">🌐 Public: <span id="public-services-count">Loading...</span></div>
+                        <div style="background: #f3e5f5; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #7b1fa2; font-weight: 600;">🔒 Private: <span id="private-services-count">Loading...</span></div>
+                        <div style="background: #e8f5e8; padding: 8px 15px; border-radius: 15px; font-size: 0.85em; color: #2e7d32; font-weight: 600;">✅ Running: <span id="running-services-count">Loading...</span></div>
                     </div>
                 </div>
                 <ul class="service-list" id="services-list">
@@ -663,6 +663,19 @@
             if (!container) return;
             
             container.innerHTML = '';
+            
+            // Update service counts
+            const publicServices = services.filter(s => s.public !== false).length;
+            const privateServices = services.filter(s => s.public === false).length;
+            const runningServices = services.filter(s => s.status === 'running' || s.status === 'Running').length;
+            
+            const publicCount = document.getElementById('public-services-count');
+            const privateCount = document.getElementById('private-services-count');
+            const runningCount = document.getElementById('running-services-count');
+            
+            if (publicCount) publicCount.textContent = publicServices;
+            if (privateCount) privateCount.textContent = privateServices;
+            if (runningCount) runningCount.textContent = runningServices;
             
             // Filter and render additional services that are not in the static list
             const staticServices = ['grafana', 'argocd', 'prometheus', 'longhorn'];

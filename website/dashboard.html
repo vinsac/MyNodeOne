@@ -672,38 +672,38 @@
         }
         
         function updateClusterOverview(clusterData) {
-            // Update cluster overview card
-            const clusterStatusElement = document.querySelector('.card-title');
-            if (clusterStatusElement && clusterStatusElement.textContent === 'Cluster Overview') {
-                const card = clusterStatusElement.closest('.card');
-                const statusDiv = card.querySelector('div[style*="text-align: center"]');
+            // Update System Health card on home page
+            const systemHealthElement = document.querySelector('.card-title');
+            if (systemHealthElement && systemHealthElement.textContent === 'System Health') {
+                const card = systemHealthElement.closest('.card');
+                const gridDiv = card.querySelector('div[style*="grid-template-columns"]');
                 
-                if (statusDiv && clusterData) {
+                if (gridDiv && clusterData) {
                     const isHealthy = clusterData.nodes.ready === clusterData.nodes.total;
-                    const statusIcon = isHealthy ? '✅' : '⚠️';
-                    const statusText = isHealthy ? 'Cluster Healthy' : 'Cluster Warning';
-                    const statusColor = isHealthy ? '#28a745' : '#ffc107';
+                    const clusterStatus = isHealthy ? 'Healthy' : 'Warning';
+                    const clusterIcon = isHealthy ? '✅' : '⚠️';
+                    const clusterColor = isHealthy ? '#28a745' : '#ffc107';
                     
-                    statusDiv.innerHTML = `
-                        <div style="font-size: 3em; color: ${statusColor}; margin-bottom: 15px;">${statusIcon}</div>
-                        <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">${statusText}</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Active</div>
-                            </div>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">${clusterData.nodes.ready - 1} Ready</div>
-                            </div>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.pods.running} Running</div>
-                            </div>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.storage.bound_pvc || 0} PVCs</div>
-                            </div>
+                    gridDiv.innerHTML = `
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 2em; color: ${clusterColor}; margin-bottom: 5px;">${clusterIcon}</div>
+                            <div style="font-size: 1.1em; font-weight: 600; color: #333;">Cluster</div>
+                            <div style="font-size: 0.9em; color: #666;">${clusterStatus}</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 2em; color: #007bff; margin-bottom: 5px;">🔗</div>
+                            <div style="font-size: 1.1em; font-weight: 600; color: #333;">Services</div>
+                            <div style="font-size: 0.9em; color: #666;">${clusterData.services ? clusterData.services.running || 0 : 0} Running</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 2em; color: #ffc107; margin-bottom: 5px;">💻</div>
+                            <div style="font-size: 1.1em; font-weight: 600; color: #333;">Nodes</div>
+                            <div style="font-size: 0.9em; color: #666;">${clusterData.nodes.ready} Ready</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 2em; color: #17a2b8; margin-bottom: 5px;">📦</div>
+                            <div style="font-size: 1.1em; font-weight: 600; color: #333;">Pods</div>
+                            <div style="font-size: 0.9em; color: #666;">${clusterData.pods.running} Active</div>
                         </div>
                     `;
                 }

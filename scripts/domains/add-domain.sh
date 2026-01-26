@@ -97,7 +97,7 @@ echo "  Step 2: Registering Domain"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" register-domain "$NEW_DOMAIN" "$DESCRIPTION"
+bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" register-domain "$NEW_DOMAIN" "$DESCRIPTION"
 log_success "Domain registered in cluster"
 echo ""
 
@@ -252,7 +252,7 @@ else
             
             # Configure routing
             if [ -n "$all_vps" ]; then
-                bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
+                bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
                     "$service" "$all_domains" "$all_vps" "round-robin" 2>/dev/null || true
                 log_success "✓ $service configured"
             fi
@@ -348,7 +348,7 @@ echo "  sudo $PROJECT_ROOT/scripts/domains/configure-domain-routing.sh $NEW_DOMA
 echo ""
 
 echo "View all domains and routing:"
-echo "  sudo $PROJECT_ROOT/scripts/lib/multi-domain-registry.sh show"
+echo "  sudo $PROJECT_ROOT/scripts/domains/multi-domain-registry.sh show"
 echo ""
 
 echo "Remove a domain:"

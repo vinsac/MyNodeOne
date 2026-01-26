@@ -39,7 +39,7 @@ cd ~/MyNodeOne
 
 # Initialize registries
 sudo ./scripts/lib/service-registry.sh init
-sudo ./scripts/lib/multi-domain-registry.sh init
+sudo ./scripts/domains/multi-domain-registry.sh init
 
 # Sync existing services
 sudo ./scripts/lib/service-registry.sh sync
@@ -48,18 +48,18 @@ sudo ./scripts/lib/service-registry.sh sync
 ### 2. Register Domains
 
 ```bash
-sudo ./scripts/lib/multi-domain-registry.sh register-domain example.com "Main site"
-sudo ./scripts/lib/multi-domain-registry.sh register-domain test.org "Test site"
+sudo ./scripts/domains/multi-domain-registry.sh register-domain example.com "Main site"
+sudo ./scripts/domains/multi-domain-registry.sh register-domain test.org "Test site"
 ```
 
 ### 3. Register VPS Nodes
 
 ```bash
 # Format: register-vps <tailscale_ip> <public_ip> <region> <provider>
-sudo ./scripts/lib/multi-domain-registry.sh register-vps \
+sudo ./scripts/domains/multi-domain-registry.sh register-vps \
     100.68.225.92 192.0.2.100 eu contabo
 
-sudo ./scripts/lib/multi-domain-registry.sh register-vps \
+sudo ./scripts/domains/multi-domain-registry.sh register-vps \
     100.70.123.45 167.99.1.1 us digitalocean
 ```
 
@@ -82,7 +82,7 @@ sudo ./scripts/nodes/nodes-status.sh
 
 ```bash
 # Format: configure-routing <service> "<domains>" "<vps_ips>" <strategy>
-sudo ./scripts/lib/multi-domain-registry.sh configure-routing immich \
+sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
     "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     round-robin
@@ -97,7 +97,7 @@ sudo ./scripts/lib/multi-domain-registry.sh configure-routing immich \
 
 **Round-Robin Example:**
 ```bash
-sudo ./scripts/lib/multi-domain-registry.sh configure-routing photos \
+sudo ./scripts/domains/multi-domain-registry.sh configure-routing photos \
     "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     round-robin
@@ -106,7 +106,7 @@ Result: `photos.example.com` → VPS1, `photos.test.org` → VPS2
 
 **Primary-Backup Example:**
 ```bash
-sudo ./scripts/lib/multi-domain-registry.sh configure-routing chat \
+sudo ./scripts/domains/multi-domain-registry.sh configure-routing chat \
     "example.com,test.org" \
     "100.68.225.92,100.70.123.45" \
     primary-backup
@@ -118,7 +118,7 @@ Result: Both domains → VPS1 (primary), failover to VPS2
 ## View Configuration
 
 ```bash
-sudo ./scripts/lib/multi-domain-registry.sh show
+sudo ./scripts/domains/multi-domain-registry.sh show
 ```
 
 Output:
@@ -148,7 +148,7 @@ Service Routing:
 
 ```bash
 # 1. Register in multi-domain registry
-sudo ./scripts/lib/multi-domain-registry.sh register-vps \
+sudo ./scripts/domains/multi-domain-registry.sh register-vps \
     100.72.200.50 203.0.113.100 asia linode
 
 # 2. Register in sync controller
@@ -156,7 +156,7 @@ sudo ./scripts/lib/sync-controller.sh register vps_nodes \
     100.72.200.50 linode-asia root
 
 # 3. Update service routing to include new VPS
-sudo ./scripts/lib/multi-domain-registry.sh configure-routing immich \
+sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
     "example.com,test.org" \
     "100.68.225.92,100.70.123.45,100.72.200.50" \
     round-robin
@@ -181,7 +181,7 @@ sudo ./scripts/domains/sync-dns.sh
 ### Add New Domain
 
 ```bash
-sudo ./scripts/lib/multi-domain-registry.sh register-domain example.com "Description"
+sudo ./scripts/domains/multi-domain-registry.sh register-domain example.com "Description"
 ```
 
 ---
@@ -269,13 +269,13 @@ sudo ./scripts/lib/sync-controller.sh register <type> <ip> <name> <user>
 
 ```bash
 # Check domain registry
-sudo ./scripts/lib/multi-domain-registry.sh show
+sudo ./scripts/domains/multi-domain-registry.sh show
 
 # Verify VPS has Tailscale IP
 tailscale ip -4
 
 # Test route generation
-sudo ./scripts/lib/multi-domain-registry.sh export-vps-routes \
+sudo ./scripts/domains/multi-domain-registry.sh export-vps-routes \
     $(tailscale ip -4) 100.122.68.75
 ```
 
@@ -301,7 +301,7 @@ With 10 laptops + 5 VPS nodes:
 # Control Plane
 sudo ./scripts/lib/sync-controller.sh push        # Manual push
 sudo ./scripts/lib/sync-controller.sh health      # Check nodes
-sudo ./scripts/lib/multi-domain-registry.sh show  # View config
+sudo ./scripts/domains/multi-domain-registry.sh show  # View config
 
 # Laptop
 sudo ./scripts/domains/sync-dns.sh                        # Manual sync

@@ -1565,7 +1565,7 @@ initialize_service_registries() {
     bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" init || true
     
     log_info "Creating multi-domain registry..."
-    bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" init || true
+    bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" init || true
     
     log_info "Initializing enterprise node registry..."
     bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" init || {

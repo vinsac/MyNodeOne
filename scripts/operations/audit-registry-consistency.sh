@@ -206,7 +206,7 @@ echo ""
 
 # Check domain-registry write patterns in code
 log_test "Checking domain-registry write patterns..."
-WRITE_PATTERNS=$(grep -r "\.domains\[" scripts/lib/multi-domain-registry.sh 2>/dev/null || echo "")
+WRITE_PATTERNS=$(grep -r "\.domains\[" scripts/domains/multi-domain-registry.sh 2>/dev/null || echo "")
 if [[ -n "$WRITE_PATTERNS" ]]; then
     log_pass "domain-registry writes use .domains[$domain] pattern"
 else
@@ -244,7 +244,7 @@ echo ""
 
 # Check for empty string handling
 log_test "Checking empty string handling in domain-registry reads..."
-EMPTY_CHECKS=$(grep -A2 "domains\.json" scripts/lib/multi-domain-registry.sh | grep "|| echo" | wc -l)
+EMPTY_CHECKS=$(grep -A2 "domains\.json" scripts/domains/multi-domain-registry.sh | grep "|| echo" | wc -l)
 if [[ "$EMPTY_CHECKS" -gt 0 ]]; then
     log_pass "Empty string fallbacks present ($EMPTY_CHECKS instances)"
 else

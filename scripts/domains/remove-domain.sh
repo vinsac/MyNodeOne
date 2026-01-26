@@ -156,7 +156,7 @@ if [ -n "$AFFECTED_SERVICES" ]; then
             jq -r ".[\"$service\"].vps_nodes[]" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
         
         # Update routing
-        bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
+        bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
             "$service" "$new_domains" "$vps_nodes" "round-robin" &>/dev/null || true
         
         log_success "✓ Updated $service"

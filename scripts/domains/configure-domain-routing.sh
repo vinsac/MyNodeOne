@@ -183,7 +183,7 @@ case "$action_choice" in
                 all_domains="${existing_domains}${DOMAIN}"
                 all_domains=$(echo "$all_domains" | sed 's/,$//')
                 
-                bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
+                bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
                     "$service" "$all_domains" "$VPS_NODES" "round-robin" 2>/dev/null || true
                 
                 log_success "✓ Added $service"
@@ -250,11 +250,11 @@ case "$action_choice" in
             
             if [ -n "$existing_domains" ]; then
                 # Still has other domains
-                bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
+                bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
                     "$service" "$existing_domains" "$vps_nodes" "round-robin" 2>/dev/null || true
             else
                 # No domains left, keep service but clear domain list
-                bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
+                bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
                     "$service" "" "$vps_nodes" "round-robin" 2>/dev/null || true
             fi
             

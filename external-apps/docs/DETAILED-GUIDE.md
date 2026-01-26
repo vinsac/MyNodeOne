@@ -264,7 +264,7 @@ If you prefer manual control:
 
 ```bash
 # Register domain routing
-bash /path/to/MyNodeOne/scripts/lib/multi-domain-registry.sh configure-routing \
+bash /path/to/MyNodeOne/scripts/domains/multi-domain-registry.sh configure-routing \
   "myapp" \              # Service name
   "yourdomain.com" \     # Domain
   "vps-node-ip" \        # VPS node IP

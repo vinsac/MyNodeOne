@@ -364,8 +364,8 @@ else
     echo "To complete registration manually, run:"
     echo "  cd ~/MyNodeOne"
     echo "  sudo ./scripts/lib/sync-controller.sh register vps_nodes $VPS_TAILSCALE_IP $VPS_NODE_NAME $VPS_SSH_USER"
-    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
-    echo "  sudo ./scripts/lib/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
+    echo "  sudo ./scripts/domains/multi-domain-registry.sh register-vps $VPS_TAILSCALE_IP $VPS_PUBLIC_IP $VPS_LOCATION unknown"
+    echo "  sudo ./scripts/domains/multi-domain-registry.sh register-domain $VPS_DOMAIN 'VPS domain'"
     echo
     echo "Then verify with:"
     echo "  sudo ./scripts/nodes/nodes-status.sh"

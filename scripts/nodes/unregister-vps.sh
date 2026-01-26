@@ -195,7 +195,7 @@ else
     
     # Run unregister script on control plane
     if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd ~/MyNodeOne && sudo ./scripts/lib/multi-domain-registry.sh unregister-vps $VPS_IP" 2>/dev/null; then
+        "cd ~/MyNodeOne && sudo ./scripts/domains/multi-domain-registry.sh unregister-vps $VPS_IP" 2>/dev/null; then
         log_success "Removed from registries via control plane"
     else
         log_warn "Could not auto-unregister via SSH"
@@ -203,7 +203,7 @@ else
         echo "Manual cleanup required on control plane:"
         echo "  ssh $CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP"
         echo "  cd ~/MyNodeOne"
-        echo "  sudo ./scripts/lib/multi-domain-registry.sh unregister-vps $VPS_IP"
+        echo "  sudo ./scripts/domains/multi-domain-registry.sh unregister-vps $VPS_IP"
     fi
 fi
 

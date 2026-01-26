@@ -180,7 +180,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                         
                         # Register domain
                         if command -v kubectl &>/dev/null; then
-                            bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" register-domain \
+                            bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" register-domain \
                                 "$user_domain" "Added during $APP_NAME installation" 2>/dev/null || true
                             log_success "Domain registered: $user_domain"
                         fi
@@ -224,7 +224,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                     
                     if [[ -n "$VPS_NODES" ]]; then
                         # Configure routing
-                        if bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" configure-routing \
+                        if bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
                             "$APP_NAME" "$selected_domains" "$VPS_NODES" "round-robin" 2>/dev/null; then
                             log_success "Public routing configured"
                         fi

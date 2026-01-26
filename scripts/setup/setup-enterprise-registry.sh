@@ -55,7 +55,7 @@ echo ""
 # Step 1: Initialize registries
 log_info "Step 1/5: Initializing service registries..."
 bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" init
-bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" init
+bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" init
 log_success "Registries initialized"
 echo ""
 
@@ -114,14 +114,14 @@ if [ -z "${PUBLIC_DOMAIN:-}" ]; then
     
     if [ -n "$user_domain" ]; then
         echo "PUBLIC_DOMAIN=\"$user_domain\"" >> ~/.mynodeone/config.env
-        bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" register-domain "$user_domain" "Primary domain"
+        bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" register-domain "$user_domain" "Primary domain"
         log_success "Domain registered: $user_domain"
     else
         log_info "Skipping domain configuration (local access only)"
     fi
 else
     log_info "Using existing domain: $PUBLIC_DOMAIN"
-    bash "$PROJECT_ROOT/scripts/lib/multi-domain-registry.sh" register-domain "$PUBLIC_DOMAIN" "Primary domain" 2>/dev/null || true
+    bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" register-domain "$PUBLIC_DOMAIN" "Primary domain" 2>/dev/null || true
 fi
 echo ""
 
@@ -171,7 +171,7 @@ echo ""
 
 echo "3. Verify everything works:"
 echo "   sudo ./scripts/lib/sync-controller.sh health"
-echo "   sudo ./scripts/lib/multi-domain-registry.sh show"
+echo "   sudo ./scripts/domains/multi-domain-registry.sh show"
 echo ""
 
 echo "4. Install apps - they'll auto-register and sync everywhere:"

@@ -109,8 +109,8 @@ echo ""
 
 # Get available VPS nodes
 VPS_NODES=$(kubectl get configmap -n kube-system domain-registry \
-    -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null | \
-    jq -r 'to_entries[] | "\(.key)|\(.value.public_ip)|\(.value.region)"' || echo "")
+    -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+    jq -r '.vps_nodes[]? | "\(.tailscale_ip)|\(.public_ip)|\(.location)"' || echo "")
 
 if [ -z "$VPS_NODES" ]; then
     log_warn "No VPS nodes registered yet"

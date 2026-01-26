@@ -166,8 +166,8 @@ case "$action_choice" in
         
         # Get VPS nodes for this domain
         VPS_NODES=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null | \
-            jq -r 'keys[]' | tr '\n' ',' | sed 's/,$//' || echo "")
+            -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+            jq -r '.vps_nodes[]?.tailscale_ip' | tr '\n' ',' | sed 's/,$//' || echo "")
         
         echo ""
         log_info "Adding services to $DOMAIN..."

@@ -95,7 +95,7 @@ export_nodes() {
     # Get node metrics (if accessible)
     local metrics_json="{}"
     if kubectl top nodes &>/dev/null; then
-        metrics_json=$(kubectl top nodes --no-headers | awk '{gsub("%","",$3); gsub("%","",$5); printf '"%s":{"cpu":%s,"memory":%s},', $1, $3, $5}' | sed 's/,$//')
+        metrics_json=$(kubectl top nodes --no-headers | awk '{gsub("%","",$3); gsub("%","",$5); printf "\"%s\":{\"cpu\":%s,\"memory\":%s},", $1, $3, $5}' | sed 's/,$//')
         metrics_json="{${metrics_json}}"
     fi
 

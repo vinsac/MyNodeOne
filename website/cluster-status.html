@@ -379,25 +379,25 @@
                     <div class="card-icon">🏗️</div>
                     <div class="card-title">Cluster Overview</div>
                 </div>
-                <div style="text-align: center; padding: 20px;">
-                    <div style="font-size: 3em; color: #28a745; margin-bottom: 15px;">✅</div>
-                    <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">Cluster Healthy</div>
+                <div id="cluster-overview-content" style="text-align: center; padding: 20px;">
+                    <div style="font-size: 3em; color: #28a745; margin-bottom: 15px;">⏳</div>
+                    <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">Loading Cluster Data...</div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Active</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Loading...</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">2 Ready</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">Loading...</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">47 Running</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">Loading...</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">2.1TB Free</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">Loading...</div>
                         </div>
                     </div>
                 </div>
@@ -533,40 +533,36 @@
         
         function updateClusterOverview(clusterData) {
             // Update cluster overview card
-            const clusterStatusElement = document.querySelector('.card-title');
-            if (clusterStatusElement && clusterStatusElement.textContent === 'Cluster Overview') {
-                const card = clusterStatusElement.closest('.card');
-                const statusDiv = card.querySelector('div[style*="text-align: center"]');
+            const clusterOverviewElement = document.getElementById('cluster-overview-content');
+            
+            if (clusterOverviewElement && clusterData) {
+                const isHealthy = clusterData.nodes.ready === clusterData.nodes.total;
+                const statusIcon = isHealthy ? '✅' : '⚠️';
+                const statusText = isHealthy ? 'Cluster Healthy' : 'Cluster Warning';
+                const statusColor = isHealthy ? '#28a745' : '#ffc107';
                 
-                if (statusDiv && clusterData) {
-                    const isHealthy = clusterData.nodes.ready === clusterData.nodes.total;
-                    const statusIcon = isHealthy ? '✅' : '⚠️';
-                    const statusText = isHealthy ? 'Cluster Healthy' : 'Cluster Warning';
-                    const statusColor = isHealthy ? '#28a745' : '#ffc107';
-                    
-                    statusDiv.innerHTML = `
-                        <div style="font-size: 3em; color: ${statusColor}; margin-bottom: 15px;">${statusIcon}</div>
-                        <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">${statusText}</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Active</div>
-                            </div>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">${clusterData.nodes.ready - 1} Ready</div>
-                            </div>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.pods.running} Running</div>
-                            </div>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
-                                <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.storage.bound_pvc || 0} PVCs</div>
-                            </div>
+                clusterOverviewElement.innerHTML = `
+                    <div style="font-size: 3em; color: ${statusColor}; margin-bottom: 15px;">${statusIcon}</div>
+                    <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">${statusText}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #28a745;">Active</div>
                         </div>
-                    `;
-                }
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">${clusterData.nodes.ready - 1} Ready</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.pods.running} Running</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.storage.bound_pvc || 0} PVCs</div>
+                        </div>
+                    </div>
+                `;
             }
         }
         

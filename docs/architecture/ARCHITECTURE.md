@@ -313,8 +313,8 @@ The Node Agent runs as a systemd service on each node and handles:
 | Node Type | Config Received | Action |
 |-----------|-----------------|--------|
 | **VPS** | Traefik routes (services → backends) | Writes `mynodeone-routes.yml` |
-| **Laptop** | DNS entries (subdomain → IP) | Updates `/etc/hosts` |
-| **Worker** | DNS entries (subdomain → IP) | Updates `/etc/hosts` |
+| **Laptop** | DNS entries (local_name → IP) | Updates `/etc/hosts` |
+| **Worker** | DNS entries (local_name → IP) | Updates `/etc/hosts` |
 
 ### Making Apps Public - Sync Flow
 

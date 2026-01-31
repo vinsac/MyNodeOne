@@ -1,10 +1,12 @@
 #!/bin/bash
 
 ###############################################################################
-# Post-Installation Routing Helper
+# Post-Installation Routing Helper - Clean Separation Architecture
 # 
-# Uses centralized service registry for DNS and routing
-# Called by app install scripts
+# Simplified version that only handles local DNS registration.
+# Public routing is handled exclusively through manage-app-visibility.sh
+#
+# Usage: source post-install-routing.sh <app-name> <port> <local-name> [namespace] [service-name] [public]
 ###############################################################################
 
 # Colors
@@ -28,7 +30,7 @@ log_warn() {
 # Parameters
 APP_NAME="$1"
 APP_PORT="$2"
-LOCAL_NAME="$3"  # Changed from SUBDOMAIN to LOCAL_NAME for clean separation
+LOCAL_NAME="$3"  # Local DNS name for clean separation
 NAMESPACE="${4:-$APP_NAME}"
 SERVICE_NAME="${5:-${APP_NAME}-server}"
 MAKE_PUBLIC="${6:-false}"
@@ -48,31 +50,33 @@ if [ -z "${ACTUAL_USER:-}" ]; then
     export ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 fi
 
-if [ -z "${ACTUAL_HOME:-}" ]; then
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        export ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    else
-        export ACTUAL_HOME="$HOME"
-    fi
+# Load project root and environment
+POST_INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$POST_INSTALL_DIR/../lib/project-root.sh" 2>/dev/null || source "$POST_INSTALL_DIR/../../scripts/lib/project-root.sh" 2>/dev/null
+
+# Load cluster domain
+if [ -z "${CLUSTER_DOMAIN:-}" ]; then
+    # Try to find user's config.env
+    for user_config in ~/.mynodeone/config.env /home/*/.mynodeone/config.env /root/.mynodeone/config.env; do
+        if [[ -f "$user_config" ]]; then
+            DETECTED_DOMAIN=$(grep '^CLUSTER_DOMAIN=' "$user_config" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '"')
+            if [[ -n "$DETECTED_DOMAIN" ]]; then
+                CLUSTER_DOMAIN="$DETECTED_DOMAIN"
+                break
+            fi
+        fi
+    done
 fi
 
-# Load configuration
-CONFIG_FILE="$ACTUAL_HOME/.mynodeone/config.env"
-if [[ -f "$CONFIG_FILE" ]]; then
-    source "$CONFIG_FILE"
-fi
-
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
-PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
+# Final fallback
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-space}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🌐 Registering Service: $APP_NAME"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-# Get script directory and project root using standardized utility
-POST_INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$POST_INSTALL_DIR/../lib/project-root.sh"
 
+# 1. Register in service registry
 echo ""
 log_info "Registering in service registry..."
 
@@ -103,220 +107,31 @@ if [[ -n "$DNS_ENTRIES" ]]; then
     } | sudo tee -a /etc/hosts > /dev/null
     
     log_success "Local DNS updated"
+    log_info "Access your app locally: http://${LOCAL_NAME}.${CLUSTER_DOMAIN}.local"
+else
+    log_warn "Could not update local DNS (kubectl may not be configured)"
 fi
 
-# 3. Interactive public access configuration
-if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🌍 Public Access Configuration"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    # Check if domains are registered
-    REGISTERED_DOMAINS=""
-    if command -v kubectl &>/dev/null; then
-        REGISTERED_DOMAINS=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-            jq -r '.domains | keys[]' 2>/dev/null || echo "")
-    fi
-    
-    if [[ -n "$REGISTERED_DOMAINS" ]] || [[ -n "$PUBLIC_DOMAIN" ]]; then
-        echo "Do you want to make this app publicly accessible from the internet?"
-        echo ""
-        echo "Options:"
-        echo "  1. Yes, make it public (expose via domain)"
-        echo "  2. No, keep it local-only (Tailscale VPN access only)"
-        echo "  3. Configure later"
-        echo ""
-        read -p "Choice (1/2/3): " public_choice
-        
-        case "$public_choice" in
-            1)
-                # User wants to make it public
-                echo ""
-                
-                # Show available domains
-                if [[ -n "$REGISTERED_DOMAINS" ]]; then
-                    echo "Available domains:"
-                    echo ""
-                    
-                    declare -a domain_array
-                    i=1
-                    while read -r domain; do
-                        echo "  $i. $domain"
-                        domain_array[$i]="$domain"
-                        ((i++))
-                    done <<< "$REGISTERED_DOMAINS"
-                    
-                    echo ""
-                    echo "Select domains (comma-separated numbers, 'all', or press Enter for all):"
-                    read -p "Selection: " domain_selection
-                    
-                    selected_domains=""
-                    if [[ -z "$domain_selection" ]] || [[ "$domain_selection" == "all" ]]; then
-                        selected_domains=$(echo "$REGISTERED_DOMAINS" | tr '\n' ',' | sed 's/,$//')
-                    else
-                        declare -a domain_list
-                        IFS=',' read -ra NUMS <<< "$domain_selection"
-                        for num in "${NUMS[@]}"; do
-                            num=$(echo "$num" | xargs)
-                            [[ -n "${domain_array[$num]:-}" ]] && domain_list+=("${domain_array[$num]}")
-                        done
-                        selected_domains=$(IFS=','; echo "${domain_list[*]}")
-                    fi
-                    
-                elif [[ -n "$PUBLIC_DOMAIN" ]]; then
-                    # Use PUBLIC_DOMAIN from config
-                    echo "Using domain from config: $PUBLIC_DOMAIN"
-                    selected_domains="$PUBLIC_DOMAIN"
-                else
-                    echo "No domains configured yet."
-                    echo ""
-                    read -p "Enter your domain (e.g., example.com): " user_domain
-                    
-                    if [[ -n "$user_domain" ]]; then
-                        selected_domains="$user_domain"
-                        
-                        # Register domain
-                        if command -v kubectl &>/dev/null; then
-                            bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" register-domain \
-                                "$user_domain" "Added during $APP_NAME installation" 2>/dev/null || true
-                            log_success "Domain registered: $user_domain"
-                        fi
-                        
-                        # Save to config
-                        if ! grep -q "PUBLIC_DOMAIN=" ~/.mynodeone/config.env 2>/dev/null; then
-                            echo "PUBLIC_DOMAIN=\"$user_domain\"" >> ~/.mynodeone/config.env
-                        fi
-                    fi
-                fi
-                
-                # Ask about subdomain or root domain
-                echo ""
-                echo "How do you want to access this app?"
-                echo ""
-                echo "  1. Use subdomain: ${SUBDOMAIN}.<domain> (e.g., photos.example.com)"
-                echo "  2. Use root domain: <domain> only (e.g., example.com)"
-                echo ""
-                read -p "Choice (1/2): " domain_type_choice
-                
-                # Modify subdomain based on choice
-                if [[ "$domain_type_choice" == "2" ]]; then
-                    log_info "Will use root domain (no subdomain)"
-                    SUBDOMAIN="@"  # Special marker for root domain
-                else
-                    log_info "Will use subdomain: ${SUBDOMAIN}"
-                fi
-                
-                # Configure routing if domains selected
-                if [[ -n "$selected_domains" ]]; then
-                    # Fix: Concatenate subdomain if not root domain
-                    if [[ "$SUBDOMAIN" != "@" ]]; then
-                        local temp_domains=""
-                        IFS=',' read -ra DOMAINS <<< "$selected_domains"
-                        for d in "${DOMAINS[@]}"; do
-                            temp_domains="${temp_domains}${SUBDOMAIN}.${d},"
-                        done
-                        selected_domains="${temp_domains%,}"
-                    fi
-                    
-                    echo ""
-                    log_info "Configuring public access at: $selected_domains"
-                    
-                    # Get VPS nodes
-                    VPS_NODES=""
-                    if command -v kubectl &>/dev/null; then
-                        VPS_NODES=$(kubectl get configmap -n kube-system domain-registry \
-                            -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
-                            jq -r 'to_entries | map(.value.vps_nodes[]) | unique[]' 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
-                    fi
-                    
-                    if [[ -n "$VPS_NODES" ]]; then
-                        # Configure routing
-                        if bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
-                            "$APP_NAME" "$selected_domains" "$VPS_NODES" "round-robin"; then
-                            log_success "Public routing configured"
-                        fi
-                        
-                        # Update service to mark as public
-                        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
-                            "$APP_NAME" "$LOCAL_NAME" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "true" 2>/dev/null || true
-                        
-                        # Trigger sync
-                        if bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push 2>/dev/null; then
-                            log_success "Configuration pushed to VPS nodes"
-                        else
-                            log_warn "Auto-sync unavailable, use manual sync"
-                        fi
-                        
-                        MAKE_PUBLIC="true"
-                    else
-                        log_warn "No VPS nodes registered yet"
-                        echo ""
-                        echo "To complete public access setup:"
-                        echo "  1. Install VPS edge node: sudo ./scripts/installation/install-mynodeone.sh → Option 3"
-                        echo "  2. Then run: sudo ./scripts/operations/manage-app-visibility.sh"
-                    fi
-                fi
-                ;;
-                
-            2)
-                log_info "App will be local-only (accessible via Tailscale VPN)"
-                MAKE_PUBLIC="false"
-                ;;
-                
-            *)
-                log_info "You can configure public access later with:"
-                echo "  sudo ./scripts/operations/manage-app-visibility.sh"
-                MAKE_PUBLIC="false"
-                ;;
-        esac
-    fi
-fi
-
-# 4. Show access URLs
+# 3. Show access information
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ✅ Service Registered Successfully"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Access via:"
-if [[ "$SUBDOMAIN" == "@" ]]; then
-    echo "   • Local: http://${CLUSTER_DOMAIN}.local (root domain not supported locally)"
-else
-    echo "   • Local: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-fi
-
-if [[ "$MAKE_PUBLIC" == "true" ]] && [[ -n "${selected_domains:-}" ]]; then
-    IFS=',' read -ra DOMAINS <<< "$selected_domains"
-    for domain in "${DOMAINS[@]}"; do
-        if [[ "$SUBDOMAIN" == "@" ]]; then
-            echo "   • Public: https://${domain} (root domain)"
-        else
-            echo "   • Public: https://${SUBDOMAIN}.${domain}"
-        fi
-    done
-fi
-
+echo "Local Access:"
+echo "  • http://${LOCAL_NAME}.${CLUSTER_DOMAIN}.local"
 echo ""
-
-# 5. Show next steps
-if [[ "$MAKE_PUBLIC" != "true" ]]; then
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  📡 Accessing Your Service"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    log_info "From management laptops (after DNS sync):"
-    echo "  cd ~/MyNodeOne && sudo ./scripts/domains/sync-dns.sh"
-    echo "  Then open: http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
-    echo ""
-    
-    log_info "To make public later:"
-    echo "  sudo ./scripts/operations/manage-app-visibility.sh"
-    echo ""
-fi
-
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Public Access:"
+echo "  • To make this app publicly accessible, run:"
+echo "    sudo ./scripts/operations/manage-app-visibility.sh"
+echo ""
+echo "This supports:"
+echo "  • Root domains (e.g., curiios.com)"
+echo "  • WWW domains (e.g., www.curiios.com)"  
+echo "  • Subdomains (e.g., app.curiios.com)"
+echo ""
+echo "Clean Separation Architecture:"
+echo "  • Local DNS: Uses local_name field only"
+echo "  • Public Routing: Configured separately via manage-app-visibility.sh"
+echo "  • No Cross-Contamination: Independent systems"
 echo ""

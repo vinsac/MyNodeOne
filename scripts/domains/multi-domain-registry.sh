@@ -108,20 +108,7 @@ init_multi_domain_registry() {
         
         log_success "Domain registry created"
     else
-        # Migrate old structure to new if needed
-        local current_structure=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{}')
-        
-        # Check if it's using old structure (no nested "domains" key)
-        if ! echo "$current_structure" | jq -e '.domains' &>/dev/null; then
-            log_info "Migrating domain registry to unified structure..."
-            local migrated=$(echo "$current_structure" | jq '{domains: ., vps_nodes: []}')
-            kubectl patch configmap domain-registry \
-                -n kube-system \
-                --type merge \
-                -p "{\"data\":{\"domains.json\":\"$(echo "$migrated" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
-            log_success "Registry migrated to unified structure"
-        fi
+        log_info "Domain registry already exists"
     fi
 }
 

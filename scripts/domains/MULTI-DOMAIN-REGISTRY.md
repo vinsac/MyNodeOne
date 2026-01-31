@@ -111,8 +111,7 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
 | `add-domain <service> <new_url>` | Add a single URL to service | `add-domain immich "photos.test.org"` |
 | `remove-domain <service> <url>` | Remove a single URL from service | `remove-domain immich "old-link.com"` |
 | `list-domains <service>` | Show all URLs for a service | `list-domains immich` |
-| `remove-routing <service>` | Remove all service routing | `remove-routing immich` |
-| `export-vps-routes <tailscale_ip> <public_ip>` | Export routes for specific VPS | `export-vps-routes 100.68.225.92 192.0.2.100` |
+| `export-vps-routes <vps_ip> <control_plane_ip>` | Export routes for specific VPS | `export-vps-routes 100.68.225.92 100.122.68.75` |
 
 ---
 

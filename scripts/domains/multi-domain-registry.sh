@@ -79,9 +79,9 @@ check_domain_conflicts() {
     [ -z "$routing" ] && routing='{}'
     
     # Check if domain is used by other services
-    local conflicting_service=$(echo "$routing" | jq -r --arg domain "$domain" '
+    local conflicting_service=$(echo "$routing" | jq -r --arg domain "$domain" --arg current "$current_service" '
         to_entries[] |
-        select(.key != "'$current_service'") |
+        select(.key != $current) |
         select(.value.expose[] == $domain) |
         .key
     ' 2>/dev/null || echo "")
@@ -540,14 +540,14 @@ show_config() {
     echo "Registered Domains:"
     kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-        jq -r 'to_entries[] | "  • \(.key): \(.value.description)"'
+        jq -r '.domains | to_entries[] | "  • \(.key): \(.value.description)"'
     echo ""
     
     # Show VPS nodes
     echo "Registered VPS Nodes:"
     kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.vps-nodes\.json}' 2>/dev/null | \
-        jq -r 'to_entries[] | "  • \(.key) → \(.value.public_ip) (\(.value.region))"'
+        -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
+        jq -r '.vps_nodes[] | "  • \(.tailscale_ip) → \(.public_ip) (\(.location))"'
     echo ""
     
     # Show routing

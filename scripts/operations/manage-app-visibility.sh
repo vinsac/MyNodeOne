@@ -92,7 +92,7 @@ verify_service_exists() {
     
     if ! kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -e ".[\"$service_name\"]" &>/dev/null; then
+        jq -e --arg svc "$service_name" '.[$svc]' &>/dev/null; then
         log_error "Service '$service_name' not found in registry"
         return 1
     fi
@@ -200,7 +200,7 @@ make_public() {
     sleep 1
     local is_public=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -r ".[\"$service_name\"].public" || echo "false")
+        jq -r --arg svc "$service_name" '.[$svc].public' || echo "false")
     
     if [ "$is_public" != "true" ]; then
         log_error "✗ Service not marked as public in ConfigMap"
@@ -212,7 +212,7 @@ make_public() {
     # Get service details for verification
     local service_info=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -r ".[\"$service_name\"]")
+        jq -r --arg svc "$service_name" '.[$svc]')
     local local_name=$(echo "$service_info" | jq -r '.local_name')
     
     # Wait for Node Agent to sync routes to VPS nodes
@@ -387,7 +387,7 @@ make_private() {
     local routing=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo "{}")
     
-    local updated_routing=$(echo "$routing" | jq "del(.[\"$service_name\"])")
+    local updated_routing=$(echo "$routing" | jq --arg svc "$service_name" 'del(.[$svc])')
     
     if kubectl patch configmap domain-registry \
         -n kube-system \
@@ -408,7 +408,7 @@ make_private() {
     sleep 2
     local is_public=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -r ".[\"$service_name\"].public" || echo "true")
+        jq -r --arg svc "$service_name" '.[$svc].public' || echo "true")
     
     if [ "$is_public" = "false" ]; then
         log_success "✓ Verified: Service is now private"
@@ -576,9 +576,9 @@ main() {
                 
                 local conflicting_service=$(kubectl get configmap -n kube-system domain-registry \
                     -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
-                    jq -r --arg domain "$domain" '
+                    jq -r --arg domain "$domain" --arg svc "$selected_service" '
                         to_entries[] |
-                        select(.key != "'$selected_service'") |
+                        select(.key != $svc) |
                         select(.value.expose[] == $domain) |
                         .key
                     ' 2>/dev/null || echo "")

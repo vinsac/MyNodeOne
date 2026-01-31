@@ -137,7 +137,7 @@ Registered VPS Nodes:
 
 Service Routing:
   - immich:
-    Domains: example.com, test.org
+    Expose: example.com, test.org
     VPS: 100.68.225.92, 100.70.123.45
     Strategy: round-robin
 ```

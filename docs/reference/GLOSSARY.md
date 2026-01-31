@@ -107,6 +107,20 @@
 
 ---
 
+### Local Identity (local_name)
+**Simple:** The private name of your app inside your home network.
+
+**Example:** `photos` becomes `photos.mynodeone.local`. Only you and your family can see this.
+
+---
+
+### Public Identity (Expose)
+**Simple:** The public name of your app on the real internet.
+
+**Example:** `photos.yourdomain.com`. Anyone in the world can see this if you share the link.
+
+---
+
 ## Storage Terms
 
 ### Storage

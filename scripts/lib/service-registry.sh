@@ -394,6 +394,13 @@ case "${1:-}" in
         show_registry
         ;;
     *)
+        cat << 'EOF'
+Service Registry
+
+Usage:
+  service-registry.sh <command> [options]
+
+Commands:
   init                          Initialize service registry
   register <name> <local_name> <namespace> <service> <port> <public>
                                Register a new service

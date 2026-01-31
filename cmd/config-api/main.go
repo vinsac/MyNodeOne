@@ -569,17 +569,19 @@ func (s *Server) getDNSEntries() ([]DNSEntry, error) {
 	}
 
 	// Extract DNS entries from flat registry format
-	// Format: {"servicename": {"subdomain": "x", "ip": "y", ...}, ...}
+	// Format: {"servicename": {"local_name": "x", "ip": "y", ...}, ...}
 	entries := []DNSEntry{}
-	for _, svc := range services {
+	for serviceName, svc := range services {
 		if svcMap, ok := svc.(map[string]interface{}); ok {
 			ip, _ := svcMap["ip"].(string)
-			subdomain, _ := svcMap["subdomain"].(string)
-			if ip != "" && subdomain != "" {
+			localName, _ := svcMap["local_name"].(string)
+			if ip != "" && localName != "" {
 				entries = append(entries, DNSEntry{
-					Name: subdomain,
+					Name: localName,
 					IP:   ip,
 				})
+			} else if ip != "" {
+				log.Printf("Service %s missing local_name, skipping DNS entry", serviceName)
 			}
 		}
 	}
@@ -695,6 +697,7 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 			}
 			seenDomains[fullDomain] = serviceName
 
+			log.Printf("  Route: https://%s -> %s", fullDomain, backend)
 			routes = append(routes, TraefikRoute{
 				Service: serviceName,
 				Domain:  fullDomain,

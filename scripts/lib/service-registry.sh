@@ -373,50 +373,6 @@ export_dns() {
     '
 }
 
-# Export registry to Traefik routing format
-export_traefik_routes() {
-    local public_domain="$1"
-    local control_plane_ip="$2"
-    
-    local services=$(get_all_services | jq -r '
-        to_entries[] |
-        select(.value.public == true) |
-        .value
-    ')
-    
-    if [[ -z "$services" ]]; then
-        return 0
-    fi
-    
-    echo "# Generated from service registry on $(date)"
-    echo "http:"
-    echo "  routers:"
-    
-    echo "$services" | jq -r --arg domain "$public_domain" --arg cp_ip "$control_plane_ip" '
-        (.subdomain) as $sub |
-        (.port) as $port |
-        "    \($sub):",
-        "      rule: \"Host(`\($sub).\($domain)`)\"",
-        "      service: \($sub)-service",
-        "      entryPoints:",
-        "        - websecure",
-        "      tls:",
-        "        certResolver: letsencrypt",
-        ""
-    '
-    
-    echo "  services:"
-    echo "$services" | jq -r --arg cp_ip "$control_plane_ip" '
-        (.subdomain) as $sub |
-        (.port) as $port |
-        "    \($sub)-service:",
-        "      loadBalancer:",
-        "        servers:",
-        "          - url: \"http://\($cp_ip):\($port)\"",
-        ""
-    '
-}
-
 # Main command dispatcher
 export_k8s_config || true
 
@@ -428,29 +384,16 @@ case "${1:-}" in
         shift
         register_service "$@"
         ;;
-    get)
-        get_service "$2"
-        ;;
-    list)
-        get_all_services | jq '.'
-        ;;
     sync)
-        sync_registry
+        sync_services
         ;;
     export-dns)
-        export_dns "${2:-}"
+        export_dns "$2"
         ;;
-    export-traefik)
-        export_traefik_routes "$2" "$3"
+    show)
+        show_registry
         ;;
     *)
-        cat << 'EOF'
-Service Registry Management
-
-Usage:
-  service-registry.sh <command> [options]
-
-Commands:
   init                          Initialize service registry
   register <name> <local_name> <namespace> <service> <port> <public>
                                Register a new service

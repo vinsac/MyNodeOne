@@ -211,21 +211,31 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                 
                 # Configure routing if domains selected
                 if [[ -n "$selected_domains" ]]; then
+                    # Fix: Concatenate subdomain if not root domain
+                    if [[ "$SUBDOMAIN" != "@" ]]; then
+                        local temp_domains=""
+                        IFS=',' read -ra DOMAINS <<< "$selected_domains"
+                        for d in "${DOMAINS[@]}"; do
+                            temp_domains="${temp_domains}${SUBDOMAIN}.${d},"
+                        done
+                        selected_domains="${temp_domains%,}"
+                    fi
+                    
                     echo ""
-                    log_info "Configuring public access..."
+                    log_info "Configuring public access at: $selected_domains"
                     
                     # Get VPS nodes
                     VPS_NODES=""
                     if command -v kubectl &>/dev/null; then
                         VPS_NODES=$(kubectl get configmap -n kube-system domain-registry \
-                            -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-                            jq -r '.vps_nodes[].tailscale_ip' 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+                            -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
+                            jq -r 'to_entries | map(.value.vps_nodes[]) | unique[]' 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
                     fi
                     
                     if [[ -n "$VPS_NODES" ]]; then
                         # Configure routing
                         if bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
-                            "$APP_NAME" "$selected_domains" "$VPS_NODES" "round-robin" 2>/dev/null; then
+                            "$APP_NAME" "$selected_domains" "$VPS_NODES" "round-robin"; then
                             log_success "Public routing configured"
                         fi
                         

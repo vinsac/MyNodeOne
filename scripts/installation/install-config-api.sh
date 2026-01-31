@@ -116,9 +116,9 @@ cp "$PROJECT_ROOT/scripts/lib/mynodeone-config-api.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable mynodeone-config-api
 
-# Start the service
-log_info "Starting Config API Server..."
-systemctl start mynodeone-config-api
+# Restart the service to pick up the new binary
+log_info "Restarting Config API Server..."
+systemctl restart mynodeone-config-api
 
 # Wait for startup
 sleep 2

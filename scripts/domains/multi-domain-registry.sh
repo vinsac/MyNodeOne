@@ -267,7 +267,7 @@ add_domain() {
         --arg service "$service_name" \
         --arg domain "$new_domain" \
         '.[$service].expose |= (. + [$domain] | unique) |
-         .[$service].updated = now | todate')
+         .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))')
     
     # Update configmap
     kubectl patch configmap domain-registry \
@@ -306,7 +306,7 @@ remove_domain() {
         --arg service "$service_name" \
         --arg domain "$remove_domain" \
         '.[$service].expose |= (. - [$domain]) |
-         .[$service].updated = now | todate')
+         .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))')
     
     # Update configmap
     kubectl patch configmap domain-registry \

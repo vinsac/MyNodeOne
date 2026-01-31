@@ -1029,7 +1029,7 @@ fi
 if [ "${AUTO_INSTALL_MODE:-false}" != "true" ] && ([ "$ALREADY_INSTALLED" = false ] || [ "${INSTALL_OPTION:-}" = "1" ]); then
     # Use standardized routing configuration (auto-detects domains from registry)
     if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
-        source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "$NAMESPACE" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "open-webui"
+        source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "$APP_NAME" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "open-webui"
     fi
 fi
 

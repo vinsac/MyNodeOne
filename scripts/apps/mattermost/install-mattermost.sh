@@ -371,8 +371,8 @@ echo "   • Admin Guide: https://docs.mattermost.com/guides/administrator.html"
 echo ""
 
 # Source post-install routing for public access configuration
-if [ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]; then
-    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "mattermost" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "mattermost"
+if [ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]; then
+    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "mattermost" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "mattermost"
 fi
 
 echo -e "${GREEN}Installation complete! 🎉${NC}"

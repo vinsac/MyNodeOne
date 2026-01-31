@@ -317,8 +317,8 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
 fi
 
 # Automatically configure routing and ask about public access
-if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "jellyfin" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "jellyfin"
+if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "jellyfin" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "jellyfin"
 fi
 
 echo ""

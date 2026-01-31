@@ -1656,6 +1656,6 @@ echo ""
 # =============================================================================
 
 # Automatically configure routing and ask about public access
-if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "llmapi" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "llmapi"
+if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "llmapi" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "llmapi"
 fi

@@ -465,8 +465,8 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
 fi
 
 # Automatically configure routing and ask about public access
-if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "nextcloud" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "nextcloud"
+if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "nextcloud" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "nextcloud"
 fi
 
 echo ""

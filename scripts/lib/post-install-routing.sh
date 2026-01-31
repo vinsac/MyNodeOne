@@ -28,13 +28,13 @@ log_warn() {
 # Parameters
 APP_NAME="$1"
 APP_PORT="$2"
-SUBDOMAIN="$3"
+LOCAL_NAME="$3"  # Changed from SUBDOMAIN to LOCAL_NAME for clean separation
 NAMESPACE="${4:-$APP_NAME}"
 SERVICE_NAME="${5:-${APP_NAME}-server}"
 MAKE_PUBLIC="${6:-false}"
 
-if [[ -z "$APP_NAME" ]] || [[ -z "$APP_PORT" ]] || [[ -z "$SUBDOMAIN" ]]; then
-    echo "Usage: source post-install-routing.sh <app-name> <port> <subdomain> [namespace] [service-name] [public]"
+if [[ -z "$APP_NAME" ]] || [[ -z "$APP_PORT" ]] || [[ -z "$LOCAL_NAME" ]]; then
+    echo "Usage: source post-install-routing.sh <app-name> <port> <local-name> [namespace] [service-name] [public]"
     return 1
 fi
 
@@ -77,7 +77,7 @@ echo ""
 log_info "Registering in service registry..."
 
 if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
-    "$APP_NAME" "$SUBDOMAIN" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "$MAKE_PUBLIC" 2>&1; then
+    "$APP_NAME" "$LOCAL_NAME" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "$MAKE_PUBLIC" 2>&1; then
     log_success "Service registered in cluster"
 else
     log_warn "Could not register service (kubectl may not be configured)"
@@ -241,7 +241,7 @@ if [[ -n "$PUBLIC_DOMAIN" ]] || command -v kubectl &>/dev/null; then
                         
                         # Update service to mark as public
                         bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
-                            "$APP_NAME" "$SUBDOMAIN" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "true" 2>/dev/null || true
+                            "$APP_NAME" "$LOCAL_NAME" "$NAMESPACE" "$SERVICE_NAME" "$APP_PORT" "true" 2>/dev/null || true
                         
                         # Trigger sync
                         if bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push 2>/dev/null; then

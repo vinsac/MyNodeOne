@@ -530,8 +530,8 @@ else
 fi
 
 # Automatically configure routing and ask about public access
-if [[ -f "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/apps/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
+if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
 fi
 
 # Offer to set up automated video transcoding

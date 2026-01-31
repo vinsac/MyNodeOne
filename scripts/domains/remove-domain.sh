@@ -98,33 +98,29 @@ echo ""
 # Show services using this domain
 AFFECTED_SERVICES=$(kubectl get configmap -n kube-system domain-registry \
     -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
-    jq -r "to_entries[] | select(.value.domains | index(\"$DOMAIN\")) | .key" || echo "")
+    jq -r "to_entries[] | select(.value.expose[] | endswith(\"$DOMAIN\")) | .key" || echo "")
 
 if [ -n "$AFFECTED_SERVICES" ]; then
     log_warn "This domain is currently used by the following services:"
     echo ""
     
     while read -r service; do
-        subdomain=$(kubectl get configmap -n kube-system service-registry \
+        local_name=$(kubectl get configmap -n kube-system service-registry \
             -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].subdomain" 2>/dev/null || echo "")
+            jq -r ".[\"$service\"].local_name" 2>/dev/null || echo "$service")
         
-        other_domains=$(kubectl get configmap -n kube-system domain-registry \
+        exposed_urls=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].domains[]" 2>/dev/null | grep -v "^$DOMAIN$" | tr '\n' ',' || echo "")
+            jq -r ".[\"$service\"].expose[]" 2>/dev/null | grep "$DOMAIN" | tr '\n' ',' || echo "")
         
-        if [ -n "$other_domains" ]; then
-            echo "  • $service (${subdomain}) - still on: ${other_domains%,}"
-        else
-            echo "  • $service (${subdomain}) - ⚠️  will no longer be public"
-        fi
+        echo "  • $service ($local_name) - exposed at: ${exposed_urls%,}"
     done <<< "$AFFECTED_SERVICES"
     echo ""
 fi
 
 log_warn "⚠️  WARNING: This action will:"
-echo "  • Remove $DOMAIN from the cluster"
-echo "  • Update routing for affected services"
+echo "  • Remove $DOMAIN from the cluster registry"
+echo "  • Remove affected URLs from service routing"
 echo "  • Push configuration to all VPS nodes"
 echo ""
 
@@ -139,42 +135,29 @@ echo ""
 log_info "Removing domain $DOMAIN..."
 echo ""
 
-# Remove domain from affected services
+# Remove specific URLs from affected services
 if [ -n "$AFFECTED_SERVICES" ]; then
-    log_info "Updating service routing..."
+    log_info "Cleaning up service routing..."
     
     while read -r service; do
-        # Get domains without this one
-        new_domains=$(kubectl get configmap -n kube-system domain-registry \
+        # Get URLs ending with this domain
+        urls_to_remove=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].domains[]" 2>/dev/null | \
-            grep -v "^$DOMAIN$" | tr '\n' ',' | sed 's/,$//' || echo "")
+            jq -r ".[\"$service\"].expose[]" 2>/dev/null | grep "$DOMAIN" || echo "")
         
-        # Get VPS nodes
-        vps_nodes=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].vps_nodes[]" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+        while read -r url; do
+            if [ -n "$url" ]; then
+                bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" remove-domain "$service" "$url" &>/dev/null || true
+            fi
+        done <<< "$urls_to_remove"
         
-        # Update routing
-        bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
-            "$service" "$new_domains" "$vps_nodes" "round-robin" &>/dev/null || true
-        
-        log_success "✓ Updated $service"
+        log_success "✓ Cleaned up $service"
     done <<< "$AFFECTED_SERVICES"
 fi
 
 # Remove domain from registry
 log_info "Removing domain from registry..."
-
-domains_json=$(kubectl get configmap -n kube-system domain-registry \
-    -o jsonpath='{.data.domains\.json}' 2>/dev/null)
-
-new_domains_json=$(echo "$domains_json" | jq "del(.[\"$DOMAIN\"])")
-
-kubectl patch configmap domain-registry \
-    -n kube-system \
-    --type merge \
-    -p "{\"data\":{\"domains.json\":\"$(echo "$new_domains_json" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" unregister-domain "$DOMAIN"
 
 log_success "Domain removed from registry"
 

@@ -6,28 +6,27 @@
 # This script is called by manage-app-visibility.sh after making Paperless public
 # It handles Paperless-specific configuration for ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS
 #
-# Usage: post-public-hook.sh <service_name> <subdomain> <domains_csv>
+# Usage: post-public-hook.sh <service_name> <full_domains_csv>
 ###############################################################################
 
 set -euo pipefail
 
 SERVICE_NAME="${1:-}"
-SUBDOMAIN="${2:-}"
-DOMAINS="${3:-}"
+DOMAINS="${2:-}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-if [ -z "$SERVICE_NAME" ] || [ -z "$SUBDOMAIN" ] || [ -z "$DOMAINS" ]; then
-    echo "Usage: $0 <service_name> <subdomain> <domains_csv>"
+if [ -z "$SERVICE_NAME" ] || [ -z "$DOMAINS" ]; then
+    echo "Usage: $0 <service_name> <full_domains_csv>"
     exit 1
 fi
 
 echo ""
 echo -e "${GREEN}[Paperless]${NC} Configuring allowed hosts and CSRF trusted origins..."
 
-# Get cluster domain from config
+# Get cluster domain and service info
 ACTUAL_HOME="${HOME}"
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
@@ -37,17 +36,19 @@ if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
 fi
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
-# Build allowed hosts list
-ALLOWED_HOSTS="${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+# Get local_name from registry
+LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
+    -o jsonpath="{.data.services\.json}" 2>/dev/null | \
+    jq -r ".[\"$SERVICE_NAME\"].local_name")
 
-# Build CSRF trusted origins list
-CSRF_ORIGINS="http://${SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
+# Build allowed hosts list (start with local access)
+ALLOWED_HOSTS="$LOCAL_NAME.${CLUSTER_DOMAIN}.local"
+CSRF_ORIGINS="http://$LOCAL_NAME.${CLUSTER_DOMAIN}.local"
 
 # Add each public domain
 IFS=',' read -ra DOMAIN_ARRAY <<< "$DOMAINS"
 for domain in "${DOMAIN_ARRAY[@]}"; do
-    domain=$(echo "$domain" | xargs)
-    FQDN="${SUBDOMAIN}.${domain}"
+    FQDN=$(echo "$domain" | xargs)
     
     # Add to allowed hosts
     ALLOWED_HOSTS="${ALLOWED_HOSTS},${FQDN}"

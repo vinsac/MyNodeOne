@@ -17,15 +17,21 @@ Before making apps public, you need:
 
 ### Step 1: Configure DNS
 
-Log into your domain registrar (Namecheap, GoDaddy, Cloudflare, etc.) and add A records pointing to your VPS public IP:
+Log into your domain registrar (Namecheap, GoDaddy, Cloudflare, etc.) and add A records pointing to your VPS public IP.
 
-| Type | Name | Value | TTL |
-|------|------|-------|-----|
-| A | @ | `<VPS-PUBLIC-IP>` | 300 |
-| A | * | `<VPS-PUBLIC-IP>` | 300 |
+### Recommended DNS Strategy: Multiple A Records
+If you have multiple VPS nodes, add an A record for EACH node. This enables DNS round-robin load balancing.
+
+| Type | Name | Value | Description |
+|------|------|-------|-------------|
+| A | @ | `<VPS-1-IP>` | Root domain |
+| A | @ | `<VPS-2-IP>` | Root (for redundancy) |
+| A | www | `<VPS-1-IP>` | WWW subdomain |
+| A | * | `<VPS-1-IP>` | Wildcard for app subdomains |
 
 - `@` = Root domain (e.g., `yourdomain.com`)
-- `*` = Wildcard for subdomains (e.g., `photos.yourdomain.com`)
+- `www` = WWW subdomain (e.g., `www.yourdomain.com`)
+- `*` = Wildcard (e.g., `photos.yourdomain.com`)
 
 ### Step 2: Register Domain with MyNodeOne
 
@@ -55,14 +61,21 @@ Both should return your VPS public IP. DNS propagation can take 5-60 minutes.
 
 ### Method 1: During App Installation
 
-When installing apps from the app store, you'll be asked:
+When installing apps from the app store, you'll be asked to configure its network identity:
+
 ```
+? Local DNS name (e.g., 'photos' for photos.space.local) [immich]: photos
 ? Make this app publicly accessible? [y/N]: y
-? Select domain: yourdomain.com
-? Subdomain (e.g., 'photos' for photos.yourdomain.com): photos
+? Enter full URLs (comma-separated): photos.yourdomain.com, www.yourdomain.com
 ```
 
-The app will automatically be configured for public access with SSL.
+**Key Difference:** You now enter the **full URL** exactly as you want it to appear in the browser. 
+
+- **Root:** `yourdomain.com`
+- **WWW:** `www.yourdomain.com`
+- **Subdomain:** `photos.yourdomain.com`
+
+The app will automatically be configured for public access with SSL using the `expose` array.
 
 ### Method 2: For Existing Apps
 
@@ -71,23 +84,25 @@ Run on **control plane**:
 sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
-This interactive script lets you:
-- List all apps and their current visibility
-- Make an app public (select domain and subdomain)
-- Make an app private (remove public access)
-- View current routing configuration
+This interactive script uses the **Clean Separation** architecture:
+1. **Local Access**: Check/set the `local_name` used for internal `.local` DNS.
+2. **Public Access**: Define one or more full domains in the `expose` array.
+3. **VPS Selection**: Choose which edge nodes will proxy the traffic.
 
-### Example: Making Immich Public
+### Example: Making Nextcloud Public at Root
 
 ```bash
 sudo ./scripts/operations/manage-app-visibility.sh
 
-# Select: immich
+# Select: nextcloud
 # Action: Make public
-# Domain: yourdomain.com
-# Subdomain: photos
+# URLs: yourdomain.com, www.yourdomain.com
+# VPS Selection: 100.x.x.x
 
-# Result: https://photos.yourdomain.com
+# Results: 
+# ✅ https://yourdomain.com
+# ✅ https://www.yourdomain.com
+# ✅ http://nextcloud.space.local (still works!)
 ```
 
 ---

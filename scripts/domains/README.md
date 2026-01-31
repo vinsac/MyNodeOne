@@ -6,21 +6,19 @@ This directory contains scripts for managing domains, DNS configuration, and nam
 
 ## 🎯 Quick Start: Which Script Should I Use?
 
-### 👥 **For Most Users** (Interactive, User-Friendly)
+### 👥 **Primary Tools** (Recommended)
 | **Task** | **Script** | **When to Use** |
 |----------|------------|----------------|
-| **Add domain** | `add-domain.sh` | ✅ **Standard** - Interactive prompts, SSL setup |
-| **Remove domain** | `remove-domain.sh` | ✅ **Standard** - Safe domain removal |
-| **Configure routing** | `configure-domain-routing.sh` | ✅ **Standard** - Interactive service routing |
+| **Manage Visibility** | `manage-app-visibility.sh` | ✅ **Best** - Interactive menu for local_name and public exposure |
+| **Domain Operations** | `multi-domain-registry.sh` | ✅ **Best** - All-in-one tool for domains, VPS, and routing |
 | **Check DNS** | `check-dns-ready.sh` | ✅ **Standard** - Validate DNS configuration |
 
-### 🔧 **For Advanced Users** (Programmatic, Batch Operations)
+### 🔧 **Legacy/Wrapper Scripts**
 | **Task** | **Script** | **When to Use** |
 |----------|------------|----------------|
-| **Multi-domain setup** | `multi-domain-registry.sh` | 🔧 **Advanced** - Multiple domains, load balancing |
-| **Batch operations** | `multi-domain-registry.sh` | 🔧 **Advanced** - Scripting, automation |
-| **Multi-VPS routing** | `multi-domain-registry.sh` | 🔧 **Advanced** - Complex routing strategies |
-| **Registry inspection** | `multi-domain-registry.sh` | 🔧 **Advanced** - Debugging, configuration |
+| **Add base domain** | `add-domain.sh` | 🔧 Wrapper for `multi-domain-registry.sh register-domain` |
+| **Remove domain** | `remove-domain.sh` | 🔧 Wrapper for `multi-domain-registry.sh unregister-domain` |
+| **Configure routing** | `configure-domain-routing.sh` | 🔧 Legacy - Use `manage-app-visibility.sh` instead |
 
 ---
 
@@ -235,17 +233,16 @@ sudo ./scripts/domains/configure-domain-routing.sh yourdomain.com
 # 1. Initialize multi-domain registry
 sudo ./scripts/domains/multi-domain-registry.sh init
 
-# 2. Register multiple domains
+# 2. Register base domains
 sudo ./scripts/domains/multi-domain-registry.sh register-domain example.com "Main site"
 sudo ./scripts/domains/multi-domain-registry.sh register-domain test.org "Test site"
 
-# 3. Register multiple VPS nodes
+# 3. Register VPS nodes
 sudo ./scripts/domains/multi-domain-registry.sh register-vps 100.68.225.92 192.0.2.100 eu contabo
-sudo ./scripts/domains/multi-domain-registry.sh register-vps 100.70.123.45 167.99.1.1 us digitalocean
 
-# 4. Configure load balancing
+# 4. Configure exposure (root + www + subdomain)
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
-    "example.com,test.org" "100.68.225.92,100.70.123.45" round-robin
+    "example.com,www.example.com,photos.test.org" "100.68.225.92"
 
 # 5. View configuration
 sudo ./scripts/domains/multi-domain-registry.sh show

@@ -738,13 +738,16 @@ No manual deployments needed!
 
 ### Can I run multiple apps with different domains?
 
-Yes! Each app gets its own:
-- Namespace
-- SSL certificate
-- Domain routing
-- Resource allocation
+Yes! Each app can be exposed on multiple domains and patterns simultaneously:
+- **Root Domain**: `yourdomain.com`
+- **WWW Subdomain**: `www.yourdomain.com`
+- **Custom Subdomain**: `service.test-org.net`
 
-Example: example.com, test.org, blog.example.com all on the same cluster.
+MyNodeOne uses a **Clean Separation** architecture where:
+1. **Local Identity**: Every app has a `local_name` (e.g. `immich`) for internal access via `immich.space.local`.
+2. **Public Identity**: The `expose` array contains any number of full public URLs.
+
+This ensures you can use a root domain publicly without breaking internal `.local` resolution.
 
 ## Networking Questions
 
@@ -764,7 +767,12 @@ User → VPS (SSL termination) → Tailscale tunnel → Control Plane Node → A
 
 ### Can I add more VPS edge nodes?
 
-Yes! Run `setup-edge-node.sh` on any VPS and point DNS to it. Load balancing is automatic (DNS round-robin).
+Yes! You can add multiple VPS nodes to your cluster. 
+- **Setup**: Run the VPS installation on your new node.
+- **Load Balancing**: Add A records for each VPS IP in your domain registrar.
+- **Routing**: Use `manage-app-visibility.sh` to select all VPS nodes for your service.
+
+Currently, all VPS nodes in the registry fetch all routes from the control plane, acting as a pool of redundant edge proxies. High availability is managed at the DNS level (Round-robin A records).
 
 ### How do SSL certificates work?
 

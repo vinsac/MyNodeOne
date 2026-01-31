@@ -143,7 +143,7 @@ check_domain_availability() {
         log_warn "No domains registered"
         echo ""
         echo "To make apps publicly accessible, you need a domain."
-        echo "Add one with: sudo ./scripts/domains/add-domain.sh"
+        echo "Add one with: multi-domain-registry.sh register-domain <domain>"
         echo ""
         return 1
     fi
@@ -180,7 +180,7 @@ make_public() {
     if [ -n "$domains" ] && [ -n "$vps_nodes" ]; then
         log_info "Configuring routing..."
         
-        if retry_command 3 "bash '$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh' configure-routing '$service_name' '$domains' '$vps_nodes' round-robin" 2>/dev/null || true; then
+        if retry_command 3 "bash '$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh' configure-routing '$service_name' '$domains' '$vps_nodes'" 2>/dev/null || true; then
             log_success "Routing configured"
         else
             log_error "Failed to configure routing"
@@ -188,14 +188,9 @@ make_public() {
         fi
         
         # Call app-specific post-public hook if it exists
-        local service_info=$(kubectl get configmap -n kube-system service-registry \
-            -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-            jq -r ".[\"$service_name\"]")
-        local subdomain=$(echo "$service_info" | jq -r '.subdomain')
-        local namespace=$(echo "$service_info" | jq -r '.namespace')
-        
         if [ -f "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh" ]; then
-            if ! bash "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh"; then
+            log_info "Running app-specific configuration hook..."
+            if ! bash "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh" "$service_name" "$domains"; then
                 log_warn "App-specific configuration had issues (check above)"
             fi
         fi
@@ -218,7 +213,7 @@ make_public() {
     local service_info=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath="{.data.services\.json}" 2>/dev/null | \
         jq -r ".[\"$service_name\"]")
-    local subdomain=$(echo "$service_info" | jq -r '.subdomain')
+    local local_name=$(echo "$service_info" | jq -r '.local_name')
     
     # Wait for Node Agent to sync routes to VPS nodes
     # Node Agents poll every 60s, Config API updates every 30s
@@ -246,8 +241,8 @@ make_public() {
                     -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
                     jq -r ".vps_nodes[] | select(.ip==\"$vps_ip\") | .ssh_user" || echo "root")
                 
-                # Check if routes file contains our service
-                local route_check="test -f ~/traefik/config/mynodeone-routes.yml && (grep -q '$subdomain:' ~/traefik/config/mynodeone-routes.yml || grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml)"
+                # Check if routes file contains our service (checking for service name as key or Host rule)
+                local route_check="test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$service_name-service' ~/traefik/config/mynodeone-routes.yml"
                 
                 if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
                     all_synced=false
@@ -277,10 +272,11 @@ make_public() {
             
             log_info "Checking VPS: $vps_ip (user: $vps_user)..."
             
-            local route_check="test -f ~/traefik/config/mynodeone-routes.yml && (grep -q '$subdomain:' ~/traefik/config/mynodeone-routes.yml || grep -q '$service_name' ~/traefik/config/mynodeone-routes.yml)"
+            # Check for service name in routes file
+            local route_check="test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$service_name-service' ~/traefik/config/mynodeone-routes.yml"
             
             if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
-                log_success "  ✓ Routes synced via Node Agent (subdomain: $subdomain)"
+                log_success "  ✓ Routes synced via Node Agent for $service_name"
             else
                 log_warn "  ⚠ Node Agent sync pending - falling back to SSH sync..."
                 
@@ -322,8 +318,7 @@ make_public() {
         echo "  This may take 30-60 seconds for SSL certificate issuance..."
         
         IFS=',' read -ra DOMAIN_ARRAY <<< "$domains"
-        local test_domain="${DOMAIN_ARRAY[0]}"
-        local test_url="https://${subdomain}.${test_domain}"
+        local test_url="https://${DOMAIN_ARRAY[0]}"   # Use full domain directly
         
         local max_attempts=12
         local attempt=1
@@ -351,7 +346,7 @@ make_public() {
             echo "  • SSL certificate is still being issued (first time only)"
             echo ""
             echo "Check:"
-            echo "  1. DNS: dig $subdomain.$test_domain"
+            echo "  1. DNS: dig ${DOMAIN_ARRAY[0]}"
             echo "  2. Traefik logs: ssh $vps_user@$vps_ip 'docker logs traefik --tail 50'"
             echo "  3. Try again in 5 minutes: curl -I $test_url"
             echo ""
@@ -456,20 +451,20 @@ main() {
     echo ""
     
     declare -a service_array
-    declare -a subdomain_array
+    declare -a local_name_array
     declare -a public_array
     i=1
     
-    while IFS='|' read -r service subdomain is_public; do
+    while IFS='|' read -r service local_name is_public; do
         local status_marker="🔒 Private"
         [ "$is_public" = "true" ] && status_marker="🌍 Public"
         
-        echo "  $i. $service ($subdomain) - $status_marker"
+        echo "  $i. $service (local: $local_name) - $status_marker"
         service_array[$i]="$service"
-        subdomain_array[$i]="$subdomain"
+        local_name_array[$i]="$local_name"
         public_array[$i]="$is_public"
         ((i++))
-    done < <(echo "$services" | jq -r 'to_entries[] | "\(.key)|\(.value.subdomain)|\(.value.public // false)"')
+    done < <(echo "$services" | jq -r 'to_entries[] | "\(.key)|\(.value.local_name)|\(.value.public // false)"')
     
     echo ""
     read -p "Select service number: " service_num
@@ -481,10 +476,10 @@ main() {
     fi
     
     local current_status="${public_array[$service_num]:-false}"
-    local subdomain="${subdomain_array[$service_num]:-}"
+    local local_name="${local_name_array[$service_num]:-}"
     
     echo ""
-    echo "Selected: $selected_service ($subdomain)"
+    echo "Selected: $selected_service (local: $local_name)"
     echo "Current status: $([ "$current_status" = "true" ] && echo "🌍 Public" || echo "🔒 Private (local-only)")"
     echo ""
     
@@ -520,37 +515,26 @@ main() {
                 exit 1
             fi
             
-            # Select domains
+            # Input full domains
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  Select Domains"
+            echo "  Configure Public URLs"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
-            
-            declare -a domain_array
-            i=1
-            while read -r domain; do
-                echo "  $i. $domain"
-                domain_array[$i]="$domain"
-                ((i++))
-            done < <(kubectl get configmap -n kube-system domain-registry \
-                -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.domains | keys[]')
-            
+            echo "Registered domains available:"
+            kubectl get configmap -n kube-system domain-registry \
+                -o jsonpath='{.data.domains\.json}' 2>/dev/null | jq -r '.domains | keys[]' | sed 's/^/  - /'
             echo ""
-            echo "Select domains (comma-separated numbers or 'all'):"
-            read -p "Selection: " domain_selection
+            echo "Enter full URLs (comma-separated):"
+            echo "Examples:"
+            echo "  • Root:      curiios.com"
+            echo "  • WWW:       www.curiios.com"
+            echo "  • Subdomain: $selected_service.curiios.com"
+            echo ""
+            read -p "URLs: " selected_domains
             
-            local selected_domains=""
-            if [ "$domain_selection" = "all" ]; then
-                selected_domains=$(kubectl get configmap -n kube-system domain-registry \
-                    -o jsonpath='{.data.domains\.json}' | jq -r '.domains | keys[]' | tr '\n' ',' | sed 's/,$//')
-            else
-                declare -a domain_list
-                IFS=',' read -ra NUMS <<< "$domain_selection"
-                for num in "${NUMS[@]}"; do
-                    num=$(echo "$num" | xargs)
-                    [ -n "${domain_array[$num]:-}" ] && domain_list+=("${domain_array[$num]}")
-                done
-                selected_domains=$(IFS=','; echo "${domain_list[*]}")
+            if [ -z "$selected_domains" ]; then
+                log_error "At least one URL is required"
+                exit 1
             fi
             
             # Select VPS nodes
@@ -598,7 +582,8 @@ main() {
                 
                 IFS=',' read -ra DOMAINS <<< "$selected_domains"
                 for domain in "${DOMAINS[@]}"; do
-                    echo "  • https://${subdomain}.${domain}"
+                    domain=$(echo "$domain" | xargs)
+                    echo "  • https://$domain"
                 done
                 echo ""
                 
@@ -628,7 +613,7 @@ main() {
                 echo "  ✅ Service is Now Private"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo ""
-                echo "  • http://${subdomain}.${CLUSTER_DOMAIN}.local (local access only)"
+                echo "  • http://$local_name.${CLUSTER_DOMAIN}.local (local access only)"
                 echo ""
             else
                 log_error "Failed to make service private"

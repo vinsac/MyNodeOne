@@ -1,17 +1,18 @@
 # Multi-Domain Architecture in MyNodeOne
 
-## **Core Concept: One Domain Per App**
+MyNodeOne supports multiple apps, each with its own unique identity and optional list of public domains:
 
-MyNodeOne supports multiple apps, each with its own unique domain:
+```bash
+App A (immich):
+  local_name: photos → photos.space.local (internal)
+  expose: ["photos.family.io", "photos.mynet.com"] (public)
 
+App B (nextcloud):
+  local_name: files  → files.space.local (internal)
+  expose: ["files.com", "www.files.com"] (public root/www)
 ```
-App A: exampleA.com      → appA.mynodeone.local (local)
-App B: exampleB.com      → appB.mynodeone.local (local)  
-App C: mysaas.net        → saas.mynodeone.local (local)
-Immich: photos.family.io → photos.mynodeone.local (local)
-```
 
-**Each app is completely independent in terms of domains.**
+**Local and public identities are completely independent.**
 
 ---
 
@@ -97,7 +98,7 @@ spec:
     certResolver: letsencrypt
 ```
 
-**Key Point:** Different `Host()` rules mean different apps can use completely different domains.
+**Key Point:** Different `Host()` rules mean different apps can use completely different domains. MyNodeOne now supports multiple `Host()` rules per service automatically via the `expose` array.
 
 ---
 
@@ -105,21 +106,13 @@ spec:
 
 You can choose between:
 
-### **Option 1: Subdomain (Default)**
-```
-Main app:  voting.example.com
-Services:  vote.example.com
-           result.example.com
-```
+### **Option 1: Subdomain**
+URL: `photos.yourdomain.com`
 
 ### **Option 2: Apex/Root Domain**
-```
-Main app:  example.com
-Services:  vote.example.com
-           result.example.com
-```
+URL: `yourdomain.com`
 
-**Both work! The script now asks which you prefer.**
+**Both work identically! MyNodeOne no longer distinguishes between them - simply provide the full URL in the `expose` list.**
 
 ---
 
@@ -280,12 +273,13 @@ App C: admin.myapp.com    ← Different subdomain
 ```
 
 ### **Multiple Domains for One Service**
-**Currently NOT automatic**, but possible manually:
-```yaml
-# You can manually create IngressRoutes for same app
-routes:
-  - match: Host(`app.com`) || Host(`www.app.com`)
+**FULLY SUPPORTED AND AUTOMATIC.** You can expose a single service on as many domains as you like via `manage-app-visibility.sh` or the `add-domain` command:
+
+```bash
+sudo ./scripts/domains/multi-domain-registry.sh add-domain immich "new-link.com"
 ```
+
+This updates the `expose` array and Traefik configuration automatically across all VPS edge nodes.
 
 ---
 

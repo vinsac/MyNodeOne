@@ -97,12 +97,11 @@ type DNSEntry struct {
 }
 
 // TraefikRoute represents a route for VPS Traefik
-// Includes all data needed to generate Traefik config matching V1 SSH-based sync
+// Clean Separation: Uses full domains from routing registry
 type TraefikRoute struct {
-	Service   string `json:"service"`   // Service name (e.g., "open-webui")
-	Subdomain string `json:"subdomain"` // Subdomain (e.g., "open-webui" or "@" for root)
-	Domain    string `json:"domain"`    // Full domain (e.g., "open-webui.example.com")
-	Backend   string `json:"backend"`   // Backend URL (e.g., "100.72.41.208:80")
+	Service string `json:"service"` // Service name (e.g., "open-webui")
+	Domain  string `json:"domain"`  // Full domain (e.g., "curiios.com", "chat.curiios.com")
+	Backend string `json:"backend"` // Backend URL (e.g., "100.72.41.208:80")
 }
 
 // Traefik Configuration Structs (for YAML generation)
@@ -164,11 +163,11 @@ type NodesResponse struct {
 
 // Server holds the API server state
 type Server struct {
-	config       Config
-	nodes        map[string]*Node
-	nodesMu      sync.RWMutex
-	configVer    string
-	nodesFile    string
+	config    Config
+	nodes     map[string]*Node
+	nodesMu   sync.RWMutex
+	configVer string
+	nodesFile string
 }
 
 const defaultNodesFile = "/etc/mynodeone/nodes-registry.json"
@@ -305,7 +304,7 @@ func (s *Server) handleTraefikConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Add header comment
 	header := fmt.Sprintf("# MyNodeOne Routes (Generated via Config API)\n# Generated: %s\n\n", time.Now().Format(time.RFC3339))
-	
+
 	w.Header().Set("Content-Type", "application/x-yaml")
 	w.Write([]byte(header))
 	w.Write(data)
@@ -333,9 +332,9 @@ func (s *Server) generateTraefikConfig(routes []TraefikRoute) TraefikConfig {
 		// e.g. immich.example.com -> immich-example-com
 		// domain already contains the full domain (subdomain.domain)
 		// However, we need to handle the case where domain is just "domain.com" if subdomain was "@"
-		
+
 		safeDomain := strings.ReplaceAll(route.Domain, ".", "-")
-		
+
 		// HTTPS Router
 		routerName := fmt.Sprintf("%s-%s", route.Service, safeDomain)
 		config.HTTP.Routers[routerName] = Router{
@@ -357,7 +356,7 @@ func (s *Server) generateTraefikConfig(routes []TraefikRoute) TraefikConfig {
 		// Service
 		serviceName := route.Service + "-service"
 		// Check if service already exists (to avoid overwriting if load balancing multiple backends)
-		// Current logic: simple overwrite or create. 
+		// Current logic: simple overwrite or create.
 		// V1 logic supports load balancing if multiple backends exist for same service name.
 		// Our getTraefikRoutes returns duplicated service entries if multiple exist?
 		// Actually getTraefikRoutes returns duplications only if multiple domains match.
@@ -366,7 +365,7 @@ func (s *Server) generateTraefikConfig(routes []TraefikRoute) TraefikConfig {
 		// So service name is unique in registry. So we only have one backend per service name usually.
 		// UNLESS we are using the V2 logic where multiple VPS nodes might exist?
 		// For now, simple assignment is fine and matches V1 most common case.
-		
+
 		config.HTTP.Services[serviceName] = Service{
 			LoadBalancer: LoadBalancer{
 				Servers: []ServerURL{
@@ -490,7 +489,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			UptimeSeconds: node.UptimeSeconds,
 		})
 	}
-	
+
 	// Update metrics
 	s.updateMetrics()
 
@@ -501,7 +500,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateMetrics() {
 	// Reset metrics
 	nodeCount.Reset()
-	
+
 	now := time.Now()
 	for _, node := range s.nodes {
 		elapsed := now.Sub(node.LastHeartbeat)
@@ -511,7 +510,7 @@ func (s *Server) updateMetrics() {
 		} else if elapsed > time.Duration(s.config.HeartbeatOnlineSeconds)*time.Second {
 			status = "stale"
 		}
-		
+
 		nodeCount.WithLabelValues(node.Type, status).Inc()
 	}
 }
@@ -589,8 +588,9 @@ func (s *Server) getDNSEntries() ([]DNSEntry, error) {
 }
 
 // getTraefikRoutes fetches routes for VPS from service-registry and domain-registry ConfigMaps
+// Clean Separation: Uses expose array with full domains from routing registry
 func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
-	// Step 1: Get service registry (contains service info: subdomain, ip, port, public flag)
+	// Step 1: Get service registry (for backend IPs and ports)
 	cmd := exec.Command("kubectl", "get", "configmap", "-n", "kube-system",
 		"service-registry", "-o", "jsonpath={.data.services\\.json}")
 	output, err := cmd.Output()
@@ -609,17 +609,17 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 		return nil, fmt.Errorf("failed to parse service registry: %v", err)
 	}
 
-	// Step 2: Get domain-registry routing config (maps services to domains)
+	// Step 2: Get routing config (contains expose array with full domains)
 	cmd = exec.Command("kubectl", "get", "configmap", "-n", "kube-system",
 		"domain-registry", "-o", "jsonpath={.data.routing\\.json}")
 	routingOutput, err := cmd.Output()
 	if err != nil {
 		log.Printf("Warning: Could not get domain-registry routing: %v", err)
-		// Continue without routing - use legacy mode
+		return []TraefikRoute{}, nil
 	}
 
 	// Parse routing config
-	// Format: {"servicename": {"domains": ["example.com"], "vps_nodes": ["100.x.x.x"], ...}, ...}
+	// Format: {"servicename": {"expose": ["curiios.com", "www.curiios.com"], ...}, ...}
 	var routing map[string]interface{}
 	if len(routingOutput) > 0 {
 		if err := json.Unmarshal(routingOutput, &routing); err != nil {
@@ -630,9 +630,11 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 		routing = make(map[string]interface{})
 	}
 
-	// Step 3: Generate routes by combining service-registry + domain-registry
+	// Step 3: Generate routes using expose array
 	routes := []TraefikRoute{}
-	for name, svc := range services {
+	seenDomains := make(map[string]string) // For duplicate detection
+
+	for serviceName, svc := range services {
 		svcMap, ok := svc.(map[string]interface{})
 		if !ok {
 			continue
@@ -646,9 +648,9 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 
 		ip, _ := svcMap["ip"].(string)
 		port, _ := svcMap["port"].(float64)
-		subdomain, _ := svcMap["subdomain"].(string)
 
-		if ip == "" || subdomain == "" {
+		if ip == "" {
+			log.Printf("Service %s has no IP, skipping", serviceName)
 			continue
 		}
 
@@ -658,50 +660,46 @@ func (s *Server) getTraefikRoutes() ([]TraefikRoute, error) {
 			backend = fmt.Sprintf("%s:%.0f", ip, port)
 		}
 
-		// Check if service has routing config in domain-registry
-		routeAdded := false
-		if routingInfo, exists := routing[name]; exists {
-			if routingMap, ok := routingInfo.(map[string]interface{}); ok {
-				// Get domains from routing config
-				if domainsRaw, ok := routingMap["domains"].([]interface{}); ok {
-					for _, domainRaw := range domainsRaw {
-						if domain, ok := domainRaw.(string); ok {
-							// Build full domain: subdomain.domain (e.g., open-webui.example.com)
-							fullDomain := subdomain + "." + domain
-							if subdomain == "@" {
-								fullDomain = domain // Root domain
-							}
-							routes = append(routes, TraefikRoute{
-								Service:   name,
-								Subdomain: subdomain,
-								Domain:    fullDomain,
-								Backend:   backend,
-							})
-							routeAdded = true
-						}
-					}
-				}
-			}
+		// Check if service has routing config
+		routingInfo, exists := routing[serviceName]
+		if !exists {
+			log.Printf("Service %s is public but has no routing config", serviceName)
+			continue
 		}
 
-		// Fallback: Use PUBLIC_DOMAIN env var if no routing config exists
-		if !routeAdded {
-			publicDomain := os.Getenv("PUBLIC_DOMAIN")
-			if publicDomain != "" {
-				fullDomain := subdomain + "." + publicDomain
-				if subdomain == "@" {
-					fullDomain = publicDomain
-				}
-				routes = append(routes, TraefikRoute{
-					Service:   name,
-					Subdomain: subdomain,
-					Domain:    fullDomain,
-					Backend:   backend,
-				})
-				log.Printf("Service %s using fallback PUBLIC_DOMAIN: %s", name, fullDomain)
-			} else {
-				log.Printf("Service %s is public but has no routing config and PUBLIC_DOMAIN not set", name)
+		routingMap, ok := routingInfo.(map[string]interface{})
+		if !ok {
+			log.Printf("Service %s routing config is invalid", serviceName)
+			continue
+		}
+
+		// Get expose array (list of full domains)
+		exposeRaw, ok := routingMap["expose"].([]interface{})
+		if !ok {
+			log.Printf("Service %s routing config missing 'expose' array", serviceName)
+			continue
+		}
+
+		// Create route for each exposed domain
+		for _, domainRaw := range exposeRaw {
+			fullDomain, ok := domainRaw.(string)
+			if !ok || fullDomain == "" {
+				continue
 			}
+
+			// Check for duplicate domains across services
+			if existingService, exists := seenDomains[fullDomain]; exists {
+				log.Printf("WARNING: Domain %s already used by %s, skipping for %s",
+					fullDomain, existingService, serviceName)
+				continue
+			}
+			seenDomains[fullDomain] = serviceName
+
+			routes = append(routes, TraefikRoute{
+				Service: serviceName,
+				Domain:  fullDomain,
+				Backend: backend,
+			})
 		}
 	}
 
@@ -816,8 +814,8 @@ func main() {
 		Port:                   *port,
 		BindIP:                 *bindIP,
 		APIToken:               apiToken,
-		HeartbeatOnlineSeconds: 120,  // 2 minutes
-		HeartbeatStaleSeconds:  600,  // 10 minutes
+		HeartbeatOnlineSeconds: 120, // 2 minutes
+		HeartbeatStaleSeconds:  600, // 10 minutes
 		RequireTailscaleIP:     *requireTailscale,
 	}
 	server := NewServer(cfg)
@@ -825,11 +823,11 @@ func main() {
 	// Set up routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", server.handleHealth)
-	
+
 	// Config endpoints
 	mux.HandleFunc("/api/v1/config/vps/traefik-config", server.authMiddleware(server.metricsMiddleware(server.handleTraefikConfig)))
 	mux.HandleFunc("/api/v1/config/", server.authMiddleware(server.metricsMiddleware(server.handleConfig)))
-	
+
 	// Node management endpoints
 	mux.HandleFunc("/api/v1/heartbeat", server.authMiddleware(server.metricsMiddleware(server.handleHeartbeat)))
 	mux.HandleFunc("/api/v1/nodes", server.authMiddleware(server.metricsMiddleware(server.handleNodes)))

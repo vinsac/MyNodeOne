@@ -591,44 +591,37 @@ Value: YOUR_VPS_PUBLIC_IP
 
 ### Step 2: Make Services Public
 
-Use the `manage-app-visibility.sh` script to expose services:
+Use the `manage-app-visibility.sh` script to expose services. MyNodeOne now uses a "Clean Separation" architecture where you provide the exact full URLs you want for each service:
 
 ```bash
 # ON YOUR CONTROL PLANE:
 cd MyNodeOne
 
-# Make demo app public
-sudo ./scripts/operations/manage-app-visibility.sh public demo yourdomain.com YOUR_VPS_TAILSCALE_IP
+# Interactive Wizard (Recommended)
+sudo ./scripts/operations/manage-app-visibility.sh
+
+# Command Line Example:
+# Make demo app public on both root and subdomain
+sudo ./scripts/operations/manage-app-visibility.sh public demo "example.com,www.example.com"
 
 # Make LLM chat public (Open WebUI)
-sudo ./scripts/operations/manage-app-visibility.sh public open-webui yourdomain.com YOUR_VPS_TAILSCALE_IP
-
-# Example with actual values:
-sudo ./scripts/operations/manage-app-visibility.sh public demo example.com 100.80.255.123
-sudo ./scripts/operations/manage-app-visibility.sh public open-webui example.com 100.80.255.123
+sudo ./scripts/operations/manage-app-visibility.sh public open-webui "chat.example.com"
 ```
 
 In these commands:
 
 - `public` tells the script to make the service accessible from the internet (use `private` to make it local-only again).
-- `demo` or `open-webui` is the internal service name in the MyNodeOne service registry. For example, `open-webui` uses the `chat` subdomain, so it becomes `https://chat.yourdomain.com`.
-- `yourdomain.com` is the domain you registered and pointed at your VPS in Step 1. You can pass multiple domains as a comma-separated list (for example, `example.com,test.org`).
-- `YOUR_VPS_TAILSCALE_IP` is the Tailscale IPv4 address of your VPS edge node (from `tailscale ip -4`). If you have multiple VPS edge nodes, you can pass a comma-separated list of Tailscale IPs.
-
-You can also run the script with no arguments to use the interactive wizard:
-
-```bash
-sudo ./scripts/operations/manage-app-visibility.sh
-```
-
-The wizard lets you choose the app, domains, and VPS nodes from menus instead of passing them on the command line.
+- `demo` or `open-webui` is the internal service name.
+- `"example.com,www.example.com"` is the list of full URLs where the service will be exposed.
+- `YOUR_VPS_TAILSCALE_IP` (optional) can be passed if you want to restrict exposure to specific VPS nodes.
 
 **What happens automatically:**
-1. Service is marked as `public: true` in the registry
-2. Configuration is pushed to the VPS via SSH
-3. VPS generates Traefik routes for the service
-4. Traefik requests Let's Encrypt SSL certificate
-5. Service becomes accessible at `https://subdomain.yourdomain.com`
+1. Service is marked as `public: true` in the registry.
+2. The `expose` array is updated with your full URLs.
+3. Configuration is pushed to all VPS nodes via SSH.
+4. VPS nodes generate Traefik routes for each URL.
+5. Traefik requests Let's Encrypt SSL certificates automatically.
+6. Service becomes accessible at `https://example.com`, etc.
 
 ### Step 3: Verify Access
 

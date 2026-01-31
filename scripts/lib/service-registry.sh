@@ -49,10 +49,10 @@ init_registry() {
 }
 
 # Register a new service in the registry
-# Usage: register_service <name> <subdomain> <namespace> <service> <port> <public>
+# Usage: register_service <name> <local_name> <namespace> <service> <port> <public>
 register_service() {
     local name="$1"
-    local subdomain="$2"
+    local local_name="$2"
     local namespace="$3"
     local service="$4"
     local port="$5"
@@ -76,14 +76,14 @@ register_service() {
     # Add/update service entry
     registry=$(echo "$registry" | jq \
         --arg name "$name" \
-        --arg subdomain "$subdomain" \
+        --arg local_name "$local_name" \
         --arg namespace "$namespace" \
         --arg service "$service" \
         --arg ip "$ip" \
         --arg port "$port" \
         --arg public "$public" \
         '.[$name] = {
-            subdomain: $subdomain,
+            local_name: $local_name,
             namespace: $namespace,
             service: $service,
             ip: $ip,
@@ -98,7 +98,7 @@ register_service() {
         --type merge \
         -p "{\"data\":{\"services.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
     
-    log_success "Registered: $subdomain → $ip"
+    log_success "Registered: $local_name → $ip"
     
     return 0
 }
@@ -194,68 +194,68 @@ sync_registry() {
                 -o jsonpath='{.metadata.annotations.mynodeone\.io/subdomain}' 2>/dev/null || echo "")
         fi
         
-        # Determine subdomain based on annotation or service name mapping
-        local subdomain=""
+        # Determine local_name based on annotation or service name mapping
+        local local_name=""
         local k8s_service_name="$name"
         if [[ -n "$annotation" ]]; then
-            subdomain="$annotation"
+            local_name="$annotation"
         else
-            # Map common service names to friendly subdomains
+            # Map common service names to friendly local_names
             case "$name" in
                 dashboard)
-                    subdomain="dashboard"
+                    local_name="dashboard"
                     ;;
                 open-webui)
-                    subdomain="chat"
+                    local_name="chat"
                     ;;
                 demo)
-                    subdomain="demo"
+                    local_name="demo"
                     ;;
                 demo-chat-app)
-                    subdomain="demo-chat"
+                    local_name="demo-chat"
                     ;;
                 argocd-server)
-                    subdomain="argocd"
+                    local_name="argocd"
                     ;;
                 kube-prometheus-stack-grafana)
-                    subdomain="grafana"
+                    local_name="grafana"
                     ;;
                 minio-console-*)
                     # Node-specific MinIO console: minio-console-canada-pc-0001 -> minio-console-canada-pc-0001
-                    subdomain="$name"
+                    local_name="$name"
                     ;;
                 minio-console)
                     # MinIO console without node suffix - derive from namespace
                     # namespace: minio-canada-pc-0001 -> registry key: minio-console-canada-pc-0001
                     local node_suffix="${namespace#minio-}"
                     name="minio-console-${node_suffix}"
-                    subdomain="$name"
+                    local_name="$name"
                     ;;
                 minio-*)
                     # Node-specific MinIO API: minio-canada-pc-0001 -> minio-canada-pc-0001
-                    subdomain="$name"
+                    local_name="$name"
                     ;;
                 minio)
                     # MinIO API without node suffix - derive from namespace
                     # namespace: minio-canada-pc-0001 -> registry key: minio-canada-pc-0001
                     local node_suffix="${namespace#minio-}"
                     name="minio-${node_suffix}"
-                    subdomain="$name"
+                    local_name="$name"
                     ;;
                 longhorn-frontend)
-                    subdomain="longhorn"
+                    local_name="longhorn"
                     ;;
                 traefik)
-                    subdomain="traefik"
+                    local_name="traefik"
                     ;;
                 *-server)
-                    subdomain="${name%-server}"
+                    local_name="${name%-server}"
                     ;;
                 *-frontend)
-                    subdomain="${name%-frontend}"
+                    local_name="${name%-frontend}"
                     ;;
                 *)
-                    subdomain="$name"
+                    local_name="$name"
                     ;;
             esac
         fi
@@ -264,7 +264,7 @@ sync_registry() {
         local existing_public=$(echo "$registry" | jq -r --arg name "$name" '.[$name].public // false' 2>/dev/null)
         
         # Register service (preserve existing public flag)
-        if register_service "$name" "$subdomain" "$namespace" "$k8s_service_name" "$port" "$existing_public" 2>&1 | grep -q "Registered"; then
+        if register_service "$name" "$local_name" "$namespace" "$k8s_service_name" "$port" "$existing_public" 2>&1 | grep -q "Registered"; then
             ((count++))
         else
             log_info "Failed to register $namespace/$name"
@@ -365,10 +365,10 @@ export_dns() {
     echo "$services" | jq -r --arg domain "$domain" '
         to_entries[] |
         select(.value.ip != null) |
-        if .value.subdomain == "" then
+        if .value.local_name == "" then
             "\(.value.ip)\t\($domain)"
         else
-            "\(.value.ip)\t\(.value.subdomain).\($domain)"
+            "\(.value.ip)\t\(.value.local_name).\($domain)"
         end
     '
 }
@@ -452,7 +452,7 @@ Usage:
 
 Commands:
   init                          Initialize service registry
-  register <name> <subdomain> <namespace> <service> <port> <public>
+  register <name> <local_name> <namespace> <service> <port> <public>
                                Register a new service
   get <name>                   Get service info
   list                         List all services

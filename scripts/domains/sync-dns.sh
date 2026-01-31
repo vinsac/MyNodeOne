@@ -108,16 +108,16 @@ if ! command -v kubectl &>/dev/null; then
         jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
             # Group by subdomain and IP to deduplicate
             [to_entries[] | select(.value.ip != null) | .value] |
-            group_by(.subdomain + "|" + .ip) |
+            group_by(.local_name + "|" + .ip) |
             map(.[0]) |
             .[] |
-            if .subdomain == "" then
+            if .local_name == "" then
                 "\(.ip)\t\($domain)"
-            elif .subdomain == "dashboard" then
-                # Dashboard gets both subdomain AND bare domain entries
-                "\(.ip)\t\(.subdomain).\($domain)\n\(.ip)\t\($domain)"
+            elif .local_name == "dashboard" then
+                # Dashboard gets both local_name AND bare domain entries
+                "\(.ip)\t\(.local_name).\($domain)\n\(.ip)\t\($domain)"
             else
-                "\(.ip)\t\(.subdomain).\($domain)"
+                "\(.ip)\t\(.local_name).\($domain)"
             end
         ' 2>/dev/null || echo "")
 else
@@ -130,16 +130,16 @@ else
         jq -r --arg domain "${CLUSTER_DOMAIN}.local" '
             # Group by subdomain and IP to deduplicate
             [to_entries[] | select(.value.ip != null) | .value] |
-            group_by(.subdomain + "|" + .ip) |
+            group_by(.local_name + "|" + .ip) |
             map(.[0]) |
             .[] |
-            if .subdomain == "" then
+            if .local_name == "" then
                 "\(.ip)\t\($domain)"
-            elif .subdomain == "dashboard" then
-                # Dashboard gets both subdomain AND bare domain entries
-                "\(.ip)\t\(.subdomain).\($domain)\n\(.ip)\t\($domain)"
+            elif .local_name == "dashboard" then
+                # Dashboard gets both local_name AND bare domain entries
+                "\(.ip)\t\(.local_name).\($domain)\n\(.ip)\t\($domain)"
             else
-                "\(.ip)\t\(.subdomain).\($domain)"
+                "\(.ip)\t\(.local_name).\($domain)"
             end
         ' 2>/dev/null || echo "")
 fi

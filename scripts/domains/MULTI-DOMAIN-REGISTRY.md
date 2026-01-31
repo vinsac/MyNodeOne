@@ -10,7 +10,7 @@ The `multi-domain-registry.sh` script provides advanced domain management capabi
 
 - **Multiple public domains** (e.g., `example.com`, `test.org`)
 - **Multiple VPS edge nodes** for load balancing and failover
-- **Advanced routing strategies** (round-robin, primary-backup)
+- **Clean Separation architecture**: Independent local identities (`local_name`) and public identities (`expose` list)
 - **Programmatic access** for automation and CI/CD
 
 ---
@@ -69,11 +69,10 @@ sudo ./scripts/domains/multi-domain-registry.sh register-vps \
 ### 4. Configure Service Routing
 
 ```bash
-# Format: configure-routing <service> "<domains>" "<vps_ips>" <strategy>
+# Format: configure-routing <service> "<full_urls>" "<vps_ips>" [strategy]
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    round-robin
+    "example.com,www.example.com,photos.test.org" \
+    "100.68.225.92,100.70.123.45"
 ```
 
 ---
@@ -108,39 +107,32 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
 
 | **Command** | **Description** | **Example** |
 |-------------|----------------|-------------|
-| `configure-routing <service> "<domains>" "<vps_ips>" <strategy>` | Configure service routing | `configure-routing immich "example.com,test.org" "100.68.225.92,100.70.123.45" round-robin` |
-| `remove-routing <service>` | Remove service routing | `remove-routing immich` |
+| `configure-routing <service> "<urls>" "<vps_ips>" [strategy]` | Configure service routing | `configure-routing immich "example.com,www.example.com" "100.68.225.92"` |
+| `add-domain <service> <new_url>` | Add a single URL to service | `add-domain immich "photos.test.org"` |
+| `remove-domain <service> <url>` | Remove a single URL from service | `remove-domain immich "old-link.com"` |
+| `list-domains <service>` | Show all URLs for a service | `list-domains immich` |
+| `remove-routing <service>` | Remove all service routing | `remove-routing immich` |
 | `export-vps-routes <tailscale_ip> <public_ip>` | Export routes for specific VPS | `export-vps-routes 100.68.225.92 192.0.2.100` |
 
 ---
 
 ## 🎛️ Routing Strategies
 
-### **Round-Robin** (Default)
-Distributes traffic across all VPS nodes:
+### Full Domain Exposure
+Expose a service on multiple full URLs (Root, WWW, and Subdomain):
 
 ```bash
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing photos \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    round-robin
+    "example.com,www.example.com,gallery.test.org" \
+    "100.68.225.92,100.70.123.45"
 ```
 
 **Result:** 
-- `photos.example.com` → VPS1
-- `photos.test.org` → VPS2
+- `https://example.com` → Cluster
+- `https://www.example.com` → Cluster
+- `https://gallery.test.org` → Cluster
 
-### **Primary-Backup**
-Use first VPS as primary, others as backup:
-
-```bash
-sudo ./scripts/domains/multi-domain-registry.sh configure-routing chat \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    primary-backup
-```
-
-**Result:** Both domains → VPS1 (primary), failover to VPS2
+**Note on Load Balancing**: All configured VPS nodes will receive these routes. High availability is managed via DNS (Multiple A records). The "strategy" parameter (`round-robin`, `primary-backup`) is currently informational only.
 
 ---
 
@@ -162,9 +154,9 @@ sudo ./scripts/domains/multi-domain-registry.sh register-vps \
 
 # Configure services
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
-    "example.com,test.org" "100.68.225.92" round-robin
+    "example.com,www.example.com" "100.68.225.92"
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing jellyfin \
-    "example.com" "100.68.225.92" round-robin
+    "media.example.com" "100.68.225.92"
 ```
 
 ### **Advanced Multi-VPS Load Balancing**
@@ -180,15 +172,13 @@ sudo ./scripts/domains/multi-domain-registry.sh register-vps \
 
 # Load balance critical services
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45,100.72.200.50" \
-    round-robin
+    "example.com,www.example.com,test.org" \
+    "100.68.225.92,100.70.123.45,100.72.200.50"
 
-# Primary-backup for management services
+# Management services
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing grafana \
-    "example.com" \
-    "100.68.225.92,100.70.123.45" \
-    primary-backup
+    "monitor.example.com" \
+    "100.68.225.92,100.70.123.45"
 ```
 
 ---
@@ -215,11 +205,11 @@ Registered VPS Nodes:
 
 Service Routing:
   - immich:
-    Domains: example.com, test.org
+    Expose: example.com, www.example.com, photos.test.org
     VPS: 100.68.225.92, 100.70.123.45
     Strategy: round-robin
   - jellyfin:
-    Domains: example.com
+    Expose: media.example.com
     VPS: 100.68.225.92
     Strategy: round-robin
 ```

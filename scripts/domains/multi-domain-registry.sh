@@ -193,11 +193,12 @@ unregister_vps() {
 }
 
 # Configure service routing
-# Maps service to domain(s) and VPS node(s)
+# Maps service to fully-qualified domain(s) and VPS node(s)
+# Clean Separation: Uses expose array with full domains
 configure_service_routing() {
     local service_name="$1"
-    local domains="$2"       # Comma-separated: example.com,test.org
-    local vps_nodes="$3"     # Comma-separated: 100.68.225.92,100.70.123.45
+    local expose_domains="$2"   # Comma-separated full domains: curiios.com,www.curiios.com,chat.curiios.com
+    local vps_nodes="$3"        # Comma-separated: 100.68.225.92,100.70.123.45
     local strategy="${4:-round-robin}"  # round-robin, primary-backup, geo
     
     init_multi_domain_registry
@@ -207,20 +208,20 @@ configure_service_routing() {
     local routing=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
     
-    # Convert comma-separated to JSON arrays
-    local domain_array=$(echo "$domains" | jq -R 'split(",")')
-    local vps_array=$(echo "$vps_nodes" | jq -R 'split(",")')
+    # Convert comma-separated to JSON array and trim whitespace
+    local expose_array=$(echo "$expose_domains" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
+    local vps_array=$(echo "$vps_nodes" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
     
     # Handle empty string from ConfigMap
     [ -z "$routing" ] && routing='{}'
     
     routing=$(echo "$routing" | jq \
         --arg service "$service_name" \
-        --argjson domains "$domain_array" \
+        --argjson expose "$expose_array" \
         --argjson vps "$vps_array" \
         --arg strategy "$strategy" \
         '.[$service] = {
-            domains: $domains,
+            expose: $expose,
             vps_nodes: $vps,
             strategy: $strategy,
             updated: now | todate
@@ -233,10 +234,109 @@ configure_service_routing() {
         -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
     
     log_success "Routing configured for $service_name"
-    log_info "  Domains: $domains"
+    log_info "  Exposed at:"
+    echo "$expose_domains" | tr ',' '\n' | sed 's/^[ \t]*//' | sed 's/^/    - https:\/\//'
     log_info "  VPS Nodes: $vps_nodes"
     log_info "  Strategy: $strategy"
 }
+
+# Add domain to existing service routing
+# Appends domain to expose array instead of replacing
+add_domain() {
+    local service_name="$1"
+    local new_domain="$2"  # Single domain to add
+    
+    init_multi_domain_registry
+    
+    log_info "Adding domain to $service_name: $new_domain"
+    
+    local routing=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
+    
+    [ -z "$routing" ] && routing='{}'
+    
+    # Check if service exists in routing
+    if ! echo "$routing" | jq -e --arg service "$service_name" '.[$service]' >/dev/null 2>&1; then
+        log_error "Service $service_name not found in routing config"
+        log_info "Use 'configure-routing' to create initial routing"
+        return 1
+    fi
+    
+    # Add domain to expose array (check for duplicates)
+    routing=$(echo "$routing" | jq \
+        --arg service "$service_name" \
+        --arg domain "$new_domain" \
+        '.[$service].expose |= (. + [$domain] | unique) |
+         .[$service].updated = now | todate')
+    
+    # Update configmap
+    kubectl patch configmap domain-registry \
+        -n kube-system \
+        --type merge \
+        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+    
+    log_success "Domain added: $new_domain"
+    
+    # Show current domains
+    list_domains "$service_name"
+}
+
+# Remove domain from existing service routing
+remove_domain() {
+    local service_name="$1"
+    local remove_domain="$2"  # Single domain to remove
+    
+    init_multi_domain_registry
+    
+    log_info "Removing domain from $service_name: $remove_domain"
+    
+    local routing=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
+    
+    [ -z "$routing" ] && routing='{}'
+    
+    # Check if service exists
+    if ! echo "$routing" | jq -e --arg service "$service_name" '.[$service]' >/dev/null 2>&1; then
+        log_error "Service $service_name not found in routing config"
+        return 1
+    fi
+    
+    # Remove domain from expose array
+    routing=$(echo "$routing" | jq \
+        --arg service "$service_name" \
+        --arg domain "$remove_domain" \
+        '.[$service].expose |= (. - [$domain]) |
+         .[$service].updated = now | todate')
+    
+    # Update configmap
+    kubectl patch configmap domain-registry \
+        -n kube-system \
+        --type merge \
+        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+    
+    log_success "Domain removed: $remove_domain"
+    
+    # Show remaining domains
+    list_domains "$service_name"
+}
+
+# List domains for a service
+list_domains() {
+    local service_name="$1"
+    
+    local routing=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
+    
+    if ! echo "$routing" | jq -e --arg service "$service_name" '.[$service]' >/dev/null 2>&1; then
+        log_error "Service $service_name not found in routing config"
+        return 1
+    fi
+    
+    log_info "Current domains for $service_name:"
+    echo "$routing" | jq -r --arg service "$service_name" \
+        '.[$service].expose[] | "  - https://\(.)"'
+}
+
 
 # Export routing configuration for a specific VPS
 export_vps_routing() {
@@ -258,16 +358,16 @@ export_vps_routing() {
         return 1
     fi
     
-    # Filter routes for this VPS
+    # Filter routes for this VPS using Clean Separation expose array
     local vps_routes=$(echo "$routing" | jq -r \
         --arg vps "$vps_ip" \
         'to_entries[] |
         select(.value.vps_nodes | index($vps)) |
         .key as $service |
-        .value.domains[] as $domain |
+        .value.expose[] as $url |
         {
             service: $service,
-            domain: $domain
+            url: $url
         } | @json')
     
     if [[ -z "$vps_routes" ]]; then
@@ -284,27 +384,13 @@ export_vps_routing() {
     
     while IFS= read -r route; do
         local service=$(echo "$route" | jq -r '.service')
-        local domain=$(echo "$route" | jq -r '.domain')
+        local url=$(echo "$route" | jq -r '.url')
         
-        # Get service details
-        local svc_info=$(echo "$services" | jq -r ".\"$service\"")
-        local subdomain=$(echo "$svc_info" | jq -r '.subdomain')
-        local port=$(echo "$svc_info" | jq -r '.port')
+        # Clean URL/Host for Traefik naming (replace dots with dashes)
+        local safe_url=${url//\./-}
         
-        if [[ "$subdomain" == "null" ]] || [[ "$port" == "null" ]]; then
-            continue
-        fi
-        
-        # Handle root domain (@) or subdomain
-        local host_rule
-        if [[ "$subdomain" == "@" ]]; then
-            host_rule="Host(\`${domain}\`)"
-        else
-            host_rule="Host(\`${subdomain}.${domain}\`)"
-        fi
-        
-        echo "    ${service}-${domain//\./-}:"
-        echo "      rule: \"${host_rule}\"" 
+        echo "    ${service}-${safe_url}:"
+        echo "      rule: \"Host(\`${url}\`)\"" 
         echo "      service: ${service}-service"
         echo "      entryPoints:"
         echo "        - websecure"
@@ -312,8 +398,8 @@ export_vps_routing() {
         echo "        certResolver: letsencrypt"
         echo ""
         
-        echo "    ${service}-${domain//\./-}-http:"
-        echo "      rule: \"${host_rule}\"" 
+        echo "    ${service}-${safe_url}-http:"
+        echo "      rule: \"Host(\`${url}\`)\"" 
         echo "      service: ${service}-service"
         echo "      entryPoints:"
         echo "        - web"
@@ -387,7 +473,7 @@ show_config() {
     kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
         jq -r 'to_entries[] |
-        "  • \(.key):\n    Domains: \(.value.domains | join(", "))\n    VPS: \(.value.vps_nodes | join(", "))\n    Strategy: \(.value.strategy)"'
+        "  • \(.key):\n    Expose: \(.value.expose | join(", "))\n    VPS: \(.value.vps_nodes | join(", "))\n    Strategy: \(.value.strategy)"'
     echo ""
 }
 
@@ -410,6 +496,15 @@ case "${1:-}" in
         ;;
     configure-routing)
         configure_service_routing "$2" "$3" "$4" "${5:-round-robin}"
+        ;;
+    add-domain)
+        add_domain "$2" "$3"
+        ;;
+    remove-domain)
+        remove_domain "$2" "$3"
+        ;;
+    list-domains)
+        list_domains "$2"
         ;;
     export-vps-routes)
         export_vps_routing "$2" "$3"
@@ -441,33 +536,51 @@ Commands:
                                           Example: 100.68.225.92
 
   configure-routing <service> <domains> <vps_nodes> [strategy]
-                                          Configure service routing
-                                          Example: immich "example.com,test.org" \
-                                                   "100.68.225.92,100.70.123.45" round-robin
+                                          Configure service routing (replaces all domains)
+                                          Example: immich "example.com,www.example.com" \
+                                                   "100.68.225.92,100.70.123.45"
+
+  add-domain <service> <domain>           Add single domain to existing service
+                                          Example: add-domain immich "photos.example.com"
+
+  remove-domain <service> <domain>        Remove single domain from service
+                                          Example: remove-domain immich "old-domain.com"
+
+  list-domains <service>                  List all domains for a service
+                                          Example: list-domains immich
 
   export-vps-routes <vps_ip> <control_plane_ip>
                                           Export Traefik routes for specific VPS
 
   show                                    Show current configuration
 
-Strategies:
-  - round-robin:     Distribute across all VPS (load balancing)
-  - primary-backup:  Use first VPS, failover to others
-  - geo:             Route based on geographic location
+VPS Deployment Notes:
+  - vps_nodes: List of VPS intended for this service (documentation/future-proofing)
+  - Note: Currently all VPS nodes receive all routes by default
+  - In future, this will enable selective deployment (only specific VPS get specific routes)
+  - Load balancing happens at DNS level (A records), not application level
+  - Each VPS forwards traffic to control plane service
 
 Examples:
-  # Setup
+  # Initial setup
   multi-domain-registry.sh init
   multi-domain-registry.sh register-domain example.com "Main site"
-  multi-domain-registry.sh register-domain test.org "Test site"
   multi-domain-registry.sh register-vps 100.68.225.92 192.0.2.100 eu contabo
-  multi-domain-registry.sh register-vps 100.70.123.45 167.99.1.1 us digitalocean
 
-  # Configure routing
+  # Configure routing (creates/replaces all domains)
   multi-domain-registry.sh configure-routing immich \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    round-robin
+    "photos.example.com,example.com,www.example.com" \
+    "100.68.225.92"
+
+  # Add more domains later (appends)
+  multi-domain-registry.sh add-domain immich "pics.example.com"
+  multi-domain-registry.sh add-domain immich "images.example.com"
+
+  # View current domains
+  multi-domain-registry.sh list-domains immich
+
+  # Remove a domain
+  multi-domain-registry.sh remove-domain immich "old-domain.com"
 
   # Export to VPS
   multi-domain-registry.sh export-vps-routes 100.68.225.92 100.122.68.75 > /tmp/routes.yml

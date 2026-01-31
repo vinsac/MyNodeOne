@@ -44,22 +44,28 @@ Two DNS methods work together:
 
 ## Configuration Flow
 
-When `./scripts/setup/setup-local-dns.sh` runs:
-
 ```
-1. Get LoadBalancer IPs from Kubernetes
-   └─ kubectl get svc ... (Grafana, ArgoCD, MinIO, etc.)
+1. Get Service Data from Registry
+   └─ kubectl get cm ... (service-registry)
 
-2. Update /etc/hosts
-   ├─ grafana.mynodeone.local → 100.x.x.204
-   ├─ argocd.mynodeone.local → 100.x.x.205
-   └─ minio.mynodeone.local → 100.x.x.203
+2. Update /etc/hosts via local_name
+   ├─ grafana.mynodeone.local → 100.x.x.204 (local_name: grafana)
+   ├─ argocd.mynodeone.local → 100.x.x.205  (local_name: argocd)
+   └─ minio.mynodeone.local → 100.x.x.203   (local_name: minio)
 
 3. Configure dnsmasq
    ├─ Create /etc/dnsmasq.d/mynodeone.conf
-   ├─ Add address records for each service
+   ├─ Add address records using local_name
    └─ Restart dnsmasq
 ```
+
+### The "Clean Separation" Principle
+MyNodeOne enforces a strict separation between internal and external identity:
+
+- **`local_name`**: Drives all `.local` DNS entries. Guaranteed to work on your Tailscale mesh.
+- **`expose`**: A list of full public domains (e.g., `curiios.com`). Managed separately via VPS edge nodes.
+
+This prevents the "Root Domain Breakage" where setting a public root domain would previously overwrite the local DNS entry, making the app unreachable internally without a hairpin NAT.
 
 ---
 

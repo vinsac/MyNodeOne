@@ -3,10 +3,29 @@
 ###############################################################################
 # Configure Service Routing for Existing Domain
 # 
-# Add or remove services from an existing domain
+# ⚠️  DEPRECATED: This script is for legacy "Pattern-based" routing.
+# 
+# Please use instead:
+#   sudo ./scripts/operations/manage-app-visibility.sh
+# 
+# manage-app-visibility.sh supports the unified "Clean Separation" architecture
+# and allows exposing services on any combination of full domain URLs.
 ###############################################################################
 
-set -euo pipefail
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ⚠️  DEPRECATION WARNING"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "This script is DEPRECATED and only supports legacy routing."
+echo "For full support of root, www, and custom URLs, use instead:"
+echo "  sudo $PROJECT_ROOT/scripts/operations/manage-app-visibility.sh"
+echo ""
+read -p "Continue with legacy setup anyway? [y/N]: " continue_legacy
+if [[ "$continue_legacy" != "y" ]] && [[ "$continue_legacy" != "Y" ]]; then
+    exit 0
+fi
+echo ""
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

@@ -165,195 +165,39 @@ else
 fi
 echo ""
 
-# Step 4: Select services to expose
+# Step 4: Expose Services
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Step 4: Select Services to Expose"
+echo "  Step 4: Expose Services"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Get available services
-SERVICES=$(kubectl get configmap -n kube-system service-registry \
-    -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-    jq -r 'to_entries[] | "\(.key)|\(.value.subdomain)"' || echo "")
-
-if [ -z "$SERVICES" ]; then
-    log_warn "No services found in cluster"
-    echo ""
-    echo "Install apps first, then run this script again"
-    exit 0
-fi
-
-echo "Available services:"
-echo ""
-
-declare -a service_array
-declare -a subdomain_array
-i=1
-while IFS='|' read -r service subdomain; do
-    echo "  $i. $service ($subdomain)"
-    service_array[$i]="$service"
-    subdomain_array[$i]="$subdomain"
-    ((i++))
-done <<< "$SERVICES"
-
-echo ""
-echo "Select services to expose on $NEW_DOMAIN:"
-echo "(Enter numbers comma-separated, or 'all', or 'none' to configure later)"
-read -p "Selection: " service_selection
-
-if [ "$service_selection" = "none" ]; then
-    log_info "Skipping service configuration"
-    log_info "You can configure services later with:"
-    echo "  sudo $PROJECT_ROOT/scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
-    echo ""
+read -p "Do you want to expose apps on this domain now? (y/n): " expose_now
+if [[ "$expose_now" =~ ^[Yy] ]]; then
+    # Hand off to manage-app-visibility.sh which is the modern tool
+    log_info "Handing off to manage-app-visibility.sh..."
+    bash "$PROJECT_ROOT/scripts/operations/manage-app-visibility.sh"
 else
-    declare -a selected_services
-    
-    if [ "$service_selection" = "all" ]; then
-        for idx in "${!service_array[@]}"; do
-            selected_services+=("${service_array[$idx]}")
-        done
-    else
-        IFS=',' read -ra SELECTIONS <<< "$service_selection"
-        for num in "${SELECTIONS[@]}"; do
-            num=$(echo "$num" | xargs)
-            if [ -n "${service_array[$num]:-}" ]; then
-                selected_services+=("${service_array[$num]}")
-            fi
-        done
-    fi
-    
-    if [ ${#selected_services[@]} -gt 0 ]; then
-        echo ""
-        log_info "Configuring routing for ${#selected_services[@]} service(s)..."
-        echo ""
-        
-        for service in "${selected_services[@]}"; do
-            log_info "Configuring: $service"
-            
-            # Get existing routing or create new
-            existing_domains=$(kubectl get configmap -n kube-system domain-registry \
-                -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-                jq -r ".[\"$service\"].domains[]?" 2>/dev/null | tr '\n' ',' || echo "")
-            
-            existing_vps=$(kubectl get configmap -n kube-system domain-registry \
-                -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-                jq -r ".[\"$service\"].vps_nodes[]?" 2>/dev/null | tr '\n' ',' || echo "$SELECTED_VPS")
-            
-            # Add new domain to existing domains
-            all_domains="${existing_domains}${NEW_DOMAIN}"
-            all_domains=$(echo "$all_domains" | sed 's/,$//')
-            
-            # Merge VPS lists
-            all_vps="$existing_vps"
-            if [ -z "$existing_vps" ]; then
-                all_vps="$SELECTED_VPS"
-            fi
-            
-            # Configure routing
-            if [ -n "$all_vps" ]; then
-                bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing \
-                    "$service" "$all_domains" "$all_vps" "round-robin" 2>/dev/null || true
-                log_success "✓ $service configured"
-            fi
-        done
-        
-        echo ""
-        log_success "Routing configured for all selected services"
-    fi
-fi
-
-echo ""
-
-# Step 5: Push to VPS nodes
-if [ -n "$SELECTED_VPS" ]; then
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Step 5: Updating VPS Nodes"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "Skipping service exposure."
     echo ""
-    
-    log_info "Pushing configuration to VPS nodes..."
-    bash "$PROJECT_ROOT/scripts/lib/sync-controller.sh" push || true
-    log_success "Configuration pushed to all VPS nodes"
+    echo "You can expose apps later with:"
+    echo "  sudo manage-app-visibility.sh"
     echo ""
 fi
 
-# Step 6: DNS instructions
+# Step 5: DNS Instructions
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ Domain Added Successfully"
+echo "  ✅ Domain Registered Successfully"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-log_success "Domain $NEW_DOMAIN is now registered in your cluster"
+log_success "Domain $NEW_DOMAIN is now in your registry."
 echo ""
 
 if [ -n "$SELECTED_VPS" ]; then
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  📋 NEXT STEP: Configure DNS Records"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Next Step: Configure DNS A Records"
+    echo "Point these records to your VPS IP(s):"
     echo ""
-    
-    echo "Add these DNS records to your domain registrar:"
-    echo ""
-    
-    IFS=',' read -ra VPS_IPS <<< "$SELECTED_VPS"
-    for vps_ip in "${VPS_IPS[@]}"; do
-        public_ip=$(kubectl get configmap -n kube-system domain-registry \
-            -o jsonpath="{.data.vps-nodes\.json}" 2>/dev/null | \
-            jq -r ".[\"$vps_ip\"].public_ip" 2>/dev/null || echo "")
-        
-        if [ -n "$public_ip" ]; then
-            echo "  VPS: $vps_ip (Public IP: $public_ip)"
-            echo ""
-            echo "  Type: A"
-            echo "  Name: * (wildcard for all subdomains)"
-            echo "  Value: $public_ip"
-            echo "  TTL: 300 (5 minutes)"
-            echo ""
-            echo "  Or for specific services:"
-            if [ ${#selected_services[@]} -gt 0 ]; then
-                for service in "${selected_services[@]}"; do
-                    subdomain=$(echo "$SERVICES" | grep "^$service|" | cut -d'|' -f2)
-                    echo "    Type: A, Name: $subdomain, Value: $public_ip, TTL: 300"
-                done
-            fi
-            echo ""
-        fi
-    done
-    
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    log_info "After DNS propagates (5-30 minutes), your services will be accessible:"
-    if [ ${#selected_services[@]} -gt 0 ]; then
-        for service in "${selected_services[@]}"; do
-            subdomain=$(echo "$SERVICES" | grep "^$service|" | cut -d'|' -f2)
-            echo "  • https://${subdomain}.${NEW_DOMAIN}"
-        done
-    fi
-    echo ""
-    
-    log_info "SSL certificates will be automatically obtained from Let's Encrypt"
+    echo "  Type: A, Name: @, Value: <VPS-IP>"
+    echo "  Type: A, Name: *, Value: <VPS-IP>"
     echo ""
 fi
-
-# Show how to add more services later
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🔧 Managing This Domain"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-
-echo "Add more services to this domain later:"
-echo "  sudo $PROJECT_ROOT/scripts/domains/configure-domain-routing.sh $NEW_DOMAIN"
-echo ""
-
-echo "View all domains and routing:"
-echo "  sudo $PROJECT_ROOT/scripts/domains/multi-domain-registry.sh show"
-echo ""
-
-echo "Remove a domain:"
-echo "  sudo $PROJECT_ROOT/scripts/domains/remove-domain.sh $NEW_DOMAIN"
-echo ""
-
-log_success "Setup complete! 🎉"
-echo ""

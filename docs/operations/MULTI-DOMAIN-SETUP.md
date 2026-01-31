@@ -81,37 +81,39 @@ sudo ./scripts/nodes/nodes-status.sh
 ### Configure Routing Strategy
 
 ```bash
-# Format: configure-routing <service> "<domains>" "<vps_ips>" <strategy>
+# Format: configure-routing <service> "<full_domains>" "<vps_ips>"
 sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    round-robin
+    "example.com,www.example.com,photos.test.org" \
+    "100.68.225.92,100.70.123.45"
 ```
 
-### Routing Strategies
+**Key Architectural Changes:**
+1. **Full Domains**: No more pattern concatenation. Provide the exact FQDN (Fully Qualified Domain Name) you want to use.
+2. **`expose` vs `domains`**: The registry now uses the `expose` key to store a list of full URLs.
+3. **VPS Nodes**: VPS nodes currently act as a cluster of edge proxies. Every configured VPS node fetches all routes. High availability is achieved by adding multiple A records in your DNS pointing to your different VPS IPs.
 
-| Strategy | Behavior |
-|----------|----------|
-| `round-robin` | Distribute traffic across all VPS nodes |
-| `primary-backup` | Use first VPS, failover to others if down |
+### Load Balancing Flow
+1. **DNS Level**: You add multiple A records (e.g., `photos.example.com` -> VPS1, VPS2).
+2. **Edge Proxy**: Traffic hits a VPS. Traefik matches the Host header against the `expose` array.
+3. **Tunnel**: Traffic is forwarded to the control plane via Tailscale.
+4. **Target**: Cluster LoadBalancer sends traffic to the app pod.
 
-**Round-Robin Example:**
+---
+
+## Domain Management Commands
+
+The `multi-domain-registry.sh` script now supports granular domain management:
+
 ```bash
-sudo ./scripts/domains/multi-domain-registry.sh configure-routing photos \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    round-robin
-```
-Result: `photos.example.com` → VPS1, `photos.test.org` → VPS2
+# Add a single domain to an existing service
+sudo ./scripts/domains/multi-domain-registry.sh add-domain immich "new-link.com"
 
-**Primary-Backup Example:**
-```bash
-sudo ./scripts/domains/multi-domain-registry.sh configure-routing chat \
-    "example.com,test.org" \
-    "100.68.225.92,100.70.123.45" \
-    primary-backup
+# Remove a single domain
+sudo ./scripts/domains/multi-domain-registry.sh remove-domain immich "old-link.com"
+
+# List all domains for a service
+sudo ./scripts/domains/multi-domain-registry.sh list-domains immich
 ```
-Result: Both domains → VPS1 (primary), failover to VPS2
 
 ---
 

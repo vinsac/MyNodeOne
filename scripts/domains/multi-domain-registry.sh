@@ -34,6 +34,67 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Validate domain format
+validate_domain() {
+    local domain="$1"
+    
+    # Basic domain validation regex
+    # Allows: subdomain.domain.com, www.domain.com, domain.com
+    # Disallows: invalid..domain, .domain.com, domain.com.
+    if [[ ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+        log_error "Invalid domain format: $domain"
+        log_error "Domain must follow standard format (e.g., example.com, www.example.com, app.example.com)"
+        return 1
+    fi
+    
+    # Check for consecutive dots
+    if [[ "$domain" =~ \.\. ]]; then
+        log_error "Invalid domain format: $domain (consecutive dots not allowed)"
+        return 1
+    fi
+    
+    # Check for empty labels
+    if [[ "$domain" =~ ^\. ]] || [[ "$domain" =~ \.$ ]]; then
+        log_error "Invalid domain format: $domain (cannot start or end with dot)"
+        return 1
+    fi
+    
+    # Check length (max 253 characters)
+    if [[ ${#domain} -gt 253 ]]; then
+        log_error "Invalid domain format: $domain (too long, max 253 characters)"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Check for domain conflicts across services
+check_domain_conflicts() {
+    local domain="$1"
+    local current_service="$2"
+    
+    local routing=$(kubectl get configmap -n kube-system domain-registry \
+        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
+    
+    [ -z "$routing" ] && routing='{}'
+    
+    # Check if domain is used by other services
+    local conflicting_service=$(echo "$routing" | jq -r --arg domain "$domain" '
+        to_entries[] |
+        select(.key != "'$current_service'") |
+        select(.value.expose[] == $domain) |
+        .key
+    ' 2>/dev/null || echo "")
+    
+    if [[ -n "$conflicting_service" && "$conflicting_service" != "null" ]]; then
+        log_warn "Domain $domain is already used by service: $conflicting_service"
+        log_warn "Continuing will override the existing configuration"
+        return 1  # Has conflict
+    fi
+    
+    return 0  # No conflict
+}
+
 # Initialize multi-domain registry in Kubernetes
 init_multi_domain_registry() {
     if ! kubectl get configmap -n kube-system domain-registry &>/dev/null; then
@@ -205,6 +266,23 @@ configure_service_routing() {
     
     log_info "Configuring routing for: $service_name"
     
+    # Validate all domains first
+    IFS=',' read -ra DOMAIN_ARRAY <<< "$expose_domains"
+    for domain in "${DOMAIN_ARRAY[@]}"; do
+        domain=$(echo "$domain" | xargs)  # Trim whitespace
+        if ! validate_domain "$domain"; then
+            log_error "Aborting due to invalid domain format"
+            return 1
+        fi
+        
+        # Check for conflicts
+        if check_domain_conflicts "$domain" "$service_name"; then
+            log_warn "Domain $domain is already in use by another service"
+            read -p "Continue anyway? (y/n): " continue_conflict
+            [ "$continue_conflict" != "y" ] && return 1
+        fi
+    done
+    
     local routing=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
     
@@ -224,7 +302,7 @@ configure_service_routing() {
             expose: $expose,
             vps_nodes: $vps,
             strategy: $strategy,
-            updated: now | todate
+            updated: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
         }')
     
     # Use kubectl patch to preserve other fields
@@ -249,6 +327,23 @@ add_domain() {
     init_multi_domain_registry
     
     log_info "Adding domain to $service_name: $new_domain"
+    
+    # Validate domain format
+    if ! validate_domain "$new_domain"; then
+        return 1
+    fi
+    
+    # Check for domain conflicts
+    local has_conflict=false
+    if check_domain_conflicts "$new_domain" "$service_name"; then
+        has_conflict=true
+    fi
+    
+    # Warn about conflicts but allow continuation
+    if [ "$has_conflict" = true ]; then
+        read -p "Continue anyway? (y/n): " continue_conflict
+        [ "$continue_conflict" != "y" ] && return 1
+    fi
     
     local routing=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')

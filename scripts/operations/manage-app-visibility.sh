@@ -537,6 +537,64 @@ main() {
                 exit 1
             fi
             
+            # Validate domain formats
+            echo ""
+            echo "Validating domain formats..."
+            local invalid_domains=false
+            IFS=',' read -ra DOMAIN_ARRAY <<< "$selected_domains"
+            for domain in "${DOMAIN_ARRAY[@]}"; do
+                domain=$(echo "$domain" | xargs)  # Trim whitespace
+                
+                # Basic domain validation
+                if [[ ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+                    log_error "Invalid domain format: $domain"
+                    log_error "Domain must follow standard format (e.g., example.com, www.example.com, app.example.com)"
+                    invalid_domains=true
+                elif [[ "$domain" =~ \.\. ]]; then
+                    log_error "Invalid domain format: $domain (consecutive dots not allowed)"
+                    invalid_domains=true
+                elif [[ "$domain" =~ ^\. ]] || [[ "$domain" =~ \.$ ]]; then
+                    log_error "Invalid domain format: $domain (cannot start or end with dot)"
+                    invalid_domains=true
+                elif [[ ${#domain} -gt 253 ]]; then
+                    log_error "Invalid domain format: $domain (too long, max 253 characters)"
+                    invalid_domains=true
+                fi
+            done
+            
+            if [ "$invalid_domains" = true ]; then
+                log_error "Please fix the invalid domains and try again"
+                exit 1
+            fi
+            
+            # Check for domain conflicts
+            echo ""
+            echo "Checking for domain conflicts..."
+            local has_conflicts=false
+            for domain in "${DOMAIN_ARRAY[@]}"; do
+                domain=$(echo "$domain" | xargs)
+                
+                local conflicting_service=$(kubectl get configmap -n kube-system domain-registry \
+                    -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
+                    jq -r --arg domain "$domain" '
+                        to_entries[] |
+                        select(.key != "'$selected_service'") |
+                        select(.value.expose[] == $domain) |
+                        .key
+                    ' 2>/dev/null || echo "")
+                
+                if [[ -n "$conflicting_service" && "$conflicting_service" != "null" ]]; then
+                    log_warn "Domain $domain is already used by service: $conflicting_service"
+                    has_conflicts=true
+                fi
+            done
+            
+            if [ "$has_conflicts" = true ]; then
+                echo ""
+                read -p "Continue anyway? This will override existing configurations (y/n): " continue_conflict
+                [ "$continue_conflict" != "y" ] && exit 1
+            fi
+            
             # Select VPS nodes
             echo ""
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

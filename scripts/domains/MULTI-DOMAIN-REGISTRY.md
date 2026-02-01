@@ -391,10 +391,10 @@ done
 
 ## 📚 Related Documentation
 
-- [Domain and Public Access](../operations/DOMAIN-AND-PUBLIC-ACCESS.md) - Standard domain setup
-- [Multi-Domain Setup](../operations/MULTI-DOMAIN-SETUP.md) - Advanced configuration
-- [Sync Controller](../architecture/SYNC-CONTROLLER.md) - Automatic synchronization
-- [VPS Edge Node Setup](../installation/INSTALLATION.md) - VPS installation
+- [Domain and Public Access](/scripts/operations/DOMAIN-AND-PUBLIC-ACCESS.md) - Standard domain setup
+- [Multi-Domain Setup](/scripts/operations/MULTI-DOMAIN-SETUP.md) - Advanced configuration
+- [Sync Controller](/scripts/architecture/SYNC-CONTROLLER.md) - Automatic synchronization
+- [VPS Edge Node Setup](/scripts/installation/INSTALLATION.md) - VPS installation
 
 ---
 

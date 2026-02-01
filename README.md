@@ -99,13 +99,13 @@ Under the hood, MyNodeOne installs and manages a Kubernetes cluster on your mach
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! See [CONTRIBUTING.md](/CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](/LICENSE) for details.
 
-For comprehensive legal terms, see [DISCLAIMER.md](DISCLAIMER.md).
+For comprehensive legal terms, see [DISCLAIMER.md](/DISCLAIMER.md).
 
 ---
 

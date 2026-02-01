@@ -43,4 +43,3 @@ For details, alternatives, and background, see [NETWORKING.md](../architecture/N
 - Check [../reference/FAQ.md](../reference/FAQ.md).
 - Look up unfamiliar terms in [../reference/GLOSSARY.md](../reference/GLOSSARY.md).
 - If you still need help, open an issue on GitHub.
-

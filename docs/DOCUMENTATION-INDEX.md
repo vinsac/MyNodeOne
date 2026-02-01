@@ -8,7 +8,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 
 ### Get Started
 - **"I'm brand new"** → [GETTING-STARTED.md](guides/GETTING-STARTED.md)
-- **"Quick overview"** → [README.md](../README.md)
+- **"Quick overview"** → [README.md](/README.md)
 - **"Install now"** → Run `sudo ./scripts/installation/install-mynodeone.sh`
 - **"Step-by-step guide"** → [INSTALLATION.md](installation/INSTALLATION.md)
 
@@ -21,7 +21,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Daily usage
 - **"How do I manage it?"** → [CLUSTER-MANAGEMENT.md](operations/CLUSTER-MANAGEMENT.md)
 - **"Deploy an app"** → Check `manifests/examples/`
-- **"Deploy my own app"** → [external-apps/](../external-apps/) - One command deployment
+- **"Deploy my own app"** → [external-apps/](/external-apps) - One command deployment
 - **"Check cluster health"** → Run `./scripts/operations/cluster-status.sh`
 - **"Add more nodes"** → [scaling.md](operations/scaling.md)
 
@@ -33,7 +33,7 @@ Quick reference for finding what you need in the MyNodeOne repository.
 ### Advanced
 - **"Architecture deep-dive"** → [ARCHITECTURE.md](architecture/ARCHITECTURE.md)
 - **"Sync system design"** → [SYNC-CONTROLLER-V2.md](architecture/SYNC-CONTROLLER-V2.md)
-- **"Contribute"** → [CONTRIBUTING.md](../CONTRIBUTING.md)
+- **"Contribute"** → [CONTRIBUTING.md](/CONTRIBUTING.md)
 
 ---
 
@@ -96,7 +96,7 @@ mynodeone/
 ### Complete Beginner (Never used Kubernetes)
 1. [TERMINAL-BASICS.md](guides/TERMINAL-BASICS.md) - 10 min (if new to terminal)
 2. [GETTING-STARTED.md](guides/GETTING-STARTED.md) - 5 min
-3. [README.md](../README.md) - 5 min
+3. [README.md](/README.md) - 5 min
 4. [BEGINNER-GUIDE.md](guides/BEGINNER-GUIDE.md) - 15 min
 5. [INSTALLATION.md](installation/INSTALLATION.md) - 20 min
 6. [FAQ.md](reference/FAQ.md) - Common questions and scenarios
@@ -106,7 +106,7 @@ mynodeone/
 10. [CLUSTER-MANAGEMENT.md](operations/CLUSTER-MANAGEMENT.md) - Cluster management
 
 ### Intermediate (Some Linux/Docker experience)
-1. [README.md](../README.md) - 5 min
+1. [README.md](/README.md) - 5 min
 2. [INSTALLATION.md](installation/INSTALLATION.md) - 10 min
 3. [ARCHITECTURE.md](architecture/ARCHITECTURE.md) - 15 min
 4. Install: `sudo ./scripts/installation/install-mynodeone.sh`
@@ -117,7 +117,7 @@ mynodeone/
 1. [ARCHITECTURE.md](architecture/ARCHITECTURE.md) - Technical design
 2. Install: `sudo ./scripts/installation/install-mynodeone.sh`
 3. Explore: `manifests/` and `scripts/`
-4. [CONTRIBUTING.md](../CONTRIBUTING.md) - Help improve
+4. [CONTRIBUTING.md](/CONTRIBUTING.md) - Help improve
 
 ---
 
@@ -154,7 +154,7 @@ mynodeone/
 - Example apps: `manifests/examples/`
 - Create new app: `scripts/operations/create-app.sh`
 - Deploy guide: [APP-STORE.md](apps/APP-STORE.md)
-- **Deploy your own apps:** [external-apps/](../external-apps/) (All materials consolidated here)
+- **Deploy your own apps:** [external-apps/](/external-apps) (All materials consolidated here)
 - LLM support: `manifests/examples/llm-cpu-inference.yaml`
 
 ### Monitoring
@@ -203,10 +203,10 @@ mynodeone/
 → [DOMAIN-AND-PUBLIC-ACCESS.md](operations/DOMAIN-AND-PUBLIC-ACCESS.md)
 
 **"How do I deploy my own apps?"**  
-→ [external-apps/](../external-apps/) - Everything in one place
+→ [external-apps/](/external-apps) - Everything in one place
 
 **"Can I keep my app code separate?"**  
-→ Yes! See [external-apps/README.md](../external-apps/README.md)
+→ Yes! See [external-apps/README.md](/external-apps/README.md)
 
 ---
 
@@ -224,7 +224,7 @@ mynodeone/
 - [troubleshooting.md](operations/troubleshooting.md) - problem solving
 
 ### Explanations (understanding)
-- [README.md](../README.md) - what MyNodeOne is
+- [README.md](/README.md) - what MyNodeOne is
 - [ARCHITECTURE.md](architecture/ARCHITECTURE.md) - how it works
 - [NETWORKING.md](architecture/NETWORKING.md) - networking explained
 

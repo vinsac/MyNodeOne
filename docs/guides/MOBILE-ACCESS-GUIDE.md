@@ -484,4 +484,3 @@ A: Yes! They install Tailscale and you grant access via admin console.
 
 **Q: What if I forget to turn on Tailscale?**  
 A: Apps won't connect. Just open Tailscale and tap "Connect". Takes 2 seconds.
-

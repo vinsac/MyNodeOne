@@ -32,8 +32,8 @@ if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
 
-# Use configured domain (no fallback - user must configure it)
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN}"
+# Use configured domain or fallback to mynodeone
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 # Colors
 GREEN='\033[0;32m'

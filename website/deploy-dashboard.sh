@@ -32,18 +32,26 @@ echo "🌐 Using domain: ${CLUSTER_DOMAIN}.local"
 # Create namespace
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# Create a temporary HTML file with domain replaced (no static service injection)
-TEMP_HTML=$(mktemp)
-sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/dashboard.html" > "$TEMP_HTML"
+# Create temporary HTML files with domain replaced (no static service injection)
+TEMP_DASHBOARD=$(mktemp)
+TEMP_APP_STORE=$(mktemp)
+TEMP_SCRIPTS=$(mktemp)
+TEMP_CLUSTER_STATUS=$(mktemp)
+
+sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/dashboard.html" > "$TEMP_DASHBOARD"
+sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/app-store.html" > "$TEMP_APP_STORE"
+sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/scripts.html" > "$TEMP_SCRIPTS"
+sed "s/mynodeone\.local/${CLUSTER_DOMAIN}.local/g" "$SCRIPT_DIR/cluster-status.html" > "$TEMP_CLUSTER_STATUS"
 
 echo "✓ Dashboard will load services dynamically from /api/services.json"
+echo "✓ All HTML files updated with domain: ${CLUSTER_DOMAIN}.local"
 
 # Create ConfigMap with all dashboard HTML files
 kubectl create configmap dashboard-html \
-    --from-file=index.html="$TEMP_HTML" \
-    --from-file=app-store.html="$SCRIPT_DIR/app-store.html" \
-    --from-file=scripts.html="$SCRIPT_DIR/scripts.html" \
-    --from-file=cluster-status.html="$SCRIPT_DIR/cluster-status.html" \
+    --from-file=index.html="$TEMP_DASHBOARD" \
+    --from-file=app-store.html="$TEMP_APP_STORE" \
+    --from-file=scripts.html="$TEMP_SCRIPTS" \
+    --from-file=cluster-status.html="$TEMP_CLUSTER_STATUS" \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 
@@ -76,8 +84,8 @@ else
     echo "⚠️ Cluster config file not found at: $CONFIG_FILE"
 fi
 
-# Clean up temp file
-rm -f "$TEMP_HTML"
+# Clean up temp files
+rm -f "$TEMP_DASHBOARD" "$TEMP_APP_STORE" "$TEMP_SCRIPTS" "$TEMP_CLUSTER_STATUS"
 
 # Create ServiceAccount and RBAC for dashboard pod to read cluster info
 kubectl apply -f - <<EOF

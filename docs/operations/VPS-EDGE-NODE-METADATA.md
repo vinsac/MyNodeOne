@@ -320,6 +320,6 @@ This will:
 
 ## See Also
 
-- [VPS Edge Node Installation Guide](../../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
+- [VPS Edge Node Installation Guide](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 - [Node Registry Architecture](../architecture/REGISTRY-ARCHITECTURE.md)
 - [Node Management](NODE-MANAGEMENT.md#vps-edge-nodes)

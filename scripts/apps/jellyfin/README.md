@@ -748,9 +748,9 @@ kubectl delete namespace jellyfin
 
 ## 📚 Related Documentation
 
-- [APP-STORE.md](../../docs/reference/APP-STORE.md) - All available apps
-- [HYBRID-TROUBLESHOOTING.md](../../docs/guides/HYBRID-TROUBLESHOOTING.md) - VPS & SSL issues
-- [DNS-SETUP-GUIDE.md](../../docs/guides/DNS-SETUP-GUIDE.md) - DNS configuration
+- [APP-STORE.md](../../docs/apps/APP-STORE.md) - All available apps
+- [troubleshooting.md](../../docs/operations/troubleshooting.md) - VPS & SSL issues
+- [DNS.md](../../docs/architecture/DNS.md) - DNS configuration
 
 ---
 

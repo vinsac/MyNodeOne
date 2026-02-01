@@ -269,9 +269,9 @@ sudo ./scripts/domains/coredns-dns-guardian.sh
 ## 📚 Complete Documentation
 
 - **[MULTI-DOMAIN-REGISTRY.md](MULTI-DOMAIN-REGISTRY.md)** - Advanced multi-domain management
-- **[../operations/DOMAIN-AND-PUBLIC-ACCESS.md](../operations/DOMAIN-AND-PUBLIC-ACCESS.md)** - Complete domain setup guide
-- **[../operations/MULTI-DOMAIN-SETUP.md](../operations/MULTI-DOMAIN-SETUP.md)** - Multi-domain architecture
-- **[../installation/INSTALLATION.md](../installation/INSTALLATION.md)** - VPS edge node setup
+- **[DOMAIN-AND-PUBLIC-ACCESS.md](../../docs/operations/DOMAIN-AND-PUBLIC-ACCESS.md)** - Complete domain setup guide
+- **[MULTI-DOMAIN-SETUP.md](../../docs/operations/MULTI-DOMAIN-SETUP.md)** - Multi-domain architecture
+- **[INSTALLATION.md](../../docs/installation/INSTALLATION.md)** - VPS edge node setup
 
 ---
 

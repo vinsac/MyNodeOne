@@ -128,7 +128,7 @@ mynodeone/
 - Installation guide: [INSTALLATION.md](installation/INSTALLATION.md)
 - Setup options: [INSTALLATION.md](installation/INSTALLATION.md) - node types and scenarios
 - Configuration wizard: `scripts/installation/interactive-setup.sh`
-- VPS Edge Node Setup: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
+- VPS Edge Node Setup: [INSTALLATION.md](installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 
 ### Comparisons & Alternatives
 - **MyNodeOne vs Alternatives:** See [FAQ.md](reference/FAQ.md) - Comparison questions
@@ -165,7 +165,7 @@ mynodeone/
 ### Scaling
 - Add workers: [scaling.md](operations/scaling.md)
 - Add VPS: [INSTALLATION.md](installation/INSTALLATION.md) - Section 2
-- Add VPS Edge Node: [INSTALLATION.md](../installation/INSTALLATION.md#section-2-vps-edge-node-installation)
+- Add VPS Edge Node: [INSTALLATION.md](installation/INSTALLATION.md#section-2-vps-edge-node-installation)
 - High availability: [ARCHITECTURE.md](architecture/ARCHITECTURE.md)
 
 ---

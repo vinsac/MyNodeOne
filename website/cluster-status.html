@@ -664,7 +664,7 @@
         // Fetch cluster domain from config
         async function getClusterDomain() {
             try {
-                const response = await fetch('/api/cluster-config');
+                const response = await fetch('/api/cluster-config.json');
                 const config = await response.json();
                 return config.CLUSTER_DOMAIN || 'mynodeone';
             } catch (error) {

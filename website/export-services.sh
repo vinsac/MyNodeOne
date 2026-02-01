@@ -201,11 +201,47 @@ export_cluster() {
     echo "[$(date)] Exported cluster overview: $ready_nodes/$total_nodes nodes, $running_pods/$total_pods pods"
 }
 
+# Export cluster configuration function
+export_cluster_config() {
+    # Get cluster domain from config.env
+    local cluster_domain="mynodeone"
+    local cluster_name="mynodeone"
+    
+    # Try to read from config.env in multiple locations
+    local config_locations=(
+        "/etc/mynodeone/config.env"
+        "$HOME/.mynodeone/config.env"
+        "/home/vinaysachdeva1/.mynodeone/config.env"
+    )
+    
+    for config_file in "${config_locations[@]}"; do
+        if [[ -f "$config_file" ]]; then
+            echo "[$(date)] Found config at: $config_file"
+            source "$config_file"
+            cluster_domain="${CLUSTER_DOMAIN:-mynodeone}"
+            cluster_name="${CLUSTER_NAME:-mynodeone}"
+            break
+        fi
+    done
+    
+    # Create cluster config JSON
+    local config_json=$(jq -n --arg domain "$cluster_domain" --arg name "$cluster_name" '{
+        CLUSTER_DOMAIN: $domain,
+        CLUSTER_NAME: $name
+    }')
+    
+    echo "$config_json" > "$OUTPUT_DIR/cluster-config.json.tmp"
+    mv "$OUTPUT_DIR/cluster-config.json.tmp" "$OUTPUT_DIR/cluster-config.json"
+    
+    echo "[$(date)] Exported cluster config: $cluster_domain (name: $cluster_name)"
+}
+
 # Export all data
 export_all() {
     export_services
     export_nodes
     export_cluster
+    export_cluster_config
 }
 
 # Initial export

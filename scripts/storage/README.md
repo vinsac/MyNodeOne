@@ -10,7 +10,7 @@ scripts/storage/
 ├── longhorn/          # Longhorn block storage scripts
 ├── minio/             # MinIO object storage scripts
 │   └── install-minio-worker.sh
-├── velero/            # Velero backup scripts
+├── velero/            # Velero backup scripts (reference only)
 │   ├── install.sh
 │   └── configure-backup.sh
 └── integration/       # Cross-component integration scripts
@@ -21,46 +21,18 @@ scripts/storage/
 ```
 Control Plane:
 - Longhorn (block storage, single-node, replica=1)
-- Velero (backup system)
 
 Worker Node:
 - MinIO (object storage, local disks)
 - Longhorn disabled (allowScheduling=false)
 
-Backup Flow:
-Control Plane (Longhorn) → Velero → Worker (MinIO)
+Current State:
+- Manual backup and restore procedures
+- MinIO provides object storage for applications
+- No automated cluster backups (Velero removed per user decision)
 ```
 
 ## Scripts
-
-### install-velero.sh
-
-**Purpose:** Install Velero backup system on control plane
-
-**Called by:** `bootstrap-control-plane.sh` during control plane setup
-
-**What it does:**
-- Installs Velero CLI
-- Installs Velero server components
-- Waits for Velero to be ready
-- Backup storage configured later when worker joins
-
-**Usage:**
-```bash
-sudo ./scripts/storage/install-velero.sh
-```
-
-**Requirements:**
-- Kubernetes cluster running
-- kubectl configured
-- Root access
-
-**Output:**
-- Velero CLI in `/usr/local/bin/velero`
-- Velero deployment in `velero` namespace
-- Ready for backup configuration
-
----
 
 ### install-minio-worker.sh
 
@@ -99,57 +71,14 @@ sudo ./scripts/storage/minio/install-minio-worker.sh
 
 ---
 
-### configure-velero-backup.sh
-
-**Purpose:** Configure Velero to use MinIO as backup target
-
-**Called by:** `add-worker-node.sh` after MinIO is installed
-
-**What it does:**
-- Retrieves MinIO credentials
-- Creates Velero backup bucket in MinIO
-- Creates Velero credentials secret
-- Configures BackupStorageLocation
-- Creates backup schedules:
-  - `nightly-backup`: Full cluster backup (2AM UTC)
-  - `longhorn-pvc-backup`: PVC backup (2AM UTC)
-- Tests backup connectivity
-
-**Usage:**
-```bash
-sudo ./scripts/storage/configure-velero-backup.sh
-```
-
-**Requirements:**
-- Velero installed on control plane
-- MinIO running on worker node
-- kubectl configured
-- Root access
-
-**Backup Configuration:**
-- Schedule: Nightly at 2:00 AM UTC
-- Retention: 6 months (180 days)
-- Bucket: `velero-backups`
-- Incremental backups (Velero manages full/incremental)
-
-**Output:**
-- BackupStorageLocation: `default`
-- Backup schedules created
-- Test backup performed
-
----
-
 ## Installation Flow
 
 ### Control Plane Bootstrap
 
 ```bash
 bootstrap-control-plane.sh
-  └─> install_velero()
-        └─> scripts/storage/install-velero.sh
-              ├─ Install Velero CLI
-              ├─ Install Velero server
-              └─ Wait for ready
+  └─> install_longhorn()
+        └─> Longhorn block storage setup
 ```
 
 ### Worker Node Addition
@@ -158,34 +87,14 @@ bootstrap-control-plane.sh
 add-worker-node.sh
   ├─> disable_longhorn_on_worker()
   │     └─ Disable Longhorn scheduling on worker
-  ├─> install_minio_worker()
-  │     └─> scripts/storage/minio/install-minio-worker.sh
-  │           ├─ Detect disks
-  │           ├─ Install MinIO
-  │           └─ Save credentials
-  └─> configure_velero_backup()
-        └─> scripts/storage/configure-velero-backup.sh
-              ├─ Create MinIO bucket
-              ├─ Configure Velero
-              └─ Create schedules
+  └─> install_minio_worker()
+        └─> scripts/storage/minio/install-minio-worker.sh
+              ├─ Detect disks
+              ├─ Install MinIO
+              └─ Save credentials
 ```
 
 ## Verification Commands
-
-### Velero Status
-```bash
-# Check Velero installation
-velero version
-
-# Check backup storage location
-velero backup-location get
-
-# Check backup schedules
-velero schedule get
-
-# List backups
-velero backup get
-```
 
 ### MinIO Status
 ```bash
@@ -208,57 +117,50 @@ kubectl get nodes.longhorn.io -n longhorn-system
 kubectl get nodes.longhorn.io -n longhorn-system -o yaml | grep allowScheduling
 ```
 
-## Backup Operations
+## Manual Backup Operations
 
-### Create Manual Backup
+Since Velero was removed, backups are now manual. Here are the recommended approaches:
+
+### Application Data Backup
 ```bash
-# Backup entire cluster
-velero backup create manual-backup-$(date +%Y%m%d-%H%M%S)
+# Backup application data using MinIO
+# 1. Access MinIO console: http://minio.mynodeone.local:9001
+# 2. Create buckets for application backups
+# 3. Use application-specific backup tools
 
-# Backup specific namespace
-velero backup create app-backup --include-namespaces=myapp
-
-# Backup with PVC snapshots
-velero backup create pvc-backup --snapshot-volumes=true
+# Example: Backup Nextcloud data
+kubectl exec -n nextcloud deployment/nextcloud -- \
+  php occ files:scan --all
 ```
 
-### Restore from Backup
+### Longhorn Volume Backup
 ```bash
-# List available backups
-velero backup get
+# Create Longhorn backup manually
+kubectl create -f - <<EOF
+apiVersion: longhorn.io/v1beta2
+kind: Backup
+metadata:
+  name: manual-backup-$(date +%Y%m%d-%H%M%S)
+  namespace: longhorn-system
+spec:
+  volumeName: <volume-name>
+  snapshotName: <snapshot-name>
+EOF
 
-# Restore from backup
-velero restore create --from-backup <backup-name>
-
-# Restore specific namespace
-velero restore create --from-backup <backup-name> --include-namespaces=myapp
+# List backups
+kubectl get backups -n longhorn-system
 ```
 
-### Monitor Backup Progress
+### Configuration Backup
 ```bash
-# Watch backup progress
-velero backup describe <backup-name>
+# Backup Kubernetes configurations
+kubectl get all --all-namespaces -o yaml > cluster-backup-$(date +%Y%m%d).yaml
 
-# Watch restore progress
-velero restore describe <restore-name>
-
-# View logs
-velero backup logs <backup-name>
+# Backup ConfigMaps and Secrets
+kubectl get configmaps,secrets --all-namespaces -o yaml > config-backup-$(date +%Y%m%d).yaml
 ```
 
 ## Troubleshooting
-
-### Velero Not Ready
-```bash
-# Check Velero pods
-kubectl get pods -n velero
-
-# Check Velero logs
-kubectl logs -n velero deployment/velero
-
-# Reinstall Velero
-sudo ./scripts/storage/install-velero.sh
-```
 
 ### MinIO Installation Failed
 ```bash
@@ -275,18 +177,6 @@ df -h | grep longhorn-disks
 sudo ./scripts/storage/minio/install-minio-worker.sh
 ```
 
-### Backup Storage Location Unavailable
-```bash
-# Check backup location status
-velero backup-location get
-
-# Check MinIO connectivity
-kubectl exec -n minio <minio-pod> -- mc ping myminio
-
-# Reconfigure Velero backup
-sudo ./scripts/storage/configure-velero-backup.sh
-```
-
 ### Longhorn Still Scheduling on Worker
 ```bash
 # Check Longhorn node settings
@@ -297,29 +187,37 @@ kubectl -n longhorn-system patch nodes.longhorn.io <worker-node> \
   --type=merge -p '{"spec":{"allowScheduling":false}}'
 ```
 
-## Architecture Decisions
+### MinIO Access Issues
+```bash
+# Check MinIO service
+kubectl get svc -n minio
 
-### Why Velero on Control Plane?
-- Backup orchestration should be centralized
-- Control plane has stable uptime
-- Velero needs access to Kubernetes API
+# Check LoadBalancer IP
+kubectl get svc -n minio -o yaml | grep LoadBalancer
+
+# Test MinIO connectivity
+curl -I http://<minio-ip>:9000/minio/health/live
+```
+
+## Architecture Decisions
 
 ### Why MinIO on Worker?
 - Worker has dedicated disks for object storage
 - Separates backup storage from primary storage
 - Prevents control plane disk exhaustion
-- Worker can be offline without affecting backups (backups stored locally)
+- Provides S3-compatible storage for applications
 
 ### Why Disable Longhorn on Worker?
 - Single-node Longhorn is simpler and more reliable
 - Avoids split-brain scenarios over Tailscale
 - Reduces network overhead
-- Backup-based resilience instead of replication
+- Manual backup-based resilience instead of replication
 
-### Why Nightly Backups at 2AM UTC?
-- Low usage time for most timezones
-- Allows 6-hour window before business hours
-- Consistent schedule for monitoring
+### Why No Automated Backups?
+- Per user decision: No automated cluster backups needed
+- Manual backups provide more control
+- Reduces complexity and resource usage
+- Users can implement backup strategies as needed
 
 ## Security Notes
 
@@ -328,41 +226,29 @@ kubectl -n longhorn-system patch nodes.longhorn.io <worker-node> \
 - Saved to file: `~/mynodeone-minio-worker-credentials.txt` (chmod 600)
 - **Action Required:** Save credentials to password manager and delete file
 
-### Velero Credentials
-- Stored in Kubernetes secret: `cloud-credentials` (namespace: `velero`)
-- Uses MinIO root credentials
-- Automatically configured by script
-
 ### Access Control
 - MinIO accessible via LoadBalancer (Tailscale network only)
-- Velero accessible via `velero` CLI (requires kubectl access)
 - Longhorn UI protected by Tailscale VPN
+- Local DNS resolution for `.mynodeone.local` domains
 
 ## Performance Considerations
 
-### Backup Impact
-- Incremental backups minimize data transfer
-- Backups run during low-usage hours (2AM UTC)
-- No impact on application performance
-- Network traffic over Tailscale (control plane → worker)
-
 ### Storage Efficiency
-- Velero deduplicates backup data
-- Compression enabled by default
-- Retention policy prevents disk exhaustion (6 months)
+- Longhorn provides block storage with replica=1
+- MinIO provides object storage with distributed mode
+- Network traffic over Tailscale for cross-node access
 
-### Restore Time
-- Full cluster restore: ~10-30 minutes (depends on data size)
-- Single namespace restore: ~2-5 minutes
-- PVC restore: ~5-15 minutes (depends on volume size)
+### Disk Usage
+- Longhorn volumes consume dedicated disks
+- MinIO uses available disks for object storage
+- Monitor disk usage: `df -h | grep -E "(longhorn|minio)"`
 
 ## Future Enhancements
 
 ### Potential Improvements
 - [ ] Add backup encryption at rest
 - [ ] Implement backup verification tests
-- [ ] Add Slack/email notifications for backup failures
-- [ ] Create backup dashboard in Grafana
+- [ ] Add backup dashboard in Grafana
 - [ ] Add S3-compatible external backup target (e.g., Backblaze B2)
 - [ ] Implement backup rotation policies per namespace
 - [ ] Add pre/post backup hooks for databases
@@ -372,3 +258,22 @@ kubectl -n longhorn-system patch nodes.longhorn.io <worker-node> \
 - ❌ Synchronous replication over Tailscale (latency, reliability)
 - ❌ Ceph/Rook (overkill for 2-node cluster)
 - ❌ Real-time backup (performance impact)
+
+## Velero Reference
+
+The Velero scripts remain in `scripts/storage/velero/` for reference only:
+- Not called by any installation scripts
+- Removed per user decision (Jan 9, 2026)
+- Can be restored manually if automated backups are needed later
+
+To restore Velero functionality:
+1. Install Velero: `sudo ./scripts/storage/velero/install.sh`
+2. Configure backup: `sudo ./scripts/storage/velero/configure-backup.sh`
+
+## Getting Help
+
+For storage-related issues:
+1. Check the troubleshooting section above
+2. Review MinIO and Longhorn logs
+3. Verify disk mounts and network connectivity
+4. Check Kubernetes resource status

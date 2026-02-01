@@ -141,7 +141,7 @@ kubectl get pv
 ```
 
 **Need more help:**
-See [docs/operations/troubleshooting.md](../../docs/operations/troubleshooting.md)
+See [docs/operations/troubleshooting.md](/docs/operations/troubleshooting.md)
 
 ## Contributing
 

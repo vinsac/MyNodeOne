@@ -961,7 +961,7 @@ Examples:
   
   # Update MinIO config after installation
   node-registry-manager.sh update-minio \
-    --name pc1 --endpoint minio-pc1.space.local:9000 --disk /dev/sdd
+    --name pc1 --endpoint minio-pc1.mynodeone.local:9000 --disk /dev/sdd
   
   # Get cluster node details
   node-registry-manager.sh get-cluster-node pc1

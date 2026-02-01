@@ -437,28 +437,28 @@
                             <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">Grafana</span>
                         </div>
-                        <a href="http://grafana.space.local" class="service-link">Open →</a>
+                        <a href="http://grafana.mynodeone.local" class="service-link">Open →</a>
                     </li>
                     <li class="service-item">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">ArgoCD</span>
                         </div>
-                        <a href="https://argocd.space.local" class="service-link">Open →</a>
+                        <a href="https://argocd.mynodeone.local" class="service-link">Open →</a>
                     </li>
                     <li class="service-item">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">Prometheus</span>
                         </div>
-                        <a href="http://prometheus.space.local" class="service-link">Open →</a>
+                        <a href="http://prometheus.mynodeone.local" class="service-link">Open →</a>
                     </li>
                     <li class="service-item">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">Longhorn UI</span>
                         </div>
-                        <a href="http://longhorn.space.local" class="service-link">Open →</a>
+                        <a href="http://longhorn.mynodeone.local" class="service-link">Open →</a>
                     </li>
                     <!-- Additional services will be dynamically loaded here -->
                     <div id="dynamic-services-container"></div>
@@ -690,7 +690,7 @@
                 span.textContent = service.name;
                 
                 const link = document.createElement('a');
-                link.href = service.url || `http://${service.name}.space.local`;
+                link.href = service.url || `http://${service.name}.mynodeone.local`;
                 link.className = 'service-link';
                 link.textContent = 'Open →';
                 

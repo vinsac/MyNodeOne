@@ -744,7 +744,7 @@ Yes! Each app can be exposed on multiple domains and patterns simultaneously:
 - **Custom Subdomain**: `service.test-org.net`
 
 MyNodeOne uses a **Clean Separation** architecture where:
-1. **Local Identity**: Every app has a `local_name` (e.g. `immich`) for internal access via `immich.space.local`.
+1. **Local Identity**: Every app has a `local_name` (e.g. `immich`) for internal access via `immich.mynodeone.local`.
 2. **Public Identity**: The `expose` array contains any number of full public URLs.
 
 This ensures you can use a root domain publicly without breaking internal `.local` resolution.

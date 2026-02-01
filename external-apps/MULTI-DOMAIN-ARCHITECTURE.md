@@ -4,11 +4,11 @@ MyNodeOne supports multiple apps, each with its own unique identity and optional
 
 ```bash
 App A (immich):
-  local_name: photos → photos.space.local (internal)
+  local_name: photos → photos.mynodeone.local (internal)
   expose: ["photos.family.io", "photos.mynet.com"] (public)
 
 App B (nextcloud):
-  local_name: files  → files.space.local (internal)
+  local_name: files  → files.mynodeone.local (internal)
   expose: ["files.com", "www.files.com"] (public root/www)
 ```
 

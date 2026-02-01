@@ -64,7 +64,7 @@ Both should return your VPS public IP. DNS propagation can take 5-60 minutes.
 When installing apps from the app store, you'll be asked to configure its network identity:
 
 ```
-? Local DNS name (e.g., 'photos' for photos.space.local) [immich]: photos
+? Local DNS name (e.g., 'photos' for photos.mynodeone.local) [immich]: photos
 ? Make this app publicly accessible? [y/N]: y
 ? Enter full URLs (comma-separated): photos.yourdomain.com, www.yourdomain.com
 ```
@@ -102,7 +102,7 @@ sudo ./scripts/operations/manage-app-visibility.sh
 # Results: 
 # ✅ https://yourdomain.com
 # ✅ https://www.yourdomain.com
-# ✅ http://nextcloud.space.local (still works!)
+# ✅ http://nextcloud.mynodeone.local (still works!)
 ```
 
 ---

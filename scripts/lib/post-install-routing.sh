@@ -69,7 +69,7 @@ if [ -z "${CLUSTER_DOMAIN:-}" ]; then
 fi
 
 # Final fallback
-CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-space}"
+CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

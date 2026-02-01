@@ -521,8 +521,11 @@
                 const servicesResponse = await fetch('/api/services.json');
                 if (servicesResponse.ok) {
                     const services = await servicesResponse.json();
-                    renderServices(services);
+                    await renderServices(services);
                 }
+                
+                // Update service URLs with dynamic domain
+                await updateServiceUrls();
                 
                 console.log('Cluster data loaded successfully');
             } catch (error) {
@@ -658,7 +661,40 @@
             }
         }
         
-        function renderServices(services) {
+        // Fetch cluster domain from config
+        async function getClusterDomain() {
+            try {
+                const response = await fetch('/api/cluster-config');
+                const config = await response.json();
+                return config.CLUSTER_DOMAIN || 'mynodeone';
+            } catch (error) {
+                console.warn('Could not fetch cluster config, using fallback');
+                return 'mynodeone';
+            }
+        }
+
+        // Update service URLs with dynamic domain
+        async function updateServiceUrls() {
+            const clusterDomain = await getClusterDomain();
+            
+            // Update static service links
+            const staticLinks = {
+                'grafana': `http://grafana.${clusterDomain}.local`,
+                'argocd': `https://argocd.${clusterDomain}.local`,
+                'prometheus': `http://prometheus.${clusterDomain}.local`,
+                'longhorn': `http://longhorn.${clusterDomain}.local`
+            };
+            
+            // Update static service links
+            Object.keys(staticLinks).forEach(serviceName => {
+                const link = document.querySelector(`a[href*="${serviceName}."]`);
+                if (link) {
+                    link.href = staticLinks[serviceName];
+                }
+            });
+        }
+        
+        async function renderServices(services) {
             const container = document.getElementById('dynamic-services-container');
             if (!container) return;
             
@@ -677,6 +713,9 @@
             if (privateCount) privateCount.textContent = privateServices;
             if (runningCount) runningCount.textContent = runningServices;
             
+            // Get cluster domain for dynamic services
+            const clusterDomain = await getClusterDomain();
+            
             // Filter and render additional services that are not in the static list
             const staticServices = ['grafana', 'argocd', 'prometheus', 'longhorn'];
             const additionalServices = services.filter(s => !staticServices.includes(s.name.toLowerCase()));
@@ -690,7 +729,7 @@
                 span.textContent = service.name;
                 
                 const link = document.createElement('a');
-                link.href = service.url || `http://${service.name}.mynodeone.local`;
+                link.href = service.url || `http://${service.name}.${clusterDomain}.local`;
                 link.className = 'service-link';
                 link.textContent = 'Open →';
                 

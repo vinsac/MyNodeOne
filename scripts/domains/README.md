@@ -4,25 +4,25 @@ This directory contains scripts for managing domains, DNS configuration, and nam
 
 ---
 
-## 🎯 Quick Start: Which Script Should I Use?
+## Quick Start: Which Script Should I Use?
 
-### 👥 **Primary Tools** (Recommended)
+### **Primary Tools** (Recommended)
 | **Task** | **Script** | **When to Use** |
 |----------|------------|----------------|
-| **Manage Visibility** | `manage-app-visibility.sh` | ✅ **Best** - Interactive menu for local_name and public exposure |
-| **Domain Operations** | `multi-domain-registry.sh` | ✅ **Best** - All-in-one tool for domains, VPS, and routing |
-| **Check DNS** | `check-dns-ready.sh` | ✅ **Standard** - Validate DNS configuration |
+| **Manage Visibility** | `manage-app-visibility.sh` | **Best** - Interactive menu for local_name and public exposure |
+| **Domain Operations** | `multi-domain-registry.sh` | **Best** - All-in-one tool for domains, VPS, and routing |
+| **Check DNS** | `check-dns-ready.sh` | **Standard** - Validate DNS configuration |
 
-### 🔧 **Legacy/Wrapper Scripts**
+### **Legacy/Wrapper Scripts**
 | **Task** | **Script** | **When to Use** |
 |----------|------------|----------------|
-| **Add base domain** | `add-domain.sh` | 🔧 Wrapper for `multi-domain-registry.sh register-domain` |
-| **Remove domain** | `remove-domain.sh` | 🔧 Wrapper for `multi-domain-registry.sh unregister-domain` |
-| **Configure routing** | `configure-domain-routing.sh` | 🔧 Legacy - Use `manage-app-visibility.sh` instead |
+| **Add base domain** | `add-domain.sh` | Wrapper for `multi-domain-registry.sh register-domain` |
+| **Remove domain** | `remove-domain.sh` | Wrapper for `multi-domain-registry.sh unregister-domain` |
+| **Configure routing** | `configure-domain-routing.sh` | Legacy - Use `manage-app-visibility.sh` instead |
 
 ---
 
-## 📚 Script Documentation
+## Script Documentation
 
 ### `add-domain.sh`
 **Interactive domain addition with SSL setup**
@@ -33,11 +33,11 @@ sudo ./scripts/domains/add-domain.sh
 ```
 
 **Features:**
-- 🎯 Interactive domain registration
-- 🔧 Automatic SSL certificate setup (Let's Encrypt)
-- 🌐 VPS edge node selection
-- 📱 Service routing configuration
-- ✅ DNS validation
+- Interactive domain registration
+- Automatic SSL certificate setup (Let's Encrypt)
+- VPS edge node selection
+- Service routing configuration
+- DNS validation
 
 **When to use:** Adding a single domain to your cluster
 
@@ -52,10 +52,10 @@ sudo ./scripts/domains/remove-domain.sh <domain>
 ```
 
 **Features:**
-- 🗑️ Complete domain cleanup
-- 🔄 Service routing updates
-- 📜 SSL certificate removal
-- ⚠️ Safety checks
+- Complete domain cleanup
+- Service routing updates
+- SSL certificate removal
+- Safety checks
 
 **When to use:** Removing a domain from your cluster
 
@@ -70,9 +70,9 @@ sudo ./scripts/domains/configure-domain-routing.sh <domain>
 ```
 
 **Features:**
-- 🛣️ Service-to-domain mapping
-- 📋 Service selection interface
-- 🔄 Automatic routing updates
+- Service-to-domain mapping
+- Service selection interface
+- Automatic routing updates
 
 **When to use:** Managing which services are accessible via a domain
 
@@ -87,11 +87,11 @@ sudo ./scripts/domains/multi-domain-registry.sh <command> [options]
 ```
 
 **Features:**
-- 🌐 Multiple domain management
-- ⚖️ Load balancing across VPS nodes
-- 🔄 Advanced routing strategies
-- 📊 Registry inspection and export
-- 🤖 Programmatic access
+- Multiple domain management
+- Load balancing across VPS nodes
+- Advanced routing strategies
+- Registry inspection and export
+- Programmatic access
 
 **When to use:** Complex setups with multiple domains and VPS nodes
 
@@ -99,7 +99,7 @@ sudo ./scripts/domains/multi-domain-registry.sh <command> [options]
 
 ---
 
-## 🔧 DNS Configuration Scripts
+## DNS Configuration Scripts
 
 ### `setup-local-dns.sh`
 **Configure local DNS resolution for .local domains**
@@ -110,9 +110,9 @@ sudo ./scripts/domains/setup-local-dns.sh
 ```
 
 **Features:**
-- 🏠 Local domain resolution
-- 📱 Tailscale network integration
-- ⚡ Automatic CoreDNS configuration
+- Local domain resolution
+- Tailscale network integration
+- Automatic CoreDNS configuration
 
 ---
 
@@ -125,9 +125,9 @@ sudo ./scripts/domains/sync-dns.sh
 ```
 
 **Features:**
-- 🔄 Force DNS synchronization
-- 🛠️ Manual troubleshooting
-- ⚡ Immediate updates
+- Force DNS synchronization
+- Manual troubleshooting
+- Immediate updates
 
 **Note:** DNS sync is automatic via node agent. Use this for troubleshooting only.
 
@@ -142,13 +142,13 @@ sudo ./scripts/domains/configure-app-dns.sh
 ```
 
 **Features:**
-- 📱 App-specific DNS setup
-- 🔄 Automatic service discovery
-- 🌐 Domain mapping
+- App-specific DNS setup
+- Automatic service discovery
+- Domain mapping
 
 ---
 
-## 🔍 DNS Troubleshooting Scripts
+## DNS Troubleshooting Scripts
 
 ### `check-dns-ready.sh`
 **Verify DNS configuration and propagation**
@@ -159,9 +159,9 @@ sudo ./scripts/domains/configure-app-dns.sh
 ```
 
 **Features:**
-- ✅ DNS validation
-- 🌐 Propagation checking
-- 🔍 Resolution testing
+- DNS validation
+- Propagation checking
+- Resolution testing
 
 ---
 
@@ -174,8 +174,8 @@ sudo ./scripts/domains/fix-duplicate-dns.sh
 ```
 
 **Features:**
-- 🧹 Duplicate entry cleanup
-- 🔧 CoreDNS configuration repair
+- Duplicate entry cleanup
+- CoreDNS configuration repair
 
 ---
 
@@ -188,8 +188,8 @@ sudo ./scripts/domains/fix-tailscale-dns-permanent.sh
 ```
 
 **Features:**
-- 🔄 Tailscale DNS conflict resolution
-- ⚡ Permanent fixes
+- Tailscale DNS conflict resolution
+- Permanent fixes
 
 ---
 
@@ -202,13 +202,13 @@ sudo ./scripts/domains/coredns-dns-guardian.sh
 ```
 
 **Features:**
-- 👀 Continuous DNS monitoring
-- 🔧 Automatic issue resolution
-- 📊 Health reporting
+- Continuous DNS monitoring
+- Automatic issue resolution
+- Health reporting
 
 ---
 
-## 📋 Workflow Examples
+## Workflow Examples
 
 ### **Example 1: Add Your First Domain**
 
@@ -266,7 +266,7 @@ sudo ./scripts/domains/coredns-dns-guardian.sh
 
 ---
 
-## 📚 Complete Documentation
+## Complete Documentation
 
 - **[MULTI-DOMAIN-REGISTRY.md](/scripts/domains/MULTI-DOMAIN-REGISTRY.md)** - Advanced multi-domain management
 - **[DOMAIN-AND-PUBLIC-ACCESS.md](/docs/operations/DOMAIN-AND-PUBLIC-ACCESS.md)** - Complete domain setup guide
@@ -275,7 +275,7 @@ sudo ./scripts/domains/coredns-dns-guardian.sh
 
 ---
 
-## ⚡ Important Notes
+## Important Notes
 
 - **DNS Propagation**: Changes may take 5-60 minutes to propagate globally
 - **Local Domains**: `.local` domains work only within Tailscale network
@@ -286,7 +286,7 @@ sudo ./scripts/domains/coredns-dns-guardian.sh
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 ```bash
 # Check domain registry status
@@ -304,7 +304,7 @@ sudo systemctl status mynodeone-sync-controller
 
 ---
 
-## 🔄 Related Scripts
+## Related Scripts
 
 - **`../lib/sync-controller.sh`** - Automatic synchronization
 - **`../lib/service-registry.sh`** - Service registration

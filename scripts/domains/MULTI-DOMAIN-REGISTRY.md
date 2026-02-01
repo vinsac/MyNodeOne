@@ -15,15 +15,15 @@ The `multi-domain-registry.sh` script provides advanced domain management capabi
 
 ---
 
-## 🔧 When to Use This vs. Standard Domain Scripts
+## When to Use This vs. Standard Domain Scripts
 
-### 👥 **Use Standard Domain Scripts For:**
+### **Use Standard Domain Scripts For:**
 - **Single domain addition** → `./scripts/domains/add-domain.sh`
 - **Interactive domain management** → User-friendly prompts
 - **Basic domain removal** → `./scripts/domains/remove-domain.sh`
 - **Simple routing configuration** → `./scripts/domains/configure-domain-routing.sh`
 
-### 🔧 **Use Multi-Domain Registry For:**
+### **Use Multi-Domain Registry For:**
 - **Batch domain operations** → Register multiple domains at once
 - **Multi-VPS load balancing** → Distribute traffic across VPS nodes
 - **Advanced routing strategies** → Custom failover and load balancing
@@ -32,7 +32,7 @@ The `multi-domain-registry.sh` script provides advanced domain management capabi
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 - MyNodeOne cluster installed
 - At least one VPS edge node configured
@@ -40,7 +40,7 @@ The `multi-domain-registry.sh` script provides advanced domain management capabi
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Initialize Registry
 
@@ -77,7 +77,7 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
 
 ---
 
-## 📚 Command Reference
+## Command Reference
 
 ### **Registry Management**
 
@@ -115,7 +115,7 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
 
 ---
 
-## 🎛️ Routing Strategies
+## Routing Strategies
 
 ### Full Domain Exposure
 Expose a service on multiple full URLs (Root, WWW, and Subdomain):
@@ -135,7 +135,7 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing photos \
 
 ---
 
-## 📊 Configuration Examples
+## Configuration Examples
 
 ### **Basic Multi-Domain Setup**
 
@@ -182,7 +182,7 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing grafana \
 
 ---
 
-## 🔍 Viewing Configuration
+## Viewing Configuration
 
 ### **Show All Configuration**
 
@@ -221,7 +221,7 @@ sudo ./scripts/domains/multi-domain-registry.sh export
 
 ---
 
-## 🛠️ Advanced Usage
+## Advanced Usage
 
 ### **Batch Domain Registration**
 
@@ -276,7 +276,7 @@ echo "$config" | jq -r '.routing | keys[]' | while read service; do
     domains=$(echo "$config" | jq -r ".routing[\"$service\"].domains[]?")
     vps_nodes=$(echo "$config" | jq -r ".routing[\"$service\"].vps_nodes[]?")
     
-    echo "🔍 $service:"
+    echo " $service:"
     echo "  Domains: $domains"
     echo "  VPS Nodes: $vps_nodes"
     
@@ -293,7 +293,7 @@ done
 
 ---
 
-## 🔧 Integration with Other Scripts
+## Integration with Other Scripts
 
 ### **Standard Domain Scripts Use This Registry**
 
@@ -365,7 +365,7 @@ sudo ./scripts/domains/multi-domain-registry.sh show | grep -A 10 "immich"
 
 ---
 
-## 🔄 Migration from Single Domain
+## Migration from Single Domain
 
 If you're migrating from single-domain setup:
 
@@ -389,7 +389,7 @@ done
 
 ---
 
-## 📚 Related Documentation
+## Related Documentation
 
 - [Domain and Public Access](/docs/operations/DOMAIN-AND-PUBLIC-ACCESS.md) - Standard domain setup
 - [Multi-Domain Setup](/docs/operations/MULTI-DOMAIN-SETUP.md) - Advanced configuration
@@ -398,7 +398,7 @@ done
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 ```bash
 # Show help

@@ -349,7 +349,7 @@ export_dns() {
         fi
         if [ -f "$actual_home/.mynodeone/config.env" ]; then
             source "$actual_home/.mynodeone/config.env"
-            domain="${CLUSTER_DOMAIN:-mynodeone}.local"
+            domain="${CLUSTER_DOMAIN}.local"
         else
             domain="mynodeone.local"
         fi
@@ -411,11 +411,8 @@ Commands:
   export-traefik <domain> <ip> Export Traefik routes
 
 Examples:
-  service-registry.sh sync
-  service-registry.sh register immich photos immich immich-server 80 true
   service-registry.sh export-dns                    # Uses CLUSTER_DOMAIN from config
-  service-registry.sh export-dns mynodeone.local    # Explicit domain
-  service-registry.sh export-traefik example.com 100.122.68.75 > routes.yml
+  service-registry.sh export-dns space.local    # Example with user domain
 
 EOF
         exit 1

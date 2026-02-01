@@ -85,7 +85,7 @@ get_service_ips() {
         exit 1
     fi
     
-    # Use dashboard IP for mynodeone.local if available, otherwise use Grafana
+    # Use dashboard IP for cluster domain if available, otherwise use Grafana
     if [ -z "$DASHBOARD_IP" ]; then
         DASHBOARD_IP="$GRAFANA_IP"
     fi
@@ -174,7 +174,7 @@ address=/dashboard.${CLUSTER_DOMAIN}.local/${DASHBOARD_IP}
 address=/grafana.${CLUSTER_DOMAIN}.local/${GRAFANA_IP}
 address=/argocd.${CLUSTER_DOMAIN}.local/${ARGOCD_IP}
 address=/traefik.${CLUSTER_DOMAIN}.local/${TRAEFIK_IP}
-# Note: MinIO uses node-specific domains (minio-nodename.mynodeone.local)
+# Note: MinIO uses node-specific domains (minio-nodename.cluster.local)
 # No generic minio/minio-api aliases to avoid confusion about which node is being accessed
 EOF
     

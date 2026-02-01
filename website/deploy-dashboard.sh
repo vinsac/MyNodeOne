@@ -65,6 +65,17 @@ else
     echo "⚠️ API token not found, will use Kubernetes nodes only"
 fi
 
+# Create ConfigMap for cluster configuration
+if [[ -f "$CONFIG_FILE" ]]; then
+    kubectl create configmap dashboard-cluster-config \
+        --from-file=config.env="$CONFIG_FILE" \
+        --namespace="$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    echo "✓ Cluster config ConfigMap created"
+else
+    echo "⚠️ Cluster config file not found at: $CONFIG_FILE"
+fi
+
 # Clean up temp file
 rm -f "$TEMP_HTML"
 
@@ -171,6 +182,10 @@ spec:
         - name: api-token
           mountPath: /etc/mynodeone
           readOnly: true
+        - name: cluster-config
+          mountPath: /etc/cluster-config/config.env
+          subPath: config.env
+          readOnly: true
         resources:
           requests:
             memory: "16Mi"
@@ -191,6 +206,10 @@ spec:
       - name: api-token
         secret:
           secretName: dashboard-api-token
+          optional: true
+      - name: cluster-config
+        configMap:
+          name: dashboard-cluster-config
           optional: true
 ---
 apiVersion: v1

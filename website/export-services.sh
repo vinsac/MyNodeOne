@@ -209,6 +209,7 @@ export_cluster_config() {
     
     # Try to read from config.env in multiple locations
     local config_locations=(
+        "/etc/cluster-config/config.env"
         "/etc/mynodeone/config.env"
         "$HOME/.mynodeone/config.env"
         "/home/vinaysachdeva1/.mynodeone/config.env"

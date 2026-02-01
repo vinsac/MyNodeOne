@@ -306,7 +306,7 @@ sudo systemctl status mynodeone-sync-controller
 
 ## Related Scripts
 
-- **`../lib/sync-controller.sh`** - Automatic synchronization
-- **`../lib/service-registry.sh`** - Service registration
-- **`../vps/sync-vps-routes.sh`** - VPS route synchronization
-- **`../nodes/nodes-status.sh`** - Node status monitoring
+- **`/scripts/lib/sync-controller.sh`** - Automatic synchronization
+- **`/scripts/lib/service-registry.sh`** - Service registration
+- **`/scripts/vps/sync-vps-routes.sh`** - VPS route synchronization
+- **`/scripts/nodes/nodes-status.sh`** - Node status monitoring

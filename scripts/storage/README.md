@@ -41,8 +41,11 @@ Current State:
 **Called by:** `add-worker-node.sh` when worker joins cluster
 
 **What it does:**
+**What it does:**
 - Detects available disks (same logic as Longhorn)
 - Prepares MinIO data directories
+- **Safety**: Applies immutable lock (`chattr +i`) to mount point to prevent rootfs overflow
+- **Robustness**: Cleans `fstab` duplicates automatically
 - Generates credentials
 - Installs MinIO via Helm
 - Configures hostPath volumes

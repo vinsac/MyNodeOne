@@ -663,6 +663,11 @@ Yes! Add more disks to existing nodes via Longhorn UI. No downtime required.
 
 Both are needed and complement each other.
 
+### How is my MinIO data protected from mount failures?
+**Safety Valve**: The installation script now applies an "immutable lock" (`chattr +i`) to the `/mnt/minio` directory.
+- If the disk fails to mount, MinIO sees a **read-only** file system and stops, preventing it from silently writing data to your operating system drive.
+- This ensures you never "think" you are saving data when you are actually filling up your root partition.
+
 ### How do I backup my data?
 
 1. Longhorn automatic snapshots (configured in bootstrap script)

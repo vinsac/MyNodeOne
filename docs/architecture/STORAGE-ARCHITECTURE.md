@@ -155,6 +155,22 @@ minio-worker1.mynodeone.local:9000
 S3_ENDPOINT="http://minio-worker1.mynodeone.local:9000"
 ```
 
+### Storage Robustness
+To prevent data loss and system instability, the storage architecture includes several defensive mechanisms:
+
+1.  **Immutable Mount Point Lock ("Safety Valve")**:
+    *   The underlying mount point directory (`/mnt/minio`) is made immutable (`chattr +i`) when unmounted.
+    *   **Purpose**: Prevents MinIO from writing data to the root partition if the disk fails to mount.
+    *   **Behavior**: If the mount fails, MinIO receives a "Read-only file system" error and crashes safely, alerting administrators instead of silently filling the OS disk.
+
+2.  **Robust `fstab` Handling**:
+    *   Installation scripts explicitly clean up old entries for the target mount point before adding new ones.
+    *   **Purpose**: Prevents duplicate `fstab` entries that cause systemd mount failures during boot.
+
+3.  **Explicit StorageClass**:
+    *   Uses a dedicated `minio-local` StorageClass with `WaitForFirstConsumer` binding mode.
+    *   **Purpose**: Ensures persistent volumes are correctly bound to the specific node where data resides.
+
 ---
 
 ## 3. Node Agent - Storage Coordination

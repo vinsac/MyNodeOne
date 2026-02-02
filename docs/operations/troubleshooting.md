@@ -474,6 +474,45 @@ kubectl delete nodes.longhorn.io <worker-node> -n longhorn-system
 # Verify disk shows up correctly in Longhorn UI
 ```
 
+### MinIO Storage Issues
+
+#### Data "Lost" After Restart
+**Symptom**: MinIO starts but data appears missing. `df -h` shows `/mnt/minio` is mounting the root partition instead of the separate disk.
+
+**Cause**: The separate disk failed to mount, and MinIO fell back to using the directory on the OS disk.
+
+**Solution**:
+1. **Apply Safety Lock** (Prevents this in the future):
+   ```bash
+   sudo umount /mnt/minio
+   sudo chattr +i /mnt/minio  # Make directory immutable
+   sudo mount -a              # Try to remount
+   ```
+2. **Fix `fstab`**:
+   The `install-minio.sh` script now fixes this automatically, or check `/etc/fstab` for duplicate entries.
+
+#### "Read-only file system" Error in MinIO Logs
+**Symptom**: MinIO pod crashes with permission denied or read-only errors, even though running as root/correct user.
+
+**Cause**: This is the **Safety Valve** working correctly! The disk failed to mount, and MinIO attempted to write to the underlying immutable directory.
+
+**Solution**:
+1. Check why the disk didn't mount:
+   ```bash
+   sudo mount -a
+   dmesg | tail
+   ```
+2. Fix the mount issue (e.g., missing disk, changed UUID).
+3. Once mounted correctly, MinIO will write to the mounted disk (which is writable), hiding the immutable underlay.
+
+#### Duplicate fstab Entries
+**Symptom**: System boot logs show "Failed to create unit file... as it already exists".
+
+**Cause**: Multiple installation attempts appended duplicates to `/etc/fstab`.
+
+**Solution**:
+Run the installation script again (it now cleans duplicates) or manually edit `/etc/fstab` to keep only the correct line.
+
 ### 6. Monitoring Not Working
 
 **Symptom**: Grafana not showing data, Prometheus not scraping

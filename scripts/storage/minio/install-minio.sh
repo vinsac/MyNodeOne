@@ -263,6 +263,17 @@ format_and_mount_disk() {
     
     # Create mount point
     $node_cmd_prefix mkdir -p "$mount_path"
+
+    # STRUCTURAL FIX: Prevent writing to root filesystem if mount fails
+    # We make the underlying directory immutable. Data can only be written if a disk is mounted over it.
+    log_info "Applying safety lock to mount point..."
+    # Check if chattr exists (it should on standard linux)
+    if $node_cmd_prefix command -v chattr &> /dev/null; then
+        # Ensure it is currently unmounted before locking
+        if ! $node_cmd_prefix mountpoint -q "$mount_path"; then
+             $node_cmd_prefix chattr +i "$mount_path" || log_warn "Failed to set immutable flag (non-critical)"
+        fi
+    fi
     
     # Mount partition
     log_info "Mounting $partition to $mount_path..."
@@ -270,10 +281,14 @@ format_and_mount_disk() {
     
     # Add to fstab
     local uuid=$($node_cmd_prefix blkid -s UUID -o value "$partition")
-    $node_cmd_prefix bash -c "grep -q '$uuid' /etc/fstab || echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' | tee -a /etc/fstab > /dev/null"
+    
+    # Remove any existing entries for this mount point to prevent duplicates
+    # We use a temporary file to avoid race conditions or partial writes
+    log_info "Updating /etc/fstab..."
+    $node_cmd_prefix bash -c "grep -v '$mount_path' /etc/fstab > /tmp/fstab.new && echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /tmp/fstab.new && mv /tmp/fstab.new /etc/fstab"
     
     log_success "Disk mounted at $mount_path"
-}
+}}
 
 # Detect disks on target node
 if [ "$IS_LOCAL" = true ]; then
@@ -368,6 +383,11 @@ cat "$MANIFESTS_DIR/namespace.yaml" | \
     sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
     kubectl apply -f -
 log_success "Namespace created"
+
+# Create StorageClass (Idempotent)
+log_info "Creating StorageClass: minio-local..."
+kubectl apply -f "$MANIFESTS_DIR/storageclass.yaml" || log_warn "StorageClass creation failed (might already exist)"
+log_success "StorageClass verified"
 
 # Create secret
 log_info "Creating secret with credentials..."

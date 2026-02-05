@@ -195,10 +195,17 @@ export_cluster() {
         }' 2>/dev/null || echo '{}')
     fi
     
+    # Calculate service count from the already exported services.json
+    local service_count=0
+    if [[ -f "$OUTPUT_DIR/services.json" ]]; then
+        service_count=$(jq 'length' "$OUTPUT_DIR/services.json" 2>/dev/null || echo "0")
+    fi
+    
     local cluster_json=$(jq -n -c --arg total_nodes "$total_nodes" \
         --arg ready_nodes "$ready_nodes" \
         --arg total_pods "$total_pods" \
         --arg running_pods "$running_pods" \
+        --arg service_count "$service_count" \
         --argjson storage "$storage_info" '{
         nodes: {
             total: ($total_nodes | tonumber),
@@ -207,6 +214,9 @@ export_cluster() {
         pods: {
             total: ($total_pods | tonumber),
             running: ($running_pods | tonumber)
+        },
+        services: {
+            running: ($service_count | tonumber)
         },
         storage: $storage,
         timestamp: now

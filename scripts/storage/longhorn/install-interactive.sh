@@ -53,10 +53,6 @@ if [ -f "$LIB_DIR/disk-utils.sh" ]; then
     source "$LIB_DIR/disk-utils.sh"
 fi
 
-if [ -f "$LIB_DIR/service-registry.sh" ]; then
-    source "$LIB_DIR/service-registry.sh"
-fi
-
 # Global arrays for disk management
 declare -a MOUNTED_DISKS=()
 declare -a SELECTED_DISKS=()
@@ -619,8 +615,8 @@ optimize_disk_reservations() {
 
 # Function to register Longhorn configuration in node registry
 register_in_node_registry() {
-    if ! command -v register_cluster_node &>/dev/null; then
-        log_warn "Node registry functions not available, skipping registration"
+    if ! [ -f "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" ]; then
+        log_warn "Node registry script not found, skipping registration"
         return 0
     fi
     
@@ -649,45 +645,49 @@ register_in_node_registry() {
     done
     
     # Update node registry
-    register_cluster_node \
+    bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" register \
         --node-name "$node_name" \
         --node-type "control-plane" \
         --longhorn-enabled "true" \
         --longhorn-disks "$disk_list" \
-        --longhorn-default-path "${MOUNTED_DISKS[0]:-/var/lib/longhorn}"
+        --longhorn-default-path "${MOUNTED_DISKS[0]:-/var/lib/longhorn}" || {
+        log_warn "Failed to update node registry"
+        return 1
+    }
     
     log_success "Updated Longhorn configuration for $node_name"
 }
 
 # Function to sync DNS entries
 sync_dns_entries() {
-    if ! command -v sync_cluster_dns &>/dev/null; then
-        log_warn "DNS sync functions not available, skipping DNS sync"
-        return 0
-    fi
-    
-    log_info "Syncing DNS entries..."
-    sync_cluster_dns
+    # DNS sync functionality not yet implemented
+    log_info "DNS sync functionality not yet implemented, skipping"
+    return 0
 }
 
 # Function to register Longhorn UI in service registry
 register_longhorn_ui() {
-    if ! command -v register_service &>/dev/null; then
-        log_warn "Service registration functions not available, skipping UI registration"
+    if ! [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
+        log_warn "Service registry script not found, skipping UI registration"
         return 0
     fi
     
     log_info "Registering Longhorn UI in service registry..."
     
+    # Initialize registry if needed
+    bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" init || true
+    
     # Register Longhorn service
-    register_service \
-        --name "longhorn" \
-        --type "storage" \
-        --url "http://longhorn.minicloud.local" \
-        --description "Longhorn distributed storage management UI" \
-        --icon "storage" \
-        --namespace "longhorn-system" \
-        --port "80"
+    bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
+        "longhorn" \
+        "longhorn" \
+        "longhorn-system" \
+        "longhorn-frontend" \
+        "80" \
+        "true" || {
+        log_warn "Failed to register Longhorn UI in service registry"
+        return 1
+    }
     
     log_success "Longhorn UI registered in service registry"
 }

@@ -202,7 +202,7 @@ return 0
 
 ### 5. Test Suite for Validation
 
-**File**: `scripts/storage/longhorn/test-storageclass-fix.sh`
+**File**: `scripts/storage/longhorn/test-storageclass.sh`
 
 Created comprehensive test suite to verify all fixes are properly implemented:
 - Function definitions test
@@ -231,7 +231,7 @@ Created comprehensive test suite to verify all fixes are properly implemented:
 
 Run the test suite to verify fixes:
 ```bash
-sudo bash scripts/storage/longhorn/test-storageclass-fix.sh
+sudo bash scripts/storage/longhorn/test-storageclass.sh
 ```
 
 Expected output:

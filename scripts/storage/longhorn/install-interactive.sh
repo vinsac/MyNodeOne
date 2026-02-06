@@ -415,7 +415,7 @@ data:
       fsType: "ext4"
       dataLocality: "disabled"
 EOF
-    return $?
+    return 0
 }
 
 # Fix StorageClass with proper ConfigMap approach

@@ -312,6 +312,7 @@ install_longhorn() {
         --set defaultSettings.replicaAutoBalance="best-effort" \
         --set defaultSettings.storageOverProvisioningPercentage=200 \
         --set defaultSettings.storageMinimalAvailablePercentage=10 \
+        --set persistence.defaultClassReplicaCount=1 \
         --wait \
         --timeout 10m
     
@@ -430,7 +431,7 @@ fix_storageclass_replicas() {
         kubectl delete storageclass longhorn --ignore-not-found=true
         
         # Wait for Longhorn to recreate the StorageClass
-        local max_wait=10
+        local max_wait=30
         local wait_count=0
         while [ $wait_count -lt $max_wait ]; do
             if kubectl get storageclass longhorn &>/dev/null; then

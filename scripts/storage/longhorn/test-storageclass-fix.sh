@@ -110,10 +110,10 @@ test_configmap_fix() {
         return 1
     fi
     
-    if grep -q "patch configmap" "$install_script"; then
-        print_success "ConfigMap patch method implemented"
+    if grep -q "create configmap" "$install_script"; then
+        print_success "ConfigMap create/replace method implemented"
     else
-        print_error "ConfigMap patch method NOT implemented"
+        print_error "ConfigMap create/replace method NOT implemented"
         return 1
     fi
     

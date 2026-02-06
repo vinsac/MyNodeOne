@@ -660,9 +660,13 @@ register_in_node_registry() {
 
 # Function to sync DNS entries
 sync_dns_entries() {
-    # DNS sync functionality not yet implemented
-    log_info "DNS sync functionality not yet implemented, skipping"
-    return 0
+    if ! [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
+        log_warn "DNS sync script not found, skipping DNS sync"
+        return 0
+    fi
+    
+    log_info "Syncing DNS entries..."
+    bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" || log_warn "DNS sync failed"
 }
 
 # Function to register Longhorn UI in service registry

@@ -390,7 +390,7 @@ install_longhorn() {
 fix_longhorn_configmap_replicas() {
     log_info "Updating Longhorn ConfigMap to use numberOfReplicas=1..."
     
-    cat <<EOF | kubectl apply -n longhorn-system -f -
+    cat <<EOF | kubectl apply -n longhorn-system -f - || { log_warn "Failed to apply Longhorn ConfigMap"; return 1; }
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -467,8 +467,9 @@ add_node_disks_to_longhorn() {
     # Get actual node name
     local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
-        log_warn "Could not detect Kubernetes node name, skipping disk configuration"
-        return 1
+        log_warn "Could not detect Kubernetes node name, skipping Longhorn disk configuration"
+        log_info "Configure disks via Longhorn UI manually if needed"
+        return 0
     fi
     
     # Check if Longhorn node exists
@@ -613,7 +614,7 @@ register_in_node_registry() {
     # Get node name from Kubernetes
     local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
-        log_warn "Could not detect Kubernetes node name"
+        log_warn "Could not detect Kubernetes node name, skipping node registration"
         return 0
     fi
     
@@ -640,7 +641,7 @@ register_in_node_registry() {
             --name "$node_name" \
             --disks "$disk_list" || {
             log_warn "Failed to update node registry Longhorn config"
-            return 1
+            return 0
         }
     fi
     
@@ -679,7 +680,7 @@ register_longhorn_ui() {
         "80" \
         "true" || {
         log_warn "Failed to register Longhorn UI in service registry"
-        return 1
+        return 0
     }
     
     log_success "Longhorn UI registered in service registry"

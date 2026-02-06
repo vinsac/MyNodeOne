@@ -212,13 +212,23 @@ format_and_mount_disks() {
         
         # Create partition
         log_info "Creating partition on $disk..."
-        sudo sfdisk "$disk" <<EOF
-label: gpt
-size: , type=LINUX
-EOF
+        sudo parted -s "$disk" mklabel gpt mkpart primary ext4 0% 100%
         
-        # Wait for partition to be available
-        local partition="${disk}1"
+        # Determine partition name dynamically
+        log_info "Detecting partition on $disk..."
+        local partition=""
+        local max_detection_wait=5
+        local detection_wait=0
+        
+        while [ $detection_wait -lt $max_detection_wait ]; do
+            partition=$(lsblk -lnp -o NAME "$disk" | sed -n '2p')
+            if [ -n "$partition" ]; then
+                break
+            fi
+            sleep 1
+            detection_wait=$((detection_wait + 1))
+        done
+
         local max_wait=10
         local wait_count=0
         while [ $wait_count -lt $max_wait ]; do
@@ -380,41 +390,32 @@ install_longhorn() {
 fix_longhorn_configmap_replicas() {
     log_info "Updating Longhorn ConfigMap to use numberOfReplicas=1..."
     
-    # Create a temporary ConfigMap with correct StorageClass YAML
-    local temp_configmap="longhorn-storageclass-fix-$$"
-    cat <<EOF | kubectl create configmap "$temp_configmap" --from-file=storageclass.yaml=/dev/stdin -n longhorn-system --dry-run=client -o yaml | kubectl apply -f -
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
+    cat <<EOF | kubectl apply -n longhorn-system -f -
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: longhorn
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: driver.longhorn.io
-allowVolumeExpansion: true
-reclaimPolicy: Delete
-volumeBindingMode: Immediate
-parameters:
-  numberOfReplicas: "1"
-  staleReplicaTimeout: "30"
-  fromBackup: ""
-  fsType: "ext4"
-  dataLocality: "disabled"
+  name: longhorn-storageclass
+  namespace: longhorn-system
+data:
+  storageclass.yaml: |
+    kind: StorageClass
+    apiVersion: storage.k8s.io/v1
+    metadata:
+      name: longhorn
+      annotations:
+        storageclass.kubernetes.io/is-default-class: "true"
+    provisioner: driver.longhorn.io
+    allowVolumeExpansion: true
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    parameters:
+      numberOfReplicas: "1"
+      staleReplicaTimeout: "30"
+      fromBackup: ""
+      fsType: "ext4"
+      dataLocality: "disabled"
 EOF
-    
-    if [ $? -eq 0 ]; then
-        # Delete the original ConfigMap and recreate it with correct content
-        kubectl delete configmap longhorn-storageclass -n longhorn-system --ignore-not-found=true
-        kubectl get configmap "$temp_configmap" -n longhorn-system -o yaml | \
-            sed "s/name: $temp_configmap/name: longhorn-storageclass/" | \
-            kubectl apply -f -
-        kubectl delete configmap "$temp_configmap" -n longhorn-system --ignore-not-found=true
-        
-        log_success "ConfigMap updated successfully"
-        return 0
-    else
-        log_warn "Failed to create temporary ConfigMap"
-        return 1
-    fi
+    return $?
 }
 
 # Fix StorageClass with proper ConfigMap approach
@@ -463,28 +464,10 @@ add_node_disks_to_longhorn() {
     
     log_info "Configuring disks in Longhorn..."
     
-    # Wait for Longhorn to initialize
-    sleep 10
-    
     # Get actual node name
     local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
-        log_warn "Could not detect Kubernetes node name"
-        return 1
-    fi
-    
-    # Check if kubectl is available
-    if ! kubectl get nodes &>/dev/null; then
-        log_warn "kubectl not available - disk configuration will be handled by control plane"
-        log_info "Disks mounted at: ${MOUNTED_DISKS[@]}"
-        log_info "Configure disks via Longhorn UI after node joins cluster"
-        return 0
-    fi
-    
-    # Get actual node name
-    node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [[ -z "$node_name" ]]; then
-        log_warn "Could not detect node name, skipping disk configuration"
+        log_warn "Could not detect Kubernetes node name, skipping disk configuration"
         return 1
     fi
     

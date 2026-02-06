@@ -87,12 +87,17 @@ display_disk_info() {
     echo "  • $disk ($size) - $model"
 }
 
+# Global array to store detected disks
+declare -a AVAILABLE_DISKS=()
+
 # Function to detect available disks
 detect_available_disks() {
     log_info "Detecting available disks..."
     
+    # Reset available disks array
+    AVAILABLE_DISKS=()
+    
     # Get list of block devices that are actual disks (not partitions)
-    local disks=()
     while IFS= read -r disk; do
         # Skip system disks and partitions
         if [[ "$disk" =~ ^(loop|fd|ram|sr|md|dm-) ]]; then
@@ -110,19 +115,19 @@ detect_available_disks() {
             continue
         fi
         
-        disks+=("/dev/$disk")
+        AVAILABLE_DISKS+=("/dev/$disk")
     done < <(lsblk -d -n -o NAME | sort)
     
-    if [ ${#disks[@]} -eq 0 ]; then
+    if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
         log_warn "No additional disks found. Will use OS disk only."
         return 0
     fi
     
     echo "Available physical disks:"
-    for i in "${!disks[@]}"; do
-        local disk_name=$(basename "${disks[$i]}")
-        local size=$(lsblk -b -d -n -o SIZE "${disks[$i]}" | numfmt --to=iec-i --suffix=B)
-        local model=$(lsblk -d -n -o MODEL "${disks[$i]}" 2>/dev/null || echo "Unknown")
+    for i in "${!AVAILABLE_DISKS[@]}"; do
+        local disk_path="${AVAILABLE_DISKS[$i]}"
+        local disk_name=$(basename "$disk_path")
+        local size=$(lsblk -b -d -n -o SIZE "$disk_path" | numfmt --to=iec-i --suffix=B)
         echo "  $((i+1))) $disk_name ($size)"
     done
 }
@@ -149,15 +154,7 @@ handle_disk_selection() {
             ;;
         "all"|"ALL")
             log_info "Selected all physical disks"
-            while IFS= read -r disk; do
-                if [[ "$disk" =~ ^(loop|fd|ram|sr|md|dm-) ]]; then
-                    continue
-                fi
-                if [[ "$disk" =~ [0-9]$ ]]; then
-                    continue
-                fi
-                SELECTED_DISKS+=("/dev/$disk")
-            done < <(lsblk -d -n -o NAME | sort)
+            SELECTED_DISKS=("${AVAILABLE_DISKS[@]}")
             ;;
         *)
             # Parse comma-separated disk numbers
@@ -166,9 +163,10 @@ handle_disk_selection() {
                 local disk_num=$(echo "$num" | tr -d ' ')
                 if [[ "$disk_num" =~ ^[0-9]+$ ]]; then
                     local disk_index=$((disk_num - 1))
-                    local disk_name=$(lsblk -d -n -o NAME | sed -n "${disk_index}p")
-                    if [ -n "$disk_name" ]; then
-                        SELECTED_DISKS+=("/dev/$disk_name")
+                    
+                    if [[ $disk_index -ge 0 && $disk_index -lt ${#AVAILABLE_DISKS[@]} ]]; then
+                        local disk_path="${AVAILABLE_DISKS[$disk_index]}"
+                        SELECTED_DISKS+=("$disk_path")
                     else
                         log_warn "Invalid disk number: $disk_num"
                     fi
@@ -636,6 +634,14 @@ register_in_node_registry() {
         return 0
     fi
     
+    # 1. Register cluster node first (idempotent)
+    bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" register-cluster-node \
+        --name "$node_name" \
+        --role "control-plane" || {
+        log_warn "Failed to register cluster node"
+        return 1
+    }
+    
     # Build disk list CSV
     local disk_list=""
     for disk_path in "${MOUNTED_DISKS[@]}"; do
@@ -645,16 +651,15 @@ register_in_node_registry() {
         disk_list="$disk_list$disk_path"
     done
     
-    # Update node registry
-    bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" register \
-        --node-name "$node_name" \
-        --node-type "control-plane" \
-        --longhorn-enabled "true" \
-        --longhorn-disks "$disk_list" \
-        --longhorn-default-path "${MOUNTED_DISKS[0]:-/var/lib/longhorn}" || {
-        log_warn "Failed to update node registry"
-        return 1
-    }
+    # 2. Update Longhorn configuration
+    if [[ -n "$disk_list" ]]; then
+        bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" update-longhorn \
+            --name "$node_name" \
+            --disks "$disk_list" || {
+            log_warn "Failed to update node registry Longhorn config"
+            return 1
+        }
+    fi
     
     log_success "Updated Longhorn configuration for $node_name"
 }

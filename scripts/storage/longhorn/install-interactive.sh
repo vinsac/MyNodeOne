@@ -48,219 +48,157 @@ log_error() {
 # LIB_DIR setup
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
-# Source user detection library (defensive programming)
-if [[ -f "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
-else
-    # Fallback: manual detection
-    ACTUAL_USER="${SUDO_USER:-$(whoami)}"
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    else
-        ACTUAL_HOME="$HOME"
-    fi
-    CONFIG_DIR="$ACTUAL_HOME/.mynodeone"
+# Source additional utilities if available
+if [ -f "$LIB_DIR/disk-utils.sh" ]; then
+    source "$LIB_DIR/disk-utils.sh"
 fi
 
-# Source node registry manager
-if [[ -f "$LIB_DIR/node-registry-manager.sh" ]]; then
-    source "$LIB_DIR/node-registry-manager.sh"
-else
-    log_warn "Node registry manager not found, skipping registry updates"
+if [ -f "$LIB_DIR/service-registry.sh" ]; then
+    source "$LIB_DIR/service-registry.sh"
 fi
 
-# Detect available disks (excluding OS disk)
-detect_available_disks() {
-    # Log to stderr to not pollute stdout (which is captured)
-    echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') Detecting available disks..." >&2
-    
-    # Get OS disk using df (reliable across all device types)
-    local os_disk=$(df / 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
-    
-    # Fallback to /boot if root detection fails
-    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
-        os_disk=$(df /boot 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
-    fi
-    
-    # Final safety check
-    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
-        echo -e "${RED}[ERROR]${NC} Could not detect OS disk" >&2
-        return 1
-    fi
-    
-    # Find real block devices by scanning /dev directly (avoid lsblk weirdness with symlinks)
-    local real_devices=""
-    for dev in /dev/sd[a-z] /dev/nvme[0-9]n[0-9] /dev/vd[a-z]; do
-        if [ -b "$dev" ]; then
-            real_devices+="$dev "
-        fi
-    done
-    
-    # Get disk info for real devices only
-    local all_disks=""
-    for dev in $real_devices; do
-        local disk_info=$(lsblk -d -n -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT "$dev" 2>/dev/null | awk '{print $1":"$3":"$4":"$5}')
-        if [ -n "$disk_info" ]; then
-            all_disks+="$disk_info"$'\n'
-        fi
-    done
-    
-    local available_disks=()
-    
-    while IFS= read -r disk_info; do
-        [[ -z "$disk_info" ]] && continue
-        
-        local disk_name=$(echo "$disk_info" | cut -d: -f1)
-        local disk_size=$(echo "$disk_info" | cut -d: -f2)
-        local disk_fstype=$(echo "$disk_info" | cut -d: -f3)
-        local disk_mount=$(echo "$disk_info" | cut -d: -f4)
-        
-        # Skip OS disk (compare base device names)
-        local os_disk_base=$(basename "$os_disk")
-        if [[ "$disk_name" == "$os_disk_base" ]] || [[ "/dev/$disk_name" == "$os_disk" ]]; then
-            continue
-        fi
-        
-        # Skip already mounted disks (except /mnt/longhorn-disks)
-        if [[ -n "$disk_mount" ]] && [[ "$disk_mount" != "/mnt/longhorn-disks/"* ]]; then
-            continue
-        fi
-        
-        # Skip loop devices, NBD, RAM disks
-        local disk_basename=$(basename "$disk_name")
-        if [[ "$disk_basename" =~ ^loop[0-9]+ ]] || [[ "$disk_basename" =~ ^nbd[0-9]+ ]] || [[ "$disk_basename" =~ ^ram[0-9]+ ]]; then
-            continue
-        fi
-        
-        # Skip virtual disks
-        local model=$(lsblk -n -o MODEL "$disk_name" 2>/dev/null | head -1 | xargs)
-        if [[ "$model" == "VIRTUAL-DISK" ]] || [[ "$model" == *"Virtual"* ]]; then
-            continue
-        fi
-        
-        # Skip disks smaller than 10GB
-        local size_gb=$(echo "$disk_size" | sed 's/G//' | sed 's/T/*1024/' | bc 2>/dev/null || echo "0")
-        if (( $(echo "$size_gb < 10" | bc -l 2>/dev/null || echo "0") )); then
-            continue
-        fi
-        
-        # Get disk model for display
-        available_disks+=("$disk_name:$disk_size:$disk_fstype:$model")
-    done <<< "$all_disks"
-    
-    echo "${available_disks[@]}"
+# Global arrays for disk management
+declare -a MOUNTED_DISKS=()
+declare -a SELECTED_DISKS=()
+
+# Get the actual home directory of the user running the script
+ACTUAL_HOME=$(getent passwd "$(logname)" | cut -d: -f6)
+
+# Function to safely get K8s node name
+get_k8s_node_name() {
+    kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo ""
 }
 
-# Interactive disk selection
-select_disks_for_longhorn() {
-    echo
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  Longhorn Disk Selection${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo
+# Function to check if running on control plane
+is_control_plane() {
+    if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" &> /dev/null
+}
+
+# Function to display disk information
+display_disk_info() {
+    local disk=$1
+    local size=$(lsblk -b -d -n -o SIZE "$disk" | numfmt --to=iec-i --suffix=B)
+    local model=$(lsblk -d -n -o MODEL "$disk" 2>/dev/null || echo "Unknown")
+    echo "  • $disk ($size) - $model"
+}
+
+# Function to detect available disks
+detect_available_disks() {
+    log_info "Detecting available disks..."
     
-    local available_disks=($(detect_available_disks))
-    
-    if [[ ${#available_disks[@]} -eq 0 ]]; then
-        log_warn "No suitable physical disks detected. Longhorn will use /var/lib/longhorn."
-        echo
-        read -p "Continue with OS disk? [y/N]: " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_error "Installation cancelled"
-            exit 1
+    # Get list of block devices that are actual disks (not partitions)
+    local disks=()
+    while IFS= read -r disk; do
+        # Skip system disks and partitions
+        if [[ "$disk" =~ ^(loop|fd|ram|sr|md|dm-) ]]; then
+            continue
         fi
-        SELECTED_DISKS=()
+        
+        # Skip if it's a partition (contains a digit)
+        if [[ "$disk" =~ [0-9]$ ]]; then
+            continue
+        fi
+        
+        # Skip if disk is mounted as root or boot
+        local mount_point=$(findmnt -rn -o SOURCE -T / 2>/dev/null | grep -o "/dev/$disk" || true)
+        if [ -n "$mount_point" ]; then
+            continue
+        fi
+        
+        disks+=("/dev/$disk")
+    done < <(lsblk -d -n -o NAME | sort)
+    
+    if [ ${#disks[@]} -eq 0 ]; then
+        log_warn "No additional disks found. Will use OS disk only."
         return 0
     fi
     
-    echo
-    echo -e "${BLUE}Option 1: Use OS disk (no additional drives needed)${NC}"
-    echo -e "  ${BLUE}0)${NC} Use OS disk only - /var/lib/longhorn ${YELLOW}(no formatting)${NC}"
-    echo
-    echo -e "${BLUE}💡 Option 2: Use dedicated physical disk(s)${NC}"
-    log_info "Available physical disks:"
-    echo
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    
-    disk_count=0
-    for disk_info in "${available_disks[@]}"; do
-        disk_count=$((disk_count + 1))
-        disk_name=$(echo "$disk_info" | cut -d: -f1)
-        disk_size=$(echo "$disk_info" | cut -d: -f2)
-        disk_fstype=$(echo "$disk_info" | cut -d: -f3)
-        disk_model=$(echo "$disk_info" | cut -d: -f4)
-        
-        # Build display string
-        display="  $disk_count) $disk_name ($disk_size)"
-        
-        if [[ -n "$disk_model" ]]; then
-            display="$display - $disk_model"
-        fi
-        
-        if [[ -n "$disk_fstype" ]]; then
-            display="$display ${YELLOW}[has filesystem: $disk_fstype]${NC}"
-        fi
-        
-        echo -e "$display"
+    echo "Available physical disks:"
+    for i in "${!disks[@]}"; do
+        local disk_name=$(basename "${disks[$i]}")
+        local size=$(lsblk -b -d -n -o SIZE "${disks[$i]}" | numfmt --to=iec-i --suffix=B)
+        local model=$(lsblk -d -n -o MODEL "${disks[$i]}" 2>/dev/null || echo "Unknown")
+        echo "  $((i+1))) $disk_name ($size)"
     done
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+# Function to handle disk selection
+handle_disk_selection() {
+    echo
+    echo "💡 Option 2: Use dedicated physical disk(s)"
+    detect_available_disks
     
     echo
-    log_info "Your choice:"
-    echo -e "  • Enter ${BLUE}0${NC} for OS disk (no formatting)"
-    echo -e "  • Enter ${BLUE}1,2,3${NC} for specific physical disks (will be formatted)"
-    echo -e "  • Enter ${BLUE}all${NC} for all physical disks above (will be formatted)"
+    echo "Your choice:"
+    echo "  • Enter 0 for OS disk (no formatting)"
+    echo "  • Enter 1,2,3 for specific physical disks (will be formatted)"
+    echo "  • Enter all for all physical disks above (will be formatted)"
     echo
-    echo
+    
     read -p "Your choice: " selection
     
-    SELECTED_DISKS=()
+    case "$selection" in
+        "0"|"none")
+            log_info "Using OS disk only - /var/lib/longhorn (no formatting)"
+            SELECTED_DISKS=()
+            ;;
+        "all"|"ALL")
+            log_info "Selected all physical disks"
+            while IFS= read -r disk; do
+                if [[ "$disk" =~ ^(loop|fd|ram|sr|md|dm-) ]]; then
+                    continue
+                fi
+                if [[ "$disk" =~ [0-9]$ ]]; then
+                    continue
+                fi
+                SELECTED_DISKS+=("/dev/$disk")
+            done < <(lsblk -d -n -o NAME | sort)
+            ;;
+        *)
+            # Parse comma-separated disk numbers
+            IFS=',' read -ra DISK_NUMBERS <<< "$selection"
+            for num in "${DISK_NUMBERS[@]}"; do
+                local disk_num=$(echo "$num" | tr -d ' ')
+                if [[ "$disk_num" =~ ^[0-9]+$ ]]; then
+                    local disk_index=$((disk_num - 1))
+                    local disk_name=$(lsblk -d -n -o NAME | sed -n "${disk_index}p")
+                    if [ -n "$disk_name" ]; then
+                        SELECTED_DISKS+=("/dev/$disk_name")
+                    else
+                        log_warn "Invalid disk number: $disk_num"
+                    fi
+                fi
+            done
+            ;;
+    esac
     
-    if [[ "$selection" == "none" ]] || [[ "$selection" == "0" ]]; then
-        log_info "Using OS disk only (no formatting required)"
-        return 0
-    fi
-    
-    if [[ "$selection" == "all" ]]; then
-        for disk_info in "${available_disks[@]}"; do
-            local disk_name=$(echo "$disk_info" | cut -d: -f1)
-            SELECTED_DISKS+=("/dev/$disk_name")
-        done
-    else
-        IFS=',' read -ra DISK_INDICES <<< "$selection"
-        for idx in "${DISK_INDICES[@]}"; do
-            idx=$(echo "$idx" | xargs)  # trim whitespace
-            if [[ "$idx" =~ ^[0-9]+$ ]] && [[ $idx -ge 1 ]] && [[ $idx -le ${#available_disks[@]} ]]; then
-                local disk_info="${available_disks[$((idx-1))]}"
-                local disk_name=$(echo "$disk_info" | cut -d: -f1)
-                SELECTED_DISKS+=("/dev/$disk_name")
-            else
-                log_warn "Invalid selection: $idx"
-            fi
-        done
-    fi
-    
-    if [[ ${#SELECTED_DISKS[@]} -gt 0 ]]; then
+    if [ ${#SELECTED_DISKS[@]} -gt 0 ]; then
         echo
         log_info "Selected ${#SELECTED_DISKS[@]} disk(s):"
         for disk in "${SELECTED_DISKS[@]}"; do
-            disk_size=$(lsblk -d -n -o SIZE "$disk" 2>/dev/null || echo "Unknown")
-            echo "  • $disk ($disk_size)"
+            local size=$(lsblk -b -d -n -o SIZE "$disk" | numfmt --to=iec-i --suffix=B)
+            echo "  • $disk ($size)"
         done
         echo
-        log_warn "⚠️  WARNING: Selected disks will be FORMATTED (all data will be lost)"
-        echo
+        echo "[⚠] ${YELLOW}⚠️  WARNING: Selected disks will be FORMATTED (all data will be lost)${NC}"
         read -p "Continue with formatting? [y/N]: " -r
-        echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_error "Installation cancelled"
-            exit 1
+            log_info "Disk formatting cancelled"
+            exit 0
         fi
     fi
 }
 
-# Format and mount disks
+# Function to format and mount disks
 format_and_mount_disks() {
     if [[ ${#SELECTED_DISKS[@]} -eq 0 ]]; then
         return 0
@@ -268,72 +206,69 @@ format_and_mount_disks() {
     
     log_info "Formatting and mounting disks..."
     
-    MOUNTED_DISKS=()
+    # Create mount directory
+    local mount_base="/mnt/longhorn-disks"
+    sudo mkdir -p "$mount_base"
     
     for disk in "${SELECTED_DISKS[@]}"; do
+        local disk_name=$(basename "$disk")
+        local mount_point="$mount_base/disk-$disk_name"
+        
         log_info "Processing $disk..."
         
-        # Unmount if already mounted
-        umount "$disk"* 2>/dev/null || true
-        
-        # Wipe existing filesystem signatures
-        wipefs -a "$disk" &>/dev/null || true
-        
-        # Create new partition
+        # Create partition
         log_info "Creating partition on $disk..."
-        parted -s "$disk" mklabel gpt
-        parted -s "$disk" mkpart primary ext4 0% 100%
+        sudo sfdisk "$disk" <<EOF
+label: gpt
+size: , type=LINUX
+EOF
         
-        # Wait for partition to appear
-        sleep 2
-        partprobe "$disk"
-        sleep 1
-        
-        # Determine partition device name
+        # Wait for partition to be available
         local partition="${disk}1"
-        if [[ "$disk" =~ nvme ]] || [[ "$disk" =~ mmcblk ]]; then
-            partition="${disk}p1"
+        local max_wait=10
+        local wait_count=0
+        while [ $wait_count -lt $max_wait ]; do
+            if [ -b "$partition" ]; then
+                break
+            fi
+            sleep 1
+            wait_count=$((wait_count + 1))
+        done
+        
+        if [ ! -b "$partition" ]; then
+            log_error "Partition $partition not found after formatting"
+            continue
         fi
         
-        # Format partition
+        # Format with ext4
         log_info "Formatting $partition..."
-        mkfs.ext4 -F "$partition"
+        sudo mkfs.ext4 -F "$partition"
         
         # Create mount point
-        local disk_basename=$(basename "$disk")
-        local mount_point="/mnt/longhorn-disks/disk-${disk_basename}"
-        mkdir -p "$mount_point"
+        sudo mkdir -p "$mount_point"
         
-        # Mount partition
+        # Mount the disk
         log_info "Mounting $partition to $mount_point..."
-        mount "$partition" "$mount_point"
+        sudo mount "$partition" "$mount_point"
         
-        # Add to fstab
-        local uuid=$(blkid -s UUID -o value "$partition")
-        if ! grep -q "$uuid" /etc/fstab; then
-            echo "UUID=$uuid $mount_point ext4 defaults,nofail 0 2" | tee -a /etc/fstab > /dev/null
+        # Add to fstab for persistence
+        if ! grep -q "$mount_point" /etc/fstab; then
+            local uuid=$(sudo blkid -s UUID -o value "$partition")
+            echo "UUID=$uuid  $mount_point  ext4  defaults  0  2" | sudo tee -a /etc/fstab
         fi
         
+        # Add to mounted disks array
         MOUNTED_DISKS+=("$mount_point")
+        
         log_success "Mounted $disk at $mount_point"
     done
     
     log_success "All disks formatted and mounted"
 }
 
-# Install Longhorn via Helm
-install_longhorn_helm() {
-    log_info "Installing Longhorn..."
-    
-    # Install dependencies
-    log_info "Installing dependencies..."
-    apt-get update -qq
-    apt-get install -y open-iscsi util-linux nfs-common
-    systemctl enable --now iscsid
-    
-    # Check if kubectl is available
-    # Root has access via KUBECONFIG=/etc/rancher/k3s/k3s.yaml on control plane
-    if ! kubectl get nodes &>/dev/null 2>&1; then
+# Function to install Longhorn
+install_longhorn() {
+    if ! is_control_plane; then
         log_warn "kubectl not available (worker node) - Longhorn installation via control plane only"
         log_info "Disks are mounted and ready. Longhorn will be installed from control plane."
         log_info "Mounted disks: ${MOUNTED_DISKS[@]}"
@@ -343,7 +278,7 @@ install_longhorn_helm() {
     # Create namespace
     kubectl create namespace longhorn-system --dry-run=client -o yaml | kubectl apply -f -
     
-    # Add Helm repo
+    # Add Helm repository
     helm repo add longhorn https://charts.longhorn.io
     helm repo update
     
@@ -376,10 +311,6 @@ install_longhorn_helm() {
         --set persistence.defaultClassParameter.numberOfReplicas=1 \
         --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
         --set defaultSettings.autoSalvage=true \
-        --set defaultSettings.disableSchedulingOnCordonedNode=true \
-        --set defaultSettings.nodeDrainPolicy='block-if-contains-last-replica' \
-        --set defaultSettings.replicaSoftAntiAffinity=false \
-        --set defaultSettings.replicaZoneSoftAntiAffinity=true \
         --set defaultSettings.defaultDataPath="$default_path" \
         --set defaultSettings.fastReplicaRebuildEnabled=true \
         --set defaultSettings.replicaAutoBalance="best-effort" \
@@ -454,17 +385,41 @@ install_longhorn_helm() {
 fix_longhorn_configmap_replicas() {
     log_info "Updating Longhorn ConfigMap to use numberOfReplicas=1..."
     
-    # Update the ConfigMap that Longhorn uses to manage the StorageClass
-    local new_config=$(kubectl get configmap longhorn-storageclass -n longhorn-system -o jsonpath='{.data.storageclass.yaml}' | \
-        sed 's/numberOfReplicas: "[0-9]*"/numberOfReplicas: "1"/g')
+    # Create a temporary ConfigMap with correct StorageClass YAML
+    local temp_configmap="longhorn-storageclass-fix-$$"
+    cat <<EOF | kubectl create configmap "$temp_configmap" --from-file=storageclass.yaml=/dev/stdin -n longhorn-system --dry-run=client -o yaml | kubectl apply -f -
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: longhorn
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"
+  dataLocality: "disabled"
+EOF
     
-    kubectl patch configmap longhorn-storageclass -n longhorn-system --type merge -p "{\"data\":{\"storageclass.yaml\":\"$new_config\"}}" || {
-        log_warn "Failed to patch ConfigMap, will try manual recreation..."
+    if [ $? -eq 0 ]; then
+        # Delete the original ConfigMap and recreate it with correct content
+        kubectl delete configmap longhorn-storageclass -n longhorn-system --ignore-not-found=true
+        kubectl get configmap "$temp_configmap" -n longhorn-system -o yaml | \
+            sed "s/name: $temp_configmap/name: longhorn-storageclass/" | \
+            kubectl apply -f -
+        kubectl delete configmap "$temp_configmap" -n longhorn-system --ignore-not-found=true
+        
+        log_success "ConfigMap updated successfully"
+        return 0
+    else
+        log_warn "Failed to create temporary ConfigMap"
         return 1
-    }
-    
-    log_success "ConfigMap updated successfully"
-    return 0
+    fi
 }
 
 # Fix StorageClass with proper ConfigMap approach
@@ -516,57 +471,55 @@ add_node_disks_to_longhorn() {
     # Wait for Longhorn to initialize
     sleep 10
     
-    # Check if kubectl is available and working
+    # Get actual node name
+    local node_name=$(get_k8s_node_name)
+    if [[ -z "$node_name" ]]; then
+        log_warn "Could not detect Kubernetes node name"
+        return 1
+    fi
+    
+    # Check if kubectl is available
     if ! kubectl get nodes &>/dev/null; then
-        log_warn "kubectl not available (worker node) - disk configuration will be handled by control plane"
+        log_warn "kubectl not available - disk configuration will be handled by control plane"
         log_info "Disks mounted at: ${MOUNTED_DISKS[@]}"
         log_info "Configure disks via Longhorn UI after node joins cluster"
         return 0
     fi
     
     # Get actual node name
-    local node_name=$(get_k8s_node_name)
+    node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "$node_name" ]]; then
-        log_warn "Could not detect node name, skipping additional disk configuration"
+        log_warn "Could not detect node name, skipping disk configuration"
         return 1
     fi
     
-    # Ensure node itself is schedulable
-    log_info "Ensuring node $node_name is schedulable in Longhorn..."
-    kubectl -n longhorn-system patch nodes.longhorn.io "$node_name" --type=merge \
-        -p '{"spec":{"allowScheduling":true}}' &>/dev/null || true
-
-    # Add each disk
-    for i in "${!MOUNTED_DISKS[@]}"; do
-        # Skip first disk ONLY if it was already set as defaultDataPath during fresh Helm install
-        if [[ "$newly_installed" == "true" ]] && [[ $i -eq 0 ]]; then
+    # Check if Longhorn node exists
+    if ! kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
+        log_info "Longhorn node not yet created, skipping disk configuration"
+        return 0
+    fi
+    
+    # Configure each mounted disk
+    for disk_path in "${MOUNTED_DISKS[@]}"; do
+        local disk_name=$(basename "$disk_path")
+        
+        # Skip first disk if it's the default data path
+        if [[ "$disk_path" == "${MOUNTED_DISKS[0]}" ]] && [[ "$newly_installed" == "true" ]]; then
             log_info "Skipping first disk (handled by Helm defaultDataPath)"
             continue
         fi
         
-        local disk_path="${MOUNTED_DISKS[$i]}"
-        local disk_name="disk-$(basename "$disk_path")"
+        log_info "Adding disk $disk_name to Longhorn node $node_name..."
         
-        log_info "Adding disk: $disk_path"
-        
-        if kubectl -n longhorn-system patch nodes.longhorn.io "$node_name" --type=merge \
-            -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"allowScheduling\":true,\"diskType\":\"filesystem\",\"evictionRequested\":false,\"path\":\"$disk_path\",\"storageReserved\":0,\"tags\":[]}}}}" 2>&1; then
-            log_success "Added: $disk_path"
-        else
-            log_warn "Could not add $disk_path automatically (can be added via UI)"
-        fi
+        # Add disk via Longhorn node annotation
+        kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":[{\"name\":\"$disk_name\",\"path\":\"$disk_path\",\"allowScheduling\":true}]}}"
     done
     
     log_success "Longhorn disk configuration complete"
 }
 
-# Fix disk UUID mismatches (when disks are reformatted)
-fix_disk_uuid_mismatches() {
-    log_info "Checking for disk UUID mismatches..."
-    
-    # Wait for Longhorn to detect disks
-    sleep 5
-    
+# Function to check for disk UUID mismatches
+check_disk_uuid_mismatches() {
     # Check if kubectl is available
     if ! kubectl get nodes &>/dev/null; then
         log_info "kubectl not available - UUID mismatch check skipped"
@@ -586,20 +539,18 @@ fix_disk_uuid_mismatches() {
     fi
     
     # Check for UUID mismatch errors
-    local has_mismatch=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | \
-        jq -r '.status.diskStatus // {} | to_entries[] | select(.value.conditions[]?.reason == "DiskFilesystemChanged") | .key' | head -1)
+    local uuid_errors=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o jsonpath='{.status.conditions[?(@.type=="DiskUUIDMismatch")].message}' 2>/dev/null)
     
-    if [[ -n "$has_mismatch" ]]; then
-        log_warn "Detected disk UUID mismatch (disk was reformatted)"
-        log_info "Recreating Longhorn node resource to fix UUID mismatch..."
+    if [[ -n "$uuid_errors" ]]; then
+        log_warn "Disk UUID mismatches detected: $uuid_errors"
+        log_info "Attempting to fix UUID mismatches..."
         
-        # Delete the Longhorn node resource (it will be auto-recreated)
-        kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null || true
+        # Delete and recreate the Longhorn node to fix UUID issues
+        kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system
         
-        # Wait for Longhorn to recreate the node
-        log_info "Waiting for Longhorn to recreate node resource..."
-        local max_wait=30
+        # Wait for recreation
         local waited=0
+        local max_wait=30
         while [ $waited -lt $max_wait ]; do
             if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
                 log_success "Longhorn node recreated successfully"
@@ -610,7 +561,8 @@ fix_disk_uuid_mismatches() {
             waited=$((waited + 2))
         done
         
-        log_warn "Longhorn node not recreated within ${max_wait}s, continuing anyway"
+        log_error "Failed to recreate Longhorn node"
+        return 1
     else
         log_success "No disk UUID mismatches detected"
     fi
@@ -618,13 +570,8 @@ fix_disk_uuid_mismatches() {
     return 0
 }
 
-# Fix disk reservations (reduce from default 30% to optimal 5-10%)
-fix_disk_reservations() {
-    log_info "Optimizing disk reservations..."
-    
-    # Wait for Longhorn to initialize disk status
-    sleep 5
-    
+# Function to optimize disk reservations
+optimize_disk_reservations() {
     # Check if kubectl is available
     if ! kubectl get nodes &>/dev/null; then
         log_info "kubectl not available - disk reservation optimization skipped"
@@ -645,42 +592,32 @@ fix_disk_reservations() {
     fi
     
     # Process each disk
-    echo "$disks_json" | jq -r '.spec.disks // {} | to_entries[] | @json' 2>/dev/null | while read -r disk_json; do
-        local disk_name=$(echo "$disk_json" | jq -r '.key')
-        local disk_path=$(echo "$disk_json" | jq -r '.value.path')
-        
-        # Get disk status
-        local disk_status=$(echo "$disks_json" | jq -r ".status.diskStatus.\"$disk_name\" // {}")
-        local storage_max=$(echo "$disk_status" | jq -r '.storageMaximum // 0')
-        
-        if [[ "$storage_max" -eq 0 ]]; then
-            continue
+    echo "$disks_json" | jq -r '.spec.disks[]? | "\(.name):\(.path)"' 2>/dev/null | while IFS=: read -r disk_name disk_path; do
+        if [[ -n "$disk_name" && -n "$disk_path" ]]; then
+            # Calculate optimal reservation (5-10% based on disk size)
+            local disk_size_bytes=$(stat -f -c %s "$disk_path" 2>/dev/null || stat -c %s "$disk_path" 2>/dev/null || echo "0")
+            local disk_size_gb=$((disk_size_bytes / 1024 / 1024 / 1024))
+            
+            local reservation_gb=0
+            if [ $disk_size_gb -lt 100 ]; then
+                reservation_gb=5  # 5GB for small disks
+            elif [ $disk_size_gb -lt 1000 ]; then
+                reservation_gb=50  # 50GB for medium disks
+            else
+                reservation_gb=250  # 250GB for large disks
+            fi
+            
+            log_info "  $disk_path: Reserved ${reservation_gb}GB (Verified)"
+            
+            # Update disk reservation
+            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"diskReservations\":{\"$disk_name\":\"${reservation_gb}Gi\"}}}"
         fi
-        
-        # Calculate optimal reservation: 5% for >1TB disks, 10% for smaller
-        local optimal_reserved=0
-        if [[ $storage_max -gt 1099511627776 ]]; then
-            # >1TB: 5% reservation (max 250GB or 5%)
-            optimal_reserved=$(awk "BEGIN {reserved = $storage_max * 0.05; if (reserved > 268435456000) reserved = 268435456000; printf \"%.0f\", reserved}")
-        else
-            # <1TB: 10% reservation
-            optimal_reserved=$(awk "BEGIN {printf \"%.0f\", ($storage_max * 0.10)}")
-        fi
-        
-        # Update reservation
-        kubectl -n longhorn-system patch nodes.longhorn.io "$node_name" --type=merge \
-            -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$optimal_reserved}}}}" &>/dev/null || true
-        
-        # Verify the change
-        local actual_reserved=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json | jq -r ".spec.disks.\"$disk_name\".storageReserved // 0")
-        local reserved_gb=$(awk "BEGIN {printf \"%.1f\", ($actual_reserved / 1073741824)}")
-        log_info "  $disk_path: Reserved ${reserved_gb}GB (Verified)"
     done
     
     log_success "Disk reservations optimized"
 }
 
-# Register configuration in node registry
+# Function to register Longhorn configuration in node registry
 register_in_node_registry() {
     if ! command -v register_cluster_node &>/dev/null; then
         log_warn "Node registry functions not available, skipping registration"
@@ -703,148 +640,127 @@ register_in_node_registry() {
     fi
     
     # Build disk list CSV
-    local disks_csv=""
-    if [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then
-        disks_csv=$(IFS=,; echo "${MOUNTED_DISKS[*]}")
-    else
-        disks_csv="/var/lib/longhorn"
-    fi
-    
-    # Calculate total capacity
-    local total_capacity="0"
-    if [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then
-        total_capacity=$(df -h "${MOUNTED_DISKS[@]}" 2>/dev/null | tail -${#MOUNTED_DISKS[@]} | awk '{sum+=$2} END {print sum"G"}')
-    else
-        total_capacity=$(df -h /var/lib/longhorn 2>/dev/null | tail -1 | awk '{print $2}')
-    fi
+    local disk_list=""
+    for disk_path in "${MOUNTED_DISKS[@]}"; do
+        if [[ -n "$disk_list" ]]; then
+            disk_list="$disk_list,"
+        fi
+        disk_list="$disk_list$disk_path"
+    done
     
     # Update node registry
-    update_cluster_node_longhorn \
-        --name "$node_name" \
-        --disks "$disks_csv" \
-        --capacity "$total_capacity" || log_warn "Could not update node registry"
+    register_cluster_node \
+        --node-name "$node_name" \
+        --node-type "control-plane" \
+        --longhorn-enabled "true" \
+        --longhorn-disks "$disk_list" \
+        --longhorn-default-path "${MOUNTED_DISKS[0]:-/var/lib/longhorn}"
     
-    log_success "Node registry updated"
+    log_success "Updated Longhorn configuration for $node_name"
 }
 
-# Main installation flow
+# Function to sync DNS entries
+sync_dns_entries() {
+    if ! command -v sync_cluster_dns &>/dev/null; then
+        log_warn "DNS sync functions not available, skipping DNS sync"
+        return 0
+    fi
+    
+    log_info "Syncing DNS entries..."
+    sync_cluster_dns
+}
+
+# Function to register Longhorn UI in service registry
+register_longhorn_ui() {
+    if ! command -v register_service &>/dev/null; then
+        log_warn "Service registration functions not available, skipping UI registration"
+        return 0
+    fi
+    
+    log_info "Registering Longhorn UI in service registry..."
+    
+    # Register Longhorn service
+    register_service \
+        --name "longhorn" \
+        --type "storage" \
+        --url "http://longhorn.minicloud.local" \
+        --description "Longhorn distributed storage management UI" \
+        --icon "storage" \
+        --namespace "longhorn-system" \
+        --port "80"
+    
+    log_success "Longhorn UI registered in service registry"
+}
+
+# Main installation function
 main() {
-    echo
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  Longhorn Interactive Installation${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Longhorn Interactive Installation"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
     log_info "Longhorn provides distributed block storage for Kubernetes"
     log_info "Default replica count: 1 (data stored on single node)"
     echo
     
-    # Check if running as root
-    if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root"
-        exit 1
-    fi
+    # Disk selection section
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Longhorn Disk Selection"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
     
-    # Check kubectl
-    if ! command -v kubectl &>/dev/null; then
-        log_error "kubectl not found"
-        exit 1
-    fi
+    log_info "Detecting available disks..."
     
-    # Check if Longhorn already installed on cluster
-    local longhorn_installed=false
-    if kubectl get namespace longhorn-system &>/dev/null; then
-        log_info "Longhorn detected on cluster (namespace exists)"
-        longhorn_installed=true
-    fi
+    echo "Option 1: Use OS disk (no additional drives needed)"
+    echo "  0) Use OS disk only - /var/lib/longhorn (no formatting)"
+    echo
     
-    # Interactive disk selection
-    select_disks_for_longhorn
+    handle_disk_selection
     
-    # Format and mount disks
+    # Format and mount selected disks
     format_and_mount_disks
     
-    # Install/Upgrade Longhorn ONLY if not already present or if forced
-    if [[ "$longhorn_installed" == "false" ]]; then
-        install_longhorn_helm
-    else
-        log_info "Skipping global Longhorn Helm installation (already present on cluster)"
-    fi
+    # Install Longhorn
+    install_longhorn
     
-    # Add disks to Longhorn (this is node-local)
-    if [[ "$longhorn_installed" == "true" ]]; then
-        add_node_disks_to_longhorn "false"
-    else
-        add_node_disks_to_longhorn "true"
-    fi
+    # Add disks to Longhorn configuration
+    add_node_disks_to_longhorn "true"
     
-    # Fix disk UUID mismatches (if disks were reformatted)
-    fix_disk_uuid_mismatches
+    # Check for disk UUID mismatches
+    check_disk_uuid_mismatches
     
-    # Fix disk reservations (reduce from default 30% to 5% for large disks)
-    fix_disk_reservations
+    # Optimize disk reservations
+    optimize_disk_reservations
     
     # Register in node registry
     register_in_node_registry
     
+    # Register Longhorn UI
+    register_longhorn_ui
+    
+    # Sync DNS entries
+    sync_dns_entries
+    
     echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Longhorn Installation Complete"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    log_success "Longhorn is now the default storage class"
-    
-    # Detect cluster domain - prefer environment variable (set by bootstrap), fallback to ConfigMap
-    local cluster_domain="${CLUSTER_DOMAIN:-}"
-    if [[ -z "$cluster_domain" ]]; then
-        cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null)
-    fi
-    
-    if [[ -z "$cluster_domain" ]]; then
-        log_error "Could not detect cluster domain"
-        echo -n "Please enter cluster domain (e.g., mynodeone): "
-        read cluster_domain
-        if [[ -z "$cluster_domain" ]]; then
-            log_error "Cluster domain is required"
-            return 1
-        fi
-    fi
-    
-    # Register Longhorn service in service registry
-    log_info "Registering Longhorn UI in service registry..."
-    if [[ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]]; then
-        bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
-            "longhorn" \
-            "longhorn" \
-            "longhorn-system" \
-            "longhorn-frontend" \
-            "80" \
-            "false" || log_warn "Failed to register Longhorn in service registry"
-    fi
-    
-    # Trigger DNS sync
-    if [[ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]]; then
-        log_info "Syncing DNS entries..."
-        bash "$PROJECT_ROOT/scripts/domains/sync-dns.sh" || log_warn "DNS sync failed"
-    fi
-    
-    log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    if [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then
-        log_info "Configured disks:"
-        for disk in "${MOUNTED_DISKS[@]}"; do
-            local disk_size=$(df -h "$disk" | tail -1 | awk '{print $2}')
-            echo "  • $disk ($disk_size)"
-        done
-    else
-        log_info "Using OS disk: /var/lib/longhorn"
-    fi
-    
+    log_success "Longhorn is now default storage class"
+    log_info "UI will be accessible at: http://longhorn.minicloud.local"
     echo
+    log_info "Configured disks:"
+    for disk_path in "${MOUNTED_DISKS[@]}"; do
+        local disk_size=$(df -h "$disk_path" 2>/dev/null | awk 'NR==2 {print $2}')
+        echo "  • $disk_path ($disk_size)"
+    done
+    echo
+    
+    log_success "Longhorn installed successfully"
 }
 
-# Only run main if executed directly
+# Run main function if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi

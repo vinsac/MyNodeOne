@@ -356,6 +356,16 @@ install_longhorn_helm() {
         log_info "Using OS disk as default: $default_path"
     fi
     
+    # Pre-validate and fix ConfigMap before installation starts
+    log_info "Pre-validating Longhorn ConfigMap..."
+    if kubectl get configmap longhorn-storageclass -n longhorn-system &>/dev/null; then
+        local config_replicas=$(kubectl get configmap longhorn-storageclass -n longhorn-system -o jsonpath='{.data.storageclass.yaml}' | grep -o 'numberOfReplicas: "[0-9]*"' | cut -d'"' -f2)
+        if [ "$config_replicas" != "1" ]; then
+            log_info "Fixing Longhorn ConfigMap before installation..."
+            fix_longhorn_configmap_replicas
+        fi
+    fi
+    
     # Install Longhorn
     log_info "Installing Longhorn via Helm (this may take a few minutes)..."
     helm upgrade --install longhorn longhorn/longhorn \
@@ -381,66 +391,114 @@ install_longhorn_helm() {
     # Set as default storage class
     kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
     
-    # Verify and fix StorageClass parameters (defensive programming)
+    # Verify and fix StorageClass parameters (defensive programming with improved strategy)
     log_info "Verifying Longhorn StorageClass configuration..."
-    local max_wait=30
-    local wait_count=0
+    local max_attempts=3
+    local attempt=1
+    local wait_time=5
     local replicas_correct=false
     
-    while [ $wait_count -lt $max_wait ]; do
+    while [ $attempt -le $max_attempts ]; do
+        log_info "Attempt $attempt of $max_attempts to verify StorageClass..."
+        
         if kubectl get storageclass longhorn &>/dev/null; then
             local current_replicas=$(kubectl get storageclass longhorn -o jsonpath='{.parameters.numberOfReplicas}' 2>/dev/null || echo "3")
             if [ "$current_replicas" = "1" ]; then
                 replicas_correct=true
+                log_success "StorageClass correctly configured with numberOfReplicas=1"
                 break
             else
                 log_warn "StorageClass has wrong replica count ($current_replicas), fixing..."
-                # Delete and recreate with correct parameters
-                kubectl delete storageclass longhorn --ignore-not-found=true
-                kubectl apply -f - <<'EOF'
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: longhorn
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: driver.longhorn.io
-allowVolumeExpansion: true
-reclaimPolicy: Delete
-volumeBindingMode: Immediate
-parameters:
-  numberOfReplicas: "1"
-  staleReplicaTimeout: "30"
-  fromBackup: ""
-  fsType: "ext4"
-  dataLocality: "disabled"
-EOF
-                if [ $? -eq 0 ]; then
+                # Use the improved ConfigMap-based fix
+                if fix_storageclass_replicas; then
                     replicas_correct=true
                     break
                 else
-                    log_error "Failed to recreate StorageClass, retrying..."
+                    log_warn "Fix attempt $attempt failed"
+                    if [ $attempt -lt $max_attempts ]; then
+                        log_info "Retrying in ${wait_time}s..."
+                        sleep $wait_time
+                        wait_time=$((wait_time + 2))  # Incremental backoff
+                    fi
                 fi
             fi
         else
             log_info "Waiting for StorageClass to be created..."
+            sleep 3
         fi
-        sleep 2
-        wait_count=$((wait_count + 2))
+        
+        attempt=$((attempt + 1))
     done
     
     if [ "$replicas_correct" = true ]; then
         log_success "StorageClass correctly configured with numberOfReplicas=1"
     else
-        log_error "Failed to configure StorageClass after $max_wait seconds"
-        log_error "Manual intervention required: check 'kubectl get sc longhorn -o yaml'"
-        return 1
+        log_warn "Failed to configure StorageClass after $max_attempts attempts"
+        log_warn "StorageClass will use default replica count (may be 3 instead of 1)"
+        log_warn "Manual fix required after installation: check 'kubectl get sc longhorn -o yaml'"
+        log_warn "To fix manually: update longhorn-storageclass ConfigMap, then delete StorageClass"
+        # Graceful degradation - continue installation instead of failing
+        log_info "Continuing with installation (StorageClass can be fixed later)..."
     fi
     
     # Expose UI via LoadBalancer
     kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'
     
     log_success "Longhorn installed successfully"
+    
+    # Return 0 even if StorageClass has issues - bootstrap should continue
+    return 0
+}
+
+# Fix Longhorn ConfigMap replica count
+fix_longhorn_configmap_replicas() {
+    log_info "Updating Longhorn ConfigMap to use numberOfReplicas=1..."
+    
+    # Update the ConfigMap that Longhorn uses to manage the StorageClass
+    local new_config=$(kubectl get configmap longhorn-storageclass -n longhorn-system -o jsonpath='{.data.storageclass.yaml}' | \
+        sed 's/numberOfReplicas: "[0-9]*"/numberOfReplicas: "1"/g')
+    
+    kubectl patch configmap longhorn-storageclass -n longhorn-system --type merge -p "{\"data\":{\"storageclass.yaml\":\"$new_config\"}}" || {
+        log_warn "Failed to patch ConfigMap, will try manual recreation..."
+        return 1
+    }
+    
+    log_success "ConfigMap updated successfully"
+    return 0
+}
+
+# Fix StorageClass with proper ConfigMap approach
+fix_storageclass_replicas() {
+    log_info "Fixing StorageClass replica count using ConfigMap approach..."
+    
+    # First update the ConfigMap
+    if fix_longhorn_configmap_replicas; then
+        log_info "ConfigMap fixed, now recreating StorageClass..."
+        
+        # Delete the StorageClass - Longhorn will recreate it from the updated ConfigMap
+        kubectl delete storageclass longhorn --ignore-not-found=true
+        
+        # Wait for Longhorn to recreate the StorageClass
+        local max_wait=10
+        local wait_count=0
+        while [ $wait_count -lt $max_wait ]; do
+            if kubectl get storageclass longhorn &>/dev/null; then
+                local current_replicas=$(kubectl get storageclass longhorn -o jsonpath='{.parameters.numberOfReplicas}' 2>/dev/null || echo "unknown")
+                if [ "$current_replicas" = "1" ]; then
+                    log_success "StorageClass recreated with correct replica count"
+                    return 0
+                fi
+            fi
+            sleep 2
+            wait_count=$((wait_count + 2))
+        done
+        
+        log_warn "StorageClass recreation timed out"
+        return 1
+    else
+        log_warn "ConfigMap update failed, trying fallback method..."
+        return 1
+    fi
 }
 
 # Add disks to Longhorn node configuration

@@ -1048,7 +1048,16 @@ install_longhorn() {
     
     # Use new interactive installation script
     if [ -f "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh" ]; then
-        bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
+        if bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"; then
+            log_success "Longhorn installed successfully"
+        else
+            local exit_code=$?
+            log_error "Longhorn installation failed with exit code $exit_code"
+            log_error "Continuing with bootstrap process..."
+            log_error "You can manually fix Longhorn issues after installation completes"
+            log_error "Check 'kubectl get sc longhorn -o yaml' for StorageClass status"
+            # Don't exit - continue with other components
+        fi
     else
         log_error "Longhorn installation script not found: $PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
         log_warn "Falling back to basic installation..."

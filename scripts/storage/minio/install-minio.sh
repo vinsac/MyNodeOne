@@ -288,7 +288,7 @@ format_and_mount_disk() {
     $node_cmd_prefix bash -c "grep -v '$mount_path' /etc/fstab > /tmp/fstab.new && echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /tmp/fstab.new && mv /tmp/fstab.new /etc/fstab"
     
     log_success "Disk mounted at $mount_path"
-}}
+}
 
 # Detect disks on target node
 if [ "$IS_LOCAL" = true ]; then

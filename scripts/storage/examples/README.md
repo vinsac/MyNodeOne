@@ -13,7 +13,7 @@ This directory contains example Kubernetes manifests demonstrating proper storag
 **MinIO (Object Storage):**
 - Standalone instance per node (NOT distributed)
 - Node-specific DNS endpoints: `minio-NODENAME.mynodeone.local:9000`
-- Shared admin credentials across all nodes
+- Independent credentials per node (unique to each installation)
 - Used for backups and S3-compatible storage
 
 ## Examples
@@ -119,7 +119,7 @@ kubectl apply -f app-with-minio-backup.yaml
 **Create MinIO Bucket:**
 ```bash
 # Access MinIO console at: http://minio-NODENAME.mynodeone.local:9001
-# Login with credentials from: ~/mynodeone-minio-credentials.txt
+# Login with credentials from: ~/minio-NODENAME-credentials.txt
 # Create bucket named: backups
 ```
 
@@ -137,7 +137,7 @@ kubectl logs job/manual-backup-1
 - MinIO endpoint is node-specific (not load-balanced)
 - If MinIO node goes down, backups will fail
 - Consider backing up to multiple MinIO instances on different nodes
-- MinIO credentials are shared cluster-wide
+- MinIO credentials are unique per node (check `~/minio-<nodename>-credentials.txt`)
 
 ---
 
@@ -278,7 +278,7 @@ kubectl run -it --rm debug --image=minio/mc --restart=Never -- \
   mc alias set minio http://minio-pc1.mynodeone.local:9000 ACCESS_KEY SECRET_KEY
 
 # Verify credentials
-cat ~/mynodeone-minio-credentials.txt
+cat ~/minio-<nodename>-credentials.txt
 ```
 
 ## Additional Resources

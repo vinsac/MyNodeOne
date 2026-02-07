@@ -225,8 +225,8 @@ curl -I http://<minio-ip>:9000/minio/health/live
 ## Security Notes
 
 ### MinIO Credentials
-- Stored in Kubernetes secret: `minio-credentials` (namespace: `minio`)
-- Saved to file: `~/mynodeone-minio-worker-credentials.txt` (chmod 600)
+- Stored in Kubernetes secret: `minio-credentials` (namespace: `minio-<nodename>`)
+- Saved to file: `~/minio-<nodename>-credentials.txt` (chmod 600)
 - **Action Required:** Save credentials to password manager and delete file
 
 ### Access Control

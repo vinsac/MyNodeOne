@@ -144,14 +144,26 @@ install_go_if_needed() {
         armv7l) ARCH="armv6l" ;;
     esac
     
-    # Method 1: Download from official source
-    if retry_command 3 "wget -q 'https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz' -O /tmp/go.tar.gz"; then
-        rm -rf /usr/local/go
-        tar -C /usr/local -xzf /tmp/go.tar.gz
-        rm /tmp/go.tar.gz
-        export PATH=$PATH:/usr/local/go/bin
-        log_success "Go $GO_VERSION installed"
-        return 0
+    # Method 1: Download from official source with better error visibility
+    log_info "Downloading Go ${GO_VERSION} for ${ARCH}..."
+    local go_url="https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz"
+    
+    if wget --timeout=30 --tries=3 "${go_url}" -O /tmp/go.tar.gz 2>/dev/null; then
+        if [ -f /tmp/go.tar.gz ] && [ -s /tmp/go.tar.gz ]; then
+            rm -rf /usr/local/go
+            if tar -C /usr/local -xzf /tmp/go.tar.gz 2>/dev/null; then
+                rm /tmp/go.tar.gz
+                export PATH=$PATH:/usr/local/go/bin
+                if command -v go &>/dev/null; then
+                    log_success "Go $(go version | awk '{print $3}') installed"
+                    return 0
+                fi
+            fi
+        fi
+        log_warn "Downloaded file is invalid, cleaning up..."
+        rm -f /tmp/go.tar.gz
+    else
+        log_warn "Download failed from ${go_url}"
     fi
     
     # Method 2: Try snap

@@ -621,7 +621,8 @@ register_in_node_registry() {
     # 1. Register cluster node first (idempotent)
     bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" register-cluster-node \
         --name "$node_name" \
-        --role "control-plane" || {
+        --role "control-plane" \
+        --location "${NODE_LOCATION:-home}" || {
         log_warn "Failed to register cluster node"
         return 1
     }

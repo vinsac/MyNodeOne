@@ -917,6 +917,26 @@ main() {
         stats)
             get_stats
             ;;
+        register-cluster-node)
+            shift
+            register_cluster_node "$@"
+            ;;
+        update-longhorn)
+            shift
+            update_longhorn_config "$@"
+            ;;
+        update-minio)
+            shift
+            update_minio_config "$@"
+            ;;
+        get-cluster-node)
+            shift
+            get_cluster_node "$@"
+            ;;
+        list-cluster-nodes)
+            shift
+            list_cluster_nodes "$@"
+            ;;
         *)
             cat << 'EOF'
 Node Registry Manager - Central Registry with Validation

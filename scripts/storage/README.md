@@ -21,14 +21,16 @@ scripts/storage/
 ```
 Control Plane:
 - Longhorn (block storage, single-node, replica=1)
+- MinIO (optional, object storage on dedicated disks or OS folder)
 
 Worker Node:
-- MinIO (object storage, local disks)
 - Longhorn disabled (allowScheduling=false)
+- MinIO (optional, object storage on local disks)
 
 Current State:
 - Manual backup and restore procedures
-- MinIO provides object storage for applications
+- MinIO can be installed on any node (control plane or worker)
+- Each MinIO instance is independent with unique credentials
 - No automated cluster backups (Velero removed per user decision)
 ```
 

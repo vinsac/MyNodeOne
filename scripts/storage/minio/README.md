@@ -425,17 +425,6 @@ hostPath:
 
 With node affinity to ensure pod runs where data is.
 
-## Future Enhancements
-
-- [ ] Physical disk detection and formatting
-- [ ] Automatic bucket creation
-- [ ] S3 policy templates
-- [ ] Backup/restore helpers
-- [ ] Multi-disk support (distributed mode)
-- [ ] TLS/HTTPS support
-- [ ] IAM user management
-- [ ] Prometheus metrics integration
-
 ## More Information
 
 - Official docs: https://min.io/docs/minio/kubernetes/upstream/

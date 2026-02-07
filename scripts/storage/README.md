@@ -9,7 +9,7 @@ scripts/storage/
 ├── README.md (this file)
 ├── longhorn/          # Longhorn block storage scripts
 ├── minio/             # MinIO object storage scripts
-│   └── install-minio-worker.sh
+│   └── install-minio.sh
 ├── velero/            # Velero backup scripts (reference only)
 │   ├── install.sh
 │   └── configure-backup.sh
@@ -34,43 +34,38 @@ Current State:
 
 ## Scripts
 
-### install-minio-worker.sh
+### install-minio.sh
 
-**Purpose:** Install MinIO object storage on worker node using local disks
-
-**Called by:** `add-worker-node.sh` when worker joins cluster
+**Purpose:** Install MinIO object storage on any node (control plane or worker)
 
 **What it does:**
-**What it does:**
-- Detects available disks (same logic as Longhorn)
-- Prepares MinIO data directories
-- **Safety**: Applies immutable lock (`chattr +i`) to mount point to prevent rootfs overflow
-- **Robustness**: Cleans `fstab` duplicates automatically
-- Generates credentials
-- Installs MinIO via Helm
-- Configures hostPath volumes
-- Saves credentials to `~/mynodeone-minio-worker-credentials.txt`
+- Detects available disks
+- Formats and mounts selected disk (or uses OS folder)
+- Generates unique credentials per node
+- Deploys MinIO as Kubernetes StatefulSet
+- Registers in service discovery with .local domain
+- Creates dual LoadBalancer services (API + Console)
 
 **Usage:**
 ```bash
-sudo ./scripts/storage/minio/install-minio-worker.sh
+sudo ./scripts/storage/minio/install-minio.sh
 ```
 
-**Disk Detection:**
-- Checks `/mnt/longhorn-disks/disk-*` for mounted disks
-- Uses ALL available disks (distributed mode if multiple)
-- Fallback to `/var/lib/minio` if no dedicated disks
+**Install on Control Plane:**
+```bash
+cd ~/MyNodeOne
+sudo ./scripts/storage/minio/install-minio.sh
+# Select node: 1 (canada-pc-0001)
+# Select disk: 1 (dedicated disk) or 2 (OS folder)
+```
 
-**Requirements:**
-- Kubernetes cluster running
-- kubectl configured
-- Helm installed
-- Root access
-
-**Output:**
-- MinIO deployment in `minio` namespace
-- MinIO credentials secret
-- Credentials file: `~/mynodeone-minio-worker-credentials.txt`
+**Install on Worker Node:**
+```bash
+cd ~/MyNodeOne
+sudo ./scripts/storage/minio/install-minio.sh
+# Select node: 2 (worker-node-name)
+# Select disk: 1 (dedicated disk) or 2 (OS folder)
+```
 
 ---
 
@@ -90,8 +85,9 @@ bootstrap-control-plane.sh
 add-worker-node.sh
   ├─> disable_longhorn_on_worker()
   │     └─ Disable Longhorn scheduling on worker
-  └─> install_minio_worker()
-        └─> scripts/storage/minio/install-minio-worker.sh
+  └─> Call install-minio.sh manually after worker setup
+        └─> scripts/storage/minio/install-minio.sh
+              ├─ Select worker node
               ├─ Detect disks
               ├─ Install MinIO
               └─ Save credentials
@@ -100,15 +96,19 @@ add-worker-node.sh
 ## Verification Commands
 
 ### MinIO Status
+
 ```bash
-# Check MinIO pods
-kubectl get pods -n minio
+# List all MinIO instances
+kubectl get namespaces | grep minio
+
+# Check specific MinIO instance (replace <nodename>)
+kubectl get pods -n minio-<nodename>
 
 # Check MinIO service
-kubectl get svc -n minio
+kubectl get svc -n minio-<nodename>
 
 # Get MinIO credentials
-cat ~/mynodeone-minio-worker-credentials.txt
+cat ~/minio-<nodename>-credentials.txt
 ```
 
 ### Longhorn Status
@@ -177,7 +177,7 @@ kubectl logs -n minio -l app=minio
 df -h | grep longhorn-disks
 
 # Reinstall MinIO
-sudo ./scripts/storage/minio/install-minio-worker.sh
+sudo ./scripts/storage/minio/install-minio.sh
 ```
 
 ### Longhorn Still Scheduling on Worker

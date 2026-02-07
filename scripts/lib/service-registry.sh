@@ -385,7 +385,7 @@ case "${1:-}" in
         register_service "$@"
         ;;
     sync)
-        sync_services
+        sync_registry
         ;;
     export-dns)
         export_dns "$2"

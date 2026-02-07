@@ -923,7 +923,7 @@ main() {
             ;;
         update-longhorn)
             shift
-            update_longhorn_config "$@"
+            update_cluster_node_longhorn "$@"
             ;;
         update-minio)
             shift

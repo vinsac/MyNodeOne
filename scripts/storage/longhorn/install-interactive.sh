@@ -588,8 +588,9 @@ optimize_disk_reservations() {
             
             log_info "  $disk_path: Reserved ${reservation_gb}GB (Verified)"
             
-            # Update disk reservation
-            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"diskReservations\":{\"$disk_name\":\"${reservation_gb}Gi\"}}}"
+            # Update disk reservation (storageReserved in bytes, within disk spec)
+            local reservation_bytes=$((reservation_gb * 1024 * 1024 * 1024))
+            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}"
         fi
     done
     

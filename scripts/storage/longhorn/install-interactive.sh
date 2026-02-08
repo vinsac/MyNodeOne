@@ -62,7 +62,16 @@ ACTUAL_HOME=$(getent passwd "$(logname)" | cut -d: -f6)
 
 # Function to safely get K8s node name
 get_k8s_node_name() {
-    kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo ""
+    local hostname=$(hostname)
+    # Try to find node with matching hostname
+    local node_name=$(kubectl get nodes -o jsonpath="{.items[?(@.metadata.name=='$hostname')].metadata.name}" 2>/dev/null)
+    
+    # Fallback: try to find node by hostname label
+    if [[ -z "$node_name" ]]; then
+        node_name=$(kubectl get nodes -l kubernetes.io/hostname=$hostname -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    fi
+    
+    echo "$node_name"
 }
 
 # Function to check if running on control plane
@@ -70,8 +79,9 @@ is_control_plane() {
     # Check if this node has the control-plane role label
     local node_name=$(hostname)
     if command -v kubectl &>/dev/null; then
-        local is_control=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.node-role\.kubernetes\.io/control-plane}' 2>/dev/null)
-        if [ "$is_control" = "true" ]; then
+        # Check if label exists (value can be empty string or anything)
+        local has_label=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.node-role\.kubernetes\.io/control-plane}' 2>/dev/null)
+        if [ -n "$has_label" ] || kubectl get node "$node_name" --show-labels 2>/dev/null | grep -q "node-role.kubernetes.io/control-plane"; then
             return 0  # This is control plane
         fi
     fi
@@ -494,8 +504,8 @@ add_node_disks_to_longhorn() {
         
         log_info "Adding disk $disk_name to Longhorn node $node_name..."
         
-        # Add disk via Longhorn node annotation
-        kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":[{\"name\":\"$disk_name\",\"path\":\"$disk_path\",\"allowScheduling\":true}]}}"
+        # Add disk via Longhorn node annotation (spec.disks is an object/map, not array)
+        kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"path\":\"$disk_path\",\"allowScheduling\":true}}}}"
     done
     
     log_success "Longhorn disk configuration complete"
@@ -574,11 +584,12 @@ optimize_disk_reservations() {
         return 0
     fi
     
-    # Process each disk
-    echo "$disks_json" | jq -r '.spec.disks[]? | "\(.name):\(.path)"' 2>/dev/null | while IFS=: read -r disk_name disk_path; do
+    # Process each disk (using process substitution to avoid subshell)
+    while IFS=: read -r disk_name disk_path; do
         if [[ -n "$disk_name" && -n "$disk_path" ]]; then
             # Calculate optimal reservation (5-10% based on disk size)
-            local disk_size_bytes=$(stat -f -c %s "$disk_path" 2>/dev/null || stat -c %s "$disk_path" 2>/dev/null || echo "0")
+            # stat -f is for filesystem, -c is for file - use df for filesystem size
+            local disk_size_bytes=$(df --output=size "$disk_path" 2>/dev/null | tail -1 | awk '{print $1 * 1024}' || echo "0")
             local disk_size_gb=$((disk_size_bytes / 1024 / 1024 / 1024))
             
             local reservation_gb=0
@@ -594,9 +605,9 @@ optimize_disk_reservations() {
             
             # Update disk reservation (storageReserved in bytes, within disk spec)
             local reservation_bytes=$((reservation_gb * 1024 * 1024 * 1024))
-            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}"
+            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}" || log_warn "Failed to update reservation for $disk_name"
         fi
-    done
+    done < <(echo "$disks_json" | jq -r '.spec.disks | to_entries[] | "\(.key):\(.value.path)"' 2>/dev/null)
     
     log_success "Disk reservations optimized"
 }
@@ -769,7 +780,9 @@ main() {
     echo
     
     log_success "Longhorn is now default storage class"
-    log_info "UI will be accessible at: http://longhorn.minicloud.local"
+    # Detect cluster domain dynamically
+    local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "minicloud")
+    log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
     echo
     log_info "Configured disks:"
     for disk_path in "${MOUNTED_DISKS[@]}"; do

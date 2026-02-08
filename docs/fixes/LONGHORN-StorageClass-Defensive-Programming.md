@@ -263,9 +263,24 @@ If users still encounter StorageClass issues, they can fix manually:
    # Longhorn will recreate it from the updated ConfigMap
    ```
 
-## Regression Fixes (Post-Review Audit)
+## Earlier Regression Fixes (Feb 5-8 Audit)
 
-A comprehensive code review of commits after `62b3a5d` identified several regressions
+An earlier audit of 21 commits (1b59f30 through e2537ae) found 7 critical regressions,
+all introduced during the `1b59f30` refactor. These were fixed before the post-`62b3a5d` review.
+
+| # | Regression | File | Fix |
+|---|-----------|------|-----|
+| 1 | **Wrong node detection** — `items[0]` returns first node alphabetically, not current node | `install-interactive.sh:65` | Hostname matching with label fallback |
+| 2 | **Control plane detection fails** — checked label value `"true"`, but kubeadm sets it to empty string `""` | `install-interactive.sh:74` | Check label existence via `--show-labels` + grep |
+| 3 | **Hardcoded domain** — `minicloud.local` instead of dynamic cluster domain | `install-interactive.sh:772` | `CLUSTER_DOMAIN` env → ConfigMap → `mynodeone` fallback |
+| 4 | **Disk structure mismatch** — treated `spec.disks` as array `[]`, but Longhorn CRD uses map `{}` | `install-interactive.sh:498` | Use object structure `{"disk_name": {...}}` |
+| 5 | **Invalid stat command** — `-f` and `-c` flags are mutually exclusive | `install-interactive.sh:581` | Use `df --output=size` for filesystem size |
+| 6 | **Pipeline subshell** — `while` in pipeline runs in subshell, kubectl errors silently ignored | `install-interactive.sh:578` | Process substitution `< <(...)` |
+| 7 | **Wrong jq query** — `disks[]?` assumes array, but `spec.disks` is an object | `install-interactive.sh:578` | `to_entries[]` for object iteration |
+
+## Regression Fixes (Post-62b3a5d Review Audit)
+
+A second comprehensive code review of commits after `62b3a5d` identified additional regressions
 introduced during the `1b59f30` refactor. All were accidental removals with no
 intentional reason found in git history.
 

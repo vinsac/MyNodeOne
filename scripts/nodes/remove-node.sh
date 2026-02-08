@@ -468,9 +468,11 @@ main() {
     log_success "Node '$NODE_NAME' has been removed from the cluster registry."
     echo
     echo "Next steps:"
-    echo "  - If this was a worker node, also run: kubectl delete node $NODE_NAME"
+    echo "  - If this was a worker node, also run:"
+    echo "      kubectl delete node $NODE_NAME"
+    echo "      kubectl delete nodes.longhorn.io $NODE_NAME -n longhorn-system"
     echo "  - If you want to uninstall MyNodeOne from the node, SSH to it and run:"
-    echo "    sudo ./scripts/installation/uninstall-mynodeone.sh"
+    echo "      sudo ./scripts/installation/uninstall-mynodeone.sh"
     echo
 }
 

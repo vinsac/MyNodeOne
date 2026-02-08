@@ -67,11 +67,15 @@ get_k8s_node_name() {
 
 # Function to check if running on control plane
 is_control_plane() {
-    if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null; then
-        return 0
-    else
-        return 1
+    # Check if this node has the control-plane role label
+    local node_name=$(hostname)
+    if command -v kubectl &>/dev/null; then
+        local is_control=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.node-role\.kubernetes\.io/control-plane}' 2>/dev/null)
+        if [ "$is_control" = "true" ]; then
+            return 0  # This is control plane
+        fi
     fi
+    return 1  # Not control plane (worker node)
 }
 
 # Function to check if a command exists

@@ -739,7 +739,13 @@ main() {
     install_longhorn
     
     # Add disks to Longhorn configuration
-    add_node_disks_to_longhorn "true"
+    # On control plane: "true" = Helm installed Longhorn with defaultDataPath
+    # On worker: "false" = Helm skipped, need to manually configure all disks
+    if is_control_plane; then
+        add_node_disks_to_longhorn "true"
+    else
+        add_node_disks_to_longhorn "false"
+    fi
     
     # Check for disk UUID mismatches
     check_disk_uuid_mismatches

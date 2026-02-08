@@ -53,6 +53,14 @@ if [ -f "$LIB_DIR/disk-utils.sh" ]; then
     source "$LIB_DIR/disk-utils.sh"
 fi
 
+# Longhorn version — single source of truth for this script
+# Also hardcoded in bootstrap-control-plane.sh fallback and LONGHORN-SETTINGS.md
+LONGHORN_VERSION="${LONGHORN_VERSION:-1.5.3}"
+
+# Standard mount path for Longhorn disks (project-wide convention, also used by
+# node-registry-manager.sh, add-disk-to-longhorn.sh, uninstall-mynodeone.sh, fix-usb-disk-boot.sh)
+LONGHORN_MOUNT_BASE="/mnt/longhorn-disks"
+
 # Global arrays for disk management
 declare -a MOUNTED_DISKS=()
 declare -a SELECTED_DISKS=()
@@ -216,7 +224,7 @@ format_and_mount_disks() {
     log_info "Formatting and mounting disks..."
     
     # Create mount directory
-    local mount_base="/mnt/longhorn-disks"
+    local mount_base="$LONGHORN_MOUNT_BASE"
     sudo mkdir -p "$mount_base"
     
     for disk in "${SELECTED_DISKS[@]}"; do
@@ -324,11 +332,14 @@ install_longhorn() {
         fi
     fi
     
-    # Install Longhorn
+    # Install/upgrade Longhorn (helm upgrade --install is idempotent: installs if missing,
+    # upgrades if present). The old longhorn_installed guard from a634b62 was replaced by
+    # the is_control_plane check above — workers skip entirely, control plane always applies
+    # latest settings to ensure consistency.
     log_info "Installing Longhorn via Helm (this may take a few minutes)..."
     helm upgrade --install longhorn longhorn/longhorn \
         --namespace longhorn-system \
-        --version 1.5.3 \
+        --version "$LONGHORN_VERSION" \
         --set defaultSettings.defaultReplicaCount=1 \
         --set persistence.defaultClass=true \
         --set persistence.defaultClassParameter.numberOfReplicas=1 \
@@ -599,8 +610,12 @@ optimize_disk_reservations() {
     while IFS=: read -r disk_name disk_path; do
         if [[ -n "$disk_name" && -n "$disk_path" ]]; then
             # Calculate optimal reservation (5-10% based on disk size)
-            # stat -f is for filesystem, -c is for file - use df for filesystem size
+            # df --output=size returns 1K blocks; multiply by 1024 for bytes
             local disk_size_bytes=$(df --output=size "$disk_path" 2>/dev/null | tail -1 | awk '{print $1 * 1024}' || echo "0")
+            # Guard against empty/non-numeric values from df failure
+            if ! [[ "$disk_size_bytes" =~ ^[0-9]+$ ]]; then
+                disk_size_bytes=0
+            fi
             local disk_size_gb=$((disk_size_bytes / 1024 / 1024 / 1024))
             
             local reservation_gb=0
@@ -651,9 +666,13 @@ register_in_node_registry() {
     fi
     
     # 1. Register cluster node first (idempotent)
+    local node_role="worker"
+    if is_control_plane; then
+        node_role="control-plane"
+    fi
     bash "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" register-cluster-node \
         --name "$node_name" \
-        --role "control-plane" \
+        --role "$node_role" \
         --location "${NODE_LOCATION:-home}" || {
         log_warn "Failed to register cluster node"
         return 1

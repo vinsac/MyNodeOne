@@ -79,9 +79,8 @@ is_control_plane() {
     # Check if this node has the control-plane role label
     local node_name=$(hostname)
     if command -v kubectl &>/dev/null; then
-        # Check if label exists (value can be empty string or anything)
-        local has_label=$(kubectl get node "$node_name" -o jsonpath='{.metadata.labels.node-role\.kubernetes\.io/control-plane}' 2>/dev/null)
-        if [ -n "$has_label" ] || kubectl get node "$node_name" --show-labels 2>/dev/null | grep -q "node-role.kubernetes.io/control-plane"; then
+        # Check if control-plane role label exists (value is typically empty string in kubeadm)
+        if kubectl get node "$node_name" --show-labels 2>/dev/null | grep -q "node-role.kubernetes.io/control-plane"; then
             return 0  # This is control plane
         fi
     fi
@@ -519,7 +518,7 @@ check_disk_uuid_mismatches() {
         return 0
     fi
     
-    local node_name=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping UUID mismatch check"
         return 0

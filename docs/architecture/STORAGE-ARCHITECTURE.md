@@ -58,10 +58,14 @@ Control Plane Node          Worker Node
 ```
 
 ### Key Settings
-- **Replica Count**: 1 (no cross-node replication)
+- **Replica Count**: User-selectable during installation (default: 1)
+  - 1 replica: no cross-node replication (recommended for home lab)
+  - 2 replicas: survives 1 node failure (requires 2+ nodes)
+  - 3 replicas: survives 2 node failures (requires 3+ nodes)
+  - Override via env: `LONGHORN_REPLICA_COUNT=2`
 - **Scheduling**: Available on all nodes
 - **Storage Class**: `longhorn` (cluster default)
-- **Failure Mode**: Manual restore from backups
+- **Failure Mode**: Manual restore from backups (with replica=1)
 
 ### Disk Management
 - **Interactive Selection**: User chooses disks during installation

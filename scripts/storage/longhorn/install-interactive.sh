@@ -57,6 +57,10 @@ fi
 # Also hardcoded in bootstrap-control-plane.sh fallback and LONGHORN-SETTINGS.md
 LONGHORN_VERSION="${LONGHORN_VERSION:-1.5.3}"
 
+# Longhorn replica count — can be overridden via env var or interactive prompt
+# Default: 1 (single replica, recommended for home lab / Tailscale networking)
+LONGHORN_REPLICA_COUNT="${LONGHORN_REPLICA_COUNT:-1}"
+
 # Standard mount path for Longhorn disks (project-wide convention, also used by
 # node-registry-manager.sh, add-disk-to-longhorn.sh, uninstall-mynodeone.sh, fix-usb-disk-boot.sh)
 LONGHORN_MOUNT_BASE="/mnt/longhorn-disks"
@@ -326,7 +330,7 @@ install_longhorn() {
     log_info "Pre-validating Longhorn ConfigMap..."
     if kubectl get configmap longhorn-storageclass -n longhorn-system &>/dev/null; then
         local config_replicas=$(kubectl get configmap longhorn-storageclass -n longhorn-system -o jsonpath='{.data.storageclass.yaml}' | grep -o 'numberOfReplicas: "[0-9]*"' | cut -d'"' -f2)
-        if [ "$config_replicas" != "1" ]; then
+        if [ "$config_replicas" != "$LONGHORN_REPLICA_COUNT" ]; then
             log_info "Fixing Longhorn ConfigMap before installation..."
             fix_longhorn_configmap_replicas
         fi
@@ -340,9 +344,9 @@ install_longhorn() {
     helm upgrade --install longhorn longhorn/longhorn \
         --namespace longhorn-system \
         --version "$LONGHORN_VERSION" \
-        --set defaultSettings.defaultReplicaCount=1 \
+        --set defaultSettings.defaultReplicaCount=$LONGHORN_REPLICA_COUNT \
         --set persistence.defaultClass=true \
-        --set persistence.defaultClassParameter.numberOfReplicas=1 \
+        --set persistence.defaultClassParameter.numberOfReplicas=$LONGHORN_REPLICA_COUNT \
         --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
         --set defaultSettings.autoSalvage=true \
         --set defaultSettings.disableSchedulingOnCordonedNode=true \
@@ -354,7 +358,7 @@ install_longhorn() {
         --set defaultSettings.replicaAutoBalance="best-effort" \
         --set defaultSettings.storageOverProvisioningPercentage=200 \
         --set defaultSettings.storageMinimalAvailablePercentage=10 \
-        --set persistence.defaultClassReplicaCount=1 \
+        --set persistence.defaultClassReplicaCount=$LONGHORN_REPLICA_COUNT \
         --wait \
         --timeout 10m
     
@@ -373,9 +377,9 @@ install_longhorn() {
         
         if kubectl get storageclass longhorn &>/dev/null; then
             local current_replicas=$(kubectl get storageclass longhorn -o jsonpath='{.parameters.numberOfReplicas}' 2>/dev/null || echo "3")
-            if [ "$current_replicas" = "1" ]; then
+            if [ "$current_replicas" = "$LONGHORN_REPLICA_COUNT" ]; then
                 replicas_correct=true
-                log_success "StorageClass correctly configured with numberOfReplicas=1"
+                log_success "StorageClass correctly configured with numberOfReplicas=$LONGHORN_REPLICA_COUNT"
                 break
             else
                 log_warn "StorageClass has wrong replica count ($current_replicas), fixing..."
@@ -401,10 +405,10 @@ install_longhorn() {
     done
     
     if [ "$replicas_correct" = true ]; then
-        log_success "StorageClass correctly configured with numberOfReplicas=1"
+        log_success "StorageClass correctly configured with numberOfReplicas=$LONGHORN_REPLICA_COUNT"
     else
         log_warn "Failed to configure StorageClass after $max_attempts attempts"
-        log_warn "StorageClass will use default replica count (may be 3 instead of 1)"
+        log_warn "StorageClass replica count may not match requested value ($LONGHORN_REPLICA_COUNT)"
         log_warn "Manual fix required after installation: check 'kubectl get sc longhorn -o yaml'"
         log_warn "To fix manually: update longhorn-storageclass ConfigMap, then delete StorageClass"
         # Graceful degradation - continue installation instead of failing
@@ -422,7 +426,7 @@ install_longhorn() {
 
 # Fix Longhorn ConfigMap replica count
 fix_longhorn_configmap_replicas() {
-    log_info "Updating Longhorn ConfigMap to use numberOfReplicas=1..."
+    log_info "Updating Longhorn ConfigMap to use numberOfReplicas=$LONGHORN_REPLICA_COUNT..."
     
     cat <<EOF | kubectl apply -n longhorn-system -f - || { log_warn "Failed to apply Longhorn ConfigMap"; return 1; }
 apiVersion: v1
@@ -443,7 +447,7 @@ data:
     reclaimPolicy: Delete
     volumeBindingMode: Immediate
     parameters:
-      numberOfReplicas: "1"
+      numberOfReplicas: "$LONGHORN_REPLICA_COUNT"
       staleReplicaTimeout: "30"
       fromBackup: ""
       fsType: "ext4"
@@ -469,7 +473,7 @@ fix_storageclass_replicas() {
         while [ $wait_count -lt $max_wait ]; do
             if kubectl get storageclass longhorn &>/dev/null; then
                 local current_replicas=$(kubectl get storageclass longhorn -o jsonpath='{.parameters.numberOfReplicas}' 2>/dev/null || echo "unknown")
-                if [ "$current_replicas" = "1" ]; then
+                if [ "$current_replicas" = "$LONGHORN_REPLICA_COUNT" ]; then
                     log_success "StorageClass recreated with correct replica count"
                     return 0
                 fi
@@ -756,7 +760,48 @@ main() {
     echo
     
     log_info "Longhorn provides distributed block storage for Kubernetes"
-    log_info "Default replica count: 1 (data stored on single node)"
+    echo
+    
+    # Replica count selection
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Longhorn Replica Count"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    echo "How many copies of each volume should Longhorn maintain?"
+    echo
+    echo "  1) 1 replica (recommended for home lab)"
+    echo "     • Data stored on a single node — no cross-node replication"
+    echo "     • No network overhead over Tailscale"
+    echo "     • 1x storage usage — use backups for data safety"
+    echo
+    echo "  2) 2 replicas"
+    echo "     • Data copied to 2 nodes — survives 1 node failure"
+    echo "     • Requires 2+ nodes with Longhorn disks"
+    echo "     • 2x storage usage + network sync traffic"
+    echo
+    echo "  3) 3 replicas"
+    echo "     • Data copied to 3 nodes — survives 2 node failures"
+    echo "     • Requires 3+ nodes with Longhorn disks"
+    echo "     • 3x storage usage + significant network sync traffic"
+    echo
+    
+    local replica_choice=""
+    while true; do
+        read -p "Select replica count [1/2/3] (default: ${LONGHORN_REPLICA_COUNT}): " replica_choice
+        replica_choice="${replica_choice:-$LONGHORN_REPLICA_COUNT}"
+        if [[ "$replica_choice" =~ ^[123]$ ]]; then
+            LONGHORN_REPLICA_COUNT="$replica_choice"
+            break
+        else
+            echo "  Invalid choice. Please enter 1, 2, or 3."
+        fi
+    done
+    
+    log_info "Replica count set to: $LONGHORN_REPLICA_COUNT"
+    if [[ "$LONGHORN_REPLICA_COUNT" -gt 1 ]]; then
+        log_warn "Multi-replica mode: ensure you have $LONGHORN_REPLICA_COUNT+ nodes with Longhorn storage"
+        log_info "Drain protection is enabled (block-if-contains-last-replica)"
+    fi
     echo
     
     # Disk selection section
@@ -809,7 +854,7 @@ main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    log_success "Longhorn is now default storage class"
+    log_success "Longhorn is now default storage class (replicas: $LONGHORN_REPLICA_COUNT)"
     # Detect cluster domain: prefer env var (set by bootstrap), then ConfigMap, then fallback
     local cluster_domain="${CLUSTER_DOMAIN:-}"
     if [[ -z "$cluster_domain" ]]; then

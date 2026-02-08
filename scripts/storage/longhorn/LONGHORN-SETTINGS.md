@@ -13,21 +13,42 @@ MyNodeOne uses Longhorn for distributed block storage across Kubernetes nodes. T
 
 ## Critical Settings
 
-### 1. Replica Count: `1`
+### 1. Replica Count: User-Selectable (default: `1`)
 
-**Setting:** `defaultSettings.defaultReplicaCount=1`  
-**StorageClass Parameter:** `persistence.defaultClassParameter.numberOfReplicas=1`
+**Setting:** `defaultSettings.defaultReplicaCount=$LONGHORN_REPLICA_COUNT`  
+**StorageClass Parameter:** `persistence.defaultClassParameter.numberOfReplicas=$LONGHORN_REPLICA_COUNT`
+
+During installation, the user is prompted to choose a replica count:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Longhorn Replica Count
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+How many copies of each volume should Longhorn maintain?
+
+  1) 1 replica (recommended for home lab)
+  2) 2 replicas (survives 1 node failure, requires 2+ nodes)
+  3) 3 replicas (survives 2 node failures, requires 3+ nodes)
+
+Select replica count [1/2/3] (default: 1):
+```
+
+**Override via environment variable** (skips prompt default):
+```bash
+LONGHORN_REPLICA_COUNT=2 sudo bash scripts/storage/longhorn/install-interactive.sh
+```
 
 **What it does:**
-- Each PVC creates **1 replica** (single copy of data)
-- Data stored on a single node, not replicated across nodes
-- No synchronous replication over network
+- Each PVC creates the selected number of replicas
+- Replica count 1: data on single node, no cross-node replication
+- Replica count 2-3: data replicated across nodes for redundancy
 
 **Important:** Both settings are required:
-- `defaultSettings.defaultReplicaCount=1` - Sets default for volumes created after installation
-- `persistence.defaultClassParameter.numberOfReplicas=1` - Sets the StorageClass parameter (overrides default)
+- `defaultSettings.defaultReplicaCount` - Sets default for volumes created after installation
+- `persistence.defaultClassParameter.numberOfReplicas` - Sets the StorageClass parameter (overrides default)
 
-Without the StorageClass parameter, new PVCs will use the chart's default (3 replicas) even if defaultSettings is set to 1.
+Without the StorageClass parameter, new PVCs will use the chart's default (3 replicas) even if defaultSettings is changed.
 
 **Why this matters:**
 - ✅ **Avoids rebuild storms** when nodes go offline temporarily
@@ -244,9 +265,9 @@ These settings are configured automatically during installation:
 helm upgrade --install longhorn longhorn/longhorn \
     --namespace longhorn-system \
     --version "$LONGHORN_VERSION" \
-    --set defaultSettings.defaultReplicaCount=1 \
+    --set defaultSettings.defaultReplicaCount=$LONGHORN_REPLICA_COUNT \
     --set persistence.defaultClass=true \
-    --set persistence.defaultClassParameter.numberOfReplicas=1 \
+    --set persistence.defaultClassParameter.numberOfReplicas=$LONGHORN_REPLICA_COUNT \
     --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
     --set defaultSettings.autoSalvage=true \
     --set defaultSettings.disableSchedulingOnCordonedNode=true \
@@ -258,7 +279,7 @@ helm upgrade --install longhorn longhorn/longhorn \
     --set defaultSettings.replicaAutoBalance="best-effort" \
     --set defaultSettings.storageOverProvisioningPercentage=200 \
     --set defaultSettings.storageMinimalAvailablePercentage=10 \
-    --set persistence.defaultClassReplicaCount=1 \
+    --set persistence.defaultClassReplicaCount=$LONGHORN_REPLICA_COUNT \
     --wait \
     --timeout 10m
 ```

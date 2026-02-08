@@ -647,10 +647,21 @@ Not out of the box, but it's on the roadmap. You can manually install NVIDIA dev
 
 ### How does distributed storage work?
 
-Longhorn replicates data across nodes:
-- 1 node: 1 replica (no redundancy)
-- 2 nodes: 2 replicas (survives 1 node failure)
-- 3+ nodes: 3 replicas (survives 2 node failures)
+Longhorn replicates data across nodes. During installation, you choose the replica count:
+- 1 replica (default): no cross-node replication, recommended for home lab
+- 2 replicas: survives 1 node failure, requires 2+ nodes
+- 3 replicas: survives 2 node failures, requires 3+ nodes
+
+### How do I change the Longhorn replica count?
+
+**During installation:** The installer prompts you to choose 1, 2, or 3 replicas.
+
+**Via environment variable** (pre-set before running the installer):
+```bash
+LONGHORN_REPLICA_COUNT=2 sudo bash scripts/storage/longhorn/install-interactive.sh
+```
+
+**After installation:** Re-run the installer — it uses `helm upgrade --install` which is idempotent and will apply the new setting. Note: existing PVCs keep their original replica count; only new PVCs use the updated value.
 
 ### Can I expand storage later?
 
@@ -963,51 +974,41 @@ kubectl get svc -A | grep LoadBalancer
 **Cause:** Longhorn issues or disk full
 **Solution:** Check Longhorn UI, verify disk space with `df -h`
 
-### My PVCs have 3 replicas instead of 1
+### My PVCs have the wrong replica count
 
 **Cause:** Longhorn StorageClass created with wrong parameters
 **Symptoms:**
-- New PVCs show 3 replicas in Longhorn UI
-- `kubectl get sc longhorn -o yaml` shows `numberOfReplicas: "3"`
+- New PVCs show unexpected replica count in Longhorn UI
+- `kubectl get sc longhorn -o yaml` shows wrong `numberOfReplicas`
 
 **Solution (Automatic):**
-The installation scripts now automatically detect and fix this issue:
+Re-run the installer and select your desired replica count at the prompt:
 ```bash
-# Reinstall Longhorn to trigger automatic fix
 cd MyNodeOne
 sudo ./scripts/storage/longhorn/install-interactive.sh
 ```
+The installer verifies and fixes the StorageClass after Helm installation.
 
-**Solution (Manual):**
+**Solution (Manual — ConfigMap-based):**
+Longhorn manages StorageClass via a ConfigMap. Direct `kubectl apply` won't work because Longhorn recreates the StorageClass from the ConfigMap.
 ```bash
-# Check current setting
+# 1. Check current setting
 kubectl get sc longhorn -o jsonpath='{.parameters.numberOfReplicas}'
 
-# Fix if wrong (should be "1")
+# 2. Update the ConfigMap (replace N with desired count: 1, 2, or 3)
+# Get current ConfigMap, update numberOfReplicas, then patch it
+
+# 3. Delete StorageClass — Longhorn recreates from updated ConfigMap
 kubectl delete sc longhorn
-kubectl apply -f - <<'EOF'
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: longhorn
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: driver.longhorn.io
-allowVolumeExpansion: true
-reclaimPolicy: Delete
-volumeBindingMode: Immediate
-parameters:
-  numberOfReplicas: "1"
-  staleReplicaTimeout: "30"
-  fromBackup: ""
-  fsType: "ext4"
-  dataLocality: "disabled"
-EOF
+# Wait ~10 seconds, then verify:
+kubectl get sc longhorn -o jsonpath='{.parameters.numberOfReplicas}'
 ```
 
 **Prevention:**
-- Use the updated installation scripts (includes defensive verification)
-- The installer automatically fixes StorageClass parameters after Helm installation
+- The installer automatically verifies and fixes StorageClass after Helm installation
+- Use `LONGHORN_REPLICA_COUNT=N` env var to pre-set the desired count
+
+**Note:** Existing PVCs keep their original replica count. Only new PVCs use the updated value.
 
 ### Why does Longhorn wait 5 days to rebuild replicas?
 

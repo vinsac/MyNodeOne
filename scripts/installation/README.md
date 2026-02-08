@@ -43,6 +43,20 @@ Specialized installer for VPS edge nodes that provide public access.
 ### `interactive-setup.sh`
 Interactive configuration wizard for gathering installation parameters.
 
+## Longhorn Storage Installation
+
+The Longhorn installer (`scripts/storage/longhorn/install-interactive.sh`) prompts for two key choices:
+
+1. **Replica count** (1, 2, or 3) — how many copies of each volume across nodes
+2. **Disk selection** — which physical disks to dedicate to Longhorn storage
+
+Both can be pre-set via environment variables to skip interactive prompts:
+```bash
+LONGHORN_REPLICA_COUNT=2 sudo bash scripts/storage/longhorn/install-interactive.sh
+```
+
+See `scripts/storage/longhorn/LONGHORN-SETTINGS.md` for full settings documentation.
+
 ## Notes
 
 - All installation scripts must be run with `sudo`

@@ -603,6 +603,11 @@ optimize_disk_reservations() {
 
 # Function to register Longhorn configuration in node registry
 register_in_node_registry() {
+    if ! is_control_plane; then
+        log_info "Node registry update skipped (worker node - managed by control plane)"
+        return 0
+    fi
+    
     if ! [ -f "$PROJECT_ROOT/scripts/lib/node-registry-manager.sh" ]; then
         log_warn "Node registry script not found, skipping registration"
         return 0
@@ -656,6 +661,11 @@ register_in_node_registry() {
 
 # Function to sync DNS entries
 sync_dns_entries() {
+    if ! is_control_plane; then
+        log_info "DNS sync skipped (worker node - DNS managed by control plane)"
+        return 0
+    fi
+    
     if ! [ -f "$PROJECT_ROOT/scripts/domains/sync-dns.sh" ]; then
         log_warn "DNS sync script not found, skipping DNS sync"
         return 0
@@ -667,6 +677,11 @@ sync_dns_entries() {
 
 # Function to register Longhorn UI in service registry
 register_longhorn_ui() {
+    if ! is_control_plane; then
+        log_info "Longhorn UI registration skipped (worker node - UI managed by control plane)"
+        return 0
+    fi
+    
     if ! [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
         log_warn "Service registry script not found, skipping UI registration"
         return 0

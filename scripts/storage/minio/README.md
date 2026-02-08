@@ -91,15 +91,15 @@ MinIO uses **two separate LoadBalancer services** for enhanced security and flex
 sudo ./scripts/networking/manage-app-visibility.sh expose \
   minio-canada-pc-0001 \
   minio-canada-pc-0001 \
-  minio-canada-pc-0001.minicloud.local
+  minio-canada-pc-0001.mynodeone.local
 
 # Console remains private (Tailscale-only)
-# Access: http://minio-console-canada-pc-0001.minicloud.local:9001
+# Access: http://minio-console-canada-pc-0001.mynodeone.local:9001
 ```
 
 Result:
 - **Public:** `https://minio-canada-pc-0001.yourdomain.com` (S3 API via VPS)
-- **Private:** `http://minio-console-canada-pc-0001.minicloud.local:9001` (Admin UI via Tailscale)
+- **Private:** `http://minio-console-canada-pc-0001.mynodeone.local:9001` (Admin UI via Tailscale)
 
 ### Admin Privileges
 
@@ -195,8 +195,8 @@ Example output after installation:
 📡 Console LoadBalancer IP: 100.79.104.208
 
 🌍 Access URLs:
-   API:     http://minio-canada-pc-0001.minicloud.local:9000
-   Console: http://minio-console-canada-pc-0001.minicloud.local:9001
+   API:     http://minio-canada-pc-0001.mynodeone.local:9000
+   Console: http://minio-console-canada-pc-0001.mynodeone.local:9001
    API:     http://100.79.104.207:9000
    Console: http://100.79.104.208:9001
 ```

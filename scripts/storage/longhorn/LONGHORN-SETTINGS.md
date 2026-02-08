@@ -243,14 +243,14 @@ allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 parameters:
-  numberOfReplicas: "1"        # Single replica (critical!)
+  numberOfReplicas: "1"        # User-selected during installation (1, 2, or 3)
   staleReplicaTimeout: "30"    # 30 minutes
   fromBackup: ""
   fsType: "ext4"
   dataLocality: "disabled"     # No pod-to-data affinity
 ```
 
-**Key Point:** StorageClass `numberOfReplicas: "1"` **overrides** all other replica settings when creating new PVCs.
+**Key Point:** StorageClass `numberOfReplicas` **overrides** all other replica settings when creating new PVCs. This value is set by the installer based on your replica count selection.
 
 ---
 

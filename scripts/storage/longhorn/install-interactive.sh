@@ -306,7 +306,7 @@ install_longhorn() {
     if ! is_control_plane; then
         log_warn "kubectl not available (worker node) - Longhorn installation via control plane only"
         log_info "Disks are mounted and ready. Longhorn will be installed from control plane."
-        log_info "Mounted disks: ${MOUNTED_DISKS[@]}"
+        log_info "Mounted disks: ${MOUNTED_DISKS[*]}"
         return 0
     fi
     

@@ -1048,10 +1048,11 @@ install_longhorn() {
     
     # Use new interactive installation script
     if [ -f "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh" ]; then
-        if bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"; then
+        local exit_code=0
+        bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh" || exit_code=$?
+        if [ $exit_code -eq 0 ]; then
             log_success "Longhorn installed successfully"
         else
-            local exit_code=$?
             log_error "Longhorn installation failed with exit code $exit_code"
             log_error "Continuing with bootstrap process..."
             log_error "You can manually fix Longhorn issues after installation completes"

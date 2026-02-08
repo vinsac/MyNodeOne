@@ -35,17 +35,20 @@ bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"
 
 **After**:
 ```bash
-if bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh"; then
+local exit_code=0
+bash "$PROJECT_ROOT/scripts/storage/longhorn/install-interactive.sh" || exit_code=$?
+if [ $exit_code -eq 0 ]; then
     log_success "Longhorn installed successfully"
 else
-    local exit_code=$?
     log_error "Longhorn installation failed with exit code $exit_code"
     log_error "Continuing with bootstrap process..."
-    log_error "You can manually fix Longhorn issues after installation completes"
-    log_error "Check 'kubectl get sc longhorn -o yaml' for StorageClass status"
     # Don't exit - continue with other components
 fi
 ```
+
+> **Note**: The original `if bash ...; then ... else local exit_code=$?` pattern was
+> buggy — in bash, `$?` is consumed by the `if` statement and always reads as 0
+> inside the `else` block. The corrected pattern captures exit code before branching.
 
 ### 2. Pre-Installation ConfigMap Validation
 
@@ -260,6 +263,42 @@ If users still encounter StorageClass issues, they can fix manually:
    # Longhorn will recreate it from the updated ConfigMap
    ```
 
+## Regression Fixes (Post-Review Audit)
+
+A comprehensive code review of commits after `62b3a5d` identified several regressions
+introduced during the `1b59f30` refactor. All were accidental removals with no
+intentional reason found in git history.
+
+### Critical Fixes
+
+| Fix | Description | Original Commit | Regression In |
+|-----|-------------|-----------------|---------------|
+| NVMe disk detection | `[0-9]$` regex skipped NVMe disks (`nvme0n1` ends in digit). Replaced with `lsblk TYPE=disk` filter. | `de1af24` | `1b59f30` |
+| Single-replica Helm settings | Restored `nodeDrainPolicy=block-if-contains-last-replica`, `disableSchedulingOnCordonedNode=true`, `replicaSoftAntiAffinity=false`. Without these, `kubectl drain` would evict the only replica causing data loss. | `da6f33d` | `1b59f30` |
+
+### High Priority Fixes
+
+| Fix | Description | Original Commit | Regression In |
+|-----|-------------|-----------------|---------------|
+| fstab `nofail` | Restored `nofail` mount option. Without it, system hangs at boot if a disk is removed or fails. | `de1af24` | `1b59f30` |
+| UUID mismatch detection | Restored correct jsonpath: `status.diskStatus[].conditions[].reason == "DiskFilesystemChanged"`. The refactored version queried `status.conditions[type==DiskUUIDMismatch]` which doesn't exist in the Longhorn API. | `9a17673` | `1b59f30` |
+
+### Medium Priority Fixes
+
+| Fix | Description |
+|-----|-------------|
+| `wipefs` before partitioning | Restored `umount` and `wipefs -a` before `parted` to clear stale filesystem signatures |
+| Sudo validation | Added upfront `sudo -v` check to fail early instead of leaving disks half-formatted |
+
+### Low Priority Fixes
+
+| Fix | Description |
+|-----|-------------|
+| Dead `ACTUAL_HOME` variable | Removed unused variable that could fail under `set -euo pipefail` |
+| Domain fallback | Restored `CLUSTER_DOMAIN` env var as first fallback, consistent `mynodeone` default |
+| Empty disk summary | Show "Using OS disk" message when no physical disks selected |
+| Bootstrap exit_code | Fixed `$?` capture bug in if/else pattern |
+
 ## Impact
 
 These defensive programming fixes ensure that:
@@ -267,3 +306,6 @@ These defensive programming fixes ensure that:
 - Users get a working cluster even with storage configuration problems
 - Clear guidance is provided for any manual fixes needed
 - The installation process is robust and user-friendly
+- NVMe disks are properly detected and available for selection
+- Single-replica data is protected from accidental eviction via `kubectl drain`
+- System boots reliably even if a Longhorn disk is removed

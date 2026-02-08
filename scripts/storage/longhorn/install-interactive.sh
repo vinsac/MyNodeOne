@@ -57,9 +57,6 @@ fi
 declare -a MOUNTED_DISKS=()
 declare -a SELECTED_DISKS=()
 
-# Get the actual home directory of the user running the script
-ACTUAL_HOME=$(getent passwd "$(logname)" | cut -d: -f6)
-
 # Function to safely get K8s node name
 get_k8s_node_name() {
     local hostname=$(hostname)
@@ -111,25 +108,24 @@ detect_available_disks() {
     AVAILABLE_DISKS=()
     
     # Get list of block devices that are actual disks (not partitions)
+    # Use lsblk TYPE=disk to correctly identify whole disks including NVMe (nvme0n1)
+    # The old [0-9]$ regex incorrectly skipped NVMe disks since they end in digits
+    local os_disk_parent=""
+    os_disk_parent=$(lsblk -ndo PKNAME $(findmnt -rn -o SOURCE -T / 2>/dev/null | head -1) 2>/dev/null || true)
+    
     while IFS= read -r disk; do
-        # Skip system disks and partitions
+        # Skip system/virtual devices
         if [[ "$disk" =~ ^(loop|fd|ram|sr|md|dm-) ]]; then
             continue
         fi
         
-        # Skip if it's a partition (contains a digit)
-        if [[ "$disk" =~ [0-9]$ ]]; then
-            continue
-        fi
-        
-        # Skip if disk is mounted as root or boot
-        local mount_point=$(findmnt -rn -o SOURCE -T / 2>/dev/null | grep -o "/dev/$disk" || true)
-        if [ -n "$mount_point" ]; then
+        # Skip the OS disk (the parent device of the root mount)
+        if [[ -n "$os_disk_parent" && "$disk" == "$os_disk_parent" ]]; then
             continue
         fi
         
         AVAILABLE_DISKS+=("/dev/$disk")
-    done < <(lsblk -d -n -o NAME | sort)
+    done < <(lsblk -d -n -o NAME,TYPE | awk '$2=="disk" {print $1}' | sort)
     
     if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
         log_warn "No additional disks found. Will use OS disk only."
@@ -211,6 +207,12 @@ format_and_mount_disks() {
         return 0
     fi
     
+    # Validate sudo access upfront to avoid half-formatted disks
+    if ! sudo -v 2>/dev/null; then
+        log_error "sudo access required for disk formatting. Run as root or configure sudo."
+        return 1
+    fi
+    
     log_info "Formatting and mounting disks..."
     
     # Create mount directory
@@ -222,6 +224,10 @@ format_and_mount_disks() {
         local mount_point="$mount_base/disk-$disk_name"
         
         log_info "Processing $disk..."
+        
+        # Clean up existing state (restored from original de1af24 implementation)
+        sudo umount "$disk"* 2>/dev/null || true
+        sudo wipefs -a "$disk" &>/dev/null || true
         
         # Create partition
         log_info "Creating partition on $disk..."
@@ -271,7 +277,7 @@ format_and_mount_disks() {
         # Add to fstab for persistence
         if ! grep -q "$mount_point" /etc/fstab; then
             local uuid=$(sudo blkid -s UUID -o value "$partition")
-            echo "UUID=$uuid  $mount_point  ext4  defaults  0  2" | sudo tee -a /etc/fstab
+            echo "UUID=$uuid  $mount_point  ext4  defaults,nofail  0  2" | sudo tee -a /etc/fstab
         fi
         
         # Add to mounted disks array
@@ -328,6 +334,10 @@ install_longhorn() {
         --set persistence.defaultClassParameter.numberOfReplicas=1 \
         --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
         --set defaultSettings.autoSalvage=true \
+        --set defaultSettings.disableSchedulingOnCordonedNode=true \
+        --set defaultSettings.nodeDrainPolicy='block-if-contains-last-replica' \
+        --set defaultSettings.replicaSoftAntiAffinity=false \
+        --set defaultSettings.replicaZoneSoftAntiAffinity=true \
         --set defaultSettings.defaultDataPath="$default_path" \
         --set defaultSettings.fastReplicaRebuildEnabled=true \
         --set defaultSettings.replicaAutoBalance="best-effort" \
@@ -530,11 +540,13 @@ check_disk_uuid_mismatches() {
         return 0
     fi
     
-    # Check for UUID mismatch errors
-    local uuid_errors=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o jsonpath='{.status.conditions[?(@.type=="DiskUUIDMismatch")].message}' 2>/dev/null)
+    # Check for UUID mismatch errors via diskStatus (per-disk conditions)
+    # Original implementation from 9a17673 - checks DiskFilesystemChanged reason in per-disk status
+    local has_mismatch=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | \
+        jq -r '.status.diskStatus // {} | to_entries[] | select(.value.conditions[]?.reason == "DiskFilesystemChanged") | .key' 2>/dev/null | head -1)
     
-    if [[ -n "$uuid_errors" ]]; then
-        log_warn "Disk UUID mismatches detected: $uuid_errors"
+    if [[ -n "$has_mismatch" ]]; then
+        log_warn "Disk UUID mismatches detected (disk was reformatted)"
         log_info "Attempting to fix UUID mismatches..."
         
         # Delete and recreate the Longhorn node to fix UUID issues
@@ -779,15 +791,25 @@ main() {
     echo
     
     log_success "Longhorn is now default storage class"
-    # Detect cluster domain dynamically
-    local cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "minicloud")
+    # Detect cluster domain: prefer env var (set by bootstrap), then ConfigMap, then fallback
+    local cluster_domain="${CLUSTER_DOMAIN:-}"
+    if [[ -z "$cluster_domain" ]]; then
+        cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+    fi
+    if [[ -z "$cluster_domain" ]]; then
+        cluster_domain="mynodeone"
+    fi
     log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
     echo
-    log_info "Configured disks:"
-    for disk_path in "${MOUNTED_DISKS[@]}"; do
-        local disk_size=$(df -h "$disk_path" 2>/dev/null | awk 'NR==2 {print $2}')
-        echo "  • $disk_path ($disk_size)"
-    done
+    if [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then
+        log_info "Configured disks:"
+        for disk_path in "${MOUNTED_DISKS[@]}"; do
+            local disk_size=$(df -h "$disk_path" 2>/dev/null | awk 'NR==2 {print $2}')
+            echo "  • $disk_path ($disk_size)"
+        done
+    else
+        log_info "Using OS disk: /var/lib/longhorn"
+    fi
     echo
     
     log_success "Longhorn installed successfully"

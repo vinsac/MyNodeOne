@@ -516,11 +516,25 @@ add_node_disks_to_longhorn() {
         return 0
     fi
     
+    # Get existing disk entries so we don't create duplicates
+    # Longhorn auto-discovers disks and creates default-disk-* entries for paths
+    # set via defaultDataPath. Adding another entry for the same path causes duplicates.
+    local existing_disks_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | \
+        jq -r '.spec.disks // {} | to_entries[] | "\(.key):\(.value.path)"' 2>/dev/null)
+    
     # Configure each mounted disk
     for disk_path in "${MOUNTED_DISKS[@]}"; do
         local disk_name=$(basename "$disk_path")
         
-        # Skip first disk if it's the default data path
+        # Check if any existing Longhorn disk entry already points to this path
+        local existing_entry=""
+        existing_entry=$(echo "$existing_disks_json" | grep ":${disk_path}$" | head -1 | cut -d: -f1)
+        if [[ -n "$existing_entry" ]]; then
+            log_info "Disk at $disk_path already registered as '$existing_entry' — skipping"
+            continue
+        fi
+        
+        # Skip first disk if it's the default data path (Helm sets defaultDataPath)
         if [[ "$disk_path" == "${MOUNTED_DISKS[0]}" ]] && [[ "$newly_installed" == "true" ]]; then
             log_info "Skipping first disk (handled by Helm defaultDataPath)"
             continue
@@ -861,6 +875,13 @@ main() {
     
     # Check for disk UUID mismatches
     check_disk_uuid_mismatches
+    
+    # Wait for Longhorn to finish syncing disk status before patching reservations
+    # On worker nodes, Longhorn auto-discovers disks and needs time to sync
+    if ! is_control_plane && [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then
+        log_info "Waiting for Longhorn to sync disk status..."
+        sleep 10
+    fi
     
     # Optimize disk reservations
     optimize_disk_reservations

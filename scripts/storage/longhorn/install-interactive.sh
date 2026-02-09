@@ -45,6 +45,34 @@ log_error() {
     echo -e "${RED}[✗]${NC} $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
+# Retry wrapper for kubectl operations on Longhorn CRDs
+# Longhorn's admission webhook rejects writes while disk status is syncing.
+# This function retries with exponential backoff to handle transient sync errors.
+#
+# Usage: kubectl_longhorn_retry <max_attempts> <description> kubectl patch ...
+# Returns: 0 on success, 1 on failure after all attempts
+kubectl_longhorn_retry() {
+    local max_attempts="$1"
+    local description="$2"
+    shift 2
+    
+    local attempt=0
+    local wait_seconds=5
+    while [ $attempt -lt $max_attempts ]; do
+        if "$@" 2>/dev/null; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "  $description — retrying in ${wait_seconds}s (attempt $((attempt+1))/$max_attempts)"
+            sleep $wait_seconds
+            # Exponential backoff: 5s, 10s, 20s
+            wait_seconds=$((wait_seconds * 2))
+        fi
+    done
+    return 1
+}
+
 # LIB_DIR setup
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
@@ -362,8 +390,11 @@ install_longhorn() {
         --wait \
         --timeout 10m
     
-    # Set as default storage class
-    kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+    # Set as default storage class (retry — API may be briefly unavailable after Helm install)
+    if ! kubectl_longhorn_retry 3 "Setting default StorageClass" \
+        kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'; then
+        log_warn "Failed to set longhorn as default StorageClass — set manually: kubectl patch storageclass longhorn -p '{\"metadata\":{\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'"
+    fi
     
     # Verify and fix StorageClass parameters (defensive programming with improved strategy)
     log_info "Verifying Longhorn StorageClass configuration..."
@@ -415,8 +446,11 @@ install_longhorn() {
         log_info "Continuing with installation (StorageClass can be fixed later)..."
     fi
     
-    # Expose UI via LoadBalancer
-    kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'
+    # Expose UI via LoadBalancer (retry — service may not be ready immediately)
+    if ! kubectl_longhorn_retry 3 "Exposing Longhorn UI via LoadBalancer" \
+        kubectl patch svc longhorn-frontend -n longhorn-system -p '{"spec":{"type":"LoadBalancer"}}'; then
+        log_warn "Failed to expose Longhorn UI — run manually: kubectl patch svc longhorn-frontend -n longhorn-system -p '{\"spec\":{\"type\":\"LoadBalancer\"}}'"
+    fi
     
     log_success "Longhorn installed successfully"
     
@@ -542,8 +576,12 @@ add_node_disks_to_longhorn() {
         
         log_info "Adding disk $disk_name to Longhorn node $node_name..."
         
-        # Add disk via Longhorn node annotation (spec.disks is an object/map, not array)
-        kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"path\":\"$disk_path\",\"allowScheduling\":true}}}}"
+        # Add disk via Longhorn node spec (spec.disks is an object/map, not array)
+        if ! kubectl_longhorn_retry 3 "Longhorn syncing, adding disk $disk_name" \
+            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge \
+            -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"path\":\"$disk_path\",\"allowScheduling\":true}}}}"; then
+            log_warn "Failed to add disk $disk_name after retries — configure via Longhorn UI"
+        fi
     done
     
     log_success "Longhorn disk configuration complete"
@@ -579,7 +617,11 @@ check_disk_uuid_mismatches() {
         log_info "Attempting to fix UUID mismatches..."
         
         # Delete and recreate the Longhorn node to fix UUID issues
-        kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system
+        if ! kubectl_longhorn_retry 3 "Longhorn syncing, deleting node for UUID fix" \
+            kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system; then
+            log_error "Failed to delete Longhorn node for UUID fix after retries"
+            return 1
+        fi
         
         # Wait for recreation
         local waited=0
@@ -646,29 +688,14 @@ optimize_disk_reservations() {
             fi
             
             # Update disk reservation (storageReserved in bytes, within disk spec)
-            # Retry with backoff — Longhorn admission webhook rejects patches while
-            # disk status is syncing (common right after adding a new disk)
             local reservation_bytes=$((reservation_gb * 1024 * 1024 * 1024))
-            local patch_ok=false
-            local retry=0
-            while [ $retry -lt 3 ]; do
-                if kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge \
-                    -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}" 2>/dev/null; then
-                    patch_ok=true
-                    break
-                fi
-                retry=$((retry + 1))
-                if [ $retry -lt 3 ]; then
-                    log_info "  Longhorn syncing disk status, retrying in 5s... (attempt $((retry+1))/3)"
-                    sleep 5
-                fi
-            done
-            
-            if $patch_ok; then
+            if kubectl_longhorn_retry 3 "Longhorn syncing, setting reservation for $disk_name" \
+                kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge \
+                -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}"; then
                 log_info "  $disk_path: Reserved ${reservation_gb}GB (Applied)"
             else
                 log_warn "  $disk_path: Failed to set ${reservation_gb}GB reservation after 3 attempts"
-                log_warn "  Longhorn may still be syncing. You can retry later or set via Longhorn UI."
+                log_warn "  Set via Longhorn UI: Node → $node_name → $disk_name → Storage Reserved"
             fi
         fi
     done < <(echo "$disks_json" | jq -r '.spec.disks | to_entries[] | "\(.key):\(.value.path)"' 2>/dev/null)

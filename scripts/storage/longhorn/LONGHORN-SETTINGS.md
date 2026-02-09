@@ -18,7 +18,7 @@ MyNodeOne uses Longhorn for distributed block storage across Kubernetes nodes. T
 **Setting:** `defaultSettings.defaultReplicaCount=$LONGHORN_REPLICA_COUNT`  
 **StorageClass Parameter:** `persistence.defaultClassParameter.numberOfReplicas=$LONGHORN_REPLICA_COUNT`
 
-During installation, the user is prompted to choose a replica count:
+During **control plane** installation, the user is prompted to choose a replica count (workers skip this — they just add disks):
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

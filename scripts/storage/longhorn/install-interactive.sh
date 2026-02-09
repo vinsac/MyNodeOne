@@ -204,7 +204,7 @@ handle_disk_selection() {
             echo "  • $disk ($size)"
         done
         echo
-        echo "[⚠] ${YELLOW}⚠️  WARNING: Selected disks will be FORMATTED (all data will be lost)${NC}"
+        echo -e "[⚠] ${YELLOW}⚠️  WARNING: Selected disks will be FORMATTED (all data will be lost)${NC}"
         read -p "Continue with formatting? [y/N]: " -r
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log_info "Disk formatting cancelled"
@@ -631,11 +631,31 @@ optimize_disk_reservations() {
                 reservation_gb=250  # 250GB for large disks
             fi
             
-            log_info "  $disk_path: Reserved ${reservation_gb}GB (Verified)"
-            
             # Update disk reservation (storageReserved in bytes, within disk spec)
+            # Retry with backoff — Longhorn admission webhook rejects patches while
+            # disk status is syncing (common right after adding a new disk)
             local reservation_bytes=$((reservation_gb * 1024 * 1024 * 1024))
-            kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}" || log_warn "Failed to update reservation for $disk_name"
+            local patch_ok=false
+            local retry=0
+            while [ $retry -lt 3 ]; do
+                if kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge \
+                    -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"storageReserved\":$reservation_bytes}}}}" 2>/dev/null; then
+                    patch_ok=true
+                    break
+                fi
+                retry=$((retry + 1))
+                if [ $retry -lt 3 ]; then
+                    log_info "  Longhorn syncing disk status, retrying in 5s... (attempt $((retry+1))/3)"
+                    sleep 5
+                fi
+            done
+            
+            if $patch_ok; then
+                log_info "  $disk_path: Reserved ${reservation_gb}GB (Applied)"
+            else
+                log_warn "  $disk_path: Failed to set ${reservation_gb}GB reservation after 3 attempts"
+                log_warn "  Longhorn may still be syncing. You can retry later or set via Longhorn UI."
+            fi
         fi
     done < <(echo "$disks_json" | jq -r '.spec.disks | to_entries[] | "\(.key):\(.value.path)"' 2>/dev/null)
     
@@ -762,47 +782,53 @@ main() {
     log_info "Longhorn provides distributed block storage for Kubernetes"
     echo
     
-    # Replica count selection
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Longhorn Replica Count"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    echo "How many copies of each volume should Longhorn maintain?"
-    echo
-    echo "  1) 1 replica (recommended for home lab)"
-    echo "     • Data stored on a single node — no cross-node replication"
-    echo "     • No network overhead over Tailscale"
-    echo "     • 1x storage usage — use backups for data safety"
-    echo
-    echo "  2) 2 replicas"
-    echo "     • Data copied to 2 nodes — survives 1 node failure"
-    echo "     • Requires 2+ nodes with Longhorn disks"
-    echo "     • 2x storage usage + network sync traffic"
-    echo
-    echo "  3) 3 replicas"
-    echo "     • Data copied to 3 nodes — survives 2 node failures"
-    echo "     • Requires 3+ nodes with Longhorn disks"
-    echo "     • 3x storage usage + significant network sync traffic"
-    echo
-    
-    local replica_choice=""
-    while true; do
-        read -p "Select replica count [1/2/3] (default: ${LONGHORN_REPLICA_COUNT}): " replica_choice
-        replica_choice="${replica_choice:-$LONGHORN_REPLICA_COUNT}"
-        if [[ "$replica_choice" =~ ^[123]$ ]]; then
-            LONGHORN_REPLICA_COUNT="$replica_choice"
-            break
-        else
-            echo "  Invalid choice. Please enter 1, 2, or 3."
+    # Replica count selection — only on control plane (cluster-wide setting)
+    # Workers just add disks to the existing Longhorn service
+    if is_control_plane; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  Longhorn Replica Count"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo
+        echo "How many copies of each volume should Longhorn maintain?"
+        echo
+        echo "  1) 1 replica (recommended for home lab)"
+        echo "     • Data stored on a single node — no cross-node replication"
+        echo "     • No network overhead over Tailscale"
+        echo "     • 1x storage usage — use backups for data safety"
+        echo
+        echo "  2) 2 replicas"
+        echo "     • Data copied to 2 nodes — survives 1 node failure"
+        echo "     • Requires 2+ nodes with Longhorn disks"
+        echo "     • 2x storage usage + network sync traffic"
+        echo
+        echo "  3) 3 replicas"
+        echo "     • Data copied to 3 nodes — survives 2 node failures"
+        echo "     • Requires 3+ nodes with Longhorn disks"
+        echo "     • 3x storage usage + significant network sync traffic"
+        echo
+        
+        local replica_choice=""
+        while true; do
+            read -p "Select replica count [1/2/3] (default: ${LONGHORN_REPLICA_COUNT}): " replica_choice
+            replica_choice="${replica_choice:-$LONGHORN_REPLICA_COUNT}"
+            if [[ "$replica_choice" =~ ^[123]$ ]]; then
+                LONGHORN_REPLICA_COUNT="$replica_choice"
+                break
+            else
+                echo "  Invalid choice. Please enter 1, 2, or 3."
+            fi
+        done
+        
+        log_info "Replica count set to: $LONGHORN_REPLICA_COUNT"
+        if [[ "$LONGHORN_REPLICA_COUNT" -gt 1 ]]; then
+            log_warn "Multi-replica mode: ensure you have $LONGHORN_REPLICA_COUNT+ nodes with Longhorn storage"
+            log_info "Drain protection is enabled (block-if-contains-last-replica)"
         fi
-    done
-    
-    log_info "Replica count set to: $LONGHORN_REPLICA_COUNT"
-    if [[ "$LONGHORN_REPLICA_COUNT" -gt 1 ]]; then
-        log_warn "Multi-replica mode: ensure you have $LONGHORN_REPLICA_COUNT+ nodes with Longhorn storage"
-        log_info "Drain protection is enabled (block-if-contains-last-replica)"
+        echo
+    else
+        log_info "Worker node — replica count is managed by the control plane"
+        echo
     fi
-    echo
     
     # Disk selection section
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -850,20 +876,29 @@ main() {
     
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Longhorn Installation Complete"
+    if is_control_plane; then
+        echo "  Longhorn Installation Complete"
+    else
+        echo "  Longhorn Disk Setup Complete"
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    log_success "Longhorn is now default storage class (replicas: $LONGHORN_REPLICA_COUNT)"
-    # Detect cluster domain: prefer env var (set by bootstrap), then ConfigMap, then fallback
-    local cluster_domain="${CLUSTER_DOMAIN:-}"
-    if [[ -z "$cluster_domain" ]]; then
-        cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+    if is_control_plane; then
+        log_success "Longhorn is now default storage class (replicas: $LONGHORN_REPLICA_COUNT)"
+        # Detect cluster domain: prefer env var (set by bootstrap), then ConfigMap, then fallback
+        local cluster_domain="${CLUSTER_DOMAIN:-}"
+        if [[ -z "$cluster_domain" ]]; then
+            cluster_domain=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.cluster-domain}' 2>/dev/null || echo "")
+        fi
+        if [[ -z "$cluster_domain" ]]; then
+            cluster_domain="mynodeone"
+        fi
+        log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
+    else
+        log_success "Disks added to Longhorn storage pool"
+        log_info "Replica count and storage class are managed by the control plane"
     fi
-    if [[ -z "$cluster_domain" ]]; then
-        cluster_domain="mynodeone"
-    fi
-    log_info "UI will be accessible at: http://longhorn.${cluster_domain}.local"
     echo
     if [[ ${#MOUNTED_DISKS[@]} -gt 0 ]]; then
         log_info "Configured disks:"
@@ -876,7 +911,7 @@ main() {
     fi
     echo
     
-    log_success "Longhorn installed successfully"
+    log_success "Longhorn $(is_control_plane && echo 'installed' || echo 'configured') successfully"
 }
 
 # Run main function if script is executed directly

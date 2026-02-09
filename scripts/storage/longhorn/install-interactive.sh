@@ -607,37 +607,75 @@ check_disk_uuid_mismatches() {
         return 0
     fi
     
-    # Check for UUID mismatch errors via diskStatus (per-disk conditions)
-    # Original implementation from 9a17673 - checks DiskFilesystemChanged reason in per-disk status
-    local has_mismatch=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | \
-        jq -r '.status.diskStatus // {} | to_entries[] | select(.value.conditions[]?.reason == "DiskFilesystemChanged") | .key' 2>/dev/null | head -1)
+    # Check for UUID mismatch errors via diskStatus conditions
+    # Longhorn reports this in two ways depending on version:
+    #   1. reason == "DiskFilesystemChanged" (older versions)
+    #   2. Ready condition message contains "diskUUID doesn't match" (v1.5+)
+    local node_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null)
+    local has_mismatch=$(echo "$node_json" | \
+        jq -r '.status.diskStatus // {} | to_entries[] | select(
+            (.value.conditions[]?.reason == "DiskFilesystemChanged") or
+            (.value.conditions[]? | select(.type == "Ready" and .status == "False") | .message | test("diskUUID.*match|UUID.*mismatch"; "i"))
+        ) | .key' 2>/dev/null | head -1)
     
     if [[ -n "$has_mismatch" ]]; then
-        log_warn "Disk UUID mismatches detected (disk was reformatted)"
-        log_info "Attempting to fix UUID mismatches..."
+        log_warn "Disk UUID mismatch detected on '$has_mismatch' (disk was reformatted)"
+        log_info "Deleting Longhorn node to reset disk UUIDs..."
         
-        # Delete and recreate the Longhorn node to fix UUID issues
+        # Delete the Longhorn node to force re-registration with correct UUIDs
         if ! kubectl_longhorn_retry 3 "Longhorn syncing, deleting node for UUID fix" \
             kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system; then
             log_error "Failed to delete Longhorn node for UUID fix after retries"
             return 1
         fi
         
-        # Wait for recreation
+        # Wait for Longhorn manager to recreate the node resource
+        # Phase 1: Wait up to 30s for auto-recreation
         local waited=0
-        local max_wait=30
-        while [ $waited -lt $max_wait ]; do
+        local recreated=false
+        log_info "Waiting for Longhorn to recreate node resource..."
+        while [ $waited -lt 30 ]; do
             if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
-                log_success "Longhorn node recreated successfully"
-                sleep 5  # Give it time to initialize
-                return 0
+                recreated=true
+                break
             fi
-            sleep 2
-            waited=$((waited + 2))
+            sleep 5
+            waited=$((waited + 5))
         done
         
-        log_error "Failed to recreate Longhorn node"
-        return 1
+        # Phase 2: If not recreated, restart the longhorn-manager pod on this node
+        # The manager sometimes gets stuck after node deletion and needs a restart
+        if [ "$recreated" = false ]; then
+            log_info "Node not recreated yet — restarting Longhorn manager on this node..."
+            local manager_pod=$(kubectl get pods -n longhorn-system -l app=longhorn-manager \
+                --field-selector spec.nodeName="$node_name" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            if [[ -n "$manager_pod" ]]; then
+                kubectl delete pod "$manager_pod" -n longhorn-system --grace-period=30 2>/dev/null || true
+                log_info "Waiting for manager pod to restart and recreate node..."
+                sleep 15
+            fi
+            
+            # Phase 3: Wait another 60s after manager restart
+            waited=0
+            while [ $waited -lt 60 ]; do
+                if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
+                    recreated=true
+                    break
+                fi
+                sleep 5
+                waited=$((waited + 5))
+            done
+        fi
+        
+        if [ "$recreated" = true ]; then
+            log_success "Longhorn node recreated with correct disk UUIDs"
+            sleep 10  # Let disk status sync before returning
+            return 0
+        else
+            log_error "Longhorn node was not recreated after 90s"
+            log_warn "Manual fix: kubectl delete pod -n longhorn-system -l app=longhorn-manager --field-selector spec.nodeName=$node_name"
+            return 1
+        fi
     else
         log_success "No disk UUID mismatches detected"
     fi

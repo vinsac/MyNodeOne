@@ -56,8 +56,8 @@ MinIO services use `type: LoadBalancer` to get IPs from MetalLB:
 apiVersion: v1
 kind: Service
 metadata:
-  name: minio-canada-pc-worker-0001
-  namespace: minio
+  name: minio
+  namespace: minio-canada-pc-worker-0001
 spec:
   type: LoadBalancer  # MetalLB assigns IP from pool
   ports:
@@ -65,7 +65,6 @@ spec:
     targetPort: 9000
   selector:
     app: minio
-    node: canada-pc-worker-0001
 ```
 
 **IP Assignment:**
@@ -85,8 +84,8 @@ Services are registered in `service-registry` ConfigMap in `kube-system` namespa
 {
   "minio-canada-pc-worker-0001": {
     "subdomain": "minio-canada-pc-worker-0001",
-    "namespace": "minio",
-    "service": "minio-canada-pc-worker-0001",
+    "namespace": "minio-canada-pc-worker-0001",
+    "service": "minio",
     "ip": "100.77.243.210",
     "port": 9000,
     "public": false,
@@ -94,8 +93,8 @@ Services are registered in `service-registry` ConfigMap in `kube-system` namespa
   },
   "minio-console-canada-pc-worker-0001": {
     "subdomain": "minio-console-canada-pc-worker-0001",
-    "namespace": "minio",
-    "service": "minio-console-canada-pc-worker-0001",
+    "namespace": "minio-canada-pc-worker-0001",
+    "service": "minio-console",
     "ip": "100.77.243.211",
     "port": 9001,
     "public": false,
@@ -175,14 +174,14 @@ xdg-open http://minio-console-canada-pc-worker-0001.mynodeone.local:9001
 # Worker can access its own MinIO via localhost
 mc alias set local http://localhost:9000 admin [password]
 
-# Or via cluster DNS
-mc alias set local http://minio-canada-pc-worker-0001.minio.svc.cluster.local:9000 admin [password]
+# Or via cluster DNS (service 'minio' in namespace 'minio-<nodename>')
+mc alias set local http://minio.minio-canada-pc-worker-0001.svc.cluster.local:9000 admin [password]
 ```
 
 ### From Applications in Cluster
 
 ```yaml
-# Use Kubernetes service DNS
+# Use Kubernetes service DNS (service 'minio' in namespace 'minio-<nodename>')
 apiVersion: v1
 kind: Pod
 metadata:
@@ -192,7 +191,7 @@ spec:
   - name: backup
     env:
     - name: S3_ENDPOINT
-      value: "http://minio-canada-pc-worker-0001.minio.svc.cluster.local:9000"
+      value: "http://minio.minio-canada-pc-worker-0001.svc.cluster.local:9000"
     - name: S3_ACCESS_KEY
       valueFrom:
         secretKeyRef:
@@ -216,7 +215,7 @@ spec:
 **Diagnosis:**
 ```bash
 # Check if service has LoadBalancer IP
-kubectl get svc -n minio
+kubectl get svc -n minio-<nodename>
 
 # Check if service is registered
 kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq '.["minio-canada-pc-worker-0001"]'
@@ -239,7 +238,7 @@ ping minio-canada-pc-worker-0001.mynodeone.local
 
 ### LoadBalancer IP Pending
 
-**Symptom:** `kubectl get svc -n minio` shows `<pending>` for EXTERNAL-IP
+**Symptom:** `kubectl get svc -n minio-<nodename>` shows `<pending>` for EXTERNAL-IP
 
 **Cause:** MetalLB not configured or IP pool exhausted
 
@@ -267,15 +266,15 @@ kubectl get svc --all-namespaces -o wide | grep LoadBalancer
 NODE_NAME=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].metadata.name}')
 
 # Get service IPs
-API_IP=$(kubectl get svc minio-${NODE_NAME} -n minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-CONSOLE_IP=$(kubectl get svc minio-console-${NODE_NAME} -n minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+API_IP=$(kubectl get svc minio -n minio-${NODE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+CONSOLE_IP=$(kubectl get svc minio-console -n minio-${NODE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Manually register
 sudo ./scripts/lib/service-registry.sh register \
-  "minio-${NODE_NAME}" "minio-${NODE_NAME}" minio "minio-${NODE_NAME}" 9000 false
+  "minio-${NODE_NAME}" "minio-${NODE_NAME}" "minio-${NODE_NAME}" "minio" 9000 false
 
 sudo ./scripts/lib/service-registry.sh register \
-  "minio-console-${NODE_NAME}" "minio-console-${NODE_NAME}" minio "minio-console-${NODE_NAME}" 9001 false
+  "minio-console-${NODE_NAME}" "minio-console-${NODE_NAME}" "minio-${NODE_NAME}" "minio-console" 9001 false
 
 # Sync DNS
 sudo ./scripts/domains/sync-dns.sh
@@ -290,13 +289,14 @@ sudo ./scripts/domains/sync-dns.sh
 **Solution 1: Use Cluster DNS**
 ```bash
 # Access via Kubernetes service DNS (works from any pod)
-http://minio-canada-pc-worker-0001.minio.svc.cluster.local:9000
+# Format: <service-name>.<namespace>.svc.cluster.local
+http://minio.minio-canada-pc-worker-0001.svc.cluster.local:9000
 ```
 
 **Solution 2: Use IP Directly**
 ```bash
 # Get IP from service
-kubectl get svc minio-canada-pc-worker-0001 -n minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl get svc minio -n minio-canada-pc-worker-0001 -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 # Use IP
 http://100.77.243.210:9000
@@ -315,14 +315,14 @@ sudo ./scripts/domains/sync-dns.sh
 ### Quick Reference
 
 ```bash
-# List all MinIO services
-kubectl get svc -n minio
+# List all MinIO services (check each per-node namespace)
+kubectl get svc -n minio-<node-name>
 
 # Get MinIO API IP
-kubectl get svc minio-<node-name> -n minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl get svc minio -n minio-<node-name> -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 # Get MinIO Console IP
-kubectl get svc minio-console-<node-name> -n minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl get svc minio-console -n minio-<node-name> -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 # View service registry
 kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq

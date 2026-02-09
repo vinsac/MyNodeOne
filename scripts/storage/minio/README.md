@@ -268,19 +268,21 @@ kubectl delete namespace minio-<nodename>
 
 ## Storage
 
-### OS Folder (Default)
+### OS Folder
 
 - Path: `/var/lib/minio`
 - Size: Depends on OS disk
 - No formatting required
 - Easy to get started
 
-### Physical Disk (Future)
+### Dedicated Physical Disk (Recommended)
 
 - Dedicated disk (e.g., `/dev/sdb`)
+- Mounted at `/mnt/minio`
 - Full disk capacity
-- Better performance
-- Requires formatting
+- Better performance and isolation
+- Formatted as ext4 with GPT partition table
+- Safety lock (`chattr +i`) on mount point prevents writes to root filesystem if mount fails
 
 ## Use Cases
 
@@ -419,7 +421,8 @@ affinity:
 Data stored on node's filesystem:
 ```yaml
 hostPath:
-  path: /var/lib/minio
+  path: /mnt/minio    # Dedicated disk
+  # or: /var/lib/minio  # OS folder
   type: Directory
 ```
 

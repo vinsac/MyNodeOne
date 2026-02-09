@@ -7,13 +7,20 @@ Component-based modular scripts for managing MyNodeOne storage architecture.
 ```
 scripts/storage/
 ├── README.md (this file)
+├── examples/          # Example manifests for storage usage
 ├── longhorn/          # Longhorn block storage scripts
+│   ├── install-interactive.sh
+│   ├── test-storageclass.sh
+│   └── LONGHORN-SETTINGS.md
 ├── minio/             # MinIO object storage scripts
-│   └── install-minio.sh
-├── velero/            # Velero backup scripts (reference only)
-│   ├── install.sh
-│   └── configure-backup.sh
-└── integration/       # Cross-component integration scripts
+│   ├── install-minio.sh
+│   ├── manifests/     # YAML templates (namespace, PV, PVC, etc.)
+│   ├── CREDENTIALS.md
+│   ├── README.md
+│   └── SERVICE-DISCOVERY.md
+└── velero/            # Velero backup scripts (reference only)
+    ├── install.sh
+    └── configure-backup.sh
 ```
 
 ## Architecture Overview
@@ -169,14 +176,14 @@ kubectl get configmaps,secrets --all-namespaces -o yaml > config-backup-$(date +
 
 ### MinIO Installation Failed
 ```bash
-# Check MinIO pods
-kubectl get pods -n minio -o wide
+# Check MinIO pods (replace <nodename> with actual node name)
+kubectl get pods -n minio-<nodename> -o wide
 
 # Check MinIO logs
-kubectl logs -n minio -l app=minio
+kubectl logs -n minio-<nodename> -l app=minio
 
 # Check disk mounts
-df -h | grep longhorn-disks
+df -h | grep -E '(minio|/mnt/minio)'
 
 # Reinstall MinIO
 sudo ./scripts/storage/minio/install-minio.sh
@@ -194,11 +201,11 @@ kubectl -n longhorn-system patch nodes.longhorn.io <worker-node> \
 
 ### MinIO Access Issues
 ```bash
-# Check MinIO service
-kubectl get svc -n minio
+# Check MinIO service (replace <nodename> with actual node name)
+kubectl get svc -n minio-<nodename>
 
 # Check LoadBalancer IP
-kubectl get svc -n minio -o yaml | grep LoadBalancer
+kubectl get svc -n minio-<nodename> -o yaml | grep LoadBalancer
 
 # Test MinIO connectivity
 curl -I http://<minio-ip>:9000/minio/health/live

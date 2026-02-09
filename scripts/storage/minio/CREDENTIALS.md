@@ -2,124 +2,100 @@
 
 ## Overview
 
-MyNodeOne uses **shared credentials** across all MinIO instances in the cluster. This ensures consistent S3 API access regardless of which node you're connecting to.
+MyNodeOne uses **independent credentials per node** for MinIO instances. Each MinIO installation generates its own unique admin password, stored in a per-node Kubernetes namespace.
 
 ---
 
-## Architecture: Option B - Common Credentials
+## Architecture: Per-Node Independent Credentials
 
-**Design Decision:** All MinIO instances (control plane and worker nodes) share the same admin credentials.
+**Design Decision:** Each MinIO instance has its own unique credentials, isolated in its own namespace.
 
 **Benefits:**
-- Consistent S3 access across all nodes
-- Single set of credentials to manage
-- Easier for users and applications
+- Security isolation between nodes
+- Compromised credentials on one node don't affect others
+- Independent lifecycle per installation
 
 **Implementation:**
-- Credentials stored in Kubernetes secret: `minio-credentials` in `minio` namespace
-- First MinIO installation (control plane OR worker) creates the secret
-- Subsequent installations read from the secret
-- Credentials persist even if MinIO pods/deployments are deleted
+- Each installation generates a random 25-character password
+- Credentials stored in Kubernetes secret: `minio-credentials` in namespace `minio-<nodename>`
+- Also saved to local file: `~/minio-<nodename>-credentials.txt`
+- Username is always `admin`
 
 ---
 
 ## Credential Lifecycle
 
-### Initial Installation
+### Installation
 
-**Scenario 1: Control Plane MinIO Installed First**
+When `install-minio.sh` runs on a node, it:
+
+1. Generates a unique password: `openssl rand -base64 32 | tr -d "=+/" | cut -c1-25`
+2. Creates a Kubernetes secret in the per-node namespace
+3. Saves credentials to a local file
+
 ```bash
-# Control plane bootstrap
-./scripts/installation/bootstrap-control-plane.sh
-# → Creates minio-credentials secret with random password
-
-# Worker joins later
-./scripts/nodes/add-worker-node.sh
-# → Reads existing minio-credentials secret
-# → Uses SAME credentials as control plane
+# Install MinIO on a node
+sudo ./scripts/storage/minio/install-minio.sh
+# → Select node (e.g., canada-pc-0001)
+# → Generates unique credentials
+# → Creates secret in minio-canada-pc-0001 namespace
+# → Saves to ~/minio-canada-pc-0001-credentials.txt
 ```
 
-**Scenario 2: Worker MinIO Installed First**
-```bash
-# Worker joins (control plane has no MinIO)
-./scripts/nodes/add-worker-node.sh
-# → Creates minio-credentials secret with random password
+### Reinstallation
 
-# Control plane MinIO installed later
-# → Reads existing minio-credentials secret
-# → Uses SAME credentials as worker
-```
-
-**Result:** Regardless of installation order, all MinIO instances share credentials.
-
----
-
-## Credential Persistence
-
-### What Happens When MinIO is Uninstalled?
-
-**Kubernetes Secret Behavior:**
-- Deleting MinIO pods/deployments does NOT delete the secret
-- Secret persists in the cluster
-- Reinstalling MinIO reuses the existing secret
-
-**Example:**
-```bash
-# Uninstall MinIO from control plane
-kubectl delete deployment minio -n minio
-kubectl delete svc minio -n minio
-
-# Secret still exists
-kubectl get secret minio-credentials -n minio
-# Output: minio-credentials   Opaque   2      5d
-
-# Reinstall MinIO
-./scripts/storage/minio/install-interactive.sh
-# → Reads existing secret, uses SAME credentials
-```
+Reinstalling MinIO on the same node **deletes the old namespace** (including the secret) and generates **new credentials**. Always save credentials before reinstalling.
 
 ---
 
 ## Viewing Current Credentials
 
-### From Kubernetes Secret
-
-```bash
-# View username
-kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' | base64 -d
-# Output: admin
-
-# View password
-kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' | base64 -d
-# Output: [random password]
-```
-
 ### From Local Credentials File
 
-Each node saves credentials to a local file during MinIO installation:
-
 ```bash
-# On control plane or worker
-cat ~/mynodeone-minio-credentials.txt
+# Each node has its own credentials file
+cat ~/minio-<nodename>-credentials.txt
 ```
 
 **Example output:**
 ```
-MinIO Credentials
-=================
+MinIO Installation on Node: canada-pc-0001
+======================================
 
-Node: canada-pc-0001
-Endpoint: http://minio-canada-pc-0001.mynodeone.local:9000
-Console: http://minio-canada-pc-0001.mynodeone.local:9001
+Namespace: minio-canada-pc-0001
+API Domain: minio-canada-pc-0001.mynodeone.local
+Console Domain: minio-console-canada-pc-0001.mynodeone.local
 
-Admin Credentials (shared across all nodes):
+Credentials:
   Username: admin
-  Password: xYz9K3mN8pQ2rT5vW7aB4cD
+  Password: AhLhJJzrMlNqTdZ0ArR9kysgg
 
-Generated: Wed Jan 8 18:30:00 UTC 2026
+Installed: Sun Feb  9 11:19:00 UTC 2026
+```
 
-IMPORTANT: These credentials are shared across ALL MinIO instances in the cluster.
-Each node runs a standalone MinIO instance with the same admin credentials.
+### From Kubernetes Secret
+
+```bash
+# View username (replace <nodename> with actual node name)
+kubectl get secret minio-credentials -n minio-<nodename> -o jsonpath='{.data.rootUser}' | base64 -d
+
+# View password
+kubectl get secret minio-credentials -n minio-<nodename> -o jsonpath='{.data.rootPassword}' | base64 -d
+```
+
+### List All MinIO Credentials
+
+```bash
+# Find all MinIO namespaces
+kubectl get namespaces | grep minio
+
+# View credentials for each
+for ns in $(kubectl get namespaces -o name | grep minio-); do
+  ns_name=$(basename "$ns")
+  echo "=== $ns_name ==="
+  echo -n "  User: "; kubectl get secret minio-credentials -n "$ns_name" -o jsonpath='{.data.rootUser}' 2>/dev/null | base64 -d; echo
+  echo -n "  Pass: "; kubectl get secret minio-credentials -n "$ns_name" -o jsonpath='{.data.rootPassword}' 2>/dev/null | base64 -d; echo
+done
 ```
 
 ---
@@ -130,103 +106,57 @@ Each node runs a standalone MinIO instance with the same admin credentials.
 
 - Security breach or credential leak
 - Forgot password and lost credentials file
-- Want to change from default credentials
+- Want to change credentials
 
-### How to Reset
+### How to Reset (Per Node)
 
-**⚠️ WARNING:** This will break access to existing MinIO instances until they are reconfigured.
-
+**Option 1: Reinstall MinIO** (simplest)
 ```bash
-# Step 1: Delete the Kubernetes secret
-kubectl delete secret minio-credentials -n minio
-
-# Step 2: Reinstall MinIO on ANY node
-# This will generate NEW credentials and create a new secret
-
-# Option A: Reinstall on control plane
-./scripts/storage/minio/install-interactive.sh
-
-# Option B: Reinstall on worker
-./scripts/nodes/add-worker-node.sh  # Select MinIO installation
-
-# Step 3: Reinstall MinIO on OTHER nodes
-# They will automatically read the new credentials from the secret
+# This deletes everything and generates new credentials
+sudo ./scripts/storage/minio/install-minio.sh
+# Select the same node → confirms reinstall → new credentials generated
 ```
 
-**Alternative: Manual Secret Update**
-
+**Option 2: Manual Secret Update** (keeps data)
 ```bash
 # Generate new password
 NEW_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
 
-# Update secret
+# Update secret in the node's namespace
 kubectl create secret generic minio-credentials \
-  -n minio \
+  -n minio-<nodename> \
   --from-literal=rootUser="admin" \
   --from-literal=rootPassword="$NEW_PASSWORD" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart all MinIO pods to pick up new credentials
-kubectl rollout restart deployment -n minio
+# Restart MinIO pod to pick up new credentials
+kubectl rollout restart statefulset/minio -n minio-<nodename>
 ```
 
 ---
 
 ## Troubleshooting
 
-### Different Credentials on Different Nodes
-
-**Symptom:** Control plane and worker have different MinIO passwords
-
-**Cause:** Credentials were manually changed or secret was deleted/recreated
-
-**Fix:**
-```bash
-# Check if secret exists
-kubectl get secret minio-credentials -n minio
-
-# If missing, reinstall MinIO on one node to create it
-# Then reinstall on other nodes to sync credentials
-
-# If exists but different, delete and recreate
-kubectl delete secret minio-credentials -n minio
-# Reinstall MinIO on all nodes
-```
-
 ### Cannot Access MinIO After Reinstall
 
-**Symptom:** Old credentials don't work after MinIO reinstall
+**Symptom:** Old credentials don't work
 
-**Cause:** Secret was deleted during uninstall
+**Cause:** Reinstallation generates new credentials
 
 **Fix:**
 ```bash
-# View current credentials from secret
-kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' | base64 -d
+# View new credentials from the credentials file
+cat ~/minio-<nodename>-credentials.txt
 
-# Update local credentials file with new password
-# Or use the password from Kubernetes secret
+# Or from Kubernetes secret
+kubectl get secret minio-credentials -n minio-<nodename> -o jsonpath='{.data.rootPassword}' | base64 -d
 ```
 
-### Worker Node Cannot Read Credentials
+### Lost Credentials File
 
-**Symptom:** Worker shows "kubectl not available" or "connection refused"
-
-**Cause:** kubectl not configured on worker node
-
-**Fix:**
+**Fix:** Retrieve from Kubernetes secret:
 ```bash
-# On worker node, verify kubectl is configured
-kubectl get nodes
-
-# If not working, reconfigure kubectl
-mkdir -p ~/.kube
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $USER:$USER ~/.kube/config
-chmod 600 ~/.kube/config
-
-# Test access
-kubectl get secret minio-credentials -n minio
+kubectl get secret minio-credentials -n minio-<nodename> -o jsonpath='{.data.rootPassword}' | base64 -d
 ```
 
 ---
@@ -237,41 +167,50 @@ kubectl get secret minio-credentials -n minio
 
 - ✅ **DO:** Keep credentials in Kubernetes secrets (encrypted at rest)
 - ✅ **DO:** Save local credentials file with restricted permissions (600)
+- ✅ **DO:** Save credentials to a password manager
 - ❌ **DON'T:** Commit credentials to git repositories
 - ❌ **DON'T:** Share credentials in plain text over insecure channels
 
 ### Access Control
 
-- MinIO credentials grant **full admin access** to all buckets
-- Create separate user accounts for applications (not implemented yet)
+- MinIO credentials grant **full admin access** to all buckets on that node
+- Create separate user accounts for applications via the MinIO Console
 - Use MinIO policies to restrict access per user/application
 
 ### Rotation
 
 - Consider rotating credentials periodically (e.g., every 90 days)
-- Use the reset procedure above to generate new credentials
+- Use the manual secret update procedure above
 - Update all applications and services with new credentials
 
 ---
 
 ## Related Documentation
 
-- **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE.md` (Storage design and implementation)
-- **Installation:** `docs/installation/INSTALLATION.md` (kubectl configuration on workers)
-- **MinIO Installer:** `scripts/storage/minio/install-interactive.sh`
+- **Architecture:** `docs/architecture/STORAGE-ARCHITECTURE.md`
+- **Service Discovery:** `scripts/storage/minio/SERVICE-DISCOVERY.md`
+- **MinIO Installer:** `scripts/storage/minio/install-minio.sh`
 
 ---
 
 ## Quick Reference
 
 ```bash
-# View credentials
-kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' | base64 -d
+# View credentials for a node
+cat ~/minio-<nodename>-credentials.txt
 
-# Reset credentials
-kubectl delete secret minio-credentials -n minio
-# Then reinstall MinIO
+# View from Kubernetes secret
+kubectl get secret minio-credentials -n minio-<nodename> -o jsonpath='{.data.rootPassword}' | base64 -d
 
-# Check credential sync across nodes
-kubectl get secret minio-credentials -n minio -o yaml
+# Reset credentials (keeps data)
+NEW_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+kubectl create secret generic minio-credentials \
+  -n minio-<nodename> \
+  --from-literal=rootUser="admin" \
+  --from-literal=rootPassword="$NEW_PASSWORD" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl rollout restart statefulset/minio -n minio-<nodename>
+
+# List all MinIO namespaces
+kubectl get namespaces | grep minio
 ```

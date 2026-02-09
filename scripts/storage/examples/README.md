@@ -5,7 +5,7 @@ This directory contains example Kubernetes manifests demonstrating proper storag
 ## Architecture Overview
 
 **Longhorn (Block Storage):**
-- Installed on ALL nodes (control plane + workers)
+- Installed on control plane (scheduling disabled on workers by default)
 - Default replica count: 1 (data on single node)
 - Default storage class for PVCs
 - Cluster-wide UI: `http://longhorn.mynodeone.local`

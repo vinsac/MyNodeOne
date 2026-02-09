@@ -99,36 +99,58 @@ get_auth_header() {
     fi
 }
 
-# Fetch config from control plane
+# Fetch config from control plane (with retry and backoff)
 fetch_config() {
     local url
     url=$(get_api_url "/api/v1/config/${NODE_TYPE}")
     
-    local response
-    local http_code
+    local max_attempts=3
+    local attempt=1
+    local delay=5
     
-    # Make request with optional auth header
-    if [[ -n "$API_TOKEN" ]]; then
-        response=$(curl -s -w "\n%{http_code}" \
-            -H "X-API-Token: $API_TOKEN" \
-            -H "X-Node-Name: $NODE_NAME" \
-            "$url" 2>/dev/null) || true
-    else
-        response=$(curl -s -w "\n%{http_code}" \
-            -H "X-Node-Name: $NODE_NAME" \
-            "$url" 2>/dev/null) || true
-    fi
+    while [ $attempt -le $max_attempts ]; do
+        local response
+        local http_code
+        
+        # Make request with optional auth header
+        if [[ -n "$API_TOKEN" ]]; then
+            response=$(curl -s -w "\n%{http_code}" \
+                --connect-timeout 10 --max-time 30 \
+                -H "X-API-Token: $API_TOKEN" \
+                -H "X-Node-Name: $NODE_NAME" \
+                "$url" 2>/dev/null) || true
+        else
+            response=$(curl -s -w "\n%{http_code}" \
+                --connect-timeout 10 --max-time 30 \
+                -H "X-Node-Name: $NODE_NAME" \
+                "$url" 2>/dev/null) || true
+        fi
+        
+        # Extract HTTP code (last line)
+        http_code=$(echo "$response" | tail -n1)
+        response=$(echo "$response" | sed '$d')
+        
+        if [[ "$http_code" == "200" ]]; then
+            # Validate response is valid JSON before returning
+            if echo "$response" | jq empty &>/dev/null; then
+                echo "$response"
+                return 0
+            else
+                log_warn "Invalid JSON response from API (attempt $attempt/$max_attempts)"
+            fi
+        else
+            log_warn "Failed to fetch config: HTTP $http_code (attempt $attempt/$max_attempts)"
+        fi
+        
+        if [ $attempt -lt $max_attempts ]; then
+            sleep $delay
+            delay=$((delay * 2))
+        fi
+        attempt=$((attempt + 1))
+    done
     
-    # Extract HTTP code (last line)
-    http_code=$(echo "$response" | tail -n1)
-    response=$(echo "$response" | sed '$d')
-    
-    if [[ "$http_code" != "200" ]]; then
-        log_error "Failed to fetch config: HTTP $http_code"
-        return 1
-    fi
-    
-    echo "$response"
+    log_error "Failed to fetch config after $max_attempts attempts"
+    return 1
 }
 
 # Send heartbeat to control plane
@@ -189,7 +211,14 @@ apply_dns_config() {
     local entries
     local domain="${CLUSTER_DOMAIN:-mynodeone}.local"
     log_info "Extracting DNS entries for domain: $domain"
-    entries=$(echo "$config" | jq -r --arg domain "$domain" '.dns_entries[]? | "\(.ip) \(.name).\($domain) \(.name)"' 2>/dev/null)
+    entries=$(echo "$config" | jq -r --arg domain "$domain" '
+        .dns_entries[]? |
+        if .name == "" then
+            "\(.ip) \($domain)"
+        else
+            "\(.ip) \(.name).\($domain) \(.name)"
+        end
+    ' 2>/dev/null)
     
     if [[ -z "$entries" ]]; then
         log_info "No DNS entries to apply"
@@ -350,6 +379,28 @@ apply_vps_config() {
         log_error "Fetched routes file is empty"
         rm -f "$routes_file_tmp"
         return 1
+    fi
+    
+    # Validate YAML syntax before applying (defensive: don't clobber good config with bad)
+    if command -v yq &>/dev/null; then
+        if ! yq eval "$routes_file_tmp" &>/dev/null; then
+            log_error "Fetched routes file has invalid YAML syntax, keeping previous config"
+            rm -f "$routes_file_tmp"
+            return 1
+        fi
+    elif command -v python3 &>/dev/null; then
+        if ! python3 -c "import yaml; yaml.safe_load(open('$routes_file_tmp'))" &>/dev/null; then
+            log_error "Fetched routes file has invalid YAML syntax, keeping previous config"
+            rm -f "$routes_file_tmp"
+            return 1
+        fi
+    else
+        log_warn "No YAML validator available (yq/python3), skipping syntax check"
+    fi
+    
+    # Backup existing routes before overwriting
+    if [[ -f "$routes_file" ]]; then
+        cp "$routes_file" "${routes_file}.bak" 2>/dev/null || true
     fi
     
     # Atomic move

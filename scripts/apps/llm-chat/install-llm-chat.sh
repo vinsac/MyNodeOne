@@ -201,7 +201,7 @@ fi
 if [ "$ALREADY_INSTALLED" = false ] || [ "${INSTALL_OPTION:-}" = "1" ]; then
     # In AUTO_INSTALL_MODE (from bootstrap), use defaults without prompts
     if [ "${AUTO_INSTALL_MODE:-false}" = "true" ]; then
-        APP_SUBDOMAIN="open-webui"
+        APP_SUBDOMAIN="chat"
         echo "🌐 Using default subdomain: ${APP_SUBDOMAIN}"
         echo "  Local access: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         echo ""
@@ -212,13 +212,13 @@ if [ "$ALREADY_INSTALLED" = false ] || [ "${INSTALL_OPTION:-}" = "1" ]; then
         echo "  • Local access: <subdomain>.${CLUSTER_DOMAIN}.local"
         echo "  • Public access: <subdomain>.yourdomain.com (if configured)"
         echo ""
-        echo "Examples: chat, ai, llm, assistant, open-webui"
+        echo "Examples: chat, ai, llm, assistant"
         echo ""
-        read -p "Enter subdomain [default: open-webui]: " APP_SUBDOMAIN
-        APP_SUBDOMAIN="${APP_SUBDOMAIN:-open-webui}"
+        read -p "Enter subdomain [default: chat]: " APP_SUBDOMAIN
+        APP_SUBDOMAIN="${APP_SUBDOMAIN:-chat}"
 
         # Sanitize subdomain
-        APP_SUBDOMAIN=$(validate_and_sanitize_subdomain "$APP_SUBDOMAIN" "open-webui")
+        APP_SUBDOMAIN=$(validate_and_sanitize_subdomain "$APP_SUBDOMAIN" "chat")
 
         echo ""
         echo "✓ Subdomain: ${APP_SUBDOMAIN}"
@@ -1029,7 +1029,7 @@ fi
 if [ "${AUTO_INSTALL_MODE:-false}" != "true" ] && ([ "$ALREADY_INSTALLED" = false ] || [ "${INSTALL_OPTION:-}" = "1" ]); then
     # Use standardized routing configuration (auto-detects domains from registry)
     if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
-        source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "$APP_NAME" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "open-webui"
+        source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "open-webui" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "open-webui"
     fi
 fi
 
@@ -1113,7 +1113,7 @@ echo ""
 echo "🚀 Result: Faster token generation and better responsiveness"
 echo ""
 echo "💡 Quick Start:"
-echo "   1. Open: http://${APP_SUBDOMAIN:-open-webui}.${CLUSTER_DOMAIN}.local"
+echo "   1. Open: http://${APP_SUBDOMAIN:-chat}.${CLUSTER_DOMAIN}.local"
 echo "   2. Create your account (first user = admin)"
 echo "   3. Download a model if you skipped earlier"
 echo "   4. Start chatting with your private AI"

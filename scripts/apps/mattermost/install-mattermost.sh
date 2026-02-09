@@ -293,6 +293,8 @@ kind: Service
 metadata:
   name: mattermost
   namespace: $NAMESPACE
+  annotations:
+    mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
 spec:
   type: LoadBalancer
   ports:

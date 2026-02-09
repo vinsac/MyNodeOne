@@ -396,6 +396,8 @@ kind: Service
 metadata:
   name: paperless
   namespace: $NAMESPACE
+  annotations:
+    mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
 spec:
   type: LoadBalancer
   selector:

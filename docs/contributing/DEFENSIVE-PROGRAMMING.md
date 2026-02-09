@@ -489,6 +489,31 @@ retry_command() {
 }
 ```
 
+### Exponential Backoff Pattern (for kubectl and API operations)
+```bash
+kubectl_retry() {
+    local max_attempts="${1:-3}"
+    shift
+    local attempt=1
+    local delay=2
+    
+    while [ $attempt -le $max_attempts ]; do
+        if "$@" 2>/dev/null; then
+            return 0
+        fi
+        if [ $attempt -lt $max_attempts ]; then
+            log_warn "kubectl attempt $attempt/$max_attempts failed, retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    log_error "kubectl command failed after $max_attempts attempts: $*"
+    return 1
+}
+```
+
 ### Usage Examples
 ```bash
 # Network downloads
@@ -499,13 +524,106 @@ retry_command 3 "helm repo add longhorn https://charts.longhorn.io"
 
 # External API calls
 retry_command 5 "curl -f -s http://api.example.com/health"
+
+# kubectl ConfigMap patches (exponential backoff)
+kubectl_retry 3 kubectl patch configmap service-registry -n kube-system --type merge -p '...'
 ```
 
 ### Key Principles
 - **Configurable attempts** - allow different retry counts for different operations
-- **Exponential backoff** - consider increasing sleep time for critical operations
+- **Exponential backoff** - use for kubectl and API operations to avoid thundering herd
 - **Clear logging** - show attempt numbers and failure reasons
 - **Graceful failure** - return non-zero exit code after all attempts exhausted
+- **Never silence errors** - avoid `|| true` on critical operations (see below)
+
+### Anti-Pattern: Silent Failure Suppression
+```bash
+# ❌ WRONG - silences routing failures, caller never knows it failed
+retry_command 3 "configure_routing ..." || true 2>/dev/null
+
+# ✅ RIGHT - expose the error, let caller handle it
+if ! retry_command 3 "configure_routing ..."; then
+    log_error "Routing configuration failed"
+    log_info "Retry manually: sudo bash scripts/domains/multi-domain-registry.sh configure-routing ..."
+    return 1
+fi
+```
+
+---
+
+## Service Registry and Domain Handling
+
+### The Problem
+Service registration involves multiple systems (K8s annotations, ConfigMap patches, DNS sync) that must stay consistent. Common pitfalls include:
+- Registry key mismatches causing duplicate entries
+- Missing annotations causing `sync_registry` to use wrong `local_name`
+- Interactive prompts blocking non-interactive callers
+- Silent failures hiding routing configuration errors
+
+### Standard Pattern: App Install Script Registration
+```bash
+# 1. Create K8s Service with annotation (source of truth for local_name)
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app                              # ← This is the registry key
+  namespace: my-app
+  annotations:
+    mynodeone.io/subdomain: "${APP_SUBDOMAIN}"  # ← This drives local_name
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+EOF
+
+# 2. Register in service registry (key MUST match K8s service name)
+bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
+    "my-app" "$APP_SUBDOMAIN" "$NAMESPACE" "my-app" "80" "false"
+#    ^^^^^                                  ^^^^^^
+#    Registry key must match K8s service name
+
+# 3. Post-install routing (key MUST also match)
+source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" \
+    "my-app" "80" "$APP_SUBDOMAIN" "$NAMESPACE" "my-app"
+#    ^^^^^^                                      ^^^^^^
+```
+
+### Key Principles
+- **Registry key = K8s service name** — `sync_registry` discovers services by K8s name. Mismatches create duplicate entries.
+- **Always add `mynodeone.io/subdomain` annotation** — this is the primary way `sync_registry` determines `local_name`
+- **Verify with `.local_name`** not `.subdomain` — the registry schema uses `local_name`, not `subdomain`
+- **Internal services stay ClusterIP** — only user-facing services should be LoadBalancer (e.g., `longhorn-frontend` yes, bare `longhorn` manager no)
+
+### Non-Interactive Safety
+```bash
+# ❌ WRONG - blocks when called from another script (no tty)
+read -p "Continue? (y/n): " answer
+
+# ✅ RIGHT - check for tty before prompting
+if [[ -t 0 ]]; then
+    read -p "Continue? (y/n): " answer
+    [[ "$answer" != "y" ]] && return 1
+else
+    log_warn "Non-interactive mode: skipping confirmation"
+fi
+```
+
+Scripts that may be called both interactively and as subprocesses (e.g., `multi-domain-registry.sh configure-routing` called from `manage-app-visibility.sh`) must check `[[ -t 0 ]]` before any `read -p` call.
+
+### Config Validation Before Overwrite
+```bash
+# ❌ WRONG - bad config overwrites good config
+mv "$routes_file_tmp" "$routes_file"
+
+# ✅ RIGHT - validate before overwriting, keep backup
+if command -v yq &>/dev/null; then
+    yq eval "$routes_file_tmp" &>/dev/null || { log_error "Invalid YAML"; rm -f "$routes_file_tmp"; return 1; }
+fi
+cp "$routes_file" "${routes_file}.bak" 2>/dev/null || true
+mv "$routes_file_tmp" "$routes_file"
+```
 
 ---
 
@@ -701,5 +819,5 @@ main "$@"
 
 ---
 
-**Last Updated:** January 16, 2026  
+**Last Updated:** February 9, 2026  
 **Maintained by:** MyNodeOne Contributors

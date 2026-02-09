@@ -160,7 +160,7 @@ Every app gets an easy-to-remember address:
 | Paperless-ngx | `http://paperless.mynodeone.local` |
 | Homepage | `http://homepage.mynodeone.local` |
 | Mattermost | `http://mattermost.mynodeone.local` |
-| LLM Chat | `http://llm-chat.mynodeone.local` |
+| LLM Chat | `http://chat.mynodeone.local` |
 | LLM API | `http://llmapi.mynodeone.local` |
 
 **Desktop/Laptop:** Works immediately after DNS setup. Run `setup-client-dns.sh` on each client.
@@ -268,9 +268,25 @@ To add a new app to the store:
 
 - Must work with K3s
 - Must use Longhorn for storage
-- Must request LoadBalancer service
+- Must request LoadBalancer service with `mynodeone.io/subdomain` annotation
 - Must generate secure random passwords
 - Must display access info clearly
+- Registry key (in `register` and `post-install-routing`) must match the K8s service name
+- Verification must check `.local_name` field (not `.subdomain`)
+
+### Service Registration Pattern
+
+Every app install script must:
+
+1. **Add annotation** to the K8s Service:
+   ```yaml
+   annotations:
+     mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
+   ```
+2. **Register with matching key**: The first argument to `service-registry.sh register` and `post-install-routing.sh` must be the K8s service name (e.g., `jellyfin`, `open-webui`, `immich-server`)
+3. **Verify with `.local_name`**: Post-registration checks should read `.local_name` from the ConfigMap, not `.subdomain`
+
+See [DEFENSIVE-PROGRAMMING.md](../contributing/DEFENSIVE-PROGRAMMING.md#service-registry-and-domain-handling) for the full pattern.
 
 ---
 

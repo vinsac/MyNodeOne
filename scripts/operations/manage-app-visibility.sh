@@ -180,10 +180,12 @@ make_public() {
     if [ -n "$domains" ] && [ -n "$vps_nodes" ]; then
         log_info "Configuring routing..."
         
-        if retry_command 3 "bash '$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh' configure-routing '$service_name' '$domains' '$vps_nodes'" 2>/dev/null || true; then
+        if retry_command 3 "bash '$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh' configure-routing '$service_name' '$domains' '$vps_nodes'"; then
             log_success "Routing configured"
         else
-            log_error "Failed to configure routing"
+            log_error "Failed to configure routing after $MAX_RETRIES attempts"
+            log_warn "Service is marked public but routing may not be active"
+            log_info "You can retry manually: sudo bash scripts/domains/multi-domain-registry.sh configure-routing '$service_name' '$domains' '$vps_nodes'"
             return 1
         fi
         
@@ -367,14 +369,19 @@ make_private() {
     local services=$(kubectl get configmap -n kube-system service-registry \
         -o jsonpath='{.data.services\.json}' 2>/dev/null)
     
+    if [[ -z "$services" ]] || [[ "$services" == "{}" ]]; then
+        log_error "Service registry is empty or unreachable"
+        return 1
+    fi
+    
     local updated_services=$(echo "$services" | jq \
         --arg service "$service_name" \
         '.[$service].public = false')
     
-    if ! kubectl patch configmap service-registry \
+    if ! retry_command 3 "kubectl patch configmap service-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"services.json\":\"$(echo "$updated_services" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" &>/dev/null; then
+        -p '{\"data\":{\"services.json\":\"$(echo "$updated_services" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}'"; then
         log_error "Failed to update service registry"
         return 1
     fi

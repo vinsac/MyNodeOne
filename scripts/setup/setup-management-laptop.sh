@@ -270,7 +270,7 @@ update_dns_entries() {
                     echo "${ip}  traefik.${CLUSTER_DOMAIN}.local"
                     ;;
                 open-webui)
-                    echo "${ip}  open-webui.${CLUSTER_DOMAIN}.local"
+                    echo "${ip}  chat.${CLUSTER_DOMAIN}.local"
                     ;;
                 demo-chat-app)
                     echo "${ip}  demo-chat.${CLUSTER_DOMAIN}.local"
@@ -700,7 +700,7 @@ main() {
         echo "  • Demo App:  http://demo.${CLUSTER_DOMAIN}.local"
     fi
     if kubectl get svc -n llm-chat open-webui &>/dev/null; then
-        echo "  • LLM Chat:  http://open-webui.${CLUSTER_DOMAIN}.local"
+        echo "  • LLM Chat:  http://chat.${CLUSTER_DOMAIN}.local"
     fi
     
     echo

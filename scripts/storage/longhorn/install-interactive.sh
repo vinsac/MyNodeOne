@@ -452,6 +452,21 @@ install_longhorn() {
         log_warn "Failed to expose Longhorn UI — run manually: kubectl patch svc longhorn-frontend -n longhorn-system -p '{\"spec\":{\"type\":\"LoadBalancer\"}}'"
     fi
     
+    # Add subdomain annotation so sync_registry picks up the correct local_name
+    kubectl_longhorn_retry 3 "Adding subdomain annotation to longhorn-frontend" \
+        kubectl annotate svc longhorn-frontend -n longhorn-system \
+            mynodeone.io/subdomain=longhorn --overwrite || true
+    
+    # Ensure the bare longhorn manager service stays ClusterIP (not LoadBalancer)
+    # to avoid it appearing as a public-eligible service in the registry
+    local longhorn_svc_type=$(kubectl get svc longhorn -n longhorn-system \
+        -o jsonpath='{.spec.type}' 2>/dev/null || echo "ClusterIP")
+    if [[ "$longhorn_svc_type" == "LoadBalancer" ]]; then
+        log_info "Resetting bare longhorn service to ClusterIP (internal API only)..."
+        kubectl_longhorn_retry 3 "Resetting longhorn service to ClusterIP" \
+            kubectl patch svc longhorn -n longhorn-system -p '{"spec":{"type":"ClusterIP"}}' || true
+    fi
+    
     log_success "Longhorn installed successfully"
     
     # Return 0 even if StorageClass has issues - bootstrap should continue

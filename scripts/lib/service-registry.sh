@@ -245,6 +245,10 @@ sync_registry() {
                 longhorn-frontend)
                     local_name="longhorn"
                     ;;
+                longhorn)
+                    # Longhorn manager API — use distinct name to avoid collision with longhorn-frontend
+                    local_name="longhorn-api"
+                    ;;
                 traefik)
                     local_name="traefik"
                     ;;
@@ -367,6 +371,8 @@ export_dns() {
         select(.value.ip != null) |
         if .value.local_name == "" then
             "\(.value.ip)\t\($domain)"
+        elif .value.local_name == "dashboard" then
+            "\(.value.ip)\t\(.value.local_name).\($domain)\n\(.value.ip)\t\($domain)"
         else
             "\(.value.ip)\t\(.value.local_name).\($domain)"
         end
@@ -395,25 +401,29 @@ case "${1:-}" in
         ;;
     *)
         cat << 'EOF'
-Service Registry
+Service Registry - Clean Separation Architecture
 
 Usage:
   service-registry.sh <command> [options]
 
 Commands:
-  init                          Initialize service registry
+  init                          Initialize service registry ConfigMap
   register <name> <local_name> <namespace> <service> <port> <public>
                                Register a new service
-  get <name>                   Get service info
-  list                         List all services
-  sync                         Sync registry with cluster state
-  export-dns [domain]          Export DNS entries for /etc/hosts
-  export-traefik <domain> <ip> Export Traefik routes
+  sync                         Sync registry with cluster state (discovers LoadBalancer services)
+  export-dns [domain]          Export DNS entries for /etc/hosts (uses local_name)
+  show                         Show all registered services
+
+Notes:
+  - local_name drives .local DNS only (e.g., chat -> chat.mynodeone.local)
+  - Public routing is managed separately via domain-registry / manage-app-visibility.sh
+  - Dashboard service gets both dashboard.DOMAIN and bare DOMAIN entries
 
 Examples:
+  service-registry.sh sync                          # Discover and register all services
   service-registry.sh export-dns                    # Uses CLUSTER_DOMAIN from config
   service-registry.sh export-dns mynodeone.local    # Explicit domain
-  service-registry.sh export-traefik example.com 100.122.68.75 > routes.yml
+  service-registry.sh show                          # Display registry contents
 
 EOF
         exit 1

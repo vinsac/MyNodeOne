@@ -580,6 +580,13 @@ func (s *Server) getDNSEntries() ([]DNSEntry, error) {
 					Name: localName,
 					IP:   ip,
 				})
+				// Dashboard also gets a bare domain entry (e.g., mynodeone.local)
+				if localName == "dashboard" {
+					entries = append(entries, DNSEntry{
+						Name: "",
+						IP:   ip,
+					})
+				}
 			} else if ip != "" {
 				log.Printf("Service %s missing local_name, skipping DNS entry", serviceName)
 			}
@@ -765,32 +772,51 @@ func (s *Server) periodicSaveNodes(ctx context.Context) {
 }
 
 // updateConfigVersion updates the config version when ConfigMaps change
+// Watches both service-registry AND domain-registry so VPS nodes detect
+// routing changes (e.g., adding a public domain) even when service-registry
+// hasn't changed.
 func (s *Server) watchConfigChanges(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	lastHash := ""
+	lastServiceHash := ""
+	lastDomainHash := ""
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Get current config hash
+			changed := false
+
+			// Watch service-registry
 			cmd := exec.Command("kubectl", "get", "configmap", "-n", "kube-system",
 				"service-registry", "-o", "jsonpath={.metadata.resourceVersion}")
-			output, err := cmd.Output()
-			if err != nil {
-				continue
+			if output, err := cmd.Output(); err == nil {
+				hash := string(output)
+				if hash != lastServiceHash && lastServiceHash != "" {
+					log.Printf("service-registry changed (rv: %s -> %s)", lastServiceHash, hash)
+					changed = true
+				}
+				lastServiceHash = hash
 			}
 
-			hash := string(output)
-			if hash != lastHash && lastHash != "" {
-				// Config changed, update version
+			// Watch domain-registry
+			cmd = exec.Command("kubectl", "get", "configmap", "-n", "kube-system",
+				"domain-registry", "-o", "jsonpath={.metadata.resourceVersion}")
+			if output, err := cmd.Output(); err == nil {
+				hash := string(output)
+				if hash != lastDomainHash && lastDomainHash != "" {
+					log.Printf("domain-registry changed (rv: %s -> %s)", lastDomainHash, hash)
+					changed = true
+				}
+				lastDomainHash = hash
+			}
+
+			if changed {
 				s.configVer = fmt.Sprintf("v%d", time.Now().Unix())
 				log.Printf("Config changed, new version: %s", s.configVer)
 			}
-			lastHash = hash
 		}
 	}
 }

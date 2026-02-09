@@ -107,11 +107,13 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
 
 | **Command** | **Description** | **Example** |
 |-------------|----------------|-------------|
-| `configure-routing <service> "<urls>" "<vps_ips>" [strategy]` | Configure service routing | `configure-routing immich "example.com,www.example.com" "100.68.225.92"` |
-| `add-domain <service> <new_url>` | Add a single URL to service | `add-domain immich "photos.test.org"` |
-| `remove-domain <service> <url>` | Remove a single URL from service | `remove-domain immich "old-link.com"` |
-| `list-domains <service>` | Show all URLs for a service | `list-domains immich` |
+| `configure-routing <service> "<urls>" "<vps_ips>" [strategy]` | Configure service routing | `configure-routing immich-server "example.com,www.example.com" "100.68.225.92"` |
+| `add-domain <service> <new_url>` | Add a single URL to service | `add-domain immich-server "photos.test.org"` |
+| `remove-domain <service> <url>` | Remove a single URL from service | `remove-domain immich-server "old-link.com"` |
+| `list-domains <service>` | Show all URLs for a service | `list-domains immich-server` |
 | `export-vps-routes <vps_ip> <control_plane_ip>` | Export routes for specific VPS | `export-vps-routes 100.68.225.92 100.122.68.75` |
+
+> **Important**: The `<service>` argument must be the **Kubernetes service name** (e.g., `immich-server`, `open-webui`, `jellyfin`), not the app name or local_name. This ensures consistency with the `service-registry` ConfigMap. The `configure-routing` command validates that the service exists in the registry before writing routing config.
 
 ---
 
@@ -362,6 +364,16 @@ sudo ./scripts/domains/multi-domain-registry.sh show | grep -A 10 "immich"
 4. **Monitor Health**: Regularly check VPS connectivity and service status
 5. **Backup Configuration**: Export registry before major changes
 6. **Use Consistent Naming**: Follow naming conventions for domains and services
+
+## Defensive Programming & Reliability
+
+The registry script includes several defensive measures:
+
+- **Dependency checks**: Verifies `kubectl` and `jq` are available before running
+- **Retry with backoff**: All `kubectl patch` operations use `kubectl_retry` (3 attempts, exponential backoff) to handle transient API server issues
+- **Input validation**: `configure-routing` validates service exists in `service-registry` before writing routing config, and validates all domain formats
+- **Non-interactive safety**: Conflict prompts (`read -p`) detect if stdin is a tty. When called non-interactively (e.g., from `manage-app-visibility.sh` via `retry_command`), conflict checks are logged but don't block — the caller is expected to handle conflicts
+- **Error propagation**: All `kubectl patch` failures are caught and return non-zero, allowing callers to detect and handle failures
 
 ---
 

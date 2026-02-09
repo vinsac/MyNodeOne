@@ -34,6 +34,36 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Dependency checks
+for dep in kubectl jq; do
+    if ! command -v "$dep" &>/dev/null; then
+        log_error "Required dependency not found: $dep"
+        exit 1
+    fi
+done
+
+# Retry wrapper for kubectl operations with exponential backoff
+kubectl_retry() {
+    local max_attempts=3
+    local attempt=1
+    local delay=2
+
+    while [ $attempt -le $max_attempts ]; do
+        if "$@" 2>/dev/null; then
+            return 0
+        fi
+        if [ $attempt -lt $max_attempts ]; then
+            log_warn "kubectl attempt $attempt/$max_attempts failed, retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    log_error "kubectl command failed after $max_attempts attempts: $*"
+    return 1
+}
+
 # Validate domain format
 validate_domain() {
     local domain="$1"
@@ -137,11 +167,14 @@ register_domain() {
             status: "active"
         }')
     
-    # Use kubectl patch to preserve other fields
-    kubectl patch configmap domain-registry \
+    # Use kubectl patch to preserve other fields (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to register domain: $domain"
+        return 1
+    fi
     
     log_success "Domain registered: $domain"
 }
@@ -164,11 +197,14 @@ unregister_domain() {
     # Remove domain from the registry
     registry=$(echo "$registry" | jq "del(.domains[\"$domain\"])")
     
-    # Update ConfigMap
-    kubectl patch configmap domain-registry \
+    # Update ConfigMap (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to unregister domain: $domain"
+        return 1
+    fi
     
     log_success "Domain unregistered: $domain"
 }
@@ -204,11 +240,14 @@ register_vps() {
             status: "active"
         }] | .vps_nodes |= unique_by(.tailscale_ip)')
     
-    # Use kubectl patch to update the unified structure
-    kubectl patch configmap domain-registry \
+    # Use kubectl patch to update the unified structure (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to register VPS: $vps_ip"
+        return 1
+    fi
     
     log_success "VPS registered: $vps_ip → $public_ip ($region)"
 }
@@ -231,11 +270,14 @@ unregister_vps() {
     # Remove VPS from the registry
     registry=$(echo "$registry" | jq "del(.vps_nodes[] | select(.tailscale_ip==\"$vps_ip\"))")
     
-    # Update ConfigMap
-    kubectl patch configmap domain-registry \
+    # Update ConfigMap (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to unregister VPS: $vps_ip"
+        return 1
+    fi
     
     log_success "VPS unregistered: $vps_ip"
 }
@@ -249,9 +291,24 @@ configure_service_routing() {
     local vps_nodes="$3"        # Comma-separated: 100.68.225.92,100.70.123.45
     local strategy="${4:-round-robin}"  # round-robin, primary-backup, geo
     
+    # Validate required inputs
+    if [[ -z "$service_name" ]] || [[ -z "$expose_domains" ]] || [[ -z "$vps_nodes" ]]; then
+        log_error "Usage: configure-routing <service> <domains> <vps_nodes> [strategy]"
+        return 1
+    fi
+    
     init_multi_domain_registry
     
     log_info "Configuring routing for: $service_name"
+    
+    # Verify service exists in service-registry
+    if ! kubectl get configmap -n kube-system service-registry \
+        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
+        jq -e --arg svc "$service_name" '.[$svc]' &>/dev/null; then
+        log_error "Service '$service_name' not found in service-registry"
+        log_info "Run 'service-registry.sh sync' first or check the service name"
+        return 1
+    fi
     
     # Validate all domains first
     IFS=',' read -ra DOMAIN_ARRAY <<< "$expose_domains"
@@ -263,10 +320,14 @@ configure_service_routing() {
         fi
         
         # Check for conflicts
-        if check_domain_conflicts "$domain" "$service_name"; then
+        if ! check_domain_conflicts "$domain" "$service_name"; then
             log_warn "Domain $domain is already in use by another service"
-            read -p "Continue anyway? (y/n): " continue_conflict
-            [ "$continue_conflict" != "y" ] && return 1
+            if [[ -t 0 ]]; then
+                read -p "Continue anyway? (y/n): " continue_conflict
+                [ "$continue_conflict" != "y" ] && return 1
+            else
+                log_warn "Non-interactive mode: skipping conflict (caller should handle)"
+            fi
         fi
     done
     
@@ -292,11 +353,14 @@ configure_service_routing() {
             updated: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
         }')
     
-    # Use kubectl patch to preserve other fields
-    kubectl patch configmap domain-registry \
+    # Use kubectl patch to preserve other fields (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to update domain-registry ConfigMap"
+        return 1
+    fi
     
     log_success "Routing configured for $service_name"
     log_info "  Exposed at:"
@@ -322,14 +386,18 @@ add_domain() {
     
     # Check for domain conflicts
     local has_conflict=false
-    if check_domain_conflicts "$new_domain" "$service_name"; then
+    if ! check_domain_conflicts "$new_domain" "$service_name"; then
         has_conflict=true
     fi
     
     # Warn about conflicts but allow continuation
     if [ "$has_conflict" = true ]; then
-        read -p "Continue anyway? (y/n): " continue_conflict
-        [ "$continue_conflict" != "y" ] && return 1
+        if [[ -t 0 ]]; then
+            read -p "Continue anyway? (y/n): " continue_conflict
+            [ "$continue_conflict" != "y" ] && return 1
+        else
+            log_warn "Non-interactive mode: skipping conflict (caller should handle)"
+        fi
     fi
     
     local routing=$(kubectl get configmap -n kube-system domain-registry \
@@ -351,11 +419,14 @@ add_domain() {
         '.[$service].expose |= (. + [$domain] | unique) |
          .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))')
     
-    # Update configmap
-    kubectl patch configmap domain-registry \
+    # Update configmap (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to add domain: $new_domain"
+        return 1
+    fi
     
     log_success "Domain added: $new_domain"
     
@@ -390,11 +461,14 @@ remove_domain() {
         '.[$service].expose |= (. - [$domain]) |
          .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))')
     
-    # Update configmap
-    kubectl patch configmap domain-registry \
+    # Update configmap (with retry)
+    if ! kubectl_retry kubectl patch configmap domain-registry \
         -n kube-system \
         --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"
+        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+        log_error "Failed to remove domain: $remove_domain"
+        return 1
+    fi
     
     log_success "Domain removed: $remove_domain"
     

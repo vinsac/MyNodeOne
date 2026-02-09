@@ -46,12 +46,13 @@ Two DNS methods work together:
 
 ```
 1. Get Service Data from Registry
-   └─ kubectl get cm ... (service-registry)
+   └─ kubectl get cm service-registry (kube-system)
 
 2. Update /etc/hosts via local_name
    ├─ grafana.mynodeone.local → 100.x.x.204 (local_name: grafana)
    ├─ argocd.mynodeone.local → 100.x.x.205  (local_name: argocd)
-   └─ minio.mynodeone.local → 100.x.x.203   (local_name: minio)
+   ├─ chat.mynodeone.local → 100.x.x.201    (local_name: chat)
+   └─ mynodeone.local → 100.x.x.206         (dashboard bare-domain)
 
 3. Configure dnsmasq
    ├─ Create /etc/dnsmasq.d/mynodeone.conf
@@ -59,13 +60,37 @@ Two DNS methods work together:
    └─ Restart dnsmasq
 ```
 
+### How local_name Is Determined
+
+When `sync_registry` discovers LoadBalancer services, it determines `local_name` in this priority order:
+
+1. **K8s annotation** `mynodeone.io/subdomain` on the Service (preferred)
+2. **Legacy annotation** `${CLUSTER_DOMAIN}.local/subdomain` (fallback)
+3. **Hardcoded mapping** in `service-registry.sh` (e.g., `argocd-server` → `argocd`, `open-webui` → `chat`)
+4. **Service name as-is** (last resort)
+
+All app install scripts should set the `mynodeone.io/subdomain` annotation on their K8s Service to ensure the correct `local_name` is used. See [ARCHITECTURE.md](ARCHITECTURE.md#annotation-standard) for the full standard.
+
 ### The "Clean Separation" Principle
 MyNodeOne enforces a strict separation between internal and external identity:
 
-- **`local_name`**: Drives all `.local` DNS entries. Guaranteed to work on your Tailscale mesh.
-- **`expose`**: A list of full public domains (e.g., `curiios.com`). Managed separately via VPS edge nodes.
+- **`local_name`**: Drives all `.local` DNS entries. Guaranteed to work on your Tailscale mesh. Stored in the `service-registry` ConfigMap.
+- **`expose`**: A list of full public domains (e.g., `curiios.com`). Managed separately via VPS edge nodes. Stored in the `domain-registry` ConfigMap's `routing.json`.
 
 This prevents the "Root Domain Breakage" where setting a public root domain would previously overwrite the local DNS entry, making the app unreachable internally without a hairpin NAT.
+
+**Important**: `local_name` and `expose` are **completely independent**. A service's local_name (e.g., `chat`) has no relationship to its public domains (e.g., `chat.curiios.com`). They are stored in different ConfigMaps and consumed by different systems.
+
+### Dashboard Bare-Domain Entry
+
+The `dashboard` service gets a special additional DNS entry: the bare cluster domain (e.g., `mynodeone.local`) in addition to `dashboard.mynodeone.local`. This allows users to access the dashboard via the short URL. This behavior is consistent across all DNS sync paths:
+- `service-registry.sh export_dns`
+- `sync-dns.sh`
+- Config API `getDNSEntries` → node-agent `apply_dns_config`
+
+### Config Version Propagation
+
+The Config API watches **both** `service-registry` and `domain-registry` ConfigMaps for changes. When either changes, the config version is bumped, causing VPS node agents to re-fetch their Traefik configuration. This ensures that routing-only changes (e.g., adding a public domain) are propagated without requiring a service registry update.
 
 ---
 

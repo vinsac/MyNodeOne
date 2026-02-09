@@ -202,6 +202,15 @@ mynodeone/
 **"How do I expose apps publicly?"**  
 → [DOMAIN-AND-PUBLIC-ACCESS.md](operations/DOMAIN-AND-PUBLIC-ACCESS.md)
 
+**"How does DNS and service discovery work?"**  
+→ [DNS.md](architecture/DNS.md) - Local DNS, clean separation, annotation standard
+
+**"How do services register and get discovered?"**  
+→ [ARCHITECTURE.md](architecture/ARCHITECTURE.md#service-registry-architecture) - Registry keys, annotations, sync_registry
+
+**"How should I write a new app install script?"**  
+→ [DEFENSIVE-PROGRAMMING.md](contributing/DEFENSIVE-PROGRAMMING.md#service-registry-and-domain-handling) - Registration patterns, annotation standard
+
 **"How do I deploy my own apps?"**  
 → [external-apps/](/external-apps) - Everything in one place
 

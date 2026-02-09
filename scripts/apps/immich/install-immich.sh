@@ -317,7 +317,7 @@ metadata:
   name: immich-server
   namespace: $NAMESPACE
   annotations:
-    ${CLUSTER_DOMAIN}.local/subdomain: "$APP_SUBDOMAIN"
+    mynodeone.io/subdomain: "$APP_SUBDOMAIN"
 spec:
   type: LoadBalancer
   ports:
@@ -459,17 +459,17 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             
             # Verify registration
             echo "🔍 Verifying registration..."
-            REGISTERED_SUBDOMAIN=$(kubectl get configmap -n kube-system service-registry \
+            REGISTERED_LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
                 -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-                jq -r '."immich-server".subdomain' 2>/dev/null || echo "")
+                jq -r '."immich-server".local_name' 2>/dev/null || echo "")
             
-            if [ "$REGISTERED_SUBDOMAIN" = "$APP_SUBDOMAIN" ]; then
-                echo "✓ Verified: Service registered with subdomain '$APP_SUBDOMAIN'"
+            if [ "$REGISTERED_LOCAL_NAME" = "$APP_SUBDOMAIN" ]; then
+                echo "✓ Verified: Service registered with local_name '$APP_SUBDOMAIN'"
                 echo ""
             else
                 echo -e "${YELLOW}⚠️  Registration verification failed${NC}"
-                echo "   Expected subdomain: $APP_SUBDOMAIN"
-                echo "   Got: $REGISTERED_SUBDOMAIN"
+                echo "   Expected local_name: $APP_SUBDOMAIN"
+                echo "   Got: $REGISTERED_LOCAL_NAME"
                 echo ""
             fi
             
@@ -531,7 +531,7 @@ fi
 
 # Automatically configure routing and ask about public access
 if [[ -f "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "immich" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
+    source "$PROJECT_ROOT/scripts/lib/post-install-routing.sh" "immich-server" "80" "$APP_SUBDOMAIN" "immich" "immich-server"
 fi
 
 # Offer to set up automated video transcoding

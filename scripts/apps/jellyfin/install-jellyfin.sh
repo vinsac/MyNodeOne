@@ -254,17 +254,17 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             
             # Verify registration
             echo "🔍 Verifying registration..."
-            REGISTERED_SUBDOMAIN=$(kubectl get configmap -n kube-system service-registry \
+            REGISTERED_LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
                 -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-                jq -r '.jellyfin.subdomain' 2>/dev/null || echo "")
+                jq -r '.jellyfin.local_name' 2>/dev/null || echo "")
             
-            if [ "$REGISTERED_SUBDOMAIN" = "$APP_SUBDOMAIN" ]; then
-                echo "✓ Verified: Service registered with subdomain '$APP_SUBDOMAIN'"
+            if [ "$REGISTERED_LOCAL_NAME" = "$APP_SUBDOMAIN" ]; then
+                echo "✓ Verified: Service registered with local_name '$APP_SUBDOMAIN'"
                 echo ""
             else
                 echo -e "${YELLOW}⚠️  Registration verification failed${NC}"
-                echo "   Expected subdomain: $APP_SUBDOMAIN"
-                echo "   Got: $REGISTERED_SUBDOMAIN"
+                echo "   Expected local_name: $APP_SUBDOMAIN"
+                echo "   Got: $REGISTERED_LOCAL_NAME"
                 echo ""
             fi
             

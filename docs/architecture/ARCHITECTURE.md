@@ -383,6 +383,99 @@ sudo ./scripts/lib/sync-controller.sh push-force
 
 The pull-based model is more resilient and works in restrictive network environments where nodes can't be reached from the control plane.
 
+## Service Registry Architecture
+
+MyNodeOne uses two Kubernetes ConfigMaps as the source of truth for service identity and routing:
+
+### ConfigMaps
+
+| ConfigMap | Namespace | Purpose |
+|-----------|-----------|---------|
+| `service-registry` | `kube-system` | Stores service metadata: `local_name`, IP, port, namespace, `public` flag |
+| `domain-registry` | `kube-system` | Stores registered domains, VPS nodes, and `routing.json` (expose arrays) |
+
+### Clean Separation Principle
+
+A service's **local identity** and **public identity** are completely independent:
+
+```
+service-registry (local identity)          domain-registry routing.json (public identity)
+┌──────────────────────────────┐          ┌──────────────────────────────────────┐
+│ "open-webui": {              │          │ "open-webui": {                      │
+│   "local_name": "chat",     │──────X───│   "expose": ["curiios.com",          │
+│   "ip": "100.x.x.201",     │  NO LINK │              "www.curiios.com"],      │
+│   "public": true            │          │   "vps_nodes": ["100.x.x.92"],       │
+│ }                            │          │   "strategy": "round-robin"           │
+└──────────────────────────────┘          └──────────────────────────────────────┘
+         │                                              │
+         ▼                                              ▼
+  chat.mynodeone.local                     https://curiios.com (via VPS Traefik)
+  (DNS on laptops/workers)                 https://www.curiios.com
+```
+
+- **`local_name`** drives `.local` DNS entries only (e.g., `chat` → `chat.mynodeone.local`)
+- **`expose`** drives public Traefik routes on VPS nodes (e.g., `curiios.com`)
+- Changing one never affects the other
+
+### Service Registration Flow
+
+When an app is installed, registration happens in two places:
+
+```
+Install Script (e.g., install-jellyfin.sh)
+  │
+  ├─ 1. Creates K8s Service with annotation:
+  │     mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
+  │
+  ├─ 2. Calls service-registry.sh register (direct registration)
+  │     Key = K8s service name (e.g., "jellyfin")
+  │
+  └─ 3. Calls post-install-routing.sh (DNS update + user guidance)
+        Key = K8s service name (must match step 2)
+```
+
+**Critical rule**: The registry key (first argument to `register` and `post-install-routing`) **must match the Kubernetes service name**. This is because `sync_registry` (which runs periodically) discovers services by their K8s name. A mismatch creates duplicate entries.
+
+### sync_registry Discovery
+
+`service-registry.sh sync` discovers all LoadBalancer services in the cluster and registers them:
+
+1. Finds all K8s services with `type: LoadBalancer` and an assigned IP
+2. For each service, determines `local_name` by:
+   - **First**: Checking `mynodeone.io/subdomain` annotation on the K8s Service
+   - **Fallback**: Checking `${CLUSTER_DOMAIN}.local/subdomain` annotation (legacy)
+   - **Last resort**: Hardcoded case statement mapping (e.g., `argocd-server` → `argocd`)
+3. Preserves existing `public` flag (doesn't reset to false on re-sync)
+4. Removes stale entries for services that no longer exist
+
+### Annotation Standard
+
+All app install scripts must add this annotation to their K8s Service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+  namespace: my-app
+  annotations:
+    mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
+spec:
+  type: LoadBalancer
+  ...
+```
+
+This ensures `sync_registry` picks up the correct `local_name` regardless of the K8s service name.
+
+### Dashboard Bare-Domain Entry
+
+The `dashboard` service gets a special additional DNS entry: the bare cluster domain (e.g., `mynodeone.local`) in addition to `dashboard.mynodeone.local`. This is consistent across all DNS paths:
+- `service-registry.sh export_dns`
+- Config API `getDNSEntries`
+- `node-agent.sh apply_dns_config`
+
+---
+
 ### Network Security
 - **Tailscale**: WireGuard-based encryption
 - **VPS Firewall**: Only 80, 443, 22 open

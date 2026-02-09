@@ -588,6 +588,16 @@ add_node_disks_to_longhorn() {
 }
 
 # Function to check for disk UUID mismatches
+# When a disk is reformatted, Longhorn's stored UUID no longer matches the actual
+# disk. This makes the disk show as "not ready" and "not schedulable".
+#
+# Two-layer detection (defensive programming):
+#   Layer 1 (proactive): Compare longhorn-disk.cfg on each mounted disk against
+#           Longhorn's stored diskUUID — instant, no dependency on Longhorn polling
+#   Layer 2 (fallback):  Check Longhorn's diskStatus conditions for mismatch errors
+#
+# Recovery: Delete the Longhorn node resource → Longhorn manager recreates it with
+# correct UUIDs. If manager gets stuck, restart the manager pod.
 check_disk_uuid_mismatches() {
     # Check if kubectl is available
     if ! kubectl get nodes &>/dev/null; then
@@ -607,17 +617,54 @@ check_disk_uuid_mismatches() {
         return 0
     fi
     
-    # Check for UUID mismatch errors via diskStatus conditions
-    # Longhorn reports this in two ways depending on version:
-    #   1. reason == "DiskFilesystemChanged" (older versions)
-    #   2. Ready condition message contains "diskUUID doesn't match" (v1.5+)
     local node_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null)
-    local has_mismatch=$(echo "$node_json" | \
-        jq -r '.status.diskStatus // {} | to_entries[] | select(
-            (.value.conditions[]?.reason == "DiskFilesystemChanged") or
-            (.value.conditions[]? | select(.type == "Ready" and .status == "False") | .message | test("diskUUID.*match|UUID.*mismatch"; "i"))
-        ) | .key' 2>/dev/null | head -1)
+    local has_mismatch=""
     
+    # --- Layer 1: Proactive UUID comparison ---
+    # Longhorn writes a longhorn-disk.cfg file to each disk with its UUID.
+    # When a disk is reformatted, this file is destroyed. Compare the UUID
+    # on disk against what Longhorn has stored in its CRD status.
+    # This works immediately — no need to wait for Longhorn's condition polling.
+    while IFS=: read -r disk_name disk_path stored_uuid; do
+        if [[ -z "$disk_name" || -z "$disk_path" ]]; then
+            continue
+        fi
+        
+        local cfg_file="$disk_path/longhorn-disk.cfg"
+        if [[ ! -f "$cfg_file" ]]; then
+            # longhorn-disk.cfg missing — disk was reformatted
+            log_info "  $disk_path: longhorn-disk.cfg missing (disk was reformatted)"
+            has_mismatch="$disk_name"
+            break
+        fi
+        
+        if [[ -n "$stored_uuid" ]]; then
+            local disk_uuid=$(jq -r '.diskUUID // ""' "$cfg_file" 2>/dev/null)
+            if [[ -n "$disk_uuid" && "$disk_uuid" != "$stored_uuid" ]]; then
+                log_info "  $disk_path: UUID on disk ($disk_uuid) != Longhorn record ($stored_uuid)"
+                has_mismatch="$disk_name"
+                break
+            fi
+        fi
+    done < <(echo "$node_json" | jq -r '
+        (.status.diskStatus // {}) as $status |
+        .spec.disks // {} | to_entries[] |
+        "\(.key):\(.value.path):\($status[.key].diskUUID // "")"
+    ' 2>/dev/null)
+    
+    # --- Layer 2: Fallback — check Longhorn's own condition reporting ---
+    # Longhorn eventually detects UUID mismatches and reports them in conditions.
+    # This catches cases where the disk file exists but has a different UUID that
+    # Layer 1 might miss (e.g., partial reformat, disk swap).
+    if [[ -z "$has_mismatch" ]]; then
+        has_mismatch=$(echo "$node_json" | \
+            jq -r '.status.diskStatus // {} | to_entries[] | select(
+                (.value.conditions[]?.reason == "DiskFilesystemChanged") or
+                (.value.conditions[]? | select(.type == "Ready" and .status == "False") | .message | test("diskUUID.*match|UUID.*mismatch"; "i"))
+            ) | .key' 2>/dev/null | head -1)
+    fi
+    
+    # --- Recovery ---
     if [[ -n "$has_mismatch" ]]; then
         log_warn "Disk UUID mismatch detected on '$has_mismatch' (disk was reformatted)"
         log_info "Deleting Longhorn node to reset disk UUIDs..."

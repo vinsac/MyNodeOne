@@ -247,7 +247,7 @@ kubectl get volumes -n longhorn-system
 To add a new app to the store:
 
 1. Create installation script: `scripts/apps/install-<appname>.sh`
-2. Follow the template from existing apps (Jellyfin, Immich, etc.)
+2. Follow the template from existing apps (Homepage, Jellyfin, Immich, Mattermost, etc.)
 3. Include:
    - Namespace creation
    - Storage configuration
@@ -271,8 +271,11 @@ To add a new app to the store:
 - Must request LoadBalancer service with `mynodeone.io/subdomain` annotation
 - Must generate secure random passwords
 - Must display access info clearly
+- Must use `validate_prerequisites` from `scripts/apps/lib/validation.sh` for pre-flight checks
+- Must call `post-install-routing.sh` after deployment for service registration and DNS
 - Registry key (in `register` and `post-install-routing`) must match the K8s service name
 - Verification must check `.local_name` field (not `.subdomain`)
+- Dependencies: `kubectl`, `jq` (for registry verification), Longhorn storage class
 
 ### Service Registration Pattern
 

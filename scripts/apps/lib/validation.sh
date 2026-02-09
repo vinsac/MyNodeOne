@@ -42,7 +42,13 @@ validate_prerequisites() {
         exit 1
     fi
     
-    # Check 3: Storage available (optional)
+    # Check 3: jq available (used for service registry verification)
+    if ! command -v jq &> /dev/null; then
+        echo -e "${YELLOW}Warning: jq not found. Service registry verification will be skipped.${NC}"
+        echo "Install with: sudo apt-get install -y jq"
+    fi
+    
+    # Check 4: Storage available (optional)
     if [ "$require_storage" = "true" ]; then
         if ! sudo kubectl get storageclass longhorn &> /dev/null; then
             echo -e "${YELLOW}Warning: Longhorn storage class not found.${NC}"

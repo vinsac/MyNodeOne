@@ -103,6 +103,79 @@ check_requirements() {
     log_success "Prerequisites check passed"
 }
 
+ensure_tailscale_ready() {
+    log_info "Ensuring Tailscale interface is ready..."
+
+    if ! systemctl is-active tailscaled &>/dev/null; then
+        log_error "tailscaled is not running. Start it with: sudo systemctl start tailscaled"
+        exit 1
+    fi
+
+    local attempts=0
+    local max_attempts=12
+    while [ $attempts -lt $max_attempts ]; do
+        if ip link show tailscale0 &>/dev/null; then
+            local ts_ip
+            ts_ip=$(tailscale ip -4 2>/dev/null | head -n 1 || true)
+            if [ -n "$ts_ip" ]; then
+                log_success "Tailscale interface ready: $ts_ip"
+                return 0
+            fi
+        fi
+
+        attempts=$((attempts + 1))
+        log_warn "Tailscale interface not ready yet (attempt $attempts/$max_attempts). Waiting..."
+        sleep 5
+    done
+
+    log_error "Tailscale interface not ready after ${max_attempts} attempts."
+    log_error "Run: sudo tailscale up --accept-dns=false"
+    exit 1
+}
+
+configure_k8s_network_prereqs() {
+    log_info "Configuring kernel prerequisites for Kubernetes networking..."
+
+    # Ensure required modules load on boot
+    cat > /etc/modules-load.d/mynodeone-k8s.conf <<'EOF'
+br_netfilter
+vxlan
+EOF
+
+    modprobe br_netfilter 2>/dev/null || log_warn "Failed to load kernel module br_netfilter"
+    modprobe vxlan 2>/dev/null || log_warn "Failed to load kernel module vxlan"
+
+    # Persist sysctl settings for pod networking
+    cat > /etc/sysctl.d/99-mynodeone-k8s.conf <<'EOF'
+net.ipv4.ip_forward=1
+net.bridge.bridge-nf-call-iptables=1
+net.bridge.bridge-nf-call-ip6tables=1
+EOF
+
+    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || log_warn "Could not set net.ipv4.ip_forward=1"
+    sysctl -w net.bridge.bridge-nf-call-iptables=1 >/dev/null 2>&1 || log_warn "Could not set net.bridge.bridge-nf-call-iptables=1"
+    sysctl -w net.bridge.bridge-nf-call-ip6tables=1 >/dev/null 2>&1 || log_warn "Could not set net.bridge.bridge-nf-call-ip6tables=1"
+    sysctl --system >/dev/null 2>&1 || log_warn "sysctl --system failed; reboot may be required"
+
+    log_success "Kernel networking prerequisites configured"
+}
+
+configure_k3s_service_dependencies() {
+    local service_name="$1"
+    log_info "Configuring $service_name to start after Tailscale..."
+
+    local drop_in_dir="/etc/systemd/system/${service_name}.service.d"
+    mkdir -p "$drop_in_dir"
+    cat > "$drop_in_dir/10-tailscale.conf" <<'EOF'
+[Unit]
+After=tailscaled.service network-online.target
+Wants=tailscaled.service network-online.target
+EOF
+
+    systemctl daemon-reload
+    log_success "$service_name dependency on tailscaled configured"
+}
+
 verify_control_plane() {
     log_info "Verifying control plane connectivity..."
     
@@ -674,6 +747,7 @@ main() {
     echo
     
     check_requirements
+    ensure_tailscale_ready
     verify_control_plane
     
     # GPU setup handled later to allow device plugin deployment if kubectl works
@@ -681,7 +755,9 @@ main() {
     
     get_join_token
     install_dependencies
+    configure_k8s_network_prereqs
     configure_firewall
+    configure_k3s_service_dependencies "k3s-agent"
     join_cluster
     setup_model_directories  # Create model storage for LLM API
     

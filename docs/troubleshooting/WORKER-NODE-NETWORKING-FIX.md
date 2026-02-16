@@ -278,6 +278,53 @@ After worker node reinstall, verify:
 
 **Recommendation**: Monitor Flannel interface presence and alert if missing.
 
+### Other Structural Root Causes to Check
+
+If cross-node pod networking fails again (even with UFW routed + VXLAN open),
+check these **structural** causes that are independent of replica count:
+
+1. **Tailscale interface not ready at K3s startup**
+   - K3s is configured with `flannel-iface: tailscale0`. If `tailscale0` is missing
+     or uninitialized when K3s starts, Flannel can fail to create `flannel.1`.
+   - Check:
+     ```bash
+     ip link show tailscale0
+     tailscale ip -4
+     journalctl -u k3s | grep -i flannel
+     ```
+
+2. **Kernel modules missing (`vxlan`, `br_netfilter`)**
+   - Flannel VXLAN requires the `vxlan` module; bridged pod traffic relies on `br_netfilter`.
+   - Check:
+     ```bash
+     lsmod | grep -E "vxlan|br_netfilter"
+     ```
+
+3. **Kernel forwarding / bridge netfilter disabled**
+   - Linux can drop forwarded packets if forwarding or bridge sysctls are disabled.
+   - Check:
+     ```bash
+     sysctl net.ipv4.ip_forward
+     sysctl net.bridge.bridge-nf-call-iptables
+     sysctl net.bridge.bridge-nf-call-ip6tables
+     ```
+
+4. **CNI configuration missing/corrupted**
+   - If the Flannel CNI config is missing, the overlay network will not initialize.
+   - Check:
+     ```bash
+     ls -l /var/lib/rancher/k3s/agent/etc/cni/net.d/10-flannel.conflist
+     ```
+
+5. **iptables/nftables mismatch**
+   - A mismatch between `iptables` and `nftables` can cause routes to exist but packets
+     to be silently dropped.
+   - Check:
+     ```bash
+     iptables -S | head -n 20
+     nft list ruleset | head -n 20
+     ```
+
 ---
 
 ## Lessons Learned

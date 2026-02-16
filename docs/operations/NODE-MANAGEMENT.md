@@ -241,8 +241,8 @@ kubectl get nodes
 **Output:**
 ```
 NAME               STATUS   ROLES                              AGE     VERSION
-canada-pc-0001     Ready    control-plane,etcd,master,worker   11h     v1.28.5+k3s1
-canada-pc-0001-1   Ready    worker                             6h30m   v1.28.5+k3s1
+canada-pc-0001     Ready    control-plane,etcd,master,worker   11h     v1.31.2+k3s1
+canada-pc-0001-1   Ready    worker                             6h30m   v1.31.2+k3s1
 ```
 
 ---

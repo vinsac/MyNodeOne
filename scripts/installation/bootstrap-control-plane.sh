@@ -67,7 +67,7 @@ export NODE_NAME
 export NODE_LOCATION
 
 # K3s version
-K3S_VERSION="v1.28.5+k3s1"
+K3S_VERSION="v1.31.2+k3s1"
 
 # Set kubeconfig for K3s (so kubectl and helm work)
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -586,12 +586,14 @@ optimize_system_for_containers() {
     sysctl -w fs.inotify.max_user_instances=1024 > /dev/null
     sysctl -w fs.inotify.max_user_watches=524288 > /dev/null
     
-    # Make changes permanent
-    if ! grep -q "fs.inotify.max_user_instances" /etc/sysctl.conf 2>/dev/null; then
-        echo "# Increased limits for containerized applications" >> /etc/sysctl.conf
-        echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf
-        echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf
-        log_success "inotify limits increased (persistent)"
+    # Make changes permanent (use sysctl.d drop-in for consistency)
+    if [ ! -f /etc/sysctl.d/99-mynodeone-inotify.conf ]; then
+        cat > /etc/sysctl.d/99-mynodeone-inotify.conf <<EOF
+# Increased limits for containerized applications (MyNodeOne)
+fs.inotify.max_user_instances=1024
+fs.inotify.max_user_watches=524288
+EOF
+        log_success "inotify limits increased (persistent via /etc/sysctl.d/99-mynodeone-inotify.conf)"
     fi
     
     log_success "System optimizations applied"
@@ -708,6 +710,8 @@ disable:
   - traefik  # We'll install Traefik separately with custom config
   - servicelb  # We'll use MetalLB
 disable-cloud-controller: true
+etcd-snapshot-schedule-cron: "0 */6 * * *"
+etcd-snapshot-retention: 5
 kubelet-arg:
   - "max-pods=250"
 kube-apiserver-arg:
@@ -1143,7 +1147,7 @@ install_cert_manager() {
     
     helm upgrade --install cert-manager jetstack/cert-manager \
         --namespace cert-manager \
-        --version v1.13.3 \
+        --version v1.16.2 \
         --set installCRDs=true \
         --wait
     
@@ -1185,7 +1189,7 @@ install_longhorn() {
         
         helm upgrade --install longhorn longhorn/longhorn \
             --namespace longhorn-system \
-            --version 1.5.3 \
+            --version 1.7.2 \
             --set defaultSettings.defaultReplicaCount=$replica_count \
             --set persistence.defaultClassParameter.numberOfReplicas=$replica_count \
             --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
@@ -1391,7 +1395,7 @@ install_traefik() {
     
     helm upgrade --install traefik traefik/traefik \
         --namespace traefik \
-        --version 26.0.0 \
+        --version 33.2.0 \
         --set ports.web.port=80 \
         --set ports.websecure.port=443 \
         --set ports.websecure.tls.enabled=true \
@@ -1425,7 +1429,7 @@ install_monitoring() {
     
     # Install kube-prometheus-stack with safe wrapper and optimized resources for homelab
     helm_install_safe "kube-prometheus-stack" "prometheus-community/kube-prometheus-stack" "monitoring" \
-        --version 55.5.0 \
+        --version 65.8.0 \
         --set prometheus.prometheusSpec.retention=30d \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
@@ -1470,7 +1474,7 @@ install_monitoring() {
     # Install Loki for logs (non-critical, allow failure)
     log_info "Installing Loki (log aggregation)..."
     helm_install_safe "loki" "grafana/loki-stack" "monitoring" \
-        --version 2.10.1 \
+        --version 2.10.2 \
         --set loki.persistence.enabled=true \
         --set loki.persistence.storageClassName=longhorn \
         --set loki.persistence.size=100Gi \
@@ -1533,7 +1537,7 @@ install_argocd() {
     
     # Install ArgoCD using helm with optimized resources for homelab
     helm_install_safe "argocd" "argo/argo-cd" "argocd" \
-        --version 5.51.6 \
+        --version 7.7.5 \
         --set server.service.type=LoadBalancer \
         --set global.priorityClassName=mynodeone-infrastructure \
         --set controller.resources.requests.memory=256Mi \
@@ -1612,13 +1616,15 @@ EOF
 deploy_dashboard() {
     log_info "Deploying MyNodeOne Dashboard..."
     
-    # Deploy the dashboard (show errors but hide verbose output)
-    if bash "$PROJECT_ROOT/website/deploy-dashboard.sh" 2>&1 | grep -v "^✓\|^📦" | grep -E "error|Error|ERROR|failed|Failed|FAILED" >&2; then
+    # Deploy the dashboard once, capture output to check for errors
+    local deploy_output
+    deploy_output=$(bash "$PROJECT_ROOT/website/deploy-dashboard.sh" 2>&1) || true
+    
+    if echo "$deploy_output" | grep -qE "error|Error|ERROR|failed|Failed|FAILED"; then
         log_warn "Dashboard deployment had issues, but continuing..."
-    elif bash "$PROJECT_ROOT/website/deploy-dashboard.sh" > /dev/null 2>&1; then
-        log_success "Dashboard deployed - accessible at http://${CLUSTER_DOMAIN}.local"
+        echo "$deploy_output" | grep -E "error|Error|ERROR|failed|Failed|FAILED" >&2
     else
-        log_warn "Dashboard deployment had issues, but continuing..."
+        log_success "Dashboard deployed - accessible at http://${CLUSTER_DOMAIN}.local"
     fi
 }
 
@@ -2605,39 +2611,14 @@ main() {
     # Offer to deploy LLM chat app
     offer_llm_chat
     
-    # Install Config API Server for pull-based node sync (HTTP instead of SSH)
-    echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Installing Config API Server"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo
-    log_info "Installing Config API Server for pull-based node sync..."
-    
-    if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
-        if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" control-plane; then
-            log_success "Config API Server installed"
-            log_info "Nodes can now pull config updates via HTTP on port 8443"
-            
-            # Display the API token for reference
-            if [ -f /etc/mynodeone/api-token ]; then
-                log_info "API token stored in: /etc/mynodeone/api-token"
-                log_info "Node agents will need this token to authenticate"
-            fi
-        else
-            log_warn "Config API Server installation had issues"
-            log_warn "You can install manually later:"
-            log_warn "  sudo ./scripts/lib/install-config-sync.sh control-plane"
-            log_warn "Or: sudo ./scripts/installation/install-config-api.sh"
-        fi
-    elif [ -f "$SCRIPT_DIR/install-config-api.sh" ]; then
-        if bash "$SCRIPT_DIR/install-config-api.sh"; then
-            log_success "Config API Server installed"
-        else
-            log_warn "Config API Server installation had issues"
-        fi
+    # Config API Server already installed during initialize_service_registries()
+    # Verify it's running
+    if [ -f /etc/mynodeone/api-token ]; then
+        log_success "Config API Server verified (installed during registry setup)"
+        log_info "API token stored in: /etc/mynodeone/api-token"
     else
-        log_warn "Config API installer not found, skipping"
-        log_warn "Pull-based sync will not work; SSH-based sync will be used as fallback"
+        log_warn "Config API Server may not have installed correctly during registry setup"
+        log_warn "You can install manually: sudo ./scripts/lib/install-config-sync.sh control-plane"
     fi
     echo
     

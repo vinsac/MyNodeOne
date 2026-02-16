@@ -31,7 +31,7 @@ fi
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
 # Tool versions (pinned for reproducible installs)
-KUBECTL_VERSION="v1.28.5"
+KUBECTL_VERSION="v1.31.2"
 HELM_VERSION="v3.15.3"
 K9S_VERSION="v0.32.5"
 

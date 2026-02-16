@@ -4,9 +4,9 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
 
 ## Kubernetes and Cluster Core
 
-- **K3s**: `v1.28.5+k3s1`  
+- **K3s**: `v1.31.2+k3s1`  
   Defined in `scripts/installation/bootstrap-control-plane.sh` (`K3S_VERSION`).
-- **kubectl (Linux)**: `v1.28.5`  
+- **kubectl (Linux)**: `v1.31.2`  
   Installed by `scripts/setup/setup-laptop.sh` using a pinned download URL.
 
 ## Helm and Package Management
@@ -16,25 +16,27 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
 
 ## Observability and Monitoring
 
-- **kube-prometheus-stack (Prometheus + Grafana)**: Helm chart `55.5.0`  
+- **kube-prometheus-stack (Prometheus + Grafana)**: Helm chart `65.8.0`  
   Installed in `scripts/installation/bootstrap-control-plane.sh`.
-- **Loki stack**: Helm chart `2.10.1`  
+- **Loki stack**: Helm chart `2.10.2`  
   Installed in `scripts/installation/bootstrap-control-plane.sh`.
 - **Grafana**: Managed via the `kube-prometheus-stack` chart version above.
 
 ## Ingress, Networking, and Storage
 
-- **Traefik (Kubernetes Ingress)**: Helm chart `26.0.0`  
+- **cert-manager**: Helm chart `v1.16.2`  
+  Installed in `scripts/installation/bootstrap-control-plane.sh`.
+- **Traefik (Kubernetes Ingress)**: Helm chart `33.2.0`  
   Installed in `scripts/installation/bootstrap-control-plane.sh`.
 - **MetalLB**: Helm chart (version pinned in `scripts/installation/bootstrap-control-plane.sh`).
-- **Longhorn**: Helm chart `1.5.3`  
+- **Longhorn**: Helm chart `1.7.2`  
   Installed in `scripts/installation/bootstrap-control-plane.sh`.
 - **MinIO**: Installed via Helm in `scripts/installation/bootstrap-control-plane.sh` (chart version pinned there).
 
 ## GitOps and Platform Services
 
-- **Argo CD**: Helm chart `5.51.6` (primary install)  
-  Fallback raw manifests from Argo CD `v2.9.3` are used if Helm installation fails.
+- **Argo CD**: Helm chart `7.7.5` (primary install)  
+  Fallback raw manifests are used if Helm installation fails.
 
 ## CLI Utilities on Management Laptops
 

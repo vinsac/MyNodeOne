@@ -216,14 +216,13 @@ PostgreSQL Pod
   │
   │ PersistentVolumeClaim (100Gi)
   ↓
-Longhorn StorageClass
+Longhorn StorageClass (replica=1 default)
   │
   ↓
-Replicated Volume (2x18TB HDDs)
+Longhorn Volume (local disk)
   │
-  ├─→ Node 1: Replica 1
-  ├─→ Node 2: Replica 2 (when added)
-  └─→ Node 3: Replica 3 (when added)
+  └─→ Single replica on scheduling node
+      (user can increase via Longhorn UI if multi-node)
 ```
 
 ## Scaling Scenarios
@@ -608,6 +607,7 @@ spec:
 
 ### Single Point of Failure (Current)
 - If your control plane node dies, everything is down
+- Mitigation: K3s automated etcd snapshots every 6 hours for state recovery
 
 ### Home ISP Dependencies
 - Upload speed limits
@@ -618,7 +618,4 @@ spec:
 - All data in one location
 - Mitigation: Future feature, can add more regions
 
-
-## Limitations & Future Improvements
-
-The architecture is designed to be modular and will continue to evolve. Current limitations include single control plane (no HA yet) and single-region deployments. Multi-region support is planned for future releases.
+The architecture is designed to be modular and will continue to evolve. Multi-region support is planned for future releases.

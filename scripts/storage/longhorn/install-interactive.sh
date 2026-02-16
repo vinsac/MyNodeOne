@@ -83,7 +83,7 @@ fi
 
 # Longhorn version — single source of truth for this script
 # Also hardcoded in bootstrap-control-plane.sh fallback and LONGHORN-SETTINGS.md
-LONGHORN_VERSION="${LONGHORN_VERSION:-1.5.3}"
+LONGHORN_VERSION="${LONGHORN_VERSION:-1.7.2}"
 
 # Longhorn replica count — can be overridden via env var or interactive prompt
 # Default: 1 (single replica, recommended for home lab / Tailscale networking)

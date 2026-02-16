@@ -2,46 +2,48 @@
 
 This document tracks the versions of cluster-critical tools, images, and Helm charts used by MyNodeOne.
 
+**Single Source of Truth:** All version numbers are defined in `scripts/lib/versions.sh`. This file is sourced by all installation and setup scripts to ensure consistency across control plane, worker nodes, VPS, and management laptops.
+
 ## Kubernetes and Cluster Core
 
 - **K3s**: `v1.31.2+k3s1`  
-  Defined in `scripts/installation/bootstrap-control-plane.sh` (`K3S_VERSION`).
+  Defined in `scripts/lib/versions.sh` (`K3S_VERSION`).
 - **kubectl (Linux)**: `v1.31.2`  
-  Installed by `scripts/setup/setup-laptop.sh` using a pinned download URL.
+  Defined in `scripts/lib/versions.sh` (`KUBECTL_VERSION`).
 
 ## Helm and Package Management
 
 - **Helm client**: `v3.15.3`  
-  Installed by `scripts/setup/setup-laptop.sh` when Helm is not present.
+  Defined in `scripts/lib/versions.sh` (`HELM_VERSION`).
 
 ## Observability and Monitoring
 
 - **kube-prometheus-stack (Prometheus + Grafana)**: Helm chart `65.8.0`  
-  Installed in `scripts/installation/bootstrap-control-plane.sh`.
+  Defined in `scripts/lib/versions.sh` (`PROMETHEUS_STACK_VERSION`).
 - **Loki stack**: Helm chart `2.10.2`  
-  Installed in `scripts/installation/bootstrap-control-plane.sh`.
+  Defined in `scripts/lib/versions.sh` (`LOKI_VERSION`).
 - **Grafana**: Managed via the `kube-prometheus-stack` chart version above.
 
 ## Ingress, Networking, and Storage
 
 - **cert-manager**: Helm chart `v1.16.2`  
-  Installed in `scripts/installation/bootstrap-control-plane.sh`.
+  Defined in `scripts/lib/versions.sh` (`CERT_MANAGER_VERSION`).
 - **Traefik (Kubernetes Ingress)**: Helm chart `33.2.0`  
-  Installed in `scripts/installation/bootstrap-control-plane.sh`.
+  Defined in `scripts/lib/versions.sh` (`TRAEFIK_VERSION`).
 - **MetalLB**: Helm chart (version pinned in `scripts/installation/bootstrap-control-plane.sh`).
 - **Longhorn**: Helm chart `1.7.2`  
-  Installed in `scripts/installation/bootstrap-control-plane.sh`.
+  Defined in `scripts/lib/versions.sh` (`LONGHORN_VERSION`).
 - **MinIO**: Installed via Helm in `scripts/installation/bootstrap-control-plane.sh` (chart version pinned there).
 
 ## GitOps and Platform Services
 
 - **Argo CD**: Helm chart `7.7.5` (primary install)  
-  Fallback raw manifests are used if Helm installation fails.
+  Defined in `scripts/lib/versions.sh` (`ARGOCD_VERSION`).
 
 ## CLI Utilities on Management Laptops
 
 - **k9s (Linux)**: `v0.32.5`  
-  Installed by `scripts/setup/setup-laptop.sh` using a pinned GitHub release.
+  Defined in `scripts/lib/versions.sh` (`K9S_VERSION`).
 
 ## VPS and Edge Node Components
 
@@ -57,4 +59,12 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
 
 ---
 
-If you update any of the pinned versions in scripts or manifests, please also update this document to keep it in sync.
+## Updating Versions
+
+To update component versions:
+
+1. **Edit `scripts/lib/versions.sh`** — This is the single source of truth for all version numbers
+2. **Update this documentation** — Keep the version numbers in this file in sync with `versions.sh`
+3. **Test the changes** — Run installation scripts to verify compatibility
+
+All installation scripts (`bootstrap-control-plane.sh`, `add-worker-node.sh`, `setup-laptop.sh`, etc.) automatically source `versions.sh`, so updating one file updates all installations.

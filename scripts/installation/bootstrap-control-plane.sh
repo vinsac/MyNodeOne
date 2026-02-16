@@ -66,8 +66,8 @@ export CLUSTER_DOMAIN
 export NODE_NAME
 export NODE_LOCATION
 
-# K3s version
-K3S_VERSION="v1.31.2+k3s1"
+# Load centralized version configuration
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
 
 # Set kubeconfig for K3s (so kubectl and helm work)
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -521,7 +521,6 @@ install_kompose() {
     esac
     
     local OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    local KOMPOSE_VERSION="v1.34.0"  # Latest stable
     local KOMPOSE_URL="https://github.com/kubernetes/kompose/releases/download/${KOMPOSE_VERSION}/kompose-${OS}-${ARCH}"
     
     log_info "Downloading Kompose ${KOMPOSE_VERSION} for ${OS}-${ARCH}..."
@@ -1064,7 +1063,6 @@ install_helm() {
     if [ "$success" = false ]; then
         log_info "Method 3: Trying direct binary download..."
         
-        local HELM_VERSION="v3.13.3"
         local ARCH=$(uname -m)
         
         case $ARCH in

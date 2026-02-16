@@ -46,14 +46,12 @@ source "$CONFIG_FILE"
 export CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-}"
 export CLUSTER_NAME="${CLUSTER_NAME:-}"
 
-# K3s version
-K3S_VERSION="v1.31.2+k3s1"
-
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
 source "$SCRIPT_DIR/../lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
 source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
 # Helper functions

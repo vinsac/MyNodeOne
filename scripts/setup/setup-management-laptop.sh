@@ -26,6 +26,8 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Detect actual user and home directory
 source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
+# Load centralized version configuration
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
 
 # Configuration
 MAX_RETRIES=3
@@ -340,13 +342,11 @@ install_kubectl() {
     log_info "Installing kubectl..."
     
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        local kubectl_version=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-        curl -LO "https://dl.k8s.io/release/${kubectl_version}/bin/linux/amd64/kubectl"
+        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
         sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
         rm kubectl
     elif [[ "$OSTYPE" == "darwin"* ]]; then
-        local kubectl_version=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-        curl -LO "https://dl.k8s.io/release/${kubectl_version}/bin/darwin/amd64/kubectl"
+        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/darwin/amd64/kubectl"
         chmod +x kubectl
         sudo mv kubectl /usr/local/bin/
     else

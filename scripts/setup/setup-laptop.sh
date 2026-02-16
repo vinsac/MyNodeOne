@@ -20,6 +20,8 @@ source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
 source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
 # Source K8s utilities for robust detection
 source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
+# Load centralized version configuration
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
 
 # Load cluster configuration if it exists
 CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
@@ -29,11 +31,6 @@ fi
 
 # Use configured domain or fallback to mynodeone
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
-
-# Tool versions (pinned for reproducible installs)
-KUBECTL_VERSION="v1.31.2"
-HELM_VERSION="v3.15.3"
-K9S_VERSION="v0.32.5"
 
 # Colors
 GREEN='\033[0;32m'

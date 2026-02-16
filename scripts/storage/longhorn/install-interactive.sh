@@ -15,6 +15,7 @@
 # Source shared utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/project-root.sh"
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
 source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
 # Set KUBECONFIG appropriately
@@ -80,10 +81,6 @@ LIB_DIR="$PROJECT_ROOT/scripts/lib"
 if [ -f "$LIB_DIR/disk-utils.sh" ]; then
     source "$LIB_DIR/disk-utils.sh"
 fi
-
-# Longhorn version — single source of truth for this script
-# Also hardcoded in bootstrap-control-plane.sh fallback and LONGHORN-SETTINGS.md
-LONGHORN_VERSION="${LONGHORN_VERSION:-1.7.2}"
 
 # Longhorn replica count — can be overridden via env var or interactive prompt
 # Default: 1 (single replica, recommended for home lab / Tailscale networking)

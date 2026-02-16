@@ -57,6 +57,22 @@ Learn how to:
 - At least **50GB disk space**
 - Network connection (wired or WiFi)
 
+### Network Requirements:
+
+**Important for Multi-Node Clusters:** If you plan to add worker nodes later, the following network requirements apply:
+
+- **Port 8472/UDP**: Required for Flannel VXLAN (Kubernetes pod-to-pod networking)
+- **UFW Routed Policy**: Must be set to `allow` for pod traffic forwarding
+- **Tailscale VPN**: Used for secure node-to-node communication
+
+**Good news:** The installation scripts automatically configure these requirements. You don't need to do anything manually.
+
+**Technical Details** (for advanced users):
+- K3s uses Flannel CNI with VXLAN backend for container networking
+- VXLAN encapsulates pod traffic over UDP port 8472 between nodes
+- UFW's `routed` policy must allow forwarded packets for cross-node pod communication
+- Even single-node clusters are configured for multi-node expansion
+
 ### Software to Install on Control Plane machine:
 
 All commands in this section must be run on the control plane machine:
@@ -1004,6 +1020,21 @@ The script then:
 - At least **30GB disk space**
 - Network connection (wired or WiFi)
 - Ability to connect to control plane via Tailscale
+
+### Network Requirements:
+
+**Automatic Configuration:** The worker node installation script automatically configures:
+
+- **Port 8472/UDP**: For Flannel VXLAN (Kubernetes pod-to-pod networking)
+- **UFW Routed Policy**: Set to `allow` for cross-node pod traffic
+- **UFW Firewall**: Allows SSH (22/tcp), Tailscale, and Kubernetes networking
+
+**Why This Matters:**
+- Worker pods need to communicate with control plane pods (e.g., CoreDNS, API server)
+- Longhorn CSI driver on workers needs to reach Longhorn backend service on control plane
+- Flannel uses VXLAN to create an overlay network between nodes
+
+**Manual Configuration Not Required:** All network settings are handled by the installation script.
 
 ### On Your Control Plane:
 

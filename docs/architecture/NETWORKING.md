@@ -128,6 +128,115 @@ This ensures all cluster traffic flows over the encrypted Tailscale mesh.
 
 ---
 
+## Kubernetes Pod Networking (Flannel VXLAN)
+
+### How Pods Communicate Across Nodes
+
+K3s uses **Flannel** as its Container Network Interface (CNI) with a **VXLAN** backend.
+This creates an overlay network that allows any pod on any node to reach any other pod,
+regardless of which physical node they run on.
+
+```
+┌──────────────────────┐         ┌──────────────────────┐
+│  Node 1              │         │  Node 2              │
+│  Pod Subnet:         │         │  Pod Subnet:         │
+│  10.42.0.0/24        │         │  10.42.2.0/24        │
+│                      │         │                      │
+│  ┌────────┐          │         │          ┌────────┐  │
+│  │ Pod A  │          │         │          │ Pod B  │  │
+│  │10.42.0.5│         │         │         │10.42.2.3│  │
+│  └───┬────┘          │         │          └───┬────┘  │
+│      │               │         │              │       │
+│  ┌───▼────┐          │         │          ┌───▼────┐  │
+│  │  cni0  │          │         │          │  cni0  │  │
+│  │ bridge │          │         │          │ bridge │  │
+│  └───┬────┘          │         │          └───┬────┘  │
+│      │               │         │              │       │
+│  ┌───▼──────┐        │         │        ┌─────▼────┐  │
+│  │flannel.1 │ VXLAN encap      │        │flannel.1 │  │
+│  │ (VXLAN)  ├────────────UDP 8472──────►│ (VXLAN)  │  │
+│  └───┬──────┘        │         │        └─────┬────┘  │
+│      │               │         │              │       │
+│  ┌───▼──────┐        │         │        ┌─────▼────┐  │
+│  │tailscale0│◄───────Tailscale VPN─────►│tailscale0│  │
+│  │100.x.x.x │        │         │        │100.y.y.y │  │
+│  └──────────┘        │         │        └──────────┘  │
+└──────────────────────┘         └──────────────────────┘
+```
+
+**Traffic flow**: Pod A (10.42.0.5) → cni0 bridge → flannel.1 → VXLAN encapsulation over
+UDP port 8472 → Tailscale tunnel → flannel.1 on Node 2 → cni0 bridge → Pod B (10.42.2.3)
+
+### Why Cross-Node Pod Networking Matters
+
+Cross-node pod communication is a **fundamental Kubernetes requirement**, not an edge case.
+Any pod on any node must be able to reach any other pod. This is needed for:
+
+- **Storage**: Longhorn CSI plugin accessing volume replicas on remote nodes
+- **DNS**: All pods reaching CoreDNS (which may run on any node)
+- **Services**: ClusterIP services routing to backend pods on any node
+- **Monitoring**: Prometheus scraping targets across all nodes
+
+This must work regardless of Longhorn replica count, pod scheduling decisions, or node count.
+
+### Firewall Requirements (UFW)
+
+For Flannel VXLAN to work across nodes, UFW must be configured correctly:
+
+```bash
+# Required on ALL nodes (control plane AND workers):
+
+# 1. Allow VXLAN encapsulated traffic between nodes
+ufw allow 8472/udp comment 'Flannel VXLAN'
+
+# 2. Allow forwarded/routed packets (critical for pod overlay networking)
+ufw default allow routed
+
+# 3. Allow Tailscale traffic (for node-to-node communication)
+ufw allow in on tailscale0 comment 'Tailscale mesh network'
+```
+
+**Why `ufw default allow routed` is critical**: Flannel VXLAN packets arrive at a node's
+network interface and must be *forwarded* to the pod's network namespace via the `cni0` bridge.
+UFW's default `deny routed` policy drops these forwarded packets, breaking all cross-node
+pod communication.
+
+These rules are configured automatically by the installation scripts
+(`bootstrap-control-plane.sh` and `add-worker-node.sh`).
+
+### Flannel Interface Health
+
+The `flannel.1` VXLAN interface is created by K3s at startup. If it disappears (e.g., after
+a K3s restart or Helm upgrade), all cross-node pod networking breaks.
+
+**Monitoring**: A systemd timer (`flannel-health-monitor`) runs every 2 minutes on each node.
+If `flannel.1` is missing, it restarts K3s to recreate the interface (max 3 recoveries/hour).
+
+```bash
+# Check Flannel health monitor status
+sudo bash scripts/validation/monitor-flannel-health.sh --status
+
+# Manual check
+ip link show flannel.1
+```
+
+### Validation
+
+After adding a worker node, run the network validation script:
+
+```bash
+# Validates UFW, Flannel, VXLAN, cross-node pod connectivity, DNS, and storage
+sudo bash scripts/validation/validate-network.sh
+
+# Auto-fix detected issues
+sudo bash scripts/validation/validate-network.sh --fix
+
+# Full multi-node end-to-end test
+sudo bash scripts/validation/test-multinode.sh
+```
+
+---
+
 ## Why Tailscale?
 
 | Benefit | Description |
@@ -179,6 +288,38 @@ Direct WireGuard configuration without a coordination service.
 ---
 
 ## Troubleshooting
+
+### Cross-Node Pod Networking Broken
+
+**Symptom**: Pods on worker cannot reach services on control plane (or vice versa).
+Longhorn CSI crashlooping. DNS failing from worker pods.
+
+```bash
+# Automated diagnosis and fix
+sudo bash scripts/validation/validate-network.sh --fix
+
+# Manual checks:
+# 1. Flannel interface must exist
+ip link show flannel.1
+
+# 2. UFW must allow routed traffic
+sudo ufw status verbose | grep "Default:"
+# Must show: "allow (routed)"
+
+# 3. VXLAN port must be open
+sudo ufw status | grep 8472
+
+# Fix if needed (on EVERY node):
+sudo ufw default allow routed
+sudo ufw allow 8472/udp comment 'Flannel VXLAN'
+sudo ufw reload
+
+# If flannel.1 is missing, restart K3s:
+sudo systemctl restart k3s        # control plane
+sudo systemctl restart k3s-agent  # worker
+```
+
+See [troubleshooting.md](../operations/troubleshooting.md) section 10 for full details.
 
 ### Cannot Connect to Services
 

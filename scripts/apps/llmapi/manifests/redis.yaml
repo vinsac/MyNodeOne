@@ -28,7 +28,6 @@ spec:
       labels:
         app: redis
     spec:
-      priorityClassName: mynodeone-infrastructure
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -45,22 +44,17 @@ spec:
         - redis-server
         - --appendonly
         - "yes"
-        - --appendfsync
-        - "everysec"
-        - --save
-        - "300 1"
-        - --dir
-        - "/data"
         - --maxmemory
-        - "4gb"
+        - "2gb"
         - --maxmemory-policy
         - allkeys-lru
         resources:
           requests:
-            memory: "32Mi"
-            cpu: "50m"
+            memory: "512Mi"
+            cpu: "250m"
           limits:
-            memory: "4Gi"
+            memory: "2Gi"
+            cpu: "1000m"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

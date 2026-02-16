@@ -173,9 +173,14 @@ configure_firewall() {
     # Allow full access on Tailscale interface
     ufw allow in on tailscale0 comment 'Tailscale mesh network'
     
+    # Allow Flannel VXLAN for Kubernetes pod-to-pod networking
+    # Required for multi-node clusters
+    ufw allow 8472/udp comment 'Flannel VXLAN'
+    
     # Default policies
     ufw default deny incoming
     ufw default allow outgoing
+    ufw default allow routed  # Required for Kubernetes CNI pod routing
     
     # Enable fail2ban for SSH protection
     systemctl enable --now fail2ban
@@ -190,7 +195,8 @@ configure_firewall() {
         chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.ssh"
     fi
     
-    log_success "Firewall configured (UFW enabled)"
+    log_success "Firewall configured (UFW enabled, Kubernetes networking allowed)"
+    log_info "Kubernetes pod routing enabled (VXLAN port 8472/UDP, routed policy allow)"
 }
 
 join_cluster() {
@@ -701,6 +707,13 @@ main() {
     install_minio     # Shows instructions for K8s-based installation from control plane
     install_node_agent  # Starts heartbeat to control plane
     
+    # Install Flannel health monitor (auto-recovery for missing flannel.1 interface)
+    if [ -f "$PROJECT_ROOT/scripts/validation/monitor-flannel-health.sh" ]; then
+        log_info "Installing Flannel health monitor..."
+        bash "$PROJECT_ROOT/scripts/validation/monitor-flannel-health.sh" --install || \
+            log_warn "Flannel health monitor installation failed (non-critical)"
+    fi
+    
     # Run validation tests (after labels are confirmed applied)
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -716,6 +729,13 @@ main() {
         fi
     else
         log_warn "Validation script not found, skipping tests"
+    fi
+    
+    # Run network validation
+    if [ -f "$PROJECT_ROOT/scripts/validation/validate-network.sh" ]; then
+        log_info "Running network validation..."
+        bash "$PROJECT_ROOT/scripts/validation/validate-network.sh" || \
+            log_warn "Network validation found issues (see above)"
     fi
     
     echo

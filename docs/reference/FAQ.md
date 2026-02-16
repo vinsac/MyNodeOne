@@ -773,6 +773,77 @@ This ensures you can use a root domain publicly without breaking internal `.loca
 User → VPS (SSL termination) → Tailscale tunnel → Control Plane Node → App Pod
 ```
 
+### How do pods on different nodes communicate?
+
+MyNodeOne uses **Flannel VXLAN** for pod-to-pod networking across nodes. Each node gets its own pod subnet (e.g., `10.42.0.0/24`, `10.42.2.0/24`). Flannel creates a virtual overlay network that tunnels pod traffic between nodes over **UDP port 8472**.
+
+This is transparent to your applications — a pod on Node A can reach a pod on Node B using its pod IP, just like they were on the same network.
+
+**Requirements** (configured automatically by installation scripts):
+- UFW routed policy set to `allow` (for forwarded packets)
+- UDP port 8472 open (for VXLAN encapsulation)
+- `flannel.1` interface present on each node
+
+See [NETWORKING.md](../architecture/NETWORKING.md) for the full architecture diagram.
+
+### Pods on my worker can't reach services on the control plane
+
+This is almost always a **UFW firewall misconfiguration**. Check:
+
+```bash
+# Quick diagnosis
+sudo ufw status verbose | grep "Default:"
+# Must show: deny (incoming), allow (outgoing), allow (routed)
+#                                                ^^^^^^^^^^^^^^
+# If it shows "deny (routed)" — that's the problem.
+
+# Fix:
+sudo ufw default allow routed
+sudo ufw allow 8472/udp comment 'Flannel VXLAN'
+sudo ufw reload
+```
+
+Do this on **every node** (control plane and all workers).
+
+Or run the automated fix: `sudo bash scripts/validation/validate-network.sh --fix`
+
+### Longhorn CSI plugin is crashlooping on my worker node
+
+The Longhorn CSI plugin on each node needs to reach the `longhorn-backend` ClusterIP service via pod networking. If cross-node networking is broken (see above), the CSI plugin cannot communicate with Longhorn and will crashloop.
+
+**Fix the networking first** — once `ufw default allow routed` and `ufw allow 8472/udp` are set on all nodes, the CSI plugin will recover automatically.
+
+### The `flannel.1` interface disappeared
+
+This can happen after K3s restarts or heavy Helm upgrades. The fix is simple:
+
+```bash
+# Control plane
+sudo systemctl restart k3s
+
+# Worker node
+sudo systemctl restart k3s-agent
+```
+
+A Flannel health monitor runs automatically on all nodes (installed during setup). It checks every 2 minutes and auto-restarts K3s if `flannel.1` is missing.
+
+```bash
+# Check monitor status
+sudo bash scripts/validation/monitor-flannel-health.sh --status
+```
+
+### How do I validate my cluster's networking after adding a node?
+
+```bash
+# Quick validation (checks UFW, Flannel, VXLAN, DNS, storage, cross-node ping)
+sudo bash scripts/validation/validate-network.sh
+
+# Full multi-node end-to-end test (deploys test pods, tests cross-node I/O)
+sudo bash scripts/validation/test-multinode.sh
+```
+
+The network validation also runs automatically at the end of `add-worker-node.sh`.
+
 ### Why use VPS instead of exposing my node directly?
 
 1. **ISP blocks:** Many ISPs block ports 80/443

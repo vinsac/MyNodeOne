@@ -456,18 +456,24 @@ configure_firewall() {
     # Allow full access on Tailscale interface
     ufw allow in on tailscale0 comment 'Tailscale mesh network'
     
+    # Allow Flannel VXLAN for Kubernetes pod-to-pod networking
+    # Required for multi-node clusters (even if starting with single node)
+    ufw allow 8472/udp comment 'Flannel VXLAN'
+    
     # Allow K3s API server (only from Tailscale)
     # Note: K3s already binds to Tailscale IP
     
     # Default policies
     ufw default deny incoming
     ufw default allow outgoing
+    ufw default allow routed  # Required for Kubernetes CNI pod routing
     
     # Enable fail2ban for SSH brute force protection
     systemctl enable --now fail2ban
     
-    log_success "Firewall configured (UFW enabled, Tailscale allowed)"
+    log_success "Firewall configured (UFW enabled, Kubernetes networking allowed)"
     log_warn "SSH and Tailscale traffic allowed. All other incoming traffic blocked."
+    log_info "Kubernetes pod routing enabled (VXLAN port 8472/UDP, routed policy allow)"
 }
 
 optimize_system_for_containers() {
@@ -2577,6 +2583,13 @@ main() {
     fi
     log_success "All services registered and DNS updated"
     echo
+    
+    # Install Flannel health monitor (auto-recovery for missing flannel.1 interface)
+    if [ -f "$PROJECT_ROOT/scripts/validation/monitor-flannel-health.sh" ]; then
+        log_info "Installing Flannel health monitor..."
+        bash "$PROJECT_ROOT/scripts/validation/monitor-flannel-health.sh" --install || \
+            log_warn "Flannel health monitor installation failed (non-critical)"
+    fi
     
     # Configure passwordless sudo for automation
     echo

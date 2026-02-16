@@ -705,7 +705,91 @@ df -h
 du -sh /var/lib/rancher/k3s/*
 ```
 
-### 10. VPS Edge Node Issues
+### 10. Cross-Node Pod Networking Issues
+
+**Symptom**: Pods on one node cannot reach pods/services on another node. Longhorn CSI plugin
+crashlooping. DNS resolution failing from worker pods. PVCs stuck in Pending.
+
+**Diagnosis**:
+```bash
+# Run the network validation script (checks everything)
+sudo bash scripts/validation/validate-network.sh
+
+# Or check manually:
+
+# 1. Check Flannel interface exists on all nodes
+ip link show flannel.1
+
+# 2. Check UFW routed policy
+sudo ufw status verbose | grep "Default:"
+# Must show: "allow (routed)" — NOT "deny (routed)"
+
+# 3. Check VXLAN port is open
+sudo ufw status | grep 8472
+
+# 4. Test cross-node pod ping
+kubectl run test-ping --image=busybox:1.35 --restart=Never --rm -i \
+  --command -- ping -c 3 <pod-ip-on-other-node>
+```
+
+**Common Causes & Solutions**:
+
+#### UFW Blocking Pod Traffic (Most Common)
+```
+# Symptom: ufw status verbose shows "deny (routed)"
+# This blocks ALL forwarded packets including Flannel VXLAN overlay traffic
+```
+
+**Solution**:
+```bash
+# On EVERY node (control plane AND workers):
+sudo ufw default allow routed
+sudo ufw allow 8472/udp comment 'Flannel VXLAN'
+sudo ufw reload
+```
+
+#### Flannel Interface Missing
+```
+# Symptom: "Device flannel.1 does not exist"
+# Can happen after K3s restart or Helm upgrades
+```
+
+**Solution**:
+```bash
+# Restart K3s to recreate the interface
+sudo systemctl restart k3s        # On control plane
+sudo systemctl restart k3s-agent  # On worker nodes
+
+# Verify interface was created
+ip link show flannel.1
+ip -4 addr show flannel.1
+```
+
+#### Longhorn CSI Plugin CrashLooping on Worker
+```
+# Symptom: CSI plugin pods show 2/3 or 1/3 ready, with restarts
+kubectl get pods -n longhorn-system -l app=longhorn-csi-plugin
+```
+
+**Cause**: CSI plugin on worker cannot reach `longhorn-backend` service on control plane
+due to broken cross-node networking.
+
+**Solution**: Fix the networking (UFW routed policy + VXLAN port) — once cross-node
+communication works, CSI plugin will automatically recover.
+
+#### Automated Fix
+```bash
+# Auto-detect and fix all networking issues
+sudo bash scripts/validation/validate-network.sh --fix
+```
+
+**Prevention**: The installation scripts (`bootstrap-control-plane.sh` and `add-worker-node.sh`)
+now configure UFW correctly. The Flannel health monitor (`flannel-health-monitor.timer`)
+auto-recovers missing Flannel interfaces.
+
+**Full documentation**: See [NETWORKING.md](../architecture/NETWORKING.md) for architecture details.
+
+### 11. VPS Edge Node Issues
 
 **Symptom**: Cannot reach apps from internet
 

@@ -48,9 +48,9 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
 ## VPS and Edge Node Components
 
 - **Docker Compose**: `2.24.5`  
-  Installed in `scripts/setup/setup-vps-node.sh` via a pinned GitHub release tarball.
+  Defined in `scripts/lib/versions.sh` (`DOCKER_COMPOSE_VERSION`).
 - **Traefik (VPS Edge)**: Docker image `traefik:v2.11`  
-  Used in `scripts/setup/setup-vps-node.sh` (`docker-compose.yml`).
+  Defined in `scripts/lib/versions.sh` (`TRAEFIK_VPS_VERSION`).
 
 ## Application Templates
 

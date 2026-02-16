@@ -42,6 +42,9 @@ source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
+# Load centralized version configuration
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🌍 VPS Edge Node Local Setup"
@@ -130,7 +133,6 @@ if command -v docker-compose &> /dev/null; then
     log_success "Docker Compose already installed: $(docker-compose --version)"
 else
     log_info "Installing Docker Compose..."
-    DOCKER_COMPOSE_VERSION="2.24.5"
     curl -L "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
     log_success "Docker Compose installed successfully"
@@ -219,7 +221,7 @@ version: '3.8'
 
 services:
   traefik:
-    image: traefik:v2.11
+    image: traefik:REPLACE_TRAEFIK_VERSION
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -246,8 +248,9 @@ networks:
     external: true
 COMPOSE_CONFIG
 
-# Update domain in compose file
+# Update domain and Traefik version in compose file
 sed -i "s/REPLACE_VPS_DOMAIN/${VPS_DOMAIN:-localhost}/g" "$TRAEFIK_DIR/docker-compose.yml"
+sed -i "s/REPLACE_TRAEFIK_VERSION/${TRAEFIK_VPS_VERSION}/g" "$TRAEFIK_DIR/docker-compose.yml"
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$TRAEFIK_DIR"
 log_success "Traefik service configured"
 echo

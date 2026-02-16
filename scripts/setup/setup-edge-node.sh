@@ -42,6 +42,9 @@ source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
+# Load centralized version configuration
+source "$PROJECT_ROOT/scripts/lib/versions.sh"
+
 # Source libraries
 source "$PROJECT_ROOT/scripts/lib/preflight-checks.sh"
 source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
@@ -272,7 +275,7 @@ version: '3.8'
 
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:v${TRAEFIK_VPS_VERSION}
     container_name: traefik
     restart: unless-stopped
     security_opt:

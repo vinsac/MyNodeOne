@@ -40,6 +40,10 @@ export ARGOCD_VERSION="${ARGOCD_VERSION:-7.7.5}"
 # CLI Tools (for management laptops)
 export K9S_VERSION="${K9S_VERSION:-v0.32.5}"
 
+# VPS & Edge Node Components
+export DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-2.24.5}"
+export TRAEFIK_VPS_VERSION="${TRAEFIK_VPS_VERSION:-2.11}"
+
 # Validation function to ensure versions are loaded
 validate_versions() {
     if [ -z "${K3S_VERSION:-}" ] || [ -z "${KUBECTL_VERSION:-}" ]; then

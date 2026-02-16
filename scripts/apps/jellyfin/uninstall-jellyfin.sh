@@ -50,19 +50,23 @@ if [[ "$confirm" != "y" ]] && [[ "$confirm" != "Y" ]]; then
 fi
 
 echo ""
-echo "🗑️  Deleting Jellyfin namespace..."
-kubectl delete namespace "$NAMESPACE" --timeout=60s
+read -p "Delete media storage volume? (This will delete all your media!) [y/N]: " delete_storage
 
 echo ""
-read -p "Delete media storage volume? (This will delete all your media!) [y/N]: " delete_storage
 if [[ "$delete_storage" == "y" ]] || [[ "$delete_storage" == "Y" ]]; then
-    echo ""
-    echo "🗑️  Deleting media storage..."
-    kubectl delete pvc jellyfin-media -n "$NAMESPACE" 2>/dev/null || true
-    echo "✓ Media storage deleted"
+    echo "🗑️  Deleting media storage and namespace..."
+    kubectl delete pvc jellyfin-media -n "$NAMESPACE" --timeout=300s 2>/dev/null || echo "  ⚠ PVC may not exist"
+    kubectl delete namespace "$NAMESPACE" --timeout=60s
+    echo "✓ Media storage and application deleted"
 else
+    echo "🗑️  Deleting Jellyfin namespace (preserving media storage)..."
+    # Delete deployments and services but keep PVC
+    kubectl delete deployment jellyfin -n "$NAMESPACE" --ignore-not-found=true
+    kubectl delete service jellyfin -n "$NAMESPACE" --ignore-not-found=true
+    kubectl delete namespace "$NAMESPACE" --timeout=60s 2>/dev/null || true
+    
     echo ""
-    echo "✓ Media storage preserved"
+    echo "✓ Application deleted, media storage preserved"
     echo ""
     echo "Note: The PVC 'jellyfin-media' still exists."
     echo "If you reinstall Jellyfin, it will reuse this storage."

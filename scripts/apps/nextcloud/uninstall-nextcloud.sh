@@ -27,12 +27,16 @@ if [[ "${CONFIRM,,}" != "y" ]]; then
 fi
 
 echo ""
+echo "Deleting PVCs..."
+# Delete PVCs first to ensure proper cleanup (namespace deletion may leave them orphaned)
+kubectl delete pvc -n nextcloud \
+    nextcloud-data \
+    nextcloud-postgres \
+    --timeout=300s 2>/dev/null || echo "  ⚠ Some PVCs may not exist"
+
 echo "Deleting Nextcloud namespace..."
-kubectl delete namespace nextcloud --ignore-not-found=true
+kubectl delete namespace nextcloud --ignore-not-found=true --timeout=300s
 
 echo ""
 echo -e "${YELLOW}✓ Nextcloud uninstalled${NC}"
-echo ""
-echo "Note: PersistentVolumes may still exist in Longhorn."
-echo "To completely remove storage, delete them manually from Longhorn UI."
 echo ""

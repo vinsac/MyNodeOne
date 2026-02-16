@@ -28,8 +28,15 @@ if [[ "$confirm" != "y" ]] && [[ "$confirm" != "Y" ]]; then
 fi
 
 echo ""
+echo "🗑️  Deleting PVCs..."
+# Delete PVCs first to ensure proper cleanup (namespace deletion may leave them orphaned)
+kubectl delete pvc -n "$NAMESPACE" \
+    immich-photos \
+    immich-postgres \
+    --timeout=300s 2>/dev/null || echo "  ⚠ Some PVCs may not exist"
+
 echo "🗑️  Removing Immich namespace and all resources..."
-kubectl delete namespace "$NAMESPACE" --ignore-not-found=true
+kubectl delete namespace "$NAMESPACE" --ignore-not-found=true --timeout=300s
 
 echo ""
 echo "✓ Immich uninstalled successfully"

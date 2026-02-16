@@ -1171,6 +1171,10 @@ install_longhorn() {
         log_warn "Falling back to basic installation..."
         
         # Fallback: basic installation
+        # Respect LONGHORN_REPLICA_COUNT environment variable (default: 1)
+        local replica_count="${LONGHORN_REPLICA_COUNT:-1}"
+        log_info "Using Longhorn replica count: $replica_count"
+        
         apt-get install -y open-iscsi util-linux
         systemctl enable --now iscsid
         
@@ -1182,8 +1186,8 @@ install_longhorn() {
         helm upgrade --install longhorn longhorn/longhorn \
             --namespace longhorn-system \
             --version 1.5.3 \
-            --set defaultSettings.defaultReplicaCount=1 \
-            --set persistence.defaultClassParameter.numberOfReplicas=1 \
+            --set defaultSettings.defaultReplicaCount=$replica_count \
+            --set persistence.defaultClassParameter.numberOfReplicas=$replica_count \
             --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
             --set defaultSettings.replicaAutoBalance="best-effort" \
             --set defaultSettings.fastReplicaRebuildEnabled=true \
@@ -1200,7 +1204,7 @@ install_longhorn() {
         while [ $wait_count -lt $max_wait ]; do
             if kubectl get storageclass longhorn &>/dev/null; then
                 local current_replicas=$(kubectl get storageclass longhorn -o jsonpath='{.parameters.numberOfReplicas}' 2>/dev/null || echo "3")
-                if [ "$current_replicas" = "1" ]; then
+                if [ "$current_replicas" = "$replica_count" ]; then
                     replicas_correct=true
                     break
                 else
@@ -1219,7 +1223,7 @@ allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 parameters:
-  numberOfReplicas: "1"
+  numberOfReplicas: "$replica_count"
   staleReplicaTimeout: "30"
   fromBackup: ""
   fsType: "ext4"
@@ -1240,7 +1244,7 @@ EOF
         done
         
         if [ "$replicas_correct" = true ]; then
-            log_success "StorageClass correctly configured with numberOfReplicas=1"
+            log_success "StorageClass correctly configured with numberOfReplicas=$replica_count"
         else
             log_error "Failed to configure StorageClass after $max_wait seconds"
             log_error "Manual intervention required: check 'kubectl get sc longhorn -o yaml'"

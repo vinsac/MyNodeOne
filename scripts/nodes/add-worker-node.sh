@@ -106,9 +106,23 @@ check_requirements() {
 ensure_tailscale_ready() {
     log_info "Ensuring Tailscale interface is ready..."
 
-    if ! systemctl is-active tailscaled &>/dev/null; then
-        log_error "tailscaled is not running. Start it with: sudo systemctl start tailscaled"
+    if ! command -v ip &>/dev/null; then
+        log_error "ip command not found (iproute2 missing). Install with: sudo apt-get install -y iproute2"
         exit 1
+    fi
+
+    if ! command -v tailscale &>/dev/null; then
+        log_error "tailscale command not found. Install with: curl -fsSL https://tailscale.com/install.sh | sh"
+        exit 1
+    fi
+
+    if command -v systemctl &>/dev/null; then
+        if ! systemctl is-active tailscaled &>/dev/null; then
+            log_error "tailscaled is not running. Start it with: sudo systemctl start tailscaled"
+            exit 1
+        fi
+    else
+        log_warn "systemctl not found; skipping tailscaled service check"
     fi
 
     local attempts=0
@@ -137,13 +151,18 @@ configure_k8s_network_prereqs() {
     log_info "Configuring kernel prerequisites for Kubernetes networking..."
 
     # Ensure required modules load on boot
+    mkdir -p /etc/modules-load.d /etc/sysctl.d
     cat > /etc/modules-load.d/mynodeone-k8s.conf <<'EOF'
 br_netfilter
 vxlan
 EOF
 
-    modprobe br_netfilter 2>/dev/null || log_warn "Failed to load kernel module br_netfilter"
-    modprobe vxlan 2>/dev/null || log_warn "Failed to load kernel module vxlan"
+    if command -v modprobe &>/dev/null; then
+        modprobe br_netfilter 2>/dev/null || log_warn "Failed to load kernel module br_netfilter"
+        modprobe vxlan 2>/dev/null || log_warn "Failed to load kernel module vxlan"
+    else
+        log_warn "modprobe not found; kernel modules may not load automatically"
+    fi
 
     # Persist sysctl settings for pod networking
     cat > /etc/sysctl.d/99-mynodeone-k8s.conf <<'EOF'
@@ -152,10 +171,14 @@ net.bridge.bridge-nf-call-iptables=1
 net.bridge.bridge-nf-call-ip6tables=1
 EOF
 
-    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || log_warn "Could not set net.ipv4.ip_forward=1"
-    sysctl -w net.bridge.bridge-nf-call-iptables=1 >/dev/null 2>&1 || log_warn "Could not set net.bridge.bridge-nf-call-iptables=1"
-    sysctl -w net.bridge.bridge-nf-call-ip6tables=1 >/dev/null 2>&1 || log_warn "Could not set net.bridge.bridge-nf-call-ip6tables=1"
-    sysctl --system >/dev/null 2>&1 || log_warn "sysctl --system failed; reboot may be required"
+    if command -v sysctl &>/dev/null; then
+        sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || log_warn "Could not set net.ipv4.ip_forward=1"
+        sysctl -w net.bridge.bridge-nf-call-iptables=1 >/dev/null 2>&1 || log_warn "Could not set net.bridge.bridge-nf-call-iptables=1"
+        sysctl -w net.bridge.bridge-nf-call-ip6tables=1 >/dev/null 2>&1 || log_warn "Could not set net.bridge.bridge-nf-call-ip6tables=1"
+        sysctl --system >/dev/null 2>&1 || log_warn "sysctl --system failed; reboot may be required"
+    else
+        log_warn "sysctl not found; kernel networking settings may not be applied"
+    fi
 
     log_success "Kernel networking prerequisites configured"
 }
@@ -163,6 +186,11 @@ EOF
 configure_k3s_service_dependencies() {
     local service_name="$1"
     log_info "Configuring $service_name to start after Tailscale..."
+
+    if ! command -v systemctl &>/dev/null; then
+        log_warn "systemctl not found; cannot set service dependencies"
+        return 0
+    fi
 
     local drop_in_dir="/etc/systemd/system/${service_name}.service.d"
     mkdir -p "$drop_in_dir"

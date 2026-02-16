@@ -789,6 +789,127 @@ auto-recovers missing Flannel interfaces.
 
 **Full documentation**: See [NETWORKING.md](../architecture/NETWORKING.md) for architecture details.
 
+#### Other Structural Root Causes to Check
+
+If cross-node pod networking fails again (even with UFW routed + VXLAN open),
+check these **structural** causes that are independent of replica count:
+
+1. **Tailscale interface not ready at K3s startup**
+   - K3s is configured with `flannel-iface: tailscale0`. If `tailscale0` is missing
+     or uninitialized when K3s starts, Flannel can fail to create `flannel.1`.
+   - Check:
+     ```bash
+     ip link show tailscale0
+     tailscale ip -4
+     journalctl -u k3s | grep -i flannel
+     ```
+
+2. **Kernel modules missing (`vxlan`, `br_netfilter`)**
+   - Flannel VXLAN requires the `vxlan` module; bridged pod traffic relies on `br_netfilter`.
+   - Check:
+     ```bash
+     lsmod | grep -E "vxlan|br_netfilter"
+     ```
+
+3. **Kernel forwarding / bridge netfilter disabled**
+   - Linux can drop forwarded packets if forwarding or bridge sysctls are disabled.
+   - Check:
+     ```bash
+     sysctl net.ipv4.ip_forward
+     sysctl net.bridge.bridge-nf-call-iptables
+     sysctl net.bridge.bridge-nf-call-ip6tables
+     ```
+
+4. **CNI configuration missing/corrupted**
+   - If the Flannel CNI config is missing, the overlay network will not initialize.
+   - Check:
+     ```bash
+     ls -l /var/lib/rancher/k3s/agent/etc/cni/net.d/10-flannel.conflist
+     ```
+
+5. **iptables/nftables mismatch**
+   - A mismatch between `iptables` and `nftables` can cause routes to exist but packets
+     to be silently dropped.
+   - Check:
+     ```bash
+     iptables -S | head -n 20
+     nft list ruleset | head -n 20
+     ```
+
+#### Incident Analysis: Feb 15, 2026 (Worker Reinstall)
+
+##### Executive Summary
+
+After a full OS reinstall of worker node `canada-pc-0002`, multiple networking issues
+prevented cross-node pod communication, Longhorn CSI functionality, and local DNS resolution.
+The root causes were **structural networking gaps** (UFW routed policy + VXLAN port) and
+a **missing Flannel interface** on the control plane. These issues were **latent** in the
+installation scripts and were exposed when Longhorn replica count was set to 1.
+
+##### Initial Symptoms
+
+1. Local DNS not working (`grafana.space.local` unresolved on worker)
+2. Longhorn CSI crashloop (cannot reach `longhorn-backend:9500`)
+3. LLMAPI not functional (Redis PVC provisioning blocked)
+4. Pod-to-pod networking broken (worker pods can’t reach control plane pods)
+
+##### Root Causes Confirmed
+
+1. **Missing Flannel VXLAN interface on control plane**
+   - `ip addr show flannel.1` returned *Device does not exist*
+   - Fix: `sudo systemctl restart k3s` recreated the interface
+
+2. **UFW default routed policy = deny (both nodes)**
+   - Blocked all forwarded pod traffic despite routes being present
+   - Fix: `sudo ufw default allow routed` (both nodes)
+
+3. **UFW missing VXLAN port 8472/UDP**
+   - Flannel overlay traffic blocked
+   - Fix: `sudo ufw allow 8472/udp` (both nodes)
+
+4. **Tailscale subnet routes missing on worker (minor)**
+   - Broke access to MetalLB IPs, but not Longhorn (ClusterIP)
+   - Fix: `sudo tailscale up --accept-routes --accept-dns=false`
+
+##### Why It Surfaced After Replica=1
+
+Longhorn architecture: the **Engine runs on the same node as the pod**, and synchronously
+replicates to replicas on other nodes. With `replica=3`, each node had a local replica and
+reads were local. With `replica=1`, a pod could be forced to read/write to a **remote replica**,
+making cross-node networking a **hard requirement** instead of a degraded mode.
+
+| Scenario | Cross-node traffic needed? | Effect of broken networking |
+|----------|----------------------------|-----------------------------|
+| replica=3, 2 nodes | Writes only (reads local) | Degraded but functional |
+| replica=1, local replica | None | Works fine |
+| replica=1, remote replica | ALL reads/writes | Completely broken |
+
+##### Timeline Evidence
+
+```
+Worker Node Added:             Jan 8-18, 2026 (replica=3 default)
+Replica=1 Work Started:        Jan 19 (StorageClass set to replica=1)
+Helm Refactoring/Upgrades:     Feb 5-8
+Control Plane K3s Recreated:   Feb 8
+Worker OS Reinstalled:         Feb 15 09:35
+Worker Rejoined Cluster:       Feb 15 15:38
+Networking Issues Diagnosed:   Feb 15 16:00-21:00
+```
+
+##### Structural Fix Implemented
+
+1. **UFW routed policy = allow**
+2. **VXLAN port 8472/UDP open**
+3. **Flannel interface monitored** (auto-recovery)
+4. **Network validation added** (post-install checks)
+
+##### Verification Highlights
+
+- Pod-to-pod ping across nodes succeeded after fixes
+- Flannel routes restored (`ip route | grep 10.42`)
+- Longhorn CSI plugins returned to 3/3 ready
+- PVC provisioning succeeded and Redis came up on worker
+
 ### 11. VPS Edge Node Issues
 
 **Symptom**: Cannot reach apps from internet

@@ -64,6 +64,8 @@ Learn how to:
 - **Port 8472/UDP**: Required for Flannel VXLAN (Kubernetes pod-to-pod networking)
 - **UFW Routed Policy**: Must be set to `allow` for pod traffic forwarding
 - **Tailscale VPN**: Used for secure node-to-node communication
+- **Kernel networking + forwarding**: Installer enables `vxlan`, `br_netfilter`, and forwarding sysctls
+- **Tailscale readiness**: K3s is started after `tailscale0` is available to avoid missing Flannel interfaces
 
 **Good news:** The installation scripts automatically configure these requirements. You don't need to do anything manually.
 
@@ -1028,6 +1030,8 @@ The script then:
 - **Port 8472/UDP**: For Flannel VXLAN (Kubernetes pod-to-pod networking)
 - **UFW Routed Policy**: Set to `allow` for cross-node pod traffic
 - **UFW Firewall**: Allows SSH (22/tcp), Tailscale, and Kubernetes networking
+- **Kernel networking + forwarding**: Loads `vxlan`, `br_netfilter` and enables forwarding sysctls
+- **Tailscale readiness**: Starts `k3s-agent` after `tailscale0` is up to avoid missing Flannel interfaces
 
 **Why This Matters:**
 - Worker pods need to communicate with control plane pods (e.g., CoreDNS, API server)

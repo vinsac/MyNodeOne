@@ -30,6 +30,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials, HTTPBearer, HTTPAu
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
+from kubernetes.config import ConfigException
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -3558,10 +3559,13 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
             logger.info("HuggingFace token updated successfully")
             return {"status": "saved", "message": "HuggingFace token updated. Restart vLLM pods to use new token."}
             
-        except ImportError:
-            # Fallback to Redis only if Kubernetes client not available
-            await redis_client.client.set("config:hf_token", hf_token)
-            return {"status": "saved", "note": "Token saved to Redis only. Kubernetes secret update requires manual action."}
+        except ImportError as e:
+            # Kubernetes client required for proper token storage
+            logger.error(f"Kubernetes client not available: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Kubernetes client required for token storage. Cannot save token."
+            )
         except Exception as e:
             logger.error(f"Failed to update HF token: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
@@ -3594,7 +3598,7 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
         from kubernetes import client, config as k8s_config
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -3681,7 +3685,7 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -3748,7 +3752,7 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -3802,7 +3806,7 @@ async def admin_update_vllm_config(request: Request, api_key: str = Depends(get_
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -3853,7 +3857,7 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -3903,7 +3907,7 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -3952,7 +3956,7 @@ async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         apps_v1 = client.AppsV1Api()
@@ -4007,7 +4011,7 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         apps_v1 = client.AppsV1Api()
@@ -4048,8 +4052,9 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
                     deploy.spec.template.metadata.annotations = {}
                 deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
                 apps_v1.patch_namespaced_deployment("gateway", namespace, deploy)
-            except:
-                pass  # Config update is optional
+            except Exception as e:
+                logger.warning(f"Gateway config update failed (non-critical): {e}")
+                # Don't fail the scale operation, but log it
         
         logger.info(f"vLLM scaled to {replicas} replicas")
         return {
@@ -4080,7 +4085,7 @@ async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         apps_v1 = client.AppsV1Api()
@@ -4126,7 +4131,7 @@ async def admin_change_embedding_model(request: Request, api_key: str = Depends(
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()
@@ -4170,7 +4175,7 @@ async def admin_update_embedding_config(request: Request, api_key: str = Depends
         
         try:
             k8s_config.load_incluster_config()
-        except:
+        except ConfigException:
             k8s_config.load_kube_config()
         
         core_v1 = client.CoreV1Api()

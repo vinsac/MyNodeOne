@@ -63,9 +63,32 @@ check_prereqs() {
     fi
 }
 
-# Execute PostgreSQL command
+# Execute PostgreSQL command with retries
 psql_cmd() {
-    kubectl exec -n "$NAMESPACE" deploy/llmapi-postgres -- psql -U llmapi -d llmapi -t -A "$@" 2>/dev/null
+    local max_retries=3
+    local retry_delay=2
+    local attempt=1
+    local result
+    
+    while [ $attempt -le $max_retries ]; do
+        result=$(kubectl exec -n "$NAMESPACE" deploy/llmapi-postgres -- psql -U llmapi -d llmapi -t -A "$@" 2>/dev/null)
+        local exit_code=$?
+        
+        if [ $exit_code -eq 0 ]; then
+            echo "$result"
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_retries ]; then
+            echo "⚠ PostgreSQL command failed (attempt $attempt/$max_retries), retrying..." >&2
+            sleep $retry_delay
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    # Return empty on final failure (matches original behavior)
+    echo ""
+    return 1
 }
 
 # Create API key

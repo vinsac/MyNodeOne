@@ -874,7 +874,7 @@ echo "   ✓ PostgreSQL deployment created"
 
 # Wait for Postgres to be ready
 echo "   ⏳ Waiting for PostgreSQL to be ready..."
-kubectl wait --for=condition=ready pod -l app=llmapi-postgres -n "$NAMESPACE" --timeout=120s 2>/dev/null || \
+kubectl wait --for=condition=ready pod -l app=llmapi-postgres -n "$NAMESPACE" --timeout=300s 2>/dev/null || \
     echo "   ⚠ PostgreSQL may still be initializing"
 
 # Deploy Redis

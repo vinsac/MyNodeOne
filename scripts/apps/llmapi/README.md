@@ -10,6 +10,7 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 - ✅ **Priority Queue** - Realtime, high, normal, low, batch priorities
 - ✅ **Rate Limiting** - Per-key request and token limits
 - ✅ **Usage Metering** - Track tokens per API key for quotas
+- ✅ **Durable State** - PostgreSQL stores API keys and usage logs
 - ✅ **Backend Transparency** - Response includes `system_fingerprint` showing which backend handled it
 - ✅ **Admin UI** - Web interface at `/admin` for key management and monitoring
 - ✅ **API Key Scopes** - Granular permissions: `inference`, `metrics`, `admin`
@@ -33,7 +34,7 @@ sudo ./scripts/apps/llmapi/install-llmapi.sh
 ```
 
 Installation takes ~5-10 minutes:
-- Deploys API Gateway, Redis, and backend pods
+- Deploys API Gateway, PostgreSQL, Redis, and backend pods
 - Models download automatically on first pod startup
 - vLLM: ~3-5 min | llama.cpp: ~5-10 min | Embedding: ~1 min
 
@@ -225,6 +226,8 @@ cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope - for Prometheus
 
 **Note:** Admin scope grants all permissions (includes inference + metrics).
 
+**State storage:** API keys and usage logs are stored in PostgreSQL (`llmapi-postgres`). Redis is used only for request queues, caching, and rate-limit counters.
+
 ## Admin Interface
 
 **Access:** `http://llmapi.cluster.local/admin`
@@ -285,7 +288,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
 └─────────┘                 └───────────┘                └───────────┘
      │
      ├── Always runs: Embedding Service (dedicated)
-     └── Always runs: Redis (queue + cache)
+     ├── Always runs: Redis (queue + cache, rate limits)
+     └── Always runs: PostgreSQL (API keys + usage logs)
 ```
 
 **Intelligent Load Balancing**:

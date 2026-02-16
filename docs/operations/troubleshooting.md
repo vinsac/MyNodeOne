@@ -850,7 +850,7 @@ installation scripts and were exposed when Longhorn replica count was set to 1.
 
 1. Local DNS not working (`grafana.space.local` unresolved on worker)
 2. Longhorn CSI crashloop (cannot reach `longhorn-backend:9500`)
-3. LLMAPI not functional (Redis PVC provisioning blocked)
+3. LLMAPI not functional (Redis/PostgreSQL PVC provisioning blocked)
 4. Pod-to-pod networking broken (worker pods can’t reach control plane pods)
 
 ##### Root Causes Confirmed

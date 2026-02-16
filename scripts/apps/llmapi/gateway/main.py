@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Optional
 
+import asyncpg
 import httpx
 import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, Form
@@ -39,8 +40,15 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class Config:
-    # Redis connection
+    # Redis connection (for rate limiting and caching)
     REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    
+    # PostgreSQL connection (for API keys and usage tracking)
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "llmapi-postgres")
+    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "llmapi")
+    POSTGRES_USER = os.getenv("POSTGRES_USER", "llmapi")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
     
     # Backend URLs
     VLLM_URLS = os.getenv("VLLM_URLS", "http://vllm:8000").split(",")
@@ -306,6 +314,340 @@ class UsageResponse(BaseModel):
 
 
 # =============================================================================
+# PostgreSQL Client
+# =============================================================================
+
+class PostgresClient:
+    """PostgreSQL client for API keys, usage logs, and model configs."""
+    
+    def __init__(self):
+        self.pool: Optional[asyncpg.Pool] = None
+    
+    async def connect(self):
+        """Connect to PostgreSQL and initialize schema."""
+        try:
+            self.pool = await asyncpg.create_pool(
+                host=config.POSTGRES_HOST,
+                port=config.POSTGRES_PORT,
+                database=config.POSTGRES_DB,
+                user=config.POSTGRES_USER,
+                password=config.POSTGRES_PASSWORD,
+                min_size=2,
+                max_size=10,
+                command_timeout=60
+            )
+            logger.info(f"Connected to PostgreSQL at {config.POSTGRES_HOST}:{config.POSTGRES_PORT}")
+            await self._init_schema()
+        except Exception as e:
+            logger.error(f"Failed to connect to PostgreSQL: {e}")
+            raise
+    
+    async def close(self):
+        """Close PostgreSQL connection pool."""
+        if self.pool:
+            await self.pool.close()
+            logger.info("Closed PostgreSQL connection")
+    
+    async def _init_schema(self):
+        """Initialize database schema if not exists."""
+        async with self.pool.acquire() as conn:
+            # Create api_keys table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    api_key VARCHAR(255) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    scopes TEXT[] NOT NULL DEFAULT '{inference}',
+                    requests_per_minute INTEGER NOT NULL DEFAULT 60,
+                    tokens_per_day INTEGER NOT NULL DEFAULT 100000,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    revoked BOOLEAN NOT NULL DEFAULT FALSE
+                )
+            """)
+            
+            # Create usage_logs table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS usage_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    api_key VARCHAR(255) NOT NULL,
+                    date DATE NOT NULL,
+                    hour INTEGER NOT NULL CHECK (hour >= 0 AND hour < 24),
+                    input_tokens BIGINT NOT NULL DEFAULT 0,
+                    output_tokens BIGINT NOT NULL DEFAULT 0,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    UNIQUE(api_key, date, hour)
+                )
+            """)
+            
+            # Create indexes
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_usage_logs_api_key_date 
+                ON usage_logs(api_key, date DESC)
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_api_keys_created_at 
+                ON api_keys(created_at DESC)
+            """)
+            
+            logger.info("PostgreSQL schema initialized")
+    
+    async def get_api_key_config(self, api_key: str) -> Optional[dict]:
+        """Get API key configuration."""
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day, 
+                           created_at, revoked
+                    FROM api_keys
+                    WHERE api_key = $1 AND revoked = FALSE
+                """, api_key)
+                
+                if row:
+                    return {
+                        "name": row["name"],
+                        "scopes": list(row["scopes"]),
+                        "requests_per_minute": row["requests_per_minute"],
+                        "tokens_per_day": row["tokens_per_day"],
+                        "created_at": row["created_at"].isoformat(),
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching API key config: {e}")
+            return None
+    
+    async def set_api_key_config(self, api_key: str, config_data: dict):
+        """Create or update API key configuration."""
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, 
+                                         tokens_per_day, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                    ON CONFLICT (api_key) 
+                    DO UPDATE SET 
+                        name = EXCLUDED.name,
+                        scopes = EXCLUDED.scopes,
+                        requests_per_minute = EXCLUDED.requests_per_minute,
+                        tokens_per_day = EXCLUDED.tokens_per_day,
+                        updated_at = NOW()
+                """, 
+                    api_key,
+                    config_data.get("name", "unnamed"),
+                    config_data.get("scopes", ["inference"]),
+                    config_data.get("requests_per_minute", 60),
+                    config_data.get("tokens_per_day", 100000),
+                    datetime.fromisoformat(config_data.get("created_at", datetime.utcnow().isoformat()))
+                )
+        except Exception as e:
+            logger.error(f"Error setting API key config: {e}")
+            raise
+    
+    async def delete_api_key(self, api_key: str):
+        """Mark API key as revoked."""
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE api_keys 
+                    SET revoked = TRUE, updated_at = NOW()
+                    WHERE api_key = $1
+                """, api_key)
+        except Exception as e:
+            logger.error(f"Error deleting API key: {e}")
+            raise
+    
+    async def list_api_keys(self, prefix: str = "sk-mynodeone-") -> list[dict]:
+        """List all non-revoked API keys with given prefix."""
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day, created_at
+                    FROM api_keys
+                    WHERE api_key LIKE $1 AND revoked = FALSE
+                    ORDER BY created_at DESC
+                """, f"{prefix}%")
+                
+                return [
+                    {
+                        "key": row["api_key"],
+                        "name": row["name"],
+                        "scopes": list(row["scopes"]),
+                        "requests_per_minute": row["requests_per_minute"],
+                        "tokens_per_day": row["tokens_per_day"],
+                        "created_at": row["created_at"].isoformat(),
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logger.error(f"Error listing API keys: {e}")
+            return []
+    
+    async def add_token_usage(self, api_key: str, input_tokens: int, output_tokens: int):
+        """Track token usage (hourly aggregation)."""
+        try:
+            now = datetime.utcnow()
+            today = now.date()
+            hour = now.hour
+            
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO usage_logs (api_key, date, hour, input_tokens, output_tokens, requests, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, 1, NOW())
+                    ON CONFLICT (api_key, date, hour)
+                    DO UPDATE SET
+                        input_tokens = usage_logs.input_tokens + EXCLUDED.input_tokens,
+                        output_tokens = usage_logs.output_tokens + EXCLUDED.output_tokens,
+                        requests = usage_logs.requests + 1,
+                        updated_at = NOW()
+                """, api_key, today, hour, input_tokens, output_tokens)
+        except Exception as e:
+            logger.error(f"Error adding token usage: {e}")
+            # Don't raise - usage tracking failures shouldn't block requests
+    
+    async def get_token_usage(self, api_key: str) -> tuple[int, int]:
+        """Get today's token usage for an API key."""
+        try:
+            today = datetime.utcnow().date()
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT 
+                        COALESCE(SUM(input_tokens), 0) as input_total,
+                        COALESCE(SUM(output_tokens), 0) as output_total
+                    FROM usage_logs
+                    WHERE api_key = $1 AND date = $2
+                """, api_key, today)
+                
+                if row:
+                    return int(row["input_total"]), int(row["output_total"])
+                return 0, 0
+        except Exception as e:
+            logger.error(f"Error getting token usage: {e}")
+            return 0, 0
+    
+    async def check_token_quota(self, api_key: str, daily_limit: int) -> bool:
+        """Check if within daily token quota."""
+        input_tokens, output_tokens = await self.get_token_usage(api_key)
+        return (input_tokens + output_tokens) < daily_limit
+    
+    async def get_usage_stats(self, api_key: str, days: int = 7) -> dict:
+        """Get usage statistics for an API key over the last N days."""
+        try:
+            start_date = datetime.utcnow().date() - timedelta(days=days)
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT date, hour,
+                        SUM(input_tokens) as input_tokens,
+                        SUM(output_tokens) as output_tokens,
+                        SUM(requests) as requests
+                    FROM usage_logs
+                    WHERE api_key = $1 AND date >= $2
+                    GROUP BY date, hour
+                    ORDER BY date DESC, hour DESC
+                """, api_key, start_date)
+                
+                return {
+                    "api_key": api_key,
+                    "period_days": days,
+                    "hourly_data": [
+                        {
+                            "date": row["date"].isoformat(),
+                            "hour": row["hour"],
+                            "input_tokens": row["input_tokens"],
+                            "output_tokens": row["output_tokens"],
+                            "requests": row["requests"],
+                        }
+                        for row in rows
+                    ]
+                }
+        except Exception as e:
+            logger.error(f"Error getting usage stats: {e}")
+            return {"api_key": api_key, "period_days": days, "hourly_data": []}
+    
+    async def get_all_keys_stats(self) -> dict:
+        """Get aggregate statistics for all API keys."""
+        try:
+            today = datetime.utcnow().date()
+            async with self.pool.acquire() as conn:
+                # Get today's totals
+                summary_row = await conn.fetchrow("""
+                    SELECT 
+                        COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
+                        COALESCE(SUM(requests), 0) as total_requests
+                    FROM usage_logs
+                    WHERE date = $1
+                """, today)
+                
+                # Get active keys count
+                active_keys = await conn.fetchval("""
+                    SELECT COUNT(DISTINCT api_key)
+                    FROM usage_logs
+                    WHERE date = $1
+                """, today)
+                
+                # Get per-key breakdown
+                key_rows = await conn.fetch("""
+                    SELECT 
+                        u.api_key,
+                        k.name,
+                        SUM(u.input_tokens + u.output_tokens) as tokens_today,
+                        SUM(u.requests) as requests_today,
+                        k.tokens_per_day as tokens_limit,
+                        k.requests_per_minute as rpm_limit
+                    FROM usage_logs u
+                    JOIN api_keys k ON u.api_key = k.api_key
+                    WHERE u.date = $1 AND k.revoked = FALSE
+                    GROUP BY u.api_key, k.name, k.tokens_per_day, k.requests_per_minute
+                    ORDER BY tokens_today DESC
+                """, today)
+                
+                # Get hourly breakdown (last 24 hours)
+                hourly_rows = await conn.fetch("""
+                    SELECT 
+                        date, hour,
+                        SUM(input_tokens + output_tokens) as tokens,
+                        SUM(requests) as requests
+                    FROM usage_logs
+                    WHERE date >= $1
+                    GROUP BY date, hour
+                    ORDER BY date DESC, hour DESC
+                    LIMIT 24
+                """, today - timedelta(days=1))
+                
+                return {
+                    "summary": {
+                        "total_tokens_today": int(summary_row["total_tokens"]),
+                        "total_requests_today": int(summary_row["total_requests"]),
+                        "active_keys": int(active_keys or 0),
+                    },
+                    "by_key": [
+                        {
+                            "name": row["name"],
+                            "api_key_preview": row["api_key"][:16] + "...",
+                            "tokens_today": int(row["tokens_today"]),
+                            "tokens_limit": int(row["tokens_limit"]),
+                            "requests_today": int(row["requests_today"]),
+                            "rpm_limit": int(row["rpm_limit"]),
+                        }
+                        for row in key_rows
+                    ],
+                    "by_hour": [
+                        {
+                            "hour": f"{row['hour']:02d}:00",
+                            "tokens": int(row["tokens"]),
+                            "requests": int(row["requests"]),
+                        }
+                        for row in hourly_rows
+                    ]
+                }
+        except Exception as e:
+            logger.error(f"Error getting all keys stats: {e}")
+            return {"summary": {"total_tokens_today": 0, "total_requests_today": 0, "active_keys": 0}, "by_key": [], "by_hour": []}
+
+
+postgres_client = PostgresClient()
+
+# =============================================================================
 # Redis Client
 # =============================================================================
 
@@ -339,46 +681,6 @@ class RedisClient:
         current_rpm = await self.client.get(rpm_key) or 0
         ttl = await self.client.ttl(rpm_key)
         return int(current_rpm), max(0, ttl)
-    
-    async def add_token_usage(self, api_key: str, input_tokens: int, output_tokens: int):
-        """Track token usage (daily and hourly)."""
-        now = datetime.utcnow()
-        today = now.strftime("%Y-%m-%d")
-        hour = now.hour
-        total_tokens = input_tokens + output_tokens
-        
-        key = f"tokens:{api_key}:{today}"
-        hourly_key = f"hourly_tokens:{api_key}:{today}:{hour}"
-        requests_key = f"requests:{api_key}:{today}"
-        hourly_req_key = f"hourly:{api_key}:{today}:{hour}"
-        
-        pipe = self.client.pipeline()
-        # Daily token tracking
-        pipe.hincrby(key, "input", input_tokens)
-        pipe.hincrby(key, "output", output_tokens)
-        pipe.expire(key, 86400 * 7)  # Keep for 7 days
-        # Hourly token tracking
-        pipe.incrby(hourly_key, total_tokens)
-        pipe.expire(hourly_key, 86400 * 2)  # Keep for 2 days
-        # Daily request count
-        pipe.incr(requests_key)
-        pipe.expire(requests_key, 86400 * 7)
-        # Hourly request count
-        pipe.incr(hourly_req_key)
-        pipe.expire(hourly_req_key, 86400 * 2)
-        await pipe.execute()
-    
-    async def get_token_usage(self, api_key: str) -> tuple[int, int]:
-        """Get today's token usage."""
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        key = f"tokens:{api_key}:{today}"
-        usage = await self.client.hgetall(key)
-        return int(usage.get("input", 0)), int(usage.get("output", 0))
-    
-    async def check_token_quota(self, api_key: str, daily_limit: int) -> bool:
-        """Check if within daily token quota."""
-        input_tokens, output_tokens = await self.get_token_usage(api_key)
-        return (input_tokens + output_tokens) < daily_limit
     
     async def enqueue_request(self, priority: str, request_id: str, data: dict):
         """Add request to priority queue."""
@@ -785,8 +1087,8 @@ async def get_api_key(credentials: HTTPAuthorizationCredentials = Depends(securi
     """Extract and validate API key from Authorization header."""
     api_key = credentials.credentials
     
-    # Check if key exists in Redis
-    key_config = await redis_client.get_api_key_config(api_key)
+    # Check if key exists in Postgres
+    key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
     
@@ -796,7 +1098,7 @@ async def get_api_key(credentials: HTTPAuthorizationCredentials = Depends(securi
 
 async def require_scope(required_scope: str, api_key: str) -> str:
     """Verify API key has required scope."""
-    key_config = await redis_client.get_api_key_config(api_key)
+    key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
     
@@ -837,6 +1139,7 @@ async def get_priority(x_priority: str = Header(None)) -> str:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
+    await postgres_client.connect()
     await redis_client.connect()
     await backend_manager.start()
     
@@ -855,6 +1158,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     health_task.cancel()
+    await postgres_client.close()
     await redis_client.close()
     await backend_manager.stop()
 
@@ -967,7 +1271,7 @@ async def chat_completions(
     model = model_info.get("name", request.model)
     
     # Get key config (use defaults if not found)
-    key_config = await redis_client.get_api_key_config(api_key) or {
+    key_config = await postgres_client.get_api_key_config(api_key) or {
         "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
         "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
     }
@@ -982,7 +1286,7 @@ async def chat_completions(
         )
     
     # Check token quota
-    if not await redis_client.check_token_quota(api_key, key_config["tokens_per_day"]):
+    if not await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"]):
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
     
@@ -1015,7 +1319,7 @@ async def chat_completions(
                 
                 # Track usage after streaming completes
                 input_tokens = sum(len(m.content.split()) for m in request.messages) * 2  # Rough estimate
-                await redis_client.add_token_usage(api_key, input_tokens, total_output_tokens)
+                await postgres_client.add_token_usage(api_key, input_tokens, total_output_tokens)
                 TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                 TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
             
@@ -1047,7 +1351,7 @@ async def chat_completions(
             usage = result.get("usage", {})
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
-            await redis_client.add_token_usage(api_key, input_tokens, output_tokens)
+            await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
             TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
             TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
             
@@ -1074,7 +1378,7 @@ async def completions(
     model = config.MODEL_ALIASES.get(request.model, request.model)
     
     # Get key config
-    key_config = await redis_client.get_api_key_config(api_key) or {
+    key_config = await postgres_client.get_api_key_config(api_key) or {
         "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
         "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
     }
@@ -1155,7 +1459,7 @@ async def embeddings(
     model = model_info.get("name", request.model)
     
     # Get key config
-    key_config = await redis_client.get_api_key_config(api_key) or {
+    key_config = await postgres_client.get_api_key_config(api_key) or {
         "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
         "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
     }
@@ -1213,7 +1517,7 @@ async def embeddings(
     
     # Estimate token usage
     total_tokens = sum(len(text.split()) * 2 for text in input_texts)
-    await redis_client.add_token_usage(api_key, total_tokens, 0)
+    await postgres_client.add_token_usage(api_key, total_tokens, 0)
     TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
     
     duration = time.time() - start_time
@@ -1231,12 +1535,12 @@ async def embeddings(
 @app.get("/v1/usage")
 async def get_usage(api_key: str = Depends(get_api_key)):
     """Get current usage for API key."""
-    key_config = await redis_client.get_api_key_config(api_key) or {
+    key_config = await postgres_client.get_api_key_config(api_key) or {
         "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
         "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
     }
     
-    input_tokens, output_tokens = await redis_client.get_token_usage(api_key)
+    input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
     current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
     
     # Calculate reset time
@@ -3084,25 +3388,7 @@ async def admin_list_models(api_key: str = Depends(get_api_key)):
 async def admin_list_keys(api_key: str = Depends(get_api_key)):
     """List all API keys (admin endpoint)."""
     await require_scope("admin", api_key)
-    keys = []
-    # Scan for all API keys in Redis
-    if redis_client.client:
-        cursor = 0
-        while True:
-            cursor, found_keys = await redis_client.client.scan(cursor, match="apikey:sk-mynodeone-*", count=100)
-            for key in found_keys:
-                api_key = key.replace("apikey:", "")
-                config_data = await redis_client.get_api_key_config(api_key)
-                if config_data:
-                    keys.append({
-                        "key": api_key,
-                        "name": config_data.get("name", "unknown"),
-                        "requests_per_minute": config_data.get("requests_per_minute", 60),
-                        "tokens_per_day": config_data.get("tokens_per_day", 100000),
-                        "created_at": config_data.get("created_at", ""),
-                    })
-            if cursor == 0:
-                break
+    keys = await postgres_client.list_api_keys()
     return {"keys": keys}
 
 
@@ -3138,7 +3424,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
         "created_at": datetime.utcnow().isoformat(),
     }
     
-    await redis_client.set_api_key_config(api_key, key_config)
+    await postgres_client.set_api_key_config(api_key, key_config)
     
     return {"key": api_key, "config": key_config}
 
@@ -3147,7 +3433,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
 async def admin_revoke_key(api_key: str, admin_key: str = Depends(get_api_key)):
     """Revoke an API key (admin endpoint)."""
     await require_scope("admin", admin_key)
-    await redis_client.client.delete(f"apikey:{api_key}")
+    await postgres_client.delete_api_key(api_key)
     return {"status": "revoked", "api_key": api_key}
 
 
@@ -3155,11 +3441,11 @@ async def admin_revoke_key(api_key: str, admin_key: str = Depends(get_api_key)):
 async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
     """Get usage for a specific API key."""
     await require_scope("admin", admin_key)
-    key_config = await redis_client.get_api_key_config(api_key)
+    key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=404, detail="API key not found")
     
-    input_tokens, output_tokens = await redis_client.get_token_usage(api_key)
+    input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
     current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
     
     return {
@@ -3176,103 +3462,7 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
 async def admin_get_stats(api_key: str = Depends(get_api_key)):
     """Get comprehensive usage statistics for all API keys."""
     await require_scope("admin", api_key)
-    from datetime import datetime
-    
-    stats = {
-        "summary": {
-            "total_requests_today": 0,
-            "total_tokens_today": 0,
-            "active_keys": 0,
-        },
-        "by_key": [],
-        "by_hour": [],
-    }
-    
-    if not redis_client.client:
-        return stats
-    
-    # Get all API keys and their usage
-    keys = await redis_client.client.keys("apikey:*")
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    for key in keys:
-        key_str = key.decode() if isinstance(key, bytes) else key
-        api_key = key_str.replace("apikey:", "")
-        
-        # Get key config
-        key_config = await redis_client.get_api_key_config(api_key)
-        if not key_config:
-            continue
-        
-        # Get token usage
-        input_tokens, output_tokens = await redis_client.get_token_usage(api_key)
-        total_tokens = input_tokens + output_tokens
-        
-        # Get request count from rate limit
-        current_rpm, _ = await redis_client.get_rate_limit_info(api_key)
-        
-        # Get daily request count if stored
-        daily_requests = await redis_client.client.get(f"requests:{api_key}:{today}") or 0
-        if isinstance(daily_requests, bytes):
-            daily_requests = int(daily_requests.decode())
-        elif isinstance(daily_requests, str):
-            daily_requests = int(daily_requests)
-        
-        key_stats = {
-            "name": key_config.get("name", "Unknown"),
-            "api_key_preview": api_key[:16] + "..." if len(api_key) > 16 else api_key,
-            "tokens_today": total_tokens,
-            "tokens_limit": key_config.get("tokens_per_day", 0),
-            "requests_today": daily_requests,
-            "requests_per_min": current_rpm,
-            "rpm_limit": key_config.get("requests_per_minute", 0),
-        }
-        
-        stats["by_key"].append(key_stats)
-        stats["summary"]["total_tokens_today"] += total_tokens
-        stats["summary"]["total_requests_today"] += daily_requests
-        if total_tokens > 0 or daily_requests > 0:
-            stats["summary"]["active_keys"] += 1
-    
-    # Get hourly stats (last 24 hours)
-    for hour_offset in range(24):
-        hour_time = datetime.now().replace(minute=0, second=0, microsecond=0)
-        hour_key = (hour_time.hour - hour_offset) % 24
-        hour_label = f"{hour_key:02d}:00"
-        
-        # Sum requests for this hour across all keys
-        hour_requests = 0
-        hour_tokens = 0
-        
-        for key in keys:
-            key_str = key.decode() if isinstance(key, bytes) else key
-            api_key = key_str.replace("apikey:", "")
-            
-            req_count = await redis_client.client.get(f"hourly:{api_key}:{today}:{hour_key}") or 0
-            tok_count = await redis_client.client.get(f"hourly_tokens:{api_key}:{today}:{hour_key}") or 0
-            
-            if isinstance(req_count, bytes):
-                req_count = int(req_count.decode())
-            elif isinstance(req_count, str):
-                req_count = int(req_count)
-            if isinstance(tok_count, bytes):
-                tok_count = int(tok_count.decode())
-            elif isinstance(tok_count, str):
-                tok_count = int(tok_count)
-                
-            hour_requests += req_count
-            hour_tokens += tok_count
-        
-        stats["by_hour"].insert(0, {
-            "hour": hour_label,
-            "requests": hour_requests,
-            "tokens": hour_tokens,
-        })
-    
-    # Sort by_key by tokens used (descending)
-    stats["by_key"].sort(key=lambda x: x["tokens_today"], reverse=True)
-    
-    return stats
+    return await postgres_client.get_all_keys_stats()
 
 
 # =============================================================================

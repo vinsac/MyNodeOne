@@ -858,6 +858,25 @@ COPYPOD
 
 # Note: Model copying will happen AFTER PVCs are created during service deployment
 
+# Deploy PostgreSQL
+echo "🐘 Deploying PostgreSQL..."
+
+# Generate PostgreSQL password
+POSTGRES_PASSWORD=$(openssl rand -base64 32)
+kubectl create secret generic llmapi-db \
+    --from-literal=postgres-password="$POSTGRES_PASSWORD" \
+    --namespace="$NAMESPACE" \
+    --dry-run=client -o yaml | kubectl apply -f -
+echo "   ✓ PostgreSQL secret created"
+
+kubectl apply -f "$SCRIPT_DIR/manifests/postgres.yaml"
+echo "   ✓ PostgreSQL deployment created"
+
+# Wait for Postgres to be ready
+echo "   ⏳ Waiting for PostgreSQL to be ready..."
+kubectl wait --for=condition=ready pod -l app=llmapi-postgres -n "$NAMESPACE" --timeout=120s 2>/dev/null || \
+    echo "   ⚠ PostgreSQL may still be initializing"
+
 # Deploy Redis
 echo "🔴 Deploying Redis..."
 kubectl apply -f "$SCRIPT_DIR/manifests/redis.yaml"
@@ -878,6 +897,10 @@ metadata:
   namespace: $NAMESPACE
 data:
   REDIS_URL: "redis://redis:6379/0"
+  POSTGRES_HOST: "llmapi-postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "llmapi"
+  POSTGRES_USER: "llmapi"
   VLLM_URLS: "http://vllm-0.vllm:8000"
   LLAMACPP_URL: "http://llamacpp:8080"
   EMBEDDING_URL: "http://embedding:8080"
@@ -932,7 +955,7 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes --quiet
+          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes asyncpg sqlalchemy --quiet
         volumeMounts:
         - name: app-deps
           mountPath: /app/deps
@@ -964,6 +987,11 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: llmapi-db
+              key: postgres-password
         envFrom:
         - configMapRef:
             name: gateway-config
@@ -1438,7 +1466,7 @@ fi
 echo ""
 echo "🔑 Creating API keys..."
 
-# Helper function to create API key
+# Helper function to create API key in Postgres
 create_api_key() {
     local name="$1"
     local scopes="$2"
@@ -1449,14 +1477,15 @@ create_api_key() {
     local api_key="sk-mynodeone-${key_id}"
     local created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     
-    # Convert comma-separated scopes to JSON array
-    local scopes_json=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+    # Convert comma-separated scopes to PostgreSQL array format
+    local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/') 
     
-    # Store in Redis with retries
-    for i in {1..5}; do
-        if kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli SET "apikey:${api_key}" \
-            "{\"name\":\"$name\",\"scopes\":$scopes_json,\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created_at\"}" \
-            &>/dev/null; then
+    # Store in PostgreSQL with retries
+    for i in {1..10}; do
+        if kubectl exec -n "$NAMESPACE" deploy/llmapi-postgres -- psql -U llmapi -d llmapi -c \
+            "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, created_at) \
+            VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, '${created_at}') \
+            ON CONFLICT (api_key) DO NOTHING;" &>/dev/null; then
             echo "$api_key"
             return 0
         fi
@@ -1495,7 +1524,7 @@ if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
         kubectl apply -f "$SCRIPT_DIR/manifests/servicemonitor.yaml"
     fi
 else
-    echo -e "${YELLOW}⚠ Failed to create some API keys in Redis${NC}"
+    echo -e "${YELLOW}⚠ Failed to create some API keys in PostgreSQL${NC}"
     echo "   You can create them manually:"
     echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'admin' --scopes 'admin'"
     echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'prometheus' --scopes 'metrics'"

@@ -340,6 +340,7 @@ sudo ./scripts/setup/setup-control-plane-sudo.sh
 
 - **Want to install applications?**
   → See [APP-STORE.md](../apps/APP-STORE.md) for available applications
+  → Note: LLMAPI deploys its own PostgreSQL instance during install
   → Use `kubectl apply -f manifests/examples/` for demo apps
 
 - **Want public internet access for your apps?**

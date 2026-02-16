@@ -537,7 +537,7 @@ Go to **Admin UI → Advanced: Backend Configuration**:
 │  │   • Request queue with priorities (realtime, high, normal, low, batch)      │ │
 │  │   • Response caching for repeated queries                                    │ │
 │  │   • Rate limit counters per API key                                          │ │
-│  │   • Usage token counters                                                     │ │
+│  │   • Backend status + download progress (non-durable)                         │ │
 │  └─────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                   │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐ │
@@ -623,8 +623,7 @@ Central coordination for request queuing and caching.
 - Priority queue management (BullMQ-style)
 - Response caching (LRU with TTL)
 - Rate limit counters
-- Token usage counters
-- Backend health status
+- Backend health + download status (ephemeral)
 
 ### 6. PostgreSQL (State Store)
 
@@ -632,7 +631,7 @@ Persistent storage for configuration and usage data.
 
 **Tables:**
 - `api_keys`: Key management and quotas
-- `usage_logs`: Per-request token usage
+- `usage_logs`: Token usage history (hourly aggregates)
 - `model_configs`: Model deployment configurations
 - `rate_limits`: Custom rate limits per key
 
@@ -1382,6 +1381,7 @@ scripts/apps/llmapi/
 └── manifests/
     ├── namespace.yaml        # Namespace definition
     ├── redis.yaml            # Redis deployment
+    ├── postgres.yaml         # PostgreSQL deployment
     ├── gateway.yaml          # API Gateway deployment + ConfigMap
     ├── gateway-rbac.yaml     # RBAC for Admin UI model management
     ├── vllm.yaml             # vLLM StatefulSet (GPU)

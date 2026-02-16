@@ -63,9 +63,9 @@ check_prereqs() {
     fi
 }
 
-# Execute Redis command
-redis_cmd() {
-    kubectl exec -n "$NAMESPACE" deploy/redis -- redis-cli "$@" 2>/dev/null
+# Execute PostgreSQL command
+psql_cmd() {
+    kubectl exec -n "$NAMESPACE" deploy/llmapi-postgres -- psql -U llmapi -d llmapi -t -A "$@" 2>/dev/null
 }
 
 # Create API key
@@ -110,12 +110,12 @@ cmd_create() {
     local api_key="sk-mynodeone-${key_id}"
     local created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     
-    # Convert comma-separated scopes to JSON array
-    local scopes_json=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+    # Convert comma-separated scopes to PostgreSQL array
+    local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/') 
     
-    # Store in Redis
-    local config="{\"name\":\"$name\",\"scopes\":$scopes_json,\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created_at\"}"
-    redis_cmd SET "apikey:${api_key}" "$config"
+    # Store in PostgreSQL
+    psql_cmd -c "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, created_at) \
+        VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, '${created_at}');" >/dev/null
     
     echo ""
     echo -e "${GREEN}✓ API Key Created${NC}"
@@ -148,48 +148,34 @@ cmd_list() {
     
     echo ""
     echo -e "${BLUE}API Keys${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
     
-    local keys=$(redis_cmd KEYS "apikey:sk-mynodeone-*" | grep -v "^$" || true)
+    local query="SELECT api_key, name, array_to_string(scopes, ','), tokens_per_day, requests_per_minute \
+        FROM api_keys WHERE revoked = FALSE AND api_key LIKE 'sk-mynodeone-%' ORDER BY created_at DESC;"
+    local results=$(psql_cmd -c "$query" 2>/dev/null || echo "")
     
-    if [ -z "$keys" ]; then
-        echo "No API keys found."
-        echo ""
+    if [ -z "$results" ]; then
+        echo "No API keys found"
         return
     fi
     
-    if [ "$show_full" = true ]; then
-        # Show full keys - wider column
-        printf "%-50s %-20s %-25s %-12s %-8s\n" "API KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    else
-        # Show masked keys
-        printf "%-30s %-20s %-25s %-12s %-8s\n" "API KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    fi
+    printf "%-22s %-20s %-30s %-15s %-10s\n" "KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
+    printf "%s\n" "──────────────────────────────────────────────────────────────────────────────────────────────────"
     
-    echo "$keys" | while read key; do
-        local api_key="${key#apikey:}"
-        local config=$(redis_cmd GET "$key")
-        
-        if [ -n "$config" ]; then
-            local name=$(echo "$config" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"name"[[:space:]]*:[[:space:]]*"//;s/"$//')
-            local scopes=$(echo "$config" | grep -o '"scopes"[[:space:]]*:[[:space:]]*\[[^]]*\]' | sed 's/.*"scopes"[[:space:]]*:[[:space:]]*\[//;s/\]$//;s/"//g;s/[[:space:]]*,[[:space:]]*/,/g')
-            [ -z "$scopes" ] && scopes="inference"  # Default for old keys
-            local tokens=$(echo "$config" | grep -o '"tokens_per_day"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
-            local rpm=$(echo "$config" | grep -o '"requests_per_minute"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
-            
+    echo "$results" | while IFS='|' read -r api_key name scopes tokens rpm; do
+        if [ -n "$api_key" ]; then
+            # Show truncated or full key
+            local display_key
             if [ "$show_full" = true ]; then
-                # Show full key
-                printf "%-50s %-20s %-25s %-12s %-8s\n" "$api_key" "${name:0:20}" "${scopes:0:25}" "$tokens" "$rpm"
+                display_key="$api_key"
             else
-                # Mask the key
-                local masked_key="${api_key:0:20}...${api_key: -4}"
-                printf "%-30s %-20s %-25s %-12s %-8s\n" "$masked_key" "${name:0:20}" "${scopes:0:25}" "$tokens" "$rpm"
+                display_key="${api_key:0:20}..."
             fi
+            
+            printf "%-22s %-20s %-30s %-15s %-10s\n" \
+                "$display_key" "${name:0:20}" "${scopes:0:30}" "$tokens" "$rpm"
         fi
     done
-    
     echo ""
     
     if [ "$show_full" = false ]; then
@@ -208,32 +194,30 @@ cmd_show() {
         exit 1
     fi
     
-    local config=$(redis_cmd GET "apikey:${api_key}")
+    local query="SELECT name, array_to_string(scopes, ','), tokens_per_day, requests_per_minute, created_at \
+        FROM api_keys WHERE api_key = '${api_key}';"
+    local results=$(psql_cmd -c "$query" 2>/dev/null || echo "")
     
-    if [ -z "$config" ]; then
+    if [ -z "$results" ]; then
         echo -e "${RED}Error: API key not found${NC}"
         exit 1
     fi
     
     echo ""
     echo -e "${BLUE}API Key Details${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     
-    local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-    local scopes=$(echo "$config" | grep -o '"scopes":\[[^]]*\]' | sed 's/"scopes"://;s/\["//;s/"\]//;s/","/,/g')
-    [ -z "$scopes" ] && scopes="inference"  # Default for old keys
-    local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
-    local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
-    local created=$(echo "$config" | grep -o '"created_at":"[^"]*"' | cut -d'"' -f4)
-    
-    echo "   Key:         ${api_key:0:20}...${api_key: -4}"
-    echo "   Name:        $name"
-    echo "   Scopes:      $scopes"
-    echo "   Tokens/Day:  $tokens"
-    echo "   RPM Limit:   $rpm"
-    echo "   Created:     $created"
-    echo ""
+    echo "$results" | while IFS='|' read -r name scopes tokens rpm created; do
+        if [ -n "$name" ]; then
+            echo "   Key:         ${api_key:0:20}...${api_key: -4}"
+            echo "   Name:        $name"
+            echo "   Scopes:      $scopes"
+            echo "   Tokens/Day:  $tokens"
+            echo "   RPM Limit:   $rpm"
+            echo "   Created:     $created"
+            echo ""
+        fi
+    done
 }
 
 # Update API key
@@ -247,22 +231,11 @@ cmd_update() {
         exit 1
     fi
     
-    local config=$(redis_cmd GET "apikey:${api_key}")
+    local name=""
+    local scopes=""
+    local tokens=""
+    local rpm=""
     
-    if [ -z "$config" ]; then
-        echo -e "${RED}Error: API key not found${NC}"
-        exit 1
-    fi
-    
-    # Parse existing values
-    local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-    local scopes=$(echo "$config" | grep -o '"scopes":\[[^]]*\]' | sed 's/"scopes"://;s/\["//;s/"\]//;s/","/,/g')
-    [ -z "$scopes" ] && scopes="inference"  # Default for old keys
-    local tokens=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
-    local rpm=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
-    local created=$(echo "$config" | grep -o '"created_at":"[^"]*"' | cut -d'"' -f4)
-    
-    # Parse new values
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --name)
@@ -289,20 +262,36 @@ cmd_update() {
         esac
     done
     
-    # Convert comma-separated scopes to JSON array
-    local scopes_json=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+    # Build UPDATE query based on provided parameters
+    local updates=()
+    [ -n "$name" ] && updates+=("name = '${name}'")
+    [ -n "$tokens" ] && updates+=("tokens_per_day = ${tokens}")
+    [ -n "$rpm" ] && updates+=("requests_per_minute = ${rpm}")
     
-    # Update in Redis
-    local new_config="{\"name\":\"$name\",\"scopes\":$scopes_json,\"requests_per_minute\":$rpm,\"tokens_per_day\":$tokens,\"created_at\":\"$created\"}"
-    redis_cmd SET "apikey:${api_key}" "$new_config"
+    if [ -n "$scopes" ]; then
+        local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/')
+        updates+=("scopes = '${scopes_array}'")
+    fi
+    
+    if [ ${#updates[@]} -eq 0 ]; then
+        echo -e "${RED}Error: No fields to update${NC}"
+        usage
+        exit 1
+    fi
+    
+    # Join updates with commas
+    local update_clause=$(IFS=,; echo "${updates[*]}")
+    
+    # Update in PostgreSQL
+    psql_cmd -c "UPDATE api_keys SET ${update_clause}, updated_at = NOW() WHERE api_key = '${api_key}';" >/dev/null
     
     echo ""
     echo -e "${GREEN}✓ API Key Updated${NC}"
     echo ""
-    echo "   Name:        $name"
-    echo "   Scopes:      $scopes"
-    echo "   Tokens/Day:  $tokens"
-    echo "   RPM Limit:   $rpm"
+    [ -n "$name" ] && echo "   Name:        $name"
+    [ -n "$scopes" ] && echo "   Scopes:      $scopes"
+    [ -n "$tokens" ] && echo "   Tokens/Day:  $tokens"
+    [ -n "$rpm" ] && echo "   RPM Limit:   $rpm"
     echo ""
 }
 
@@ -316,15 +305,14 @@ cmd_revoke() {
         exit 1
     fi
     
-    # Check if exists
-    local config=$(redis_cmd GET "apikey:${api_key}")
+    # Check if exists and get name
+    local query="SELECT name FROM api_keys WHERE api_key = '${api_key}' AND revoked = FALSE;"
+    local name=$(psql_cmd -c "$query" 2>/dev/null | head -1)
     
-    if [ -z "$config" ]; then
-        echo -e "${RED}Error: API key not found${NC}"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: API key not found or already revoked${NC}"
         exit 1
     fi
-    
-    local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
     
     echo ""
     echo -e "${YELLOW}Warning: This will permanently revoke the API key.${NC}"
@@ -338,7 +326,8 @@ cmd_revoke() {
         exit 0
     fi
     
-    redis_cmd DEL "apikey:${api_key}"
+    # Mark as revoked in PostgreSQL
+    psql_cmd -c "UPDATE api_keys SET revoked = TRUE, updated_at = NOW() WHERE api_key = '${api_key}';" >/dev/null
     
     echo ""
     echo -e "${GREEN}✓ API Key Revoked${NC}"
@@ -355,57 +344,49 @@ cmd_usage() {
         exit 1
     fi
     
-    local config=$(redis_cmd GET "apikey:${api_key}")
+    # Get key info from Postgres
+    local query="SELECT name, tokens_per_day, requests_per_minute FROM api_keys WHERE api_key = '${api_key}' AND revoked = FALSE;"
+    local key_info=$(psql_cmd -c "$query" 2>/dev/null || echo "")
     
-    if [ -z "$config" ]; then
+    if [ -z "$key_info" ]; then
         echo -e "${RED}Error: API key not found${NC}"
         exit 1
     fi
     
-    local name=$(echo "$config" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-    local tokens_limit=$(echo "$config" | grep -o '"tokens_per_day":[0-9]*' | cut -d':' -f2)
-    local rpm_limit=$(echo "$config" | grep -o '"requests_per_minute":[0-9]*' | cut -d':' -f2)
+    local name=$(echo "$key_info" | cut -d'|' -f1)
+    local tokens_limit=$(echo "$key_info" | cut -d'|' -f2)
+    local rpm_limit=$(echo "$key_info" | cut -d'|' -f3)
     
-    # Get today's usage
-    local today=$(date -u +%Y-%m-%d)
-    local usage_key="tokens:${api_key}:${today}"
-    local input_tokens=$(redis_cmd HGET "$usage_key" "input" || echo "0")
-    local output_tokens=$(redis_cmd HGET "$usage_key" "output" || echo "0")
-    input_tokens="${input_tokens:-0}"
-    output_tokens="${output_tokens:-0}"
+    # Get today's usage from Postgres
+    local today=$(date +%Y-%m-%d)
+    local usage_query="SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(requests), 0) \
+        FROM usage_logs WHERE api_key = '${api_key}' AND date = '${today}';"
+    local usage_data=$(psql_cmd -c "$usage_query" 2>/dev/null || echo "0|0|0")
+    
+    local input_tokens=$(echo "$usage_data" | cut -d'|' -f1)
+    local output_tokens=$(echo "$usage_data" | cut -d'|' -f2)
+    local requests_today=$(echo "$usage_data" | cut -d'|' -f3)
+    
     local total_tokens=$((input_tokens + output_tokens))
-    
-    # Get current RPM
-    local rpm_key="ratelimit:${api_key}:rpm"
-    local current_rpm=$(redis_cmd GET "$rpm_key" || echo "0")
-    current_rpm="${current_rpm:-0}"
+    local usage_percent=0
+    if [ "$tokens_limit" -gt 0 ]; then
+        usage_percent=$(( (total_tokens * 100) / tokens_limit ))
+    fi
     
     echo ""
     echo -e "${BLUE}Usage Statistics${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "   Key:           ${api_key:0:15}...${api_key: -4}"
-    echo "   Name:          $name"
+    echo "   Key:         ${api_key:0:20}...${api_key: -4}"
+    echo "   Name:        $name"
     echo ""
-    echo "   Today's Tokens:"
-    echo "     Input:       $input_tokens"
-    echo "     Output:      $output_tokens"
-    echo "     Total:       $total_tokens / $tokens_limit"
-    
-    # Usage bar
-    local pct=$((total_tokens * 100 / tokens_limit))
-    if [ $pct -gt 100 ]; then pct=100; fi
-    local bar_len=30
-    local filled=$((pct * bar_len / 100))
-    local empty=$((bar_len - filled))
-    printf "     Progress:    ["
-    printf '%*s' "$filled" | tr ' ' '█'
-    printf '%*s' "$empty" | tr ' ' '░'
-    printf "] %d%%\n" "$pct"
-    
+    echo "   Today's Usage:"
+    echo "   - Input tokens:    $input_tokens"
+    echo "   - Output tokens:   $output_tokens"
+    echo "   - Total tokens:    $total_tokens / $tokens_limit (${usage_percent}%)"
+    echo "   - Requests:        $requests_today"
     echo ""
-    echo "   Current Minute:"
-    echo "     Requests:    $current_rpm / $rpm_limit"
+    echo "   Rate Limit:"
+    echo "   - RPM Limit:       $rpm_limit requests/min"
     echo ""
 }
 

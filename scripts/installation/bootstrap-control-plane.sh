@@ -788,6 +788,17 @@ EOF
             chmod 600 "$USER_HOME/.kube/config"
             chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.kube"
             log_success "Kubeconfig saved to $USER_HOME/.kube/config"
+            
+            # Add KUBECONFIG to user's shell config (persists across sessions)
+            if [ -f "$USER_HOME/.bashrc" ]; then
+                if ! grep -q "export KUBECONFIG=\$HOME/.kube/config" "$USER_HOME/.bashrc"; then
+                    echo '' >> "$USER_HOME/.bashrc"
+                    echo '# Added by MyNodeOne installer - ensures kubectl works without sudo' >> "$USER_HOME/.bashrc"
+                    echo 'export KUBECONFIG=$HOME/.kube/config' >> "$USER_HOME/.bashrc"
+                    chown "$SUDO_USER:$SUDO_USER" "$USER_HOME/.bashrc"
+                    log_success "Added KUBECONFIG to $USER_HOME/.bashrc"
+                fi
+            fi
         fi
     fi
     

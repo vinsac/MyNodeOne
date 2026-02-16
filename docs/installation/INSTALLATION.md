@@ -283,14 +283,15 @@ sudo ./scripts/setup/enable-security-hardening.sh
 By default, K3s kubeconfig requires root permissions. Set it up for your user account:
 
 ```bash
-# Fix kubeconfig permissions
-sudo chmod 644 /etc/rancher/k3s/k3s.yaml
-
 # Set up kubectl config for your user
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $USER:$USER ~/.kube/config
 chmod 600 ~/.kube/config
+
+# Tell kubectl to use your user config (required for K3s)
+echo 'export KUBECONFIG=$HOME/.kube/config' >> ~/.bashrc
+export KUBECONFIG=$HOME/.kube/config
 ```
 
 ### Step 5: Verify Control Plane is Ready

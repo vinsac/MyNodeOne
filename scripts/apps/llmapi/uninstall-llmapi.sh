@@ -42,6 +42,19 @@ if [ "${confirm,,}" != "y" ]; then
 fi
 
 echo ""
+echo "Deleting PVCs and secrets..."
+# Delete PVCs first to ensure proper cleanup (namespace deletion may leave them orphaned)
+kubectl delete pvc -n "$NAMESPACE" \
+    llmapi-postgres-data \
+    llmapi-redis-data \
+    llmapi-models-vllm \
+    llmapi-models-llamacpp \
+    llmapi-models-embedding \
+    --timeout=300s 2>/dev/null || echo "  ⚠ Some PVCs may not exist"
+
+# Delete secrets
+kubectl delete secret -n "$NAMESPACE" llmapi-db --ignore-not-found=true 2>/dev/null
+
 echo "Deleting namespace $NAMESPACE..."
 kubectl delete namespace "$NAMESPACE" --timeout=300s
 

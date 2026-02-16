@@ -785,8 +785,8 @@ main() {
     install_dependencies
     configure_k8s_network_prereqs
     configure_firewall
-    configure_k3s_service_dependencies "k3s-agent"
     join_cluster
+    configure_k3s_service_dependencies "k3s-agent"
     setup_model_directories  # Create model storage for LLM API
     
     # Label node and wait for confirmation from control plane

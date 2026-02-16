@@ -2562,9 +2562,9 @@ main() {
     install_dependencies
     configure_k8s_network_prereqs
     configure_firewall
-    configure_k3s_service_dependencies "k3s"
     optimize_system_for_containers
     install_k3s
+    configure_k3s_service_dependencies "k3s"
     setup_gpu_support  # Configure GPU after K3s is installed (if NVIDIA GPU present)
     install_helm
     install_kompose  # For external app deployment (docker-compose conversion)

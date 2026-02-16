@@ -455,14 +455,20 @@ check_storage_health() {
 
     # 3. Longhorn volumes healthy
     CHECKS_RUN=$((CHECKS_RUN + 1))
-    local degraded=$(kubectl -n longhorn-system get volumes.longhorn.io -o json 2>/dev/null \
-        | jq '[.items[] | select(.status.robustness != "healthy" and .status.robustness != null)] | length' 2>/dev/null || echo "0")
-    if [ "$degraded" -eq 0 ]; then
-        log_success "All Longhorn volumes healthy"
-        CHECKS_PASSED=$((CHECKS_PASSED + 1))
-    else
-        log_warn "$degraded Longhorn volume(s) not in healthy state"
+    if ! command -v jq &>/dev/null; then
+        log_warn "jq not found; skipping Longhorn volume health check"
+        log_warn "Install jq with: sudo apt-get install -y jq"
         CHECKS_WARNED=$((CHECKS_WARNED + 1))
+    else
+        local degraded=$(kubectl -n longhorn-system get volumes.longhorn.io -o json 2>/dev/null \
+            | jq '[.items[] | select(.status.robustness != "healthy" and .status.robustness != null)] | length' 2>/dev/null || echo "0")
+        if [ "$degraded" -eq 0 ]; then
+            log_success "All Longhorn volumes healthy"
+            CHECKS_PASSED=$((CHECKS_PASSED + 1))
+        else
+            log_warn "$degraded Longhorn volume(s) not in healthy state"
+            CHECKS_WARNED=$((CHECKS_WARNED + 1))
+        fi
     fi
 }
 

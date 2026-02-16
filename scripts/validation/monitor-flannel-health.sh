@@ -24,6 +24,7 @@ FLANNEL_IFACE="flannel.1"
 STATE_DIR="/var/lib/mynodeone/flannel-health"
 RECOVERY_LOG="$STATE_DIR/recovery.log"
 MAX_RECOVERIES_PER_HOUR=3
+ALERT_HOOK="${ALERT_HOOK:-/etc/mynodeone/hooks/flannel-health.sh}"
 
 # Colors (only for interactive use)
 if [ -t 1 ]; then
@@ -40,6 +41,15 @@ log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; logger -t "$LOG_TAG" "INFO: $1"
 log_success() { echo -e "${GREEN}[OK]${NC} $1"; logger -t "$LOG_TAG" "OK: $1" 2>/dev/null || true; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; logger -t "$LOG_TAG" "WARN: $1" 2>/dev/null || true; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; logger -t "$LOG_TAG" "ERROR: $1" 2>/dev/null || true; }
+
+notify_hook() {
+    local event="$1"
+    local message="$2"
+
+    if [ -x "$ALERT_HOOK" ]; then
+        "$ALERT_HOOK" "$event" "$message" 2>/dev/null || true
+    fi
+}
 
 ###############################################################################
 # Core Health Check
@@ -107,12 +117,14 @@ check_flannel_health() {
 
     # Flannel interface is missing or unhealthy
     log_error "Flannel interface $FLANNEL_IFACE is MISSING on $(hostname)"
+    notify_hook "flannel-missing" "Flannel interface $FLANNEL_IFACE missing on $(hostname)"
 
     # Check recovery throttle
     local recent=$(count_recent_recoveries)
     if [ "$recent" -ge "$MAX_RECOVERIES_PER_HOUR" ]; then
         log_error "Too many recoveries in the last hour ($recent/$MAX_RECOVERIES_PER_HOUR) - NOT restarting"
         log_error "Manual intervention required. Check K3s logs: journalctl -u $k3s_service -n 50"
+        notify_hook "recovery-throttled" "Flannel recovery throttled on $(hostname) (last hour: $recent). Check K3s logs."
         return 1
     fi
 
@@ -136,9 +148,11 @@ check_flannel_health() {
 
         log_error "Recovery FAILED: $FLANNEL_IFACE did not appear after ${max_wait}s"
         log_error "Manual intervention required"
+        notify_hook "recovery-failed" "Flannel recovery failed on $(hostname); $FLANNEL_IFACE missing after restart."
         return 1
     else
         log_error "Failed to restart $k3s_service"
+        notify_hook "recovery-failed" "Failed to restart $k3s_service on $(hostname) during flannel recovery."
         return 1
     fi
 }

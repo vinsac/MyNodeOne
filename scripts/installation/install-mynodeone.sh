@@ -1494,19 +1494,6 @@ main() {
             control-plane)
                 print_info "Running control plane bootstrap..."
                 bash "$PROJECT_ROOT/scripts/installation/bootstrap-control-plane.sh"
-                
-                print_header "Final Step: Configuring Passwordless Sudo"
-                bash "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh"
-                
-                # Final verification
-                print_info "Verifying passwordless sudo..."
-                if sudo -n kubectl version --client &>/dev/null; then
-                    print_success "✓ Passwordless sudo verified."
-                else
-                    print_error "✗ Passwordless sudo configuration FAILED."
-                    print_error "Manual intervention required. Please run: ./scripts/setup/setup-control-plane-sudo.sh"
-                    exit 1
-                fi
                 ;;
             worker)
                 print_info "Running worker node setup..."

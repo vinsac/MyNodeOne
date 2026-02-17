@@ -122,7 +122,7 @@ cat > website/ingress-route-example.yaml <<'EOFINGRESS'
 # Example IngressRoute for accessing documentation via domain
 # Update with your domain and apply: kubectl apply -f ingress-route-example.yaml
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: mynodeone-docs

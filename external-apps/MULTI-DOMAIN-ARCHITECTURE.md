@@ -62,7 +62,7 @@ Traefik uses HTTP `Host` headers to route traffic:
 
 ```yaml
 # App A Route
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: appa-public
@@ -81,7 +81,7 @@ spec:
 
 ```yaml
 # App B Route
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: appb-public

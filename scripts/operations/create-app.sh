@@ -306,7 +306,7 @@ EOF
     # Ingress (if domain specified)
     if [ -n "$DOMAIN" ]; then
         cat > k8s/ingress.yaml <<EOF
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: $APP_NAME

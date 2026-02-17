@@ -2,7 +2,7 @@
 # Adds security headers to all HTTP responses
 
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: security-headers
@@ -39,7 +39,7 @@ spec:
 
 ---
 # Rate limiting middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit
@@ -53,7 +53,7 @@ spec:
 ---
 # IP whitelist middleware (example)
 # Uncomment and customize if you want to restrict access by IP
-# apiVersion: traefik.containo.us/v1alpha1
+# apiVersion: traefik.io/v1alpha1
 # kind: Middleware
 # metadata:
 #   name: ip-whitelist
@@ -67,7 +67,7 @@ spec:
 
 ---
 # Compress responses
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: compress
@@ -77,7 +77,7 @@ spec:
 
 ---
 # Chain multiple middlewares together
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: secure-chain
@@ -91,7 +91,7 @@ spec:
 
 ---
 # Example IngressRoute using security middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: example-secure-route

@@ -51,11 +51,22 @@ if ! kubectl get nodes &>/dev/null; then
     exit 1
 fi
 
+# Allow domain from argument or environment (safe with set -u)
+DOMAIN="${1:-${DOMAIN:-}}"
+
 # Get domain if not provided
 if [ -z "$DOMAIN" ]; then
     DOMAINS=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
-        jq -r 'keys[]' || echo "")
+        jq -r '
+            if (type == "object" and has("domains") and (.domains | type == "object")) then
+                .domains | keys[]?
+            elif type == "object" then
+                keys[]?
+            else
+                empty
+            end
+        ' 2>/dev/null || echo "")
     
     if [ -z "$DOMAINS" ]; then
         log_error "No domains registered"
@@ -74,9 +85,13 @@ if [ -z "$DOMAIN" ]; then
     done <<< "$DOMAINS"
     
     echo ""
-    read -p "Select domain to remove: " domain_num
+    read -r -p "Select domain to remove: " domain_num
     
-    DOMAIN="${domain_array[$domain_num]:-}"
+    if [[ "$domain_num" =~ ^[0-9]+$ ]] && [ -n "${domain_array[$domain_num]:-}" ]; then
+        DOMAIN="${domain_array[$domain_num]}"
+    else
+        DOMAIN=""
+    fi
 fi
 
 if [ -z "$DOMAIN" ]; then
@@ -87,7 +102,13 @@ fi
 # Check if domain exists
 if ! kubectl get configmap -n kube-system domain-registry \
     -o jsonpath="{.data.domains\.json}" 2>/dev/null | \
-    jq -e ".domains[\"$DOMAIN\"]" &>/dev/null; then
+    jq -e --arg domain "$DOMAIN" '
+        if (type == "object" and has("domains") and (.domains | type == "object")) then
+            .domains[$domain]
+        else
+            .[$domain]
+        end
+    ' &>/dev/null; then
     log_error "Domain $DOMAIN not found in registry"
     exit 1
 fi
@@ -98,7 +119,7 @@ echo ""
 # Show services using this domain
 AFFECTED_SERVICES=$(kubectl get configmap -n kube-system domain-registry \
     -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
-    jq -r "to_entries[] | select(.value.expose[] | endswith(\"$DOMAIN\")) | .key" || echo "")
+    jq -r --arg domain "$DOMAIN" 'to_entries[] | select(((.value.expose // [])[]? | endswith($domain))) | .key' 2>/dev/null || echo "")
 
 if [ -n "$AFFECTED_SERVICES" ]; then
     log_warn "This domain is currently used by the following services:"
@@ -107,11 +128,11 @@ if [ -n "$AFFECTED_SERVICES" ]; then
     while read -r service; do
         local_name=$(kubectl get configmap -n kube-system service-registry \
             -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].local_name" 2>/dev/null || echo "$service")
+            jq -r --arg service "$service" '.[ $service ].local_name // $service' 2>/dev/null || echo "$service")
         
         exposed_urls=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].expose[]" 2>/dev/null | grep "$DOMAIN" | tr '\n' ',' || echo "")
+            jq -r --arg service "$service" --arg domain "$DOMAIN" '.[ $service ].expose[]? | select(endswith($domain))' 2>/dev/null | paste -sd, - || echo "")
         
         echo "  • $service ($local_name) - exposed at: ${exposed_urls%,}"
     done <<< "$AFFECTED_SERVICES"
@@ -143,7 +164,7 @@ if [ -n "$AFFECTED_SERVICES" ]; then
         # Get URLs ending with this domain
         urls_to_remove=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r ".[\"$service\"].expose[]" 2>/dev/null | grep "$DOMAIN" || echo "")
+            jq -r --arg service "$service" --arg domain "$DOMAIN" '.[ $service ].expose[]? | select(endswith($domain))' 2>/dev/null || echo "")
         
         while read -r url; do
             if [ -n "$url" ]; then

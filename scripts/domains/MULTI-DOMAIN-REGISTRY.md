@@ -21,7 +21,7 @@ The `multi-domain-registry.sh` script provides advanced domain management capabi
 - **Single domain addition** → `./scripts/domains/add-domain.sh`
 - **Interactive domain management** → User-friendly prompts
 - **Basic domain removal** → `./scripts/domains/remove-domain.sh`
-- **Simple routing configuration** → `./scripts/domains/configure-domain-routing.sh`
+- **Simple routing configuration** → `./scripts/operations/manage-app-visibility.sh`
 
 ### **Use Multi-Domain Registry For:**
 - **Batch domain operations** → Register multiple domains at once

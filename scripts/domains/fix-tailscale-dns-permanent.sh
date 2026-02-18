@@ -65,6 +65,18 @@ EOF
     cat > /usr/local/bin/maintain-dns-config.sh << 'EOF'
 #!/bin/bash
 
+# Build dynamic search line from existing resolver config if available
+get_search_line() {
+    local line=""
+    if [ -f /etc/resolv.conf.tailscale.backup ]; then
+        line=$(grep -E '^search[[:space:]]+' /etc/resolv.conf.tailscale.backup 2>/dev/null | head -1 || true)
+    fi
+    if [ -z "$line" ]; then
+        line=$(grep -E '^search[[:space:]]+' /etc/resolv.conf 2>/dev/null | head -1 || true)
+    fi
+    echo "$line"
+}
+
 # Check if resolv.conf is controlled by Tailscale and fix it
 if grep -q "tailscale" /etc/resolv.conf || grep -q "100.100.100.100" /etc/resolv.conf; then
     # Backup original if exists
@@ -72,13 +84,17 @@ if grep -q "tailscale" /etc/resolv.conf || grep -q "100.100.100.100" /etc/resolv
         cp /etc/resolv.conf /etc/resolv.conf.tailscale.backup
     fi
     
+    search_line=$(get_search_line)
+    
     # Apply reliable DNS configuration
-    cat > /etc/resolv.conf << EOF_DNS
-nameserver 8.8.8.8
-nameserver 1.1.1.1
-nameserver 1.0.0.1
-search tail9bb5a2.ts.net home
-EOF_DNS
+    {
+        echo "nameserver 8.8.8.8"
+        echo "nameserver 1.1.1.1"
+        echo "nameserver 1.0.0.1"
+        if [ -n "$search_line" ]; then
+            echo "$search_line"
+        fi
+    } > /etc/resolv.conf
     
     # Make immutable to prevent Tailscale from overwriting
     chattr +i /etc/resolv.conf 2>/dev/null || true
@@ -113,16 +129,25 @@ EOF
     # Backup current resolv.conf
     cp /etc/resolv.conf /etc/resolv.conf.tailscale.backup 2>/dev/null || true
     
+    # Preserve existing search domains (if present)
+    local search_line=""
+    search_line=$(grep -E '^search[[:space:]]+' /etc/resolv.conf 2>/dev/null | head -1 || true)
+    if [ -z "$search_line" ] && [ -f /etc/resolv.conf.tailscale.backup ]; then
+        search_line=$(grep -E '^search[[:space:]]+' /etc/resolv.conf.tailscale.backup 2>/dev/null | head -1 || true)
+    fi
+    
     # Remove immutable flag if exists
     chattr -i /etc/resolv.conf 2>/dev/null || true
     
     # Apply reliable DNS configuration
-    cat > /etc/resolv.conf << 'EOF'
-nameserver 8.8.8.8
-nameserver 1.1.1.1
-nameserver 1.0.0.1
-search tail9bb5a2.ts.net home
-EOF
+    {
+        echo "nameserver 8.8.8.8"
+        echo "nameserver 1.1.1.1"
+        echo "nameserver 1.0.0.1"
+        if [ -n "$search_line" ]; then
+            echo "$search_line"
+        fi
+    } > /etc/resolv.conf
     
     # Make immutable to prevent Tailscale from overwriting
     # Note: chattr may fail on some filesystems (e.g., tmpfs, overlayfs) - this is non-critical

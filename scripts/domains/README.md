@@ -18,7 +18,6 @@ This directory contains scripts for managing domains, DNS configuration, and nam
 |----------|------------|----------------|
 | **Add base domain** | `add-domain.sh` | Wrapper for `multi-domain-registry.sh register-domain` |
 | **Remove domain** | `remove-domain.sh` | Wrapper for `multi-domain-registry.sh unregister-domain` |
-| **Configure routing** | `configure-domain-routing.sh` | Legacy - Use `manage-app-visibility.sh` instead |
 
 ---
 
@@ -58,23 +57,6 @@ sudo ./scripts/domains/remove-domain.sh <domain>
 - Safety checks
 
 **When to use:** Removing a domain from your cluster
-
----
-
-### `configure-domain-routing.sh`
-**Interactive service routing configuration**
-
-**Usage:**
-```bash
-sudo ./scripts/domains/configure-domain-routing.sh <domain>
-```
-
-**Features:**
-- Service-to-domain mapping
-- Service selection interface
-- Automatic routing updates
-
-**When to use:** Managing which services are accessible via a domain
 
 ---
 
@@ -133,18 +115,20 @@ sudo ./scripts/domains/sync-dns.sh
 
 ---
 
-### `configure-app-dns.sh`
-**Configure DNS entries for deployed applications**
+### Legacy DNS migration note
 
-**Usage:**
+If you upgraded from older releases and still see duplicate DNS entries, use:
+
 ```bash
-sudo ./scripts/domains/configure-app-dns.sh
+sudo ./scripts/domains/fix-duplicate-dns.sh
 ```
 
-**Features:**
-- App-specific DNS setup
-- Automatic service discovery
-- Domain mapping
+For normal DNS operations on current releases, use:
+
+```bash
+sudo ./scripts/lib/service-registry.sh sync
+sudo ./scripts/domains/sync-dns.sh
+```
 
 ---
 
@@ -223,8 +207,8 @@ sudo ./scripts/domains/add-domain.sh
 # 3. Verify DNS propagation
 ./scripts/domains/check-dns-ready.sh yourdomain.com
 
-# 4. Configure services for the domain
-sudo ./scripts/domains/configure-domain-routing.sh yourdomain.com
+# 4. Configure service visibility and public URLs
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 ### **Example 2: Advanced Multi-Domain Setup**

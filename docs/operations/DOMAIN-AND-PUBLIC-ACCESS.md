@@ -127,7 +127,7 @@ sudo ./scripts/domains/remove-domain.sh
 
 Run on **control plane**:
 ```bash
-sudo ./scripts/domains/configure-domain-routing.sh
+sudo ./scripts/operations/manage-app-visibility.sh
 ```
 
 ---

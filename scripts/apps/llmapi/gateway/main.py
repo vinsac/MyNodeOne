@@ -323,6 +323,7 @@ class PostgresClient:
     
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
+        self._reconnect_lock = asyncio.Lock()
     
     async def connect(self):
         """Connect to PostgreSQL and initialize schema."""
@@ -342,6 +343,53 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Failed to connect to PostgreSQL: {e}")
             raise
+    
+    async def _reconnect(self):
+        """Recreate the connection pool after a failure (e.g. Postgres pod restart)."""
+        async with self._reconnect_lock:
+            # Another coroutine may have already reconnected while we waited
+            try:
+                if self.pool:
+                    await self.pool.close()
+            except Exception:
+                pass
+            self.pool = None
+            for attempt in range(1, 6):
+                try:
+                    self.pool = await asyncpg.create_pool(
+                        host=config.POSTGRES_HOST,
+                        port=config.POSTGRES_PORT,
+                        database=config.POSTGRES_DB,
+                        user=config.POSTGRES_USER,
+                        password=config.POSTGRES_PASSWORD,
+                        min_size=2,
+                        max_size=10,
+                        command_timeout=60
+                    )
+                    logger.info(f"Reconnected to PostgreSQL (attempt {attempt})")
+                    await self._init_schema()
+                    return
+                except Exception as e:
+                    logger.warning(f"PostgreSQL reconnect attempt {attempt}/5 failed: {e}")
+                    await asyncio.sleep(5 * attempt)
+            logger.error("All PostgreSQL reconnect attempts failed")
+    
+    async def _execute_with_retry(self, fn):
+        """Execute an async DB function, reconnecting once if the pool is broken."""
+        for attempt in range(2):
+            try:
+                if self.pool is None:
+                    await self._reconnect()
+                return await fn()
+            except (OSError, asyncpg.exceptions.ConnectionDoesNotExistError,
+                    asyncpg.exceptions.InterfaceError,
+                    asyncpg.exceptions.TooManyConnectionsError) as e:
+                if attempt == 0:
+                    logger.warning(f"PostgreSQL connection lost ({e}), reconnecting...")
+                    await self._reconnect()
+                else:
+                    logger.error(f"PostgreSQL operation failed after reconnect: {e}")
+                    raise
     
     async def close(self):
         """Close PostgreSQL connection pool."""
@@ -396,7 +444,7 @@ class PostgresClient:
     
     async def get_api_key_config(self, api_key: str) -> Optional[dict]:
         """Get API key configuration."""
-        try:
+        async def _query():
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow("""
                     SELECT api_key, name, scopes, requests_per_minute, tokens_per_day, 
@@ -404,7 +452,6 @@ class PostgresClient:
                     FROM api_keys
                     WHERE api_key = $1 AND revoked = FALSE
                 """, api_key)
-                
                 if row:
                     return {
                         "name": row["name"],
@@ -414,13 +461,15 @@ class PostgresClient:
                         "created_at": row["created_at"].isoformat(),
                     }
                 return None
+        try:
+            return await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error fetching API key config: {e}")
             return None
     
     async def set_api_key_config(self, api_key: str, config_data: dict):
         """Create or update API key configuration."""
-        try:
+        async def _query():
             async with self.pool.acquire() as conn:
                 await conn.execute("""
                     INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, 
@@ -433,7 +482,7 @@ class PostgresClient:
                         requests_per_minute = EXCLUDED.requests_per_minute,
                         tokens_per_day = EXCLUDED.tokens_per_day,
                         updated_at = NOW()
-                """, 
+                """,
                     api_key,
                     config_data.get("name", "unnamed"),
                     config_data.get("scopes", ["inference"]),
@@ -441,26 +490,30 @@ class PostgresClient:
                     config_data.get("tokens_per_day", 100000),
                     datetime.fromisoformat(config_data.get("created_at", datetime.utcnow().isoformat()))
                 )
+        try:
+            await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error setting API key config: {e}")
             raise
     
     async def delete_api_key(self, api_key: str):
         """Mark API key as revoked."""
-        try:
+        async def _query():
             async with self.pool.acquire() as conn:
                 await conn.execute("""
                     UPDATE api_keys 
                     SET revoked = TRUE, updated_at = NOW()
                     WHERE api_key = $1
                 """, api_key)
+        try:
+            await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error deleting API key: {e}")
             raise
     
     async def list_api_keys(self, prefix: str = "sk-mynodeone-") -> list[dict]:
         """List all non-revoked API keys with given prefix."""
-        try:
+        async def _query():
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
                     SELECT api_key, name, scopes, requests_per_minute, tokens_per_day, created_at
@@ -468,7 +521,6 @@ class PostgresClient:
                     WHERE api_key LIKE $1 AND revoked = FALSE
                     ORDER BY created_at DESC
                 """, f"{prefix}%")
-                
                 return [
                     {
                         "key": row["api_key"],
@@ -480,17 +532,18 @@ class PostgresClient:
                     }
                     for row in rows
                 ]
+        try:
+            return await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error listing API keys: {e}")
             return []
     
     async def add_token_usage(self, api_key: str, input_tokens: int, output_tokens: int):
         """Track token usage (hourly aggregation)."""
-        try:
-            now = datetime.utcnow()
-            today = now.date()
-            hour = now.hour
-            
+        now = datetime.utcnow()
+        today = now.date()
+        hour = now.hour
+        async def _query():
             async with self.pool.acquire() as conn:
                 await conn.execute("""
                     INSERT INTO usage_logs (api_key, date, hour, input_tokens, output_tokens, requests, updated_at)
@@ -502,14 +555,16 @@ class PostgresClient:
                         requests = usage_logs.requests + 1,
                         updated_at = NOW()
                 """, api_key, today, hour, input_tokens, output_tokens)
+        try:
+            await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error adding token usage: {e}")
             # Don't raise - usage tracking failures shouldn't block requests
     
     async def get_token_usage(self, api_key: str) -> tuple[int, int]:
         """Get today's token usage for an API key."""
-        try:
-            today = datetime.utcnow().date()
+        today = datetime.utcnow().date()
+        async def _query():
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow("""
                     SELECT 
@@ -518,10 +573,11 @@ class PostgresClient:
                     FROM usage_logs
                     WHERE api_key = $1 AND date = $2
                 """, api_key, today)
-                
                 if row:
                     return int(row["input_total"]), int(row["output_total"])
                 return 0, 0
+        try:
+            return await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error getting token usage: {e}")
             return 0, 0
@@ -533,8 +589,8 @@ class PostgresClient:
     
     async def get_usage_stats(self, api_key: str, days: int = 7) -> dict:
         """Get usage statistics for an API key over the last N days."""
-        try:
-            start_date = datetime.utcnow().date() - timedelta(days=days)
+        start_date = datetime.utcnow().date() - timedelta(days=days)
+        async def _query():
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
                     SELECT date, hour,
@@ -546,7 +602,6 @@ class PostgresClient:
                     GROUP BY date, hour
                     ORDER BY date DESC, hour DESC
                 """, api_key, start_date)
-                
                 return {
                     "api_key": api_key,
                     "period_days": days,
@@ -561,16 +616,17 @@ class PostgresClient:
                         for row in rows
                     ]
                 }
+        try:
+            return await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error getting usage stats: {e}")
             return {"api_key": api_key, "period_days": days, "hourly_data": []}
     
     async def get_all_keys_stats(self) -> dict:
         """Get aggregate statistics for all API keys."""
-        try:
-            today = datetime.utcnow().date()
+        today = datetime.utcnow().date()
+        async def _query():
             async with self.pool.acquire() as conn:
-                # Get today's totals
                 summary_row = await conn.fetchrow("""
                     SELECT 
                         COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
@@ -578,15 +634,11 @@ class PostgresClient:
                     FROM usage_logs
                     WHERE date = $1
                 """, today)
-                
-                # Get active keys count
                 active_keys = await conn.fetchval("""
                     SELECT COUNT(DISTINCT api_key)
                     FROM usage_logs
                     WHERE date = $1
                 """, today)
-                
-                # Get per-key breakdown
                 key_rows = await conn.fetch("""
                     SELECT 
                         u.api_key,
@@ -601,8 +653,6 @@ class PostgresClient:
                     GROUP BY u.api_key, k.name, k.tokens_per_day, k.requests_per_minute
                     ORDER BY tokens_today DESC
                 """, today)
-                
-                # Get hourly breakdown (last 24 hours)
                 hourly_rows = await conn.fetch("""
                     SELECT 
                         date, hour,
@@ -614,7 +664,6 @@ class PostgresClient:
                     ORDER BY date DESC, hour DESC
                     LIMIT 24
                 """, today - timedelta(days=1))
-                
                 return {
                     "summary": {
                         "total_tokens_today": int(summary_row["total_tokens"]),
@@ -641,6 +690,8 @@ class PostgresClient:
                         for row in hourly_rows
                     ]
                 }
+        try:
+            return await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error getting all keys stats: {e}")
             return {"summary": {"total_tokens_today": 0, "total_requests_today": 0, "active_keys": 0}, "by_key": [], "by_hour": []}
@@ -655,6 +706,7 @@ postgres_client = PostgresClient()
 class RedisClient:
     def __init__(self):
         self.client: Optional[redis.Redis] = None
+        self._reconnect_lock = asyncio.Lock()
     
     async def connect(self):
         self.client = redis.from_url(config.REDIS_URL, decode_responses=True)
@@ -664,63 +716,155 @@ class RedisClient:
         if self.client:
             await self.client.close()
     
+    async def _reconnect(self):
+        """Recreate the Redis client after a connection failure."""
+        async with self._reconnect_lock:
+            try:
+                if self.client:
+                    await self.client.close()
+            except Exception:
+                pass
+            for attempt in range(1, 6):
+                try:
+                    self.client = redis.from_url(config.REDIS_URL, decode_responses=True)
+                    # Ping to confirm the connection is live
+                    await self.client.ping()
+                    logger.info(f"Reconnected to Redis (attempt {attempt})")
+                    return
+                except Exception as e:
+                    logger.warning(f"Redis reconnect attempt {attempt}/5 failed: {e}")
+                    await asyncio.sleep(3 * attempt)
+            logger.error("All Redis reconnect attempts failed; running without Redis")
+            self.client = None
+    
+    async def _safe(self, coro_fn, default=None):
+        """Execute a Redis coroutine, reconnecting once on failure.
+        
+        Returns `default` if Redis is unavailable so callers can fail-open
+        (rate limiting skipped, cache miss, etc.) rather than crashing.
+        """
+        for attempt in range(2):
+            if self.client is None:
+                # Redis was previously marked down; try to recover.
+                await self._reconnect()
+                if self.client is None:
+                    return default
+            try:
+                return await coro_fn()
+            except (redis.exceptions.ConnectionError,
+                    redis.exceptions.TimeoutError,
+                    ConnectionRefusedError,
+                    OSError) as e:
+                if attempt == 0:
+                    logger.warning(f"Redis connection lost ({e}), reconnecting...")
+                    await self._reconnect()
+                else:
+                    logger.error(f"Redis operation failed after reconnect: {e}")
+                    return default
+            except Exception as e:
+                logger.error(f"Redis unexpected error: {e}")
+                return default
+        return default
+    
     async def check_rate_limit(self, api_key: str, requests_per_minute: int) -> bool:
-        """Check if request is within rate limit."""
+        """Check if request is within rate limit.
+        
+        Fails OPEN (allows request) if Redis is unavailable so a Redis pod
+        crash does not block all inference traffic.
+        """
         key = f"ratelimit:{api_key}:rpm"
-        current = await self.client.get(key)
-        if current and int(current) >= requests_per_minute:
-            return False
-        pipe = self.client.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, 60)
-        await pipe.execute()
-        return True
+        async def _fn():
+            current = await self.client.get(key)
+            if current and int(current) >= requests_per_minute:
+                return False
+            pipe = self.client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, 60)
+            await pipe.execute()
+            return True
+        result = await self._safe(_fn, default=True)  # fail-open: allow request
+        return result
     
     async def get_rate_limit_info(self, api_key: str) -> tuple[int, int]:
         """Get current rate limit usage."""
         rpm_key = f"ratelimit:{api_key}:rpm"
-        current_rpm = await self.client.get(rpm_key) or 0
-        ttl = await self.client.ttl(rpm_key)
-        return int(current_rpm), max(0, ttl)
+        async def _fn():
+            current_rpm = await self.client.get(rpm_key) or 0
+            ttl = await self.client.ttl(rpm_key)
+            return int(current_rpm), max(0, ttl)
+        return await self._safe(_fn, default=(0, 0))
     
     async def enqueue_request(self, priority: str, request_id: str, data: dict):
         """Add request to priority queue."""
         queue_key = f"queue:{priority}"
-        await self.client.zadd(queue_key, {request_id: time.time()})
-        await self.client.set(f"request:{request_id}", json.dumps(data), ex=3600)
-        QUEUE_DEPTH.labels(priority=priority).inc()
+        async def _fn():
+            await self.client.zadd(queue_key, {request_id: time.time()})
+            await self.client.set(f"request:{request_id}", json.dumps(data), ex=3600)
+            QUEUE_DEPTH.labels(priority=priority).inc()
+        await self._safe(_fn)
     
     async def dequeue_request(self, priority: str) -> Optional[tuple[str, dict]]:
         """Get next request from queue."""
         queue_key = f"queue:{priority}"
-        result = await self.client.zpopmin(queue_key)
-        if result:
-            request_id = result[0][0]
-            data = await self.client.get(f"request:{request_id}")
-            await self.client.delete(f"request:{request_id}")
-            QUEUE_DEPTH.labels(priority=priority).dec()
-            if data:
-                return request_id, json.loads(data)
-        return None
+        async def _fn():
+            result = await self.client.zpopmin(queue_key)
+            if result:
+                request_id = result[0][0]
+                data = await self.client.get(f"request:{request_id}")
+                await self.client.delete(f"request:{request_id}")
+                QUEUE_DEPTH.labels(priority=priority).dec()
+                if data:
+                    return request_id, json.loads(data)
+            return None
+        return await self._safe(_fn, default=None)
     
     async def cache_response(self, cache_key: str, response: str, ttl: int = 3600):
         """Cache a response."""
-        await self.client.set(f"cache:{cache_key}", response, ex=ttl)
+        async def _fn():
+            await self.client.set(f"cache:{cache_key}", response, ex=ttl)
+        await self._safe(_fn)
     
     async def get_cached_response(self, cache_key: str) -> Optional[str]:
         """Get cached response."""
-        return await self.client.get(f"cache:{cache_key}")
+        async def _fn():
+            return await self.client.get(f"cache:{cache_key}")
+        return await self._safe(_fn, default=None)
     
     async def get_api_key_config(self, api_key: str) -> Optional[dict]:
         """Get API key configuration."""
-        data = await self.client.get(f"apikey:{api_key}")
-        if data:
-            return json.loads(data)
-        return None
+        async def _fn():
+            data = await self.client.get(f"apikey:{api_key}")
+            if data:
+                return json.loads(data)
+            return None
+        return await self._safe(_fn, default=None)
     
     async def set_api_key_config(self, api_key: str, config: dict):
         """Set API key configuration."""
-        await self.client.set(f"apikey:{api_key}", json.dumps(config))
+        async def _fn():
+            await self.client.set(f"apikey:{api_key}", json.dumps(config))
+        await self._safe(_fn)
+
+    async def delete_api_key_config(self, api_key: str):
+        """Delete API key configuration from Redis cache."""
+        async def _fn():
+            await self.client.delete(f"apikey:{api_key}")
+        await self._safe(_fn)
+
+    async def get_value(self, key: str, default=None):
+        """Get a generic Redis key with reconnect/fallback handling."""
+        async def _fn():
+            return await self.client.get(key)
+        return await self._safe(_fn, default=default)
+
+    async def set_value(self, key: str, value, ex: Optional[int] = None):
+        """Set a generic Redis key with reconnect/fallback handling."""
+        async def _fn():
+            if ex is None:
+                await self.client.set(key, value)
+            else:
+                await self.client.set(key, value, ex=ex)
+        await self._safe(_fn)
 
 
 redis_client = RedisClient()
@@ -1011,6 +1155,16 @@ class BackendManager:
         backend_info contains: backend_type, backend_url for response enrichment.
         """
         backend_type, url = self.get_backend_url(model)
+        
+        if not backend_type or not url:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "No healthy backend available",
+                    "hint": "All inference backends are currently unhealthy. Check /health/backends for status."
+                }
+            )
+        
         backend_key = f"{backend_type}:{url}"
         
         backend_info = {
@@ -1067,7 +1221,7 @@ class BackendManager:
                                 event_data = json_module.loads(json_str)
                                 event_data["system_fingerprint"] = f"{backend_type}"
                                 chunk = f"data: {json_module.dumps(event_data)}\n\n".encode()
-                        except:
+                        except Exception:
                             pass  # If parsing fails, send original chunk
                     yield chunk
         finally:
@@ -1085,21 +1239,34 @@ backend_manager = BackendManager()
 security = HTTPBearer()
 
 async def get_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Extract and validate API key from Authorization header."""
+    """Extract and validate API key from Authorization header.
+    
+    Auth path: Redis cache first (fast) → Postgres fallback (authoritative).
+    On a Redis cache miss the key is written back so subsequent requests are fast.
+    This means auth survives a Postgres pod restart (Redis serves the cached copy)
+    and also survives a Redis pod restart (Postgres re-warms the cache on next hit).
+    """
     api_key = credentials.credentials
     
-    # Check if key exists in Postgres
+    # 1. Try Redis cache first
+    key_config = await redis_client.get_api_key_config(api_key)
+    if key_config:
+        return api_key
+    
+    # 2. Cache miss - check Postgres (authoritative source)
     key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
     
+    # 3. Write back to Redis cache for future requests
+    await redis_client.set_api_key_config(api_key, key_config)
     return api_key
 
 
 
 async def require_scope(required_scope: str, api_key: str) -> str:
     """Verify API key has required scope."""
-    key_config = await postgres_client.get_api_key_config(api_key)
+    key_config = await redis_client.get_api_key_config(api_key) or await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
     
@@ -1136,6 +1303,34 @@ async def get_priority(x_priority: str = Header(None)) -> str:
 # FastAPI App
 # =============================================================================
 
+async def warm_redis_from_postgres():
+    """Load all active API keys from Postgres into Redis cache.
+    
+    Called on startup and periodically so Redis always has a fresh
+    copy of every key.  This means auth survives a Redis restart
+    (next request re-warms the cache) and also means the gateway
+    keeps working even if Postgres is briefly unreachable (Redis
+    serves the cached copy).
+    """
+    try:
+        keys = await postgres_client.list_api_keys()
+        if not keys:
+            logger.warning("warm_redis_from_postgres: no keys found in Postgres")
+            return
+        for k in keys:
+            config_data = {
+                "name": k["name"],
+                "scopes": k["scopes"],
+                "requests_per_minute": k["requests_per_minute"],
+                "tokens_per_day": k["tokens_per_day"],
+                "created_at": k["created_at"],
+            }
+            await redis_client.set_api_key_config(k["key"], config_data)
+        logger.info(f"warm_redis_from_postgres: cached {len(keys)} key(s) in Redis")
+    except Exception as e:
+        logger.error(f"warm_redis_from_postgres failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
@@ -1143,6 +1338,10 @@ async def lifespan(app: FastAPI):
     await postgres_client.connect()
     await redis_client.connect()
     await backend_manager.start()
+    
+    # Pre-populate Redis with all API keys from Postgres so auth
+    # works immediately even if Postgres becomes temporarily unavailable
+    await warm_redis_from_postgres()
     
     # Start background health check
     async def health_check_loop():
@@ -1153,12 +1352,21 @@ async def lifespan(app: FastAPI):
                 logger.error(f"Health check failed: {e}")
             await asyncio.sleep(30)
     
+    # Periodically re-sync Postgres → Redis (every 5 minutes)
+    # Handles: Redis pod restart (cache wiped), new keys added via psql/manage-keys.sh
+    async def postgres_redis_sync_loop():
+        while True:
+            await asyncio.sleep(300)
+            await warm_redis_from_postgres()
+    
     health_task = asyncio.create_task(health_check_loop())
+    sync_task = asyncio.create_task(postgres_redis_sync_loop())
     
     yield
     
     # Shutdown
     health_task.cancel()
+    sync_task.cancel()
     await postgres_client.close()
     await redis_client.close()
     await backend_manager.stop()
@@ -1271,11 +1479,15 @@ async def chat_completions(
     
     model = model_info.get("name", request.model)
     
-    # Get key config (use defaults if not found)
-    key_config = await postgres_client.get_api_key_config(api_key) or {
-        "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
-        "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
-    }
+    # Get key config - Redis cache first (already warmed by get_api_key auth), Postgres fallback
+    key_config = (
+        await redis_client.get_api_key_config(api_key)
+        or await postgres_client.get_api_key_config(api_key)
+        or {
+            "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
+            "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+        }
+    )
     
     # Check rate limit
     if not await redis_client.check_rate_limit(api_key, key_config["requests_per_minute"]):
@@ -1378,11 +1590,15 @@ async def completions(
     start_time = time.time()
     model = config.MODEL_ALIASES.get(request.model, request.model)
     
-    # Get key config
-    key_config = await postgres_client.get_api_key_config(api_key) or {
-        "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
-        "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
-    }
+    # Get key config - Redis cache first, Postgres fallback
+    key_config = (
+        await redis_client.get_api_key_config(api_key)
+        or await postgres_client.get_api_key_config(api_key)
+        or {
+            "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
+            "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+        }
+    )
     
     # Check rate limit
     if not await redis_client.check_rate_limit(api_key, key_config["requests_per_minute"]):
@@ -1459,11 +1675,15 @@ async def embeddings(
     
     model = model_info.get("name", request.model)
     
-    # Get key config
-    key_config = await postgres_client.get_api_key_config(api_key) or {
-        "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
-        "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
-    }
+    # Get key config - Redis cache first, Postgres fallback
+    key_config = (
+        await redis_client.get_api_key_config(api_key)
+        or await postgres_client.get_api_key_config(api_key)
+        or {
+            "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
+            "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+        }
+    )
     
     # Check rate limit
     if not await redis_client.check_rate_limit(api_key, key_config["requests_per_minute"]):
@@ -1536,10 +1756,14 @@ async def embeddings(
 @app.get("/v1/usage")
 async def get_usage(api_key: str = Depends(get_api_key)):
     """Get current usage for API key."""
-    key_config = await postgres_client.get_api_key_config(api_key) or {
-        "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
-        "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
-    }
+    key_config = (
+        await redis_client.get_api_key_config(api_key)
+        or await postgres_client.get_api_key_config(api_key)
+        or {
+            "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
+            "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+        }
+    )
     
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
     current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
@@ -3366,17 +3590,16 @@ async def admin_list_models(api_key: str = Depends(get_api_key)):
     
     # Get vLLM download status from Redis
     download_status = None
-    if redis_client.client:
-        status = await redis_client.client.get("vllm:download:status")
-        error = await redis_client.client.get("vllm:download:error")
-        model = await redis_client.client.get("vllm:download:model")
-        
-        if status:
-            download_status = {
-                "status": status,
-                "model": model if model else "unknown",
-                "error": error if error else None
-            }
+    status = await redis_client.get_value("vllm:download:status")
+    error = await redis_client.get_value("vllm:download:error")
+    model = await redis_client.get_value("vllm:download:model")
+    
+    if status:
+        download_status = {
+            "status": status,
+            "model": model if model else "unknown",
+            "error": error if error else None
+        }
     
     return {
         "models": model_registry.get_available_models(),
@@ -3426,6 +3649,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
     }
     
     await postgres_client.set_api_key_config(api_key, key_config)
+    await redis_client.set_api_key_config(api_key, key_config)
     
     return {"key": api_key, "config": key_config}
 
@@ -3435,6 +3659,8 @@ async def admin_revoke_key(api_key: str, admin_key: str = Depends(get_api_key)):
     """Revoke an API key (admin endpoint)."""
     await require_scope("admin", admin_key)
     await postgres_client.delete_api_key(api_key)
+    # Remove from Redis cache immediately so the key stops working right away
+    await redis_client.delete_api_key_config(api_key)
     return {"status": "revoked", "api_key": api_key}
 
 
@@ -3554,7 +3780,7 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
             core_v1.replace_namespaced_secret("hf-token", namespace, secret)
             
             # Also store in Redis for UI display
-            await redis_client.client.set("config:hf_token", hf_token)
+            await redis_client.set_value("config:hf_token", hf_token)
             
             logger.info("HuggingFace token updated successfully")
             return {"status": "saved", "message": "HuggingFace token updated. Restart vLLM pods to use new token."}
@@ -3577,21 +3803,11 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
 async def admin_get_config(api_key: str = Depends(get_api_key)):
     """Get current configuration including current models."""
     await require_scope("admin", api_key)
-    hf_token_set = False
-    vllm_model = None
-    llamacpp_model_url = None
+    token = await redis_client.get_value("config:hf_token")
+    hf_token_set = bool(token)
+    vllm_model = await redis_client.get_value("config:vllm_model")
+    llamacpp_model_url = await redis_client.get_value("config:llamacpp_model_url")
     llamacpp_replicas = 0
-    
-    if redis_client.client:
-        token = await redis_client.client.get("config:hf_token")
-        hf_token_set = bool(token)
-        # Get current model configs from Redis
-        vllm_model = await redis_client.client.get("config:vllm_model")
-        if vllm_model:
-            vllm_model = vllm_model.decode() if isinstance(vllm_model, bytes) else vllm_model
-        llamacpp_model_url = await redis_client.client.get("config:llamacpp_model_url")
-        if llamacpp_model_url:
-            llamacpp_model_url = llamacpp_model_url.decode() if isinstance(llamacpp_model_url, bytes) else llamacpp_model_url
     
     # Try to get from Kubernetes ConfigMaps if not in Redis
     try:
@@ -3722,7 +3938,7 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
         apps_v1.patch_namespaced_stateful_set("vllm", namespace, sts)
         
         # Store in Redis for UI
-        await redis_client.client.set("config:vllm_model", model_id)
+        await redis_client.set_value("config:vllm_model", model_id)
         
         logger.info(f"vLLM model change initiated: {model_id} (served as {served_model_name})")
         return {"status": "initiated", "model_id": model_id, "served_model_name": served_model_name, "message": "vLLM pod is restarting with new model"}
@@ -3783,7 +3999,7 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         apps_v1.patch_namespaced_deployment("llamacpp", namespace, deploy)
         
         # Store in Redis for UI
-        await redis_client.client.set("config:llamacpp_model_url", model_url)
+        await redis_client.set_value("config:llamacpp_model_url", model_url)
         
         logger.info(f"llama.cpp model change initiated: {model_url} (file: {model_file})")
         return {"status": "initiated", "model_url": model_url, "model_file": model_file, "message": "llama.cpp pod is restarting with new model"}
@@ -4152,7 +4368,7 @@ async def admin_change_embedding_model(request: Request, api_key: str = Depends(
         apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
         
         # Store in Redis for UI
-        await redis_client.client.set("config:embedding_model_url", model_url)
+        await redis_client.set_value("config:embedding_model_url", model_url)
         
         logger.info(f"Embedding model change initiated: {model_url}")
         return {"status": "initiated", "model_url": model_url, "message": "Embedding pod is restarting with new model"}

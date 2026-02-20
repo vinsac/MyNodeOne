@@ -748,10 +748,30 @@
             if (!container) return;
             
             container.innerHTML = '';
+
+            const buildServiceLink = (service) => {
+                const host = service.local_name || service.subdomain || service.name;
+                const port = Number(service.port || 0);
+                const protocol = (host === 'argocd' || service.name === 'argocd-server' || port === 443) ? 'https' : 'http';
+
+                let url = `${protocol}://${host}.mynodeone.local`;
+                if (port && port !== 80 && port !== 443) {
+                    url += `:${port}`;
+                }
+
+                if (host.startsWith('minio-console-')) {
+                    url += '/login';
+                }
+
+                return url;
+            };
             
             // Filter and render additional services that are not in the static list
             const staticServices = ['grafana', 'argocd', 'prometheus', 'longhorn'];
-            const additionalServices = services.filter(s => !staticServices.includes(s.name.toLowerCase()));
+            const additionalServices = services.filter(s => {
+                const host = (s.local_name || s.subdomain || s.name || '').toLowerCase();
+                return !staticServices.includes(host);
+            });
             
             additionalServices.forEach(service => {
                 const li = document.createElement('li');
@@ -759,10 +779,10 @@
                 
                 const span = document.createElement('span');
                 span.className = 'service-name';
-                span.textContent = service.name;
+                span.textContent = service.local_name || service.name;
                 
                 const link = document.createElement('a');
-                link.href = service.url || `http://${service.name}.mynodeone.local`;
+                link.href = buildServiceLink(service);
                 link.className = 'service-link';
                 link.textContent = 'Open →';
                 

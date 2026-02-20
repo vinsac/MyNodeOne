@@ -39,7 +39,8 @@ export_services() {
             to_entries[] | 
             {
                 name: .key,
-                subdomain: .value.subdomain,
+                local_name: (.value.local_name // .value.subdomain // .key),
+                subdomain: (.value.local_name // .value.subdomain // .key),
                 namespace: .value.namespace,
                 service: .value.service,
                 ip: .value.ip,

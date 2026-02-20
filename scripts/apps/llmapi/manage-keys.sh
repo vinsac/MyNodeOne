@@ -19,6 +19,7 @@ NAMESPACE="llmapi"
 # Default quotas
 DEFAULT_TOKENS_PER_DAY=100000
 DEFAULT_REQUESTS_PER_MINUTE=60
+DEFAULT_TOKENS_PER_MINUTE=40000
 DEFAULT_SCOPES="inference"
 
 usage() {
@@ -37,6 +38,7 @@ usage() {
     echo "  --scopes <scopes>       Comma-separated scopes: inference,metrics,admin (default: inference)"
     echo "  --tokens <number>       Daily token quota (default: $DEFAULT_TOKENS_PER_DAY)"
     echo "  --rpm <number>          Requests per minute limit (default: $DEFAULT_REQUESTS_PER_MINUTE)"
+    echo "  --tpm <number>          Tokens per minute limit (default: $DEFAULT_TOKENS_PER_MINUTE)"
     echo ""
     echo "Examples:"
     echo "  $0 create --name \"my-app\" --scopes \"inference\""
@@ -97,6 +99,7 @@ cmd_create() {
     local scopes=$DEFAULT_SCOPES
     local tokens=$DEFAULT_TOKENS_PER_DAY
     local rpm=$DEFAULT_REQUESTS_PER_MINUTE
+    local tpm=$DEFAULT_TOKENS_PER_MINUTE
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -114,6 +117,10 @@ cmd_create() {
                 ;;
             --rpm)
                 rpm="$2"
+                shift 2
+                ;;
+            --tpm)
+                tpm="$2"
                 shift 2
                 ;;
             *)
@@ -137,8 +144,8 @@ cmd_create() {
     local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/') 
     
     # Store in PostgreSQL
-    psql_cmd -c "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, created_at) \
-        VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, '${created_at}');" >/dev/null
+    psql_cmd -c "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, tokens_per_minute, created_at) \
+        VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, ${tpm}, '${created_at}');" >/dev/null
     
     echo ""
     echo -e "${GREEN}✓ API Key Created${NC}"
@@ -146,7 +153,7 @@ cmd_create() {
     echo "   Key:     $api_key"
     echo "   Name:    $name"
     echo "   Scopes:  $scopes"
-    echo "   Quota:   $tokens tokens/day, $rpm requests/min"
+    echo "   Quota:   $tokens tokens/day, $rpm RPM, $tpm TPM"
     echo ""
     echo "   Save this key securely - it cannot be retrieved later"
     echo ""
@@ -173,7 +180,7 @@ cmd_list() {
     echo -e "${BLUE}API Keys${NC}"
     echo ""
     
-    local query="SELECT api_key, name, array_to_string(scopes, ','), tokens_per_day, requests_per_minute \
+    local query="SELECT api_key, name, array_to_string(scopes, ','), tokens_per_day, requests_per_minute, tokens_per_minute \
         FROM api_keys WHERE revoked = FALSE AND api_key LIKE 'sk-mynodeone-%' ORDER BY created_at DESC;"
     local results=$(psql_cmd -c "$query" 2>/dev/null || echo "")
     
@@ -182,10 +189,10 @@ cmd_list() {
         return
     fi
     
-    printf "%-22s %-20s %-30s %-15s %-10s\n" "KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM"
-    printf "%s\n" "──────────────────────────────────────────────────────────────────────────────────────────────────"
+    printf "%-22s %-20s %-28s %-15s %-8s %-10s\n" "KEY" "NAME" "SCOPES" "TOKENS/DAY" "RPM" "TPM"
+    printf "%s\n" "────────────────────────────────────────────────────────────────────────────────────────────────────────────"
     
-    echo "$results" | while IFS='|' read -r api_key name scopes tokens rpm; do
+    echo "$results" | while IFS='|' read -r api_key name scopes tokens rpm tpm; do
         if [ -n "$api_key" ]; then
             # Show truncated or full key
             local display_key
@@ -195,8 +202,8 @@ cmd_list() {
                 display_key="${api_key:0:20}..."
             fi
             
-            printf "%-22s %-20s %-30s %-15s %-10s\n" \
-                "$display_key" "${name:0:20}" "${scopes:0:30}" "$tokens" "$rpm"
+            printf "%-22s %-20s %-28s %-15s %-8s %-10s\n" \
+                "$display_key" "${name:0:20}" "${scopes:0:28}" "$tokens" "$rpm" "$tpm"
         fi
     done
     echo ""
@@ -217,7 +224,7 @@ cmd_show() {
         exit 1
     fi
     
-    local query="SELECT name, array_to_string(scopes, ','), tokens_per_day, requests_per_minute, created_at \
+    local query="SELECT name, array_to_string(scopes, ','), tokens_per_day, requests_per_minute, tokens_per_minute, created_at \
         FROM api_keys WHERE api_key = '${api_key}';"
     local results=$(psql_cmd -c "$query" 2>/dev/null || echo "")
     
@@ -230,13 +237,14 @@ cmd_show() {
     echo -e "${BLUE}API Key Details${NC}"
     echo ""
     
-    echo "$results" | while IFS='|' read -r name scopes tokens rpm created; do
+    echo "$results" | while IFS='|' read -r name scopes tokens rpm tpm created; do
         if [ -n "$name" ]; then
             echo "   Key:         ${api_key:0:20}...${api_key: -4}"
             echo "   Name:        $name"
             echo "   Scopes:      $scopes"
             echo "   Tokens/Day:  $tokens"
-            echo "   RPM Limit:   $rpm"
+            echo "   RPM Limit:   $rpm requests/min"
+            echo "   TPM Limit:   $tpm tokens/min"
             echo "   Created:     $created"
             echo ""
         fi
@@ -258,6 +266,7 @@ cmd_update() {
     local scopes=""
     local tokens=""
     local rpm=""
+    local tpm=""
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -277,6 +286,10 @@ cmd_update() {
                 rpm="$2"
                 shift 2
                 ;;
+            --tpm)
+                tpm="$2"
+                shift 2
+                ;;
             *)
                 echo -e "${RED}Unknown option: $1${NC}"
                 usage
@@ -290,6 +303,7 @@ cmd_update() {
     [ -n "$name" ] && updates+=("name = '${name}'")
     [ -n "$tokens" ] && updates+=("tokens_per_day = ${tokens}")
     [ -n "$rpm" ] && updates+=("requests_per_minute = ${rpm}")
+    [ -n "$tpm" ] && updates+=("tokens_per_minute = ${tpm}")
     
     if [ -n "$scopes" ]; then
         local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/')
@@ -314,7 +328,8 @@ cmd_update() {
     [ -n "$name" ] && echo "   Name:        $name"
     [ -n "$scopes" ] && echo "   Scopes:      $scopes"
     [ -n "$tokens" ] && echo "   Tokens/Day:  $tokens"
-    [ -n "$rpm" ] && echo "   RPM Limit:   $rpm"
+    [ -n "$rpm" ] && echo "   RPM Limit:   $rpm requests/min"
+    [ -n "$tpm" ] && echo "   TPM Limit:   $tpm tokens/min"
     echo ""
 }
 
@@ -368,7 +383,7 @@ cmd_usage() {
     fi
     
     # Get key info from Postgres
-    local query="SELECT name, tokens_per_day, requests_per_minute FROM api_keys WHERE api_key = '${api_key}' AND revoked = FALSE;"
+    local query="SELECT name, tokens_per_day, requests_per_minute, tokens_per_minute FROM api_keys WHERE api_key = '${api_key}' AND revoked = FALSE;"
     local key_info=$(psql_cmd -c "$query" 2>/dev/null || echo "")
     
     if [ -z "$key_info" ]; then
@@ -379,6 +394,7 @@ cmd_usage() {
     local name=$(echo "$key_info" | cut -d'|' -f1)
     local tokens_limit=$(echo "$key_info" | cut -d'|' -f2)
     local rpm_limit=$(echo "$key_info" | cut -d'|' -f3)
+    local tpm_limit=$(echo "$key_info" | cut -d'|' -f4)
     
     # Get today's usage from Postgres
     local today=$(date +%Y-%m-%d)
@@ -408,8 +424,9 @@ cmd_usage() {
     echo "   - Total tokens:    $total_tokens / $tokens_limit (${usage_percent}%)"
     echo "   - Requests:        $requests_today"
     echo ""
-    echo "   Rate Limit:"
-    echo "   - RPM Limit:       $rpm_limit requests/min"
+    echo "   Rate Limits:"
+    echo "   - RPM:             $rpm_limit requests/min"
+    echo "   - TPM:             $tpm_limit tokens/min"
     echo ""
 }
 

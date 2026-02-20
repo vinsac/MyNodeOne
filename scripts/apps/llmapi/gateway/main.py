@@ -421,10 +421,16 @@ class PostgresClient:
                     scopes TEXT[] NOT NULL DEFAULT '{inference}',
                     requests_per_minute INTEGER NOT NULL DEFAULT 60,
                     tokens_per_day INTEGER NOT NULL DEFAULT 100000,
+                    tokens_per_minute INTEGER NOT NULL DEFAULT 40000,
                     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     revoked BOOLEAN NOT NULL DEFAULT FALSE
                 )
+            """)
+            # Migration: add tokens_per_minute to existing installs that predate this column
+            await conn.execute("""
+                ALTER TABLE api_keys
+                ADD COLUMN IF NOT EXISTS tokens_per_minute INTEGER NOT NULL DEFAULT 40000
             """)
             
             # Create usage_logs table
@@ -460,8 +466,8 @@ class PostgresClient:
         async def _query():
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow("""
-                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day, 
-                           created_at, revoked
+                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day,
+                           tokens_per_minute, created_at, revoked
                     FROM api_keys
                     WHERE api_key = $1 AND revoked = FALSE
                 """, api_key)
@@ -471,6 +477,7 @@ class PostgresClient:
                         "scopes": list(row["scopes"]),
                         "requests_per_minute": row["requests_per_minute"],
                         "tokens_per_day": row["tokens_per_day"],
+                        "tokens_per_minute": row["tokens_per_minute"],
                         "created_at": row["created_at"].isoformat(),
                     }
                 return None

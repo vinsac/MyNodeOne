@@ -423,31 +423,111 @@ response = client.chat.completions.create(
 
 #### **429 Too Many Requests - Rate limit exceeded**
 
-**Response:**
+The gateway enforces three independent rate limits per API key. Each returns a structured error body with an accurate `Retry-After` header.
+
+---
+
+**429 — Concurrency limit** (too many simultaneous requests from this key)
+
 ```json
 {
-  "error": {
-    "message": "Rate limit exceeded: 100 requests per minute",
-    "type": "rate_limit_error",
-    "code": "rate_limit_exceeded"
-  },
-  "status": 429,
-  "retry_after": 15
+  "detail": {
+    "error": {
+      "type": "concurrency_limit_exceeded",
+      "message": "You have 4 requests in-flight. Limit is 4 (1 GPU × 4 slots). Retry in ~5s when an in-flight request completes.",
+      "current_inflight": 4,
+      "limit": 4,
+      "retry_after": 5
+    }
+  }
 }
 ```
 
 **HTTP Headers:**
 ```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 1703123470
-Retry-After: 15
+Retry-After: 5
 ```
 
-**Fix:** 
-- Wait for `retry_after` seconds before retrying
-- Reduce request rate
-- Request higher quota from admin
+**Fix:** Wait ~5s for an in-flight request to finish, then retry. The limit scales automatically with GPU count (2 GPUs → limit = 8).
+
+---
+
+**429 — RPM limit** (too many requests per minute)
+
+```json
+{
+  "detail": {
+    "error": {
+      "type": "rate_limit_exceeded",
+      "message": "Rate limit exceeded: 60 requests/minute. Retry in 42s.",
+      "limit": 60,
+      "retry_after": 42
+    }
+  }
+}
+```
+
+**HTTP Headers:**
+```
+Retry-After: 42
+```
+
+**Fix:** Wait exactly `retry_after` seconds (the remaining time in the current 60s window), then retry. Use exponential backoff in your client.
+
+---
+
+**429 — TPM limit** (too many tokens per minute)
+
+```json
+{
+  "detail": {
+    "error": {
+      "type": "tokens_per_minute_exceeded",
+      "message": "Token rate limit exceeded: 40000 tokens/minute. Retry in 38s.",
+      "limit": 40000,
+      "estimated_prompt_tokens": 3200,
+      "retry_after": 38
+    }
+  }
+}
+```
+
+**Fix:** Wait `retry_after` seconds, or reduce prompt length / `max_tokens`.
+
+---
+
+**429 — Daily token quota** (total tokens for the day exhausted)
+
+```json
+{
+  "detail": "Daily token quota exceeded"
+}
+```
+
+**Fix:** Contact admin to increase your daily quota, or wait until the next calendar day.
+
+---
+
+**Client retry pattern (openai-python handles this automatically):**
+
+```python
+from openai import OpenAI, RateLimitError
+import time
+
+client = OpenAI(base_url="http://llmapi.cluster.local/v1", api_key="sk-...")
+
+for attempt in range(5):
+    try:
+        response = client.chat.completions.create(
+            model="qwen2.5-14b",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        break
+    except RateLimitError as e:
+        retry_after = int(e.response.headers.get("Retry-After", 5))
+        print(f"Rate limited. Retrying in {retry_after}s...")
+        time.sleep(retry_after)
+```
 
 ---
 
@@ -552,16 +632,20 @@ curl -X POST http://llmapi.cluster.local/v1/chat/completions \
 
 ## Complete Error Code Reference
 
-| Status | Code | Cause | Fix |
-|--------|------|-------|-----|
-| **401** | `invalid_api_key` | Missing/invalid API key | Add valid `Authorization: Bearer` header |
-| **404** | `model_not_found` | Requested model not loaded | Use `GET /v1/models` to list available |
-| **429** | `rate_limit_exceeded` | Too many requests | Wait `retry_after` seconds, reduce rate |
-| **400** | `context_length_exceeded` | Prompt + max_tokens too large | Reduce prompt or max_tokens |
-| **400** | `invalid_parameter` | Invalid parameter value | Check parameter ranges |
-| **400** | `missing_messages` | Empty messages array | Provide at least one message |
-| **503** | `backends_busy` | All backends at capacity | Retry or use lower priority |
-| **500** | `backend_error` | Inference backend failed | Check backend health, contact admin |
+| Status | Error type | Cause | Retry-After | Fix |
+|--------|-----------|-------|-------------|-----|
+| **401** | `invalid_api_key` | Missing/invalid API key | — | Add valid `Authorization: Bearer` header |
+| **403** | `insufficient_scope` | Key lacks required scope | — | Use key with correct scope |
+| **404** | `model_not_found` | Requested model not loaded | — | Use `GET /v1/models` to list available |
+| **429** | `concurrency_limit_exceeded` | Too many simultaneous requests from this key | ~5s | Wait for an in-flight request to complete |
+| **429** | `rate_limit_exceeded` | RPM window exhausted | TTL of window (≤60s) | Wait `retry_after` seconds |
+| **429** | `tokens_per_minute_exceeded` | TPM window exhausted | TTL of window (≤60s) | Wait `retry_after` seconds or shorten prompt |
+| **429** | `daily_quota_exceeded` | Daily token quota used up | Until midnight | Contact admin to raise quota |
+| **400** | `context_length_exceeded` | Prompt + max_tokens too large | — | Reduce prompt or max_tokens |
+| **400** | `invalid_parameter` | Invalid parameter value | — | Check parameter ranges |
+| **400** | `missing_messages` | Empty messages array | — | Provide at least one message |
+| **503** | `backends_busy` | All backends at capacity | ~5s | Retry or use lower priority |
+| **500** | `backend_error` | Inference backend failed | — | Check backend health, contact admin |
 
 ---
 

@@ -955,20 +955,42 @@ class RateLimiter:
     _lock = asyncio.Lock()
 
     def _healthy_gpu_count(self) -> int:
-        """Count healthy GPU (vLLM) backends to scale concurrency cap."""
-        count = sum(
-            1 for key, healthy in backend_manager.backend_health.items()
-            if key.startswith("vllm:") and healthy
-        )
-        return max(1, count)  # at least 1 to avoid zero cap on startup
+        """Count healthy GPU (vLLM) backends to scale concurrency cap.
+        
+        Defensive: returns 1 (not 0) if backend_manager is not yet initialised
+        or its health dict is empty, so the cap is never accidentally zero.
+        """
+        try:
+            count = sum(
+                1 for key, healthy in backend_manager.backend_health.items()
+                if key.startswith("vllm:") and healthy
+            )
+            return max(1, count)
+        except Exception:
+            return 1  # safe default during startup / health-check races
 
     def _concurrency_cap(self, key_config: dict) -> int:
-        """Per-key concurrency cap, scaled by healthy GPU count."""
-        per_key = key_config.get(
-            "concurrency_per_key",
-            config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
-        )
-        return per_key
+        """Per-key concurrency cap, scaled by healthy GPU count.
+        
+        Values coming from Redis JSON may be strings; int() coercion is applied.
+        Clamped to [1, 256] to prevent misconfiguration from opening unlimited slots.
+        """
+        try:
+            raw = key_config.get(
+                "concurrency_per_key",
+                config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
+            )
+            return max(1, min(256, int(raw)))
+        except (TypeError, ValueError):
+            return config.CONCURRENCY_PER_KEY_DEFAULT
+
+    def _safe_int(self, value, default: int, min_val: int = 1, max_val: int = 10_000_000) -> int:
+        """Coerce a value from key_config (may be str from Redis JSON) to int,
+        clamped to [min_val, max_val].  Returns default on any error."""
+        try:
+            return max(min_val, min(max_val, int(value)))
+        except (TypeError, ValueError):
+            return default
 
     async def check_and_acquire(
         self,
@@ -983,75 +1005,125 @@ class RateLimiter:
         Run all three checks in order.  Raises HTTPException(429) immediately
         on the first violation with a structured body and Retry-After header.
         On success, increments the in-flight counter (caller MUST call release()).
-        """
-        rpm_limit = key_config.get("requests_per_minute", config.DEFAULT_REQUESTS_PER_MINUTE)
-        tpm_limit = key_config.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE)
-        concurrency_cap = self._concurrency_cap(key_config)
 
-        # --- 1. Concurrency cap (cheapest check, no Redis) ---
-        async with self._lock:
-            current = self._inflight.get(api_key, 0)
-            if current >= concurrency_cap:
-                CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
-                REQUEST_COUNT.labels(model=model, priority=priority, status="concurrency_exceeded", endpoint=endpoint).inc()
+        Defensive guarantees:
+          - If any unexpected exception occurs AFTER the concurrency counter has
+            been incremented, it is decremented before re-raising so the counter
+            never leaks.
+          - All config values are coerced and clamped; bad data in Redis cannot
+            produce a zero limit or an integer overflow.
+          - Redis failures in RPM/TPM checks fail-open (allow the request) so a
+            Redis outage does not block inference.
+        """
+        # Coerce all limits — key_config values from Redis JSON may be strings
+        rpm_limit = self._safe_int(
+            key_config.get("requests_per_minute", config.DEFAULT_REQUESTS_PER_MINUTE),
+            default=config.DEFAULT_REQUESTS_PER_MINUTE, min_val=1, max_val=100_000
+        )
+        tpm_limit = self._safe_int(
+            key_config.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE),
+            default=config.DEFAULT_TOKENS_PER_MINUTE, min_val=1, max_val=10_000_000
+        )
+        estimated_prompt_tokens = max(0, int(estimated_prompt_tokens))
+        concurrency_cap = self._concurrency_cap(key_config)
+        acquired = False
+
+        try:
+            # --- 1. Concurrency cap (cheapest check, no Redis, no network) ---
+            async with self._lock:
+                current = self._inflight.get(api_key, 0)
+                if current >= concurrency_cap:
+                    CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
+                    REQUEST_COUNT.labels(model=model, priority=priority, status="concurrency_exceeded", endpoint=endpoint).inc()
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "error": {"type": "concurrency_limit_exceeded",
+                                      "message": f"You have {current} requests in-flight. "
+                                                 f"Limit is {concurrency_cap} (scales with GPU count: "
+                                                 f"{self._healthy_gpu_count()} GPU(s) \u00d7 {config.CONCURRENCY_PER_GPU} slots). "
+                                                 f"Retry in ~5s when an in-flight request completes.",
+                                      "current_inflight": current,
+                                      "limit": concurrency_cap,
+                                      "retry_after": 5},
+                        },
+                        headers={"Retry-After": "5"},
+                    )
+                self._inflight[api_key] = current + 1
+                acquired = True
+
+            # --- 2. RPM check (Redis sliding window, fails-open on Redis error) ---
+            try:
+                rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(api_key, rpm_limit)
+            except Exception as e:
+                logger.warning(f"RPM check failed for {api_key[:16]}… (fail-open): {e}")
+                rpm_ok, retry_after_rpm = True, 0
+
+            if not rpm_ok:
+                REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint=endpoint).inc()
                 raise HTTPException(
                     status_code=429,
                     detail={
-                        "error": {"type": "concurrency_limit_exceeded",
-                                  "message": f"You have {current} requests in-flight. "
-                                             f"Limit is {concurrency_cap} (scales with GPU count: "
-                                             f"{self._healthy_gpu_count()} GPU(s) × {config.CONCURRENCY_PER_GPU} slots).",
-                                  "current_inflight": current,
-                                  "limit": concurrency_cap,
-                                  "retry_after": 5},
+                        "error": {"type": "rate_limit_exceeded",
+                                  "message": f"Rate limit exceeded: {rpm_limit} requests/minute. "
+                                             f"Retry in {retry_after_rpm}s.",
+                                  "limit": rpm_limit,
+                                  "retry_after": retry_after_rpm},
                     },
-                    headers={"Retry-After": "5"},
+                    headers={"Retry-After": str(retry_after_rpm)},
                 )
-            self._inflight[api_key] = current + 1
 
-        # --- 2. RPM check (Redis sliding window) ---
-        rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(api_key, rpm_limit)
-        if not rpm_ok:
-            async with self._lock:
-                self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
-            REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint=endpoint).inc()
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": {"type": "rate_limit_exceeded",
-                              "message": f"Rate limit exceeded: {rpm_limit} requests/minute.",
-                              "limit": rpm_limit,
-                              "retry_after": retry_after_rpm},
-                },
-                headers={"Retry-After": str(retry_after_rpm)},
-            )
+            # --- 3. TPM check (Redis sliding window, fails-open on Redis error) ---
+            try:
+                tpm_ok, retry_after_tpm = await redis_client.check_tpm_limit(api_key, estimated_prompt_tokens, tpm_limit)
+            except Exception as e:
+                logger.warning(f"TPM check failed for {api_key[:16]}… (fail-open): {e}")
+                tpm_ok, retry_after_tpm = True, 0
 
-        # --- 3. TPM check (Redis sliding window on estimated prompt tokens) ---
-        tpm_ok, retry_after_tpm = await redis_client.check_tpm_limit(api_key, estimated_prompt_tokens, tpm_limit)
-        if not tpm_ok:
-            async with self._lock:
-                self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
-            TPM_REJECTED.labels(endpoint=endpoint).inc()
-            REQUEST_COUNT.labels(model=model, priority=priority, status="tpm_exceeded", endpoint=endpoint).inc()
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": {"type": "tokens_per_minute_exceeded",
-                              "message": f"Token rate limit exceeded: {tpm_limit} tokens/minute.",
-                              "limit": tpm_limit,
-                              "estimated_prompt_tokens": estimated_prompt_tokens,
-                              "retry_after": retry_after_tpm},
-                },
-                headers={"Retry-After": str(retry_after_tpm)},
-            )
+            if not tpm_ok:
+                TPM_REJECTED.labels(endpoint=endpoint).inc()
+                REQUEST_COUNT.labels(model=model, priority=priority, status="tpm_exceeded", endpoint=endpoint).inc()
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": {"type": "tokens_per_minute_exceeded",
+                                  "message": f"Token rate limit exceeded: {tpm_limit} tokens/minute. "
+                                             f"Retry in {retry_after_tpm}s.",
+                                  "limit": tpm_limit,
+                                  "estimated_prompt_tokens": estimated_prompt_tokens,
+                                  "retry_after": retry_after_tpm},
+                    },
+                    headers={"Retry-After": str(retry_after_tpm)},
+                )
+
+        except HTTPException:
+            # Release counter if we acquired it but a limit check failed
+            if acquired:
+                async with self._lock:
+                    self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+            raise
+        except Exception as e:
+            # Unexpected error: release counter and fail-open (log + allow)
+            if acquired:
+                async with self._lock:
+                    self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+            logger.error(f"Unexpected error in rate limiter check_and_acquire: {e}", exc_info=True)
+            # Fail-open: do not block inference due to rate-limiter bugs
 
     async def release(self, api_key: str) -> None:
-        """Decrement in-flight counter after request completes or errors."""
-        async with self._lock:
-            self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+        """Decrement in-flight counter after request completes or errors.
+        
+        Safe to call multiple times — counter is clamped to 0.
+        Swallows all exceptions so a release failure never crashes a request handler.
+        """
+        try:
+            async with self._lock:
+                self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+        except Exception as e:
+            logger.error(f"Failed to release rate-limiter counter for {api_key[:16]}…: {e}")
 
     def get_inflight(self) -> dict[str, int]:
-        """Return current per-key in-flight counts."""
+        """Return current per-key in-flight counts (zero-value keys excluded)."""
         return {k: v for k, v in self._inflight.items() if v > 0}
 
 

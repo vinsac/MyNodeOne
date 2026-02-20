@@ -915,6 +915,13 @@ data:
   # Horizontal scaling: route to least-loaded backend (GPU → CPU)
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
+  # Rate limiting: concurrency cap scales automatically with healthy GPU count
+  # CONCURRENCY_PER_GPU × healthy_gpu_count = per-key concurrency cap
+  CONCURRENCY_PER_GPU: "4"
+  CONCURRENCY_PER_KEY_DEFAULT: "4"
+  # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
+  # A 4096-token request costs ~40x more than a 100-token request
+  DEFAULT_TOKENS_PER_MINUTE: "40000"
 EOF
 
 # Create ConfigMap with gateway Python code

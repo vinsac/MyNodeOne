@@ -7,8 +7,8 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 - ✅ **OpenAI-Compatible API** - Drop-in replacement for OpenAI clients
 - ✅ **Horizontal Scaling** - Automatic routing: GPU1 → GPU2 → CPU (least-loaded first)
 - ✅ **Multi-Backend** - vLLM (GPU), llama.cpp (CPU/RAM), dedicated embeddings
-- ✅ **Priority Queue** - Realtime, high, normal, low, batch priorities
-- ✅ **Rate Limiting** - Per-key request and token limits
+- ✅ **Priority Routing** - Realtime, high, normal, low, batch request priorities via `X-Priority` header
+- ✅ **Enterprise Rate Limiting** - Three-layer protection: concurrency cap (GPU-aware) + RPM + TPM per key
 - ✅ **Usage Metering** - Track tokens per API key for quotas
 - ✅ **Durable State** - PostgreSQL stores API keys and usage logs
 - ✅ **Backend Transparency** - Response includes `system_fingerprint` showing which backend handled it
@@ -320,30 +320,99 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
 ./scripts/apps/llmapi/manage-models.sh remove codellama-34b
 ```
 
+## Rate Limiting
+
+The gateway enforces three layers of protection per API key, checked in order:
+
+| Layer | Mechanism | Default | Configurable? |
+|-------|-----------|---------|---------------|
+| **1. Concurrency** | Max simultaneous in-flight requests | `4 × GPU count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_KEY_DEFAULT` |
+| **2. RPM** | Requests per minute (Redis sliding window) | `60 RPM` | `DEFAULT_REQUESTS_PER_MINUTE` (per-key via `manage-keys.sh`) |
+| **3. TPM** | Tokens per minute (Redis sliding window) | `40,000 TPM` | `DEFAULT_TOKENS_PER_MINUTE` (per-key via `manage-keys.sh`) |
+
+**All limits return HTTP 429 immediately** with a structured error body and accurate `Retry-After` header — the same pattern used by OpenAI, Anthropic, and Azure OpenAI. There is no server-side queuing (which would be a DDoS vector).
+
+**Concurrency scales automatically with GPUs:**
+- 1 GPU → cap = 4 concurrent requests per key
+- 2 GPUs → cap = 8 concurrent requests per key
+- N GPUs → cap = N × 4 (override with `CONCURRENCY_PER_GPU`)
+
+**429 error body format:**
+```json
+{
+  "detail": {
+    "error": {
+      "type": "concurrency_limit_exceeded",
+      "message": "You have 4 requests in-flight. Limit is 4 (1 GPU × 4 slots). Retry in ~5s.",
+      "current_inflight": 4,
+      "limit": 4,
+      "retry_after": 5
+    }
+  }
+}
+```
+
+**Daily token quota** (PostgreSQL-backed, separate from TPM):
+```bash
+./scripts/apps/llmapi/manage-keys.sh create \
+  --name "my-app" \
+  --scopes "inference" \
+  --tokens 1000000 \   # daily token quota
+  --rpm 100            # requests per minute
+```
+
+**Resilience:** All Redis-backed checks (RPM, TPM) **fail-open** — if Redis is unavailable, requests are allowed through. Only the in-process concurrency cap (no Redis dependency) remains enforced.
+
 ## Configuration
 
-Default quotas can be configured in the installation:
+Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the install script):
 
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `DEFAULT_REQUESTS_PER_MINUTE` | `60` | RPM limit for new keys |
+| `DEFAULT_TOKENS_PER_DAY` | `100000` | Daily token quota for new keys |
+| `DEFAULT_TOKENS_PER_MINUTE` | `40000` | TPM limit for new keys |
+| `CONCURRENCY_PER_GPU` | `4` | Concurrency slots per healthy GPU |
+| `CONCURRENCY_PER_KEY_DEFAULT` | `4` | Base concurrency when no GPUs detected |
+| `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend |
+| `MAX_INFLIGHT_PER_BACKEND` | `32` | Requests before routing to next backend |
+
+Override at install time via environment variables or edit the ConfigMap directly:
 ```bash
-# During install
-sudo ./scripts/apps/llmapi/install-llmapi.sh \
-  --default-quota 1000000 \      # tokens per month
-  --default-rate-limit 100       # requests per minute
+kubectl edit configmap gateway-config -n llmapi
+kubectl rollout restart deployment/gateway -n llmapi
 ```
 
 ## Monitoring
 
-Prometheus metrics are exposed at `/metrics`:
+Prometheus metrics are exposed at `/metrics` (requires `metrics` scope):
 
 ```bash
-# Request rate
-llmapi_requests_total{model="qwen2.5-14b", priority="normal"}
+# Request rate by status (success, rate_limited, concurrency_exceeded, tpm_exceeded)
+llmapi_requests_total{model="qwen2.5-14b", priority="normal", status="success", endpoint="chat"}
 
 # Token usage
 llmapi_tokens_total{model="qwen2.5-14b", direction="output"}
 
-# Queue depth
-llmapi_queue_depth{priority="batch"}
+# Concurrency rejections (DDoS / burst protection)
+llmapi_concurrency_rejected_total{endpoint="chat"}
+
+# TPM rejections (token-rate protection)
+llmapi_tpm_rejected_total{endpoint="chat"}
+
+# Backend in-flight requests
+llmapi_backend_requests_inflight{backend="vllm:http://vllm-0.vllm:8000"}
+
+# Request duration histogram
+llmapi_request_duration_seconds{model="qwen2.5-14b", endpoint="chat"}
+```
+
+**Live rate limiter state** (requires `metrics` scope):
+```bash
+curl -H "Authorization: Bearer $PROMETHEUS_KEY" \
+     http://llmapi.cluster.local/health/backends
+# Returns: backends, inflight, rate_limiter.per_key_inflight,
+#          rate_limiter.healthy_gpus, rate_limiter.concurrency_cap_per_key
 ```
 
 ## Troubleshooting

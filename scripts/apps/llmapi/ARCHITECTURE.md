@@ -559,20 +559,39 @@ The central orchestration layer that handles all incoming requests.
 
 **Features:**
 - **OpenAI-Compatible API**: Drop-in replacement for OpenAI API clients
-- **Rate Limiting**: Per-key limits (requests/min, tokens/day)
-- **Priority Queue**: 5 priority levels for request scheduling
+- **Enterprise Rate Limiting**: Three-layer protection per key (concurrency → RPM → TPM)
+- **Priority Routing**: 5 priority levels via `X-Priority` header
 - **Load Balancing**: Intelligent routing to available backends
-- **Usage Metering**: Token counting for quota enforcement
+- **Usage Metering**: Token counting for quota enforcement (daily + per-minute)
 - **Health Monitoring**: Backend health checks and failover
 
-**Priority Levels:**
-| Priority | Use Case | Queue Behavior |
-|----------|----------|----------------|
-| `realtime` | Autocomplete, streaming chat | Immediate, preempts lower |
-| `high` | Interactive chat sessions | Fast queue, <2s wait |
-| `normal` | Standard API calls | Default queue |
-| `low` | Batch processing | Deferred to idle time |
-| `batch` | Bulk embeddings, document processing | Night/low-load scheduling |
+**Rate Limiting Layers (checked in order, immediate 429 on violation):**
+
+| Layer | Mechanism | Default | Redis? | Fail behaviour |
+|-------|-----------|---------|--------|----------------|
+| **1. Concurrency** | Max in-flight per key | `4 × GPU count` | No (in-process) | Always enforced |
+| **2. RPM** | Requests/minute sliding window | `60 RPM` | Yes | Fail-open if Redis down |
+| **3. TPM** | Tokens/minute sliding window | `40,000 TPM` | Yes | Fail-open if Redis down |
+| **4. Daily quota** | Total tokens/day (PostgreSQL) | `100,000 tokens` | No | Always enforced |
+
+**Why immediate 429 (no server-side queue)?**
+Server-side queuing holds open HTTP connections and uvicorn worker slots — a DDoS attacker can exhaust the worker pool before a single GPU request is made. OpenAI, Anthropic, and Azure all reject immediately and rely on client-side exponential backoff (built into `openai-python`).
+
+**Concurrency scales with GPU count automatically:**
+```
+1 GPU  → cap = 4 concurrent requests per key
+2 GPUs → cap = 8 concurrent requests per key   ← auto-detected via health check
+N GPUs → cap = N × CONCURRENCY_PER_GPU
+```
+
+**Priority Levels** (set via `X-Priority` request header):
+| Priority | Use Case | Typical latency |
+|----------|----------|-----------------|
+| `realtime` | Autocomplete, streaming chat | <1s |
+| `high` | Interactive chat sessions | <5s |
+| `normal` | Standard API calls (default) | <30s |
+| `low` | Batch processing | minutes |
+| `batch` | Bulk embeddings, document processing | best-effort |
 
 ### 2. vLLM Backends (GPU Inference)
 
@@ -617,13 +636,16 @@ Dedicated service for vector embeddings (document indexing, RAG, search).
 
 ### 5. Redis (Queue + Cache)
 
-Central coordination for request queuing and caching.
+Central coordination for rate limiting and caching.
 
 **Responsibilities:**
-- Priority queue management (BullMQ-style)
-- Response caching (LRU with TTL)
-- Rate limit counters
-- Backend health + download status (ephemeral)
+- RPM counters per API key (sliding 60s window via INCR/EXPIRE)
+- TPM counters per API key (sliding 60s window, charged on prompt + completion)
+- Response caching for embeddings (LRU with TTL, 24h for identical inputs)
+- API key config cache (warmed from PostgreSQL on startup)
+- Backend health + download status (ephemeral, non-durable)
+
+**Failure mode:** All Redis-backed checks fail-open. A Redis pod crash allows requests through (inference is not blocked). Only the in-process concurrency cap remains enforced without Redis.
 
 ### 6. PostgreSQL (State Store)
 

@@ -492,15 +492,16 @@ class PostgresClient:
         async def _query():
             async with self.pool.acquire() as conn:
                 await conn.execute("""
-                    INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, 
-                                         tokens_per_day, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                    ON CONFLICT (api_key) 
-                    DO UPDATE SET 
+                    INSERT INTO api_keys (api_key, name, scopes, requests_per_minute,
+                                         tokens_per_day, tokens_per_minute, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                    ON CONFLICT (api_key)
+                    DO UPDATE SET
                         name = EXCLUDED.name,
                         scopes = EXCLUDED.scopes,
                         requests_per_minute = EXCLUDED.requests_per_minute,
                         tokens_per_day = EXCLUDED.tokens_per_day,
+                        tokens_per_minute = EXCLUDED.tokens_per_minute,
                         updated_at = NOW()
                 """,
                     api_key,
@@ -508,6 +509,7 @@ class PostgresClient:
                     config_data.get("scopes", ["inference"]),
                     config_data.get("requests_per_minute", 60),
                     config_data.get("tokens_per_day", 100000),
+                    config_data.get("tokens_per_minute", 40000),
                     datetime.fromisoformat(config_data.get("created_at", datetime.utcnow().isoformat()))
                 )
         try:
@@ -536,7 +538,8 @@ class PostgresClient:
         async def _query():
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day, created_at
+                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day,
+                           tokens_per_minute, created_at
                     FROM api_keys
                     WHERE api_key LIKE $1 AND revoked = FALSE
                     ORDER BY created_at DESC
@@ -548,6 +551,7 @@ class PostgresClient:
                         "scopes": list(row["scopes"]),
                         "requests_per_minute": row["requests_per_minute"],
                         "tokens_per_day": row["tokens_per_day"],
+                        "tokens_per_minute": row["tokens_per_minute"],
                         "created_at": row["created_at"].isoformat(),
                     }
                     for row in rows
@@ -666,11 +670,12 @@ class PostgresClient:
                         SUM(u.input_tokens + u.output_tokens) as tokens_today,
                         SUM(u.requests) as requests_today,
                         k.tokens_per_day as tokens_limit,
-                        k.requests_per_minute as rpm_limit
+                        k.requests_per_minute as rpm_limit,
+                        k.tokens_per_minute as tpm_limit
                     FROM usage_logs u
                     JOIN api_keys k ON u.api_key = k.api_key
                     WHERE u.date = $1 AND k.revoked = FALSE
-                    GROUP BY u.api_key, k.name, k.tokens_per_day, k.requests_per_minute
+                    GROUP BY u.api_key, k.name, k.tokens_per_day, k.requests_per_minute, k.tokens_per_minute
                     ORDER BY tokens_today DESC
                 """, today)
                 hourly_rows = await conn.fetch("""
@@ -1590,6 +1595,7 @@ async def warm_redis_from_postgres():
                 "scopes": k["scopes"],
                 "requests_per_minute": k["requests_per_minute"],
                 "tokens_per_day": k["tokens_per_day"],
+                "tokens_per_minute": k["tokens_per_minute"],
                 "created_at": k["created_at"],
             }
             await redis_client.set_api_key_config(k["key"], config_data)
@@ -1758,6 +1764,7 @@ async def chat_completions(
         or {
             "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
             "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+            "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
         }
     )
     
@@ -1870,6 +1877,7 @@ async def completions(
         or {
             "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
             "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+            "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
         }
     )
     
@@ -1958,6 +1966,7 @@ async def embeddings(
         or {
             "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
             "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
+            "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
         }
     )
     
@@ -2706,12 +2715,14 @@ ADMIN_HTML = """
             <!-- Create Key Form -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4">
                 <h3 class="font-medium mb-3">Create New Key</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                     <input type="text" id="key-name" placeholder="Key name" 
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                    <input type="number" id="key-rpm" placeholder="Requests/min" value="60"
-                           class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                     <input type="number" id="key-tokens" placeholder="Tokens/day" value="100000"
+                           class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <input type="number" id="key-rpm" placeholder="Requests/min (RPM)" value="60"
+                           class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <input type="number" id="key-tpm" placeholder="Tokens/min (TPM)" value="40000"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                 </div>
                 <div class="mb-3">
@@ -3669,7 +3680,8 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                                 <code class="text-xs text-gray-400 break-all api-key-display" data-key="${k.key}">${maskKey(k.key)}</code>
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
-                                <span>${k.requests_per_minute} rpm</span>
+                                <span>${k.requests_per_minute} RPM</span>
+                                <span>${(k.tokens_per_minute || 40000).toLocaleString()} TPM</span>
                                 <span>${k.tokens_per_day.toLocaleString()} tokens/day</span>
                                 <button onclick="revokeKey('${k.key}')" 
                                         class="text-red-400 hover:text-red-300 transition">
@@ -3741,6 +3753,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             const name = document.getElementById('key-name').value.trim();
             const rpm = parseInt(document.getElementById('key-rpm').value) || 60;
             const tokens = parseInt(document.getElementById('key-tokens').value) || 100000;
+            const tpm = parseInt(document.getElementById('key-tpm').value) || 40000;
             
             // Get selected scopes
             const scopes = [];
@@ -3766,6 +3779,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                         name: name,
                         requests_per_minute: rpm,
                         tokens_per_day: tokens,
+                        tokens_per_minute: tpm,
                         scopes: scopes
                     })
                 });
@@ -3782,6 +3796,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     document.getElementById('key-name').value = '';
                     document.getElementById('key-rpm').value = '60';
                     document.getElementById('key-tokens').value = '100000';
+                    document.getElementById('key-tpm').value = '40000';
                     document.getElementById('scope-inference').checked = true;
                     document.getElementById('scope-metrics').checked = false;
                     document.getElementById('scope-admin').checked = false;
@@ -3917,6 +3932,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
     
     requests_per_minute = body.get("requests_per_minute", 60)
     tokens_per_day = body.get("tokens_per_day", 100000)
+    tokens_per_minute = body.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE)
     
     key_id = secrets.token_hex(16)
     api_key = f"sk-mynodeone-{key_id}"
@@ -3926,6 +3942,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
         "scopes": scopes,
         "requests_per_minute": requests_per_minute,
         "tokens_per_day": tokens_per_day,
+        "tokens_per_minute": tokens_per_minute,
         "created_at": datetime.utcnow().isoformat(),
     }
     
@@ -3960,9 +3977,10 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
         "api_key": api_key[:20] + "...",
         "name": key_config.get("name"),
         "tokens_used_today": input_tokens + output_tokens,
-        "tokens_limit": key_config.get("tokens_per_day"),
+        "tokens_limit_daily": key_config.get("tokens_per_day"),
         "requests_this_minute": current_rpm,
-        "requests_limit": key_config.get("requests_per_minute"),
+        "requests_limit_rpm": key_config.get("requests_per_minute"),
+        "tokens_limit_tpm": key_config.get("tokens_per_minute"),
     }
 
 

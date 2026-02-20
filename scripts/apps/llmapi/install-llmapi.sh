@@ -1474,11 +1474,13 @@ echo ""
 echo "🔑 Creating API keys..."
 
 # Helper function to create API key in Postgres
+# Usage: create_api_key <name> <scopes> <rpm> <tokens_per_day> [tokens_per_minute]
 create_api_key() {
     local name="$1"
     local scopes="$2"
     local rpm="$3"
     local tokens="$4"
+    local tpm="${5:-40000}"
     
     local key_id=$(openssl rand -hex 16)
     local api_key="sk-mynodeone-${key_id}"
@@ -1490,8 +1492,8 @@ create_api_key() {
     # Store in PostgreSQL with retries
     for i in {1..10}; do
         if kubectl exec -n "$NAMESPACE" deploy/llmapi-postgres -- psql -U llmapi -d llmapi -c \
-            "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, created_at) \
-            VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, '${created_at}') \
+            "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, tokens_per_minute, created_at) \
+            VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, ${tpm}, '${created_at}') \
             ON CONFLICT (api_key) DO NOTHING;" &>/dev/null; then
             echo "$api_key"
             return 0
@@ -1503,9 +1505,10 @@ create_api_key() {
 }
 
 # Generate 3 API keys with different scopes
-ADMIN_KEY=$(create_api_key "admin-ui" "admin" 1000 10000000)
-PROMETHEUS_KEY=$(create_api_key "prometheus" "metrics" 100 1000000)
-API_KEY=$(create_api_key "default" "inference" 100 1000000)
+# Args: name  scopes    rpm   tokens/day  tokens/min
+ADMIN_KEY=$(create_api_key      "admin-ui"   "admin"     1000  10000000  200000)
+PROMETHEUS_KEY=$(create_api_key "prometheus" "metrics"   100   1000000   40000)
+API_KEY=$(create_api_key        "default"    "inference" 100   1000000   40000)
 
 if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
     echo -e "${GREEN}✓ API keys created${NC}"

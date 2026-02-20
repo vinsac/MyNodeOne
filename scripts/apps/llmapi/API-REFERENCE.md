@@ -649,28 +649,40 @@ curl -X POST http://llmapi.cluster.local/v1/chat/completions \
 
 ---
 
-## Priority Queue System
+## Priority Tagging (`X-Priority`)
 
-Control request urgency with `X-Priority` header:
+Tag requests with a priority level using the `X-Priority` header:
 
 ```bash
 curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
-  -H "X-Priority: realtime" \
+  -H "X-Priority: high" \
   -d '{"model": "qwen2.5-14b", "messages": [...]}'
 ```
 
 **Priority Levels:**
 
-| Priority | Use Case | Queue Position | Latency |
-|----------|----------|----------------|---------|
-| `realtime` | Autocomplete, instant chat | Immediate, preempts others | <50ms |
-| `high` | Interactive applications | Fast lane | <2s |
-| `normal` | Standard API calls | Default queue | <10s |
-| `low` | Background processing | Deferred | <60s |
-| `batch` | Bulk operations | Idle time only | Minutes |
+| Priority | Intended Use Case | Effect |
+|----------|-------------------|--------|
+| `realtime` | Autocomplete, instant chat | Accepted; tracked in metrics |
+| `high` | Interactive applications | Accepted; tracked in metrics |
+| `normal` | Standard API calls | **Default** |
+| `low` | Background processing | Accepted; tracked in metrics |
+| `batch` | Bulk operations | Accepted; tracked in metrics |
 
-**Default:** If no `X-Priority` header, uses `normal`.
+**Default:** If no `X-Priority` header (or an unrecognised value), uses `normal`.
+
+**What priority does today:**
+- The header is validated and normalised to one of the five levels above.
+- The priority label is attached to every Prometheus metric for that request (`llmapi_requests_total{priority="high",...}`), so you can slice dashboards by priority.
+- The `X-Priority` value is echoed back in the response header.
+
+**What priority does NOT do (yet):**
+- Requests are **not queued or reordered** — every request is forwarded to a backend immediately regardless of priority.
+- There is no preemption, no idle-time scheduling for `batch`, and no latency differentiation between levels.
+- Priority-based queue processing is planned but not yet implemented.
+
+**Practical guidance:** Use `X-Priority` now to annotate your requests in metrics. When queue-based scheduling is added in a future release, your clients will automatically benefit without any code changes.
 
 ---
 

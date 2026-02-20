@@ -7,7 +7,7 @@ Self-hosted OpenAI-compatible LLM API for MyNodeOne infrastructure.
 - ✅ **OpenAI-Compatible API** - Drop-in replacement for OpenAI clients
 - ✅ **Horizontal Scaling** - Automatic routing: GPU1 → GPU2 → CPU (least-loaded first)
 - ✅ **Multi-Backend** - vLLM (GPU), llama.cpp (CPU/RAM), dedicated embeddings
-- ✅ **Priority Routing** - Realtime, high, normal, low, batch request priorities via `X-Priority` header
+- ✅ **Priority Tagging** - Tag requests with `X-Priority` header (realtime/high/normal/low/batch) for metrics segmentation; queue-based scheduling planned
 - ✅ **Enterprise Rate Limiting** - Three-layer protection: concurrency cap (GPU-aware) + RPM + TPM per key
 - ✅ **Usage Metering** - Track tokens per API key for quotas
 - ✅ **Durable State** - PostgreSQL stores API keys and usage logs
@@ -151,19 +151,21 @@ response = client.embeddings.create(
 print(response.data[0].embedding)
 ```
 
-### Priority Requests
+### Priority Tagging
 
 ```bash
-# Autocomplete (realtime priority)
+# Tag a request with a priority level (tracked in Prometheus metrics)
 curl -H "Authorization: Bearer $API_KEY" \
-     -H "X-Priority: realtime" \
+     -H "X-Priority: high" \
      http://llmapi.cluster.local/v1/chat/completions
 
-# Batch processing (low priority, runs during idle time)
+# Batch workload (tagged for metrics; processed immediately like all requests)
 curl -H "Authorization: Bearer $API_KEY" \
      -H "X-Priority: batch" \
      http://llmapi.cluster.local/v1/embeddings
 ```
+
+**Note:** `X-Priority` is accepted and reflected in Prometheus metrics (`llmapi_requests_total{priority=...}`), but does **not** affect processing order. All requests are forwarded to backends immediately. Priority-based queue scheduling is planned for a future release.
 
 ## Discovering Available Models
 

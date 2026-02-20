@@ -69,6 +69,10 @@ class Config:
         "low": 600,
         "batch": 3600,
     }
+    # Max requests waiting in the rate-limit queue per API key (0 = unlimited)
+    QUEUE_MAX_WAITERS_PER_KEY = int(os.getenv("QUEUE_MAX_WAITERS_PER_KEY", "50"))
+    # Interval (seconds) between retry attempts while waiting for a rate-limit slot
+    QUEUE_RETRY_INTERVAL = float(os.getenv("QUEUE_RETRY_INTERVAL", "1.0"))
     
     # Admin password (set via env var for security)
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
@@ -265,6 +269,12 @@ BACKEND_INFLIGHT = Gauge(
     "llmapi_backend_requests_inflight",
     "Current in-flight requests per backend",
     ["backend"]
+)
+
+QUEUE_WAITING = Gauge(
+    "llmapi_queue_waiting",
+    "Requests currently waiting for a rate-limit slot",
+    ["api_key_prefix"]
 )
 
 # =============================================================================
@@ -870,6 +880,96 @@ class RedisClient:
 redis_client = RedisClient()
 
 # =============================================================================
+# Rate-Limit Queue
+# =============================================================================
+
+class RateLimitQueue:
+    """
+    Instead of immediately returning HTTP 429 when a key exceeds its RPM limit,
+    this queue holds the coroutine and retries every QUEUE_RETRY_INTERVAL seconds
+    until either:
+      - A rate-limit slot becomes available (request proceeds), or
+      - The priority-based timeout expires (only then return 429).
+
+    Per-key waiter counts are tracked so QUEUE_MAX_WAITERS_PER_KEY can shed
+    load when a key is massively over-limit rather than accumulating unbounded
+    memory.
+    """
+
+    def __init__(self):
+        # {api_key: current_waiter_count}
+        self._waiters: dict[str, int] = {}
+        self._lock = asyncio.Lock()
+
+    async def wait_for_slot(
+        self,
+        api_key: str,
+        requests_per_minute: int,
+        priority: str,
+        endpoint: str,
+        model: str,
+    ) -> None:
+        """
+        Wait until a rate-limit slot is available for *api_key*.
+        Raises HTTPException(429) only if the priority timeout is exhausted
+        or the per-key waiter cap is reached.
+        """
+        timeout = config.QUEUE_TIMEOUT_SECONDS.get(priority, 120)
+        deadline = time.monotonic() + timeout
+        key_prefix = api_key[:20]
+
+        # Check waiter cap before queuing
+        async with self._lock:
+            current = self._waiters.get(api_key, 0)
+            if config.QUEUE_MAX_WAITERS_PER_KEY > 0 and current >= config.QUEUE_MAX_WAITERS_PER_KEY:
+                REQUEST_COUNT.labels(model=model, priority=priority, status="queue_full", endpoint=endpoint).inc()
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Rate limit queue full",
+                        "message": f"Too many requests queued for this key ({current} waiting). Try again later.",
+                        "retry_after": 60,
+                    },
+                    headers={"Retry-After": "60"},
+                )
+            self._waiters[api_key] = current + 1
+            QUEUE_WAITING.labels(api_key_prefix=key_prefix).inc()
+
+        try:
+            while True:
+                allowed = await redis_client.check_rate_limit(api_key, requests_per_minute)
+                if allowed:
+                    return  # slot acquired — caller proceeds normally
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint=endpoint).inc()
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "error": "Rate limit exceeded",
+                            "message": f"Request waited {timeout}s ({priority} priority timeout) but no slot became available.",
+                            "retry_after": 60,
+                        },
+                        headers={"Retry-After": "60"},
+                    )
+
+                wait = min(config.QUEUE_RETRY_INTERVAL, remaining)
+                logger.debug(f"Rate-limit queue: {api_key[:16]}… waiting {wait:.1f}s (priority={priority}, remaining={remaining:.1f}s)")
+                await asyncio.sleep(wait)
+        finally:
+            async with self._lock:
+                self._waiters[api_key] = max(0, self._waiters.get(api_key, 1) - 1)
+                QUEUE_WAITING.labels(api_key_prefix=key_prefix).dec()
+
+    def get_queue_depths(self) -> dict[str, int]:
+        """Return current per-key waiter counts (for /health/backends)."""
+        return dict(self._waiters)
+
+
+rate_limit_queue = RateLimitQueue()
+
+# =============================================================================
 # Backend Manager
 # =============================================================================
 
@@ -1412,6 +1512,7 @@ async def health_backends(
     return {
         "backends": backend_manager.backend_health,
         "inflight": backend_manager.backend_inflight,
+        "rate_limit_queue": rate_limit_queue.get_queue_depths(),
     }
 
 
@@ -1489,14 +1590,8 @@ async def chat_completions(
         }
     )
     
-    # Check rate limit
-    if not await redis_client.check_rate_limit(api_key, key_config["requests_per_minute"]):
-        REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint="chat").inc()
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded",
-            headers={"Retry-After": "60"}
-        )
+    # Wait for a rate-limit slot (queues instead of immediately rejecting)
+    await rate_limit_queue.wait_for_slot(api_key, key_config["requests_per_minute"], priority, "chat", model)
     
     # Check token quota
     if not await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"]):
@@ -1600,10 +1695,8 @@ async def completions(
         }
     )
     
-    # Check rate limit
-    if not await redis_client.check_rate_limit(api_key, key_config["requests_per_minute"]):
-        REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint="completions").inc()
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    # Wait for a rate-limit slot (queues instead of immediately rejecting)
+    await rate_limit_queue.wait_for_slot(api_key, key_config["requests_per_minute"], priority, "completions", model)
     
     data = {
         "model": model,
@@ -1685,10 +1778,8 @@ async def embeddings(
         }
     )
     
-    # Check rate limit
-    if not await redis_client.check_rate_limit(api_key, key_config["requests_per_minute"]):
-        REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint="embeddings").inc()
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    # Wait for a rate-limit slot (queues instead of immediately rejecting)
+    await rate_limit_queue.wait_for_slot(api_key, key_config["requests_per_minute"], priority, "embeddings", model)
     
     # Normalize input to list
     input_texts = request.input if isinstance(request.input, list) else [request.input]

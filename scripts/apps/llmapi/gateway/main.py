@@ -61,18 +61,15 @@ class Config:
     DEFAULT_REQUESTS_PER_MINUTE = int(os.getenv("DEFAULT_REQUESTS_PER_MINUTE", "60"))
     DEFAULT_TOKENS_PER_DAY = int(os.getenv("DEFAULT_TOKENS_PER_DAY", "100000"))
     
-    # Queue settings
-    QUEUE_TIMEOUT_SECONDS = {
-        "realtime": 5,
-        "high": 30,
-        "normal": 120,
-        "low": 600,
-        "batch": 3600,
-    }
-    # Max requests waiting in the rate-limit queue per API key (0 = unlimited)
-    QUEUE_MAX_WAITERS_PER_KEY = int(os.getenv("QUEUE_MAX_WAITERS_PER_KEY", "50"))
-    # Interval (seconds) between retry attempts while waiting for a rate-limit slot
-    QUEUE_RETRY_INTERVAL = float(os.getenv("QUEUE_RETRY_INTERVAL", "1.0"))
+    # Concurrency cap: max simultaneous in-flight requests per API key.
+    # Scales with GPU count: each GPU safely handles ~4 concurrent LLM requests.
+    # Override via env: CONCURRENCY_PER_KEY_DEFAULT / CONCURRENCY_PER_GPU
+    CONCURRENCY_PER_GPU = int(os.getenv("CONCURRENCY_PER_GPU", "4"))
+    CONCURRENCY_PER_KEY_DEFAULT = int(os.getenv("CONCURRENCY_PER_KEY_DEFAULT", "4"))
+    
+    # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
+    # A 4096-token request costs ~40x more than a 100-token request.
+    DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000"))
     
     # Admin password (set via env var for security)
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
@@ -271,10 +268,16 @@ BACKEND_INFLIGHT = Gauge(
     ["backend"]
 )
 
-QUEUE_WAITING = Gauge(
-    "llmapi_queue_waiting",
-    "Requests currently waiting for a rate-limit slot",
-    ["api_key_prefix"]
+CONCURRENCY_REJECTED = Counter(
+    "llmapi_concurrency_rejected_total",
+    "Requests rejected due to per-key concurrency cap",
+    ["endpoint"]
+)
+
+TPM_REJECTED = Counter(
+    "llmapi_tpm_rejected_total",
+    "Requests rejected due to tokens-per-minute limit",
+    ["endpoint"]
 )
 
 # =============================================================================
@@ -776,27 +779,64 @@ class RedisClient:
                 return default
         return default
     
-    async def check_rate_limit(self, api_key: str, requests_per_minute: int) -> bool:
-        """Check if request is within rate limit.
+    async def check_rate_limit_with_info(self, api_key: str, requests_per_minute: int) -> tuple[bool, int]:
+        """Check RPM limit. Returns (allowed, retry_after_seconds).
         
         Fails OPEN (allows request) if Redis is unavailable so a Redis pod
         crash does not block all inference traffic.
         """
         key = f"ratelimit:{api_key}:rpm"
         async def _fn():
-            current = await self.client.get(key)
-            if current and int(current) >= requests_per_minute:
-                return False
             pipe = self.client.pipeline()
-            pipe.incr(key)
+            pipe.get(key)
+            pipe.ttl(key)
+            current_str, ttl = await pipe.execute()
+            current = int(current_str) if current_str else 0
+            if current >= requests_per_minute:
+                return False, max(1, ttl)
+            pipe2 = self.client.pipeline()
+            pipe2.incr(key)
+            pipe2.expire(key, 60)
+            await pipe2.execute()
+            return True, 0
+        result = await self._safe(_fn, default=(True, 0))  # fail-open
+        return result
+
+    async def check_tpm_limit(self, api_key: str, estimated_tokens: int, tokens_per_minute: int) -> tuple[bool, int]:
+        """Check TPM limit using a sliding 60-second window. Returns (allowed, retry_after_seconds).
+        
+        Charges estimated_tokens against the window.  Actual output tokens are
+        charged separately after completion via add_tpm_usage().
+        Fails OPEN if Redis is unavailable.
+        """
+        key = f"ratelimit:{api_key}:tpm"
+        async def _fn():
+            pipe = self.client.pipeline()
+            pipe.get(key)
+            pipe.ttl(key)
+            current_str, ttl = await pipe.execute()
+            current = int(current_str) if current_str else 0
+            if current + estimated_tokens > tokens_per_minute:
+                return False, max(1, ttl)
+            pipe2 = self.client.pipeline()
+            pipe2.incrby(key, estimated_tokens)
+            pipe2.expire(key, 60)
+            await pipe2.execute()
+            return True, 0
+        return await self._safe(_fn, default=(True, 0))  # fail-open
+
+    async def add_tpm_usage(self, api_key: str, output_tokens: int) -> None:
+        """Charge output tokens to the TPM window after a request completes."""
+        key = f"ratelimit:{api_key}:tpm"
+        async def _fn():
+            pipe = self.client.pipeline()
+            pipe.incrby(key, output_tokens)
             pipe.expire(key, 60)
             await pipe.execute()
-            return True
-        result = await self._safe(_fn, default=True)  # fail-open: allow request
-        return result
-    
+        await self._safe(_fn)
+
     async def get_rate_limit_info(self, api_key: str) -> tuple[int, int]:
-        """Get current rate limit usage."""
+        """Get current RPM usage and TTL."""
         rpm_key = f"ratelimit:{api_key}:rpm"
         async def _fn():
             current_rpm = await self.client.get(rpm_key) or 0
@@ -880,94 +920,142 @@ class RedisClient:
 redis_client = RedisClient()
 
 # =============================================================================
-# Rate-Limit Queue
+# Rate Limiter  (enterprise pattern: immediate 429, no server-side queuing)
 # =============================================================================
 
-class RateLimitQueue:
+class RateLimiter:
     """
-    Instead of immediately returning HTTP 429 when a key exceeds its RPM limit,
-    this queue holds the coroutine and retries every QUEUE_RETRY_INTERVAL seconds
-    until either:
-      - A rate-limit slot becomes available (request proceeds), or
-      - The priority-based timeout expires (only then return 429).
+    Enterprise-grade rate limiting following the pattern used by OpenAI,
+    Anthropic, and Azure OpenAI:
 
-    Per-key waiter counts are tracked so QUEUE_MAX_WAITERS_PER_KEY can shed
-    load when a key is massively over-limit rather than accumulating unbounded
-    memory.
+      1. RPM  — requests per minute per key (sliding window via Redis INCR/EXPIRE)
+      2. TPM  — tokens per minute per key   (sliding window, charged on completion)
+      3. Concurrency — max simultaneous in-flight requests per key
+                       scales automatically with the number of healthy GPU backends
+
+    All limits return HTTP 429 immediately with a structured error body and
+    an accurate Retry-After header.  No server-side queuing — the client SDK
+    (openai-python, etc.) handles exponential backoff, which is the universal
+    standard across every major LLM provider.
+
+    Why no server-side queue?
+      - Each waiting coroutine holds a uvicorn worker slot + Redis connection.
+      - A DDoS / runaway client can exhaust all worker slots before the GPU
+        is ever touched.
+      - The client already has retry logic; duplicating it server-side wastes
+        resources and adds latency unpredictability.
     """
 
-    def __init__(self):
-        # {api_key: current_waiter_count}
-        self._waiters: dict[str, int] = {}
-        self._lock = asyncio.Lock()
+    # In-process concurrency counters: {api_key: current_inflight}
+    # Redis is NOT used here — in-process is sufficient because each gateway
+    # pod tracks its own share; the concurrency cap is per-pod intentionally
+    # (a 2-replica gateway effectively doubles the global cap, matching the
+    # fact that 2 pods can serve 2x as many requests).
+    _inflight: dict[str, int] = {}
+    _lock = asyncio.Lock()
 
-    async def wait_for_slot(
+    def _healthy_gpu_count(self) -> int:
+        """Count healthy GPU (vLLM) backends to scale concurrency cap."""
+        count = sum(
+            1 for key, healthy in backend_manager.backend_health.items()
+            if key.startswith("vllm:") and healthy
+        )
+        return max(1, count)  # at least 1 to avoid zero cap on startup
+
+    def _concurrency_cap(self, key_config: dict) -> int:
+        """Per-key concurrency cap, scaled by healthy GPU count."""
+        per_key = key_config.get(
+            "concurrency_per_key",
+            config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
+        )
+        return per_key
+
+    async def check_and_acquire(
         self,
         api_key: str,
-        requests_per_minute: int,
-        priority: str,
+        key_config: dict,
+        estimated_prompt_tokens: int,
         endpoint: str,
         model: str,
+        priority: str,
     ) -> None:
         """
-        Wait until a rate-limit slot is available for *api_key*.
-        Raises HTTPException(429) only if the priority timeout is exhausted
-        or the per-key waiter cap is reached.
+        Run all three checks in order.  Raises HTTPException(429) immediately
+        on the first violation with a structured body and Retry-After header.
+        On success, increments the in-flight counter (caller MUST call release()).
         """
-        timeout = config.QUEUE_TIMEOUT_SECONDS.get(priority, 120)
-        deadline = time.monotonic() + timeout
-        key_prefix = api_key[:20]
+        rpm_limit = key_config.get("requests_per_minute", config.DEFAULT_REQUESTS_PER_MINUTE)
+        tpm_limit = key_config.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE)
+        concurrency_cap = self._concurrency_cap(key_config)
 
-        # Check waiter cap before queuing
+        # --- 1. Concurrency cap (cheapest check, no Redis) ---
         async with self._lock:
-            current = self._waiters.get(api_key, 0)
-            if config.QUEUE_MAX_WAITERS_PER_KEY > 0 and current >= config.QUEUE_MAX_WAITERS_PER_KEY:
-                REQUEST_COUNT.labels(model=model, priority=priority, status="queue_full", endpoint=endpoint).inc()
+            current = self._inflight.get(api_key, 0)
+            if current >= concurrency_cap:
+                CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
+                REQUEST_COUNT.labels(model=model, priority=priority, status="concurrency_exceeded", endpoint=endpoint).inc()
                 raise HTTPException(
                     status_code=429,
                     detail={
-                        "error": "Rate limit queue full",
-                        "message": f"Too many requests queued for this key ({current} waiting). Try again later.",
-                        "retry_after": 60,
+                        "error": {"type": "concurrency_limit_exceeded",
+                                  "message": f"You have {current} requests in-flight. "
+                                             f"Limit is {concurrency_cap} (scales with GPU count: "
+                                             f"{self._healthy_gpu_count()} GPU(s) × {config.CONCURRENCY_PER_GPU} slots).",
+                                  "current_inflight": current,
+                                  "limit": concurrency_cap,
+                                  "retry_after": 5},
                     },
-                    headers={"Retry-After": "60"},
+                    headers={"Retry-After": "5"},
                 )
-            self._waiters[api_key] = current + 1
-            QUEUE_WAITING.labels(api_key_prefix=key_prefix).inc()
+            self._inflight[api_key] = current + 1
 
-        try:
-            while True:
-                allowed = await redis_client.check_rate_limit(api_key, requests_per_minute)
-                if allowed:
-                    return  # slot acquired — caller proceeds normally
-
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint=endpoint).inc()
-                    raise HTTPException(
-                        status_code=429,
-                        detail={
-                            "error": "Rate limit exceeded",
-                            "message": f"Request waited {timeout}s ({priority} priority timeout) but no slot became available.",
-                            "retry_after": 60,
-                        },
-                        headers={"Retry-After": "60"},
-                    )
-
-                wait = min(config.QUEUE_RETRY_INTERVAL, remaining)
-                logger.debug(f"Rate-limit queue: {api_key[:16]}… waiting {wait:.1f}s (priority={priority}, remaining={remaining:.1f}s)")
-                await asyncio.sleep(wait)
-        finally:
+        # --- 2. RPM check (Redis sliding window) ---
+        rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(api_key, rpm_limit)
+        if not rpm_ok:
             async with self._lock:
-                self._waiters[api_key] = max(0, self._waiters.get(api_key, 1) - 1)
-                QUEUE_WAITING.labels(api_key_prefix=key_prefix).dec()
+                self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+            REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint=endpoint).inc()
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": {"type": "rate_limit_exceeded",
+                              "message": f"Rate limit exceeded: {rpm_limit} requests/minute.",
+                              "limit": rpm_limit,
+                              "retry_after": retry_after_rpm},
+                },
+                headers={"Retry-After": str(retry_after_rpm)},
+            )
 
-    def get_queue_depths(self) -> dict[str, int]:
-        """Return current per-key waiter counts (for /health/backends)."""
-        return dict(self._waiters)
+        # --- 3. TPM check (Redis sliding window on estimated prompt tokens) ---
+        tpm_ok, retry_after_tpm = await redis_client.check_tpm_limit(api_key, estimated_prompt_tokens, tpm_limit)
+        if not tpm_ok:
+            async with self._lock:
+                self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+            TPM_REJECTED.labels(endpoint=endpoint).inc()
+            REQUEST_COUNT.labels(model=model, priority=priority, status="tpm_exceeded", endpoint=endpoint).inc()
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": {"type": "tokens_per_minute_exceeded",
+                              "message": f"Token rate limit exceeded: {tpm_limit} tokens/minute.",
+                              "limit": tpm_limit,
+                              "estimated_prompt_tokens": estimated_prompt_tokens,
+                              "retry_after": retry_after_tpm},
+                },
+                headers={"Retry-After": str(retry_after_tpm)},
+            )
+
+    async def release(self, api_key: str) -> None:
+        """Decrement in-flight counter after request completes or errors."""
+        async with self._lock:
+            self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+
+    def get_inflight(self) -> dict[str, int]:
+        """Return current per-key in-flight counts."""
+        return {k: v for k, v in self._inflight.items() if v > 0}
 
 
-rate_limit_queue = RateLimitQueue()
+rate_limiter = RateLimiter()
 
 # =============================================================================
 # Backend Manager
@@ -1512,7 +1600,11 @@ async def health_backends(
     return {
         "backends": backend_manager.backend_health,
         "inflight": backend_manager.backend_inflight,
-        "rate_limit_queue": rate_limit_queue.get_queue_depths(),
+        "rate_limiter": {
+            "per_key_inflight": rate_limiter.get_inflight(),
+            "healthy_gpus": rate_limiter._healthy_gpu_count(),
+            "concurrency_cap_per_key": rate_limiter._concurrency_cap({}),
+        },
     }
 
 
@@ -1590,11 +1682,15 @@ async def chat_completions(
         }
     )
     
-    # Wait for a rate-limit slot (queues instead of immediately rejecting)
-    await rate_limit_queue.wait_for_slot(api_key, key_config["requests_per_minute"], priority, "chat", model)
-    
+    # Estimate prompt tokens (word count × 1.3 is a fast approximation)
+    estimated_prompt_tokens = int(sum(len(m.content.split()) * 1.3 for m in request.messages))
+
+    # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
+    await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "chat", model, priority)
+
     # Check token quota
     if not await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"]):
+        await rate_limiter.release(api_key)
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
     
@@ -1660,6 +1756,7 @@ async def chat_completions(
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
             await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
+            await redis_client.add_tpm_usage(api_key, output_tokens)  # charge actual output tokens to TPM window
             TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
             TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
             
@@ -1673,6 +1770,8 @@ async def chat_completions(
         REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
         logger.error(f"Backend error: {e}")
         raise HTTPException(status_code=503, detail="Backend service unavailable")
+    finally:
+        await rate_limiter.release(api_key)
 
 
 @app.post("/v1/completions")
@@ -1695,9 +1794,12 @@ async def completions(
         }
     )
     
-    # Wait for a rate-limit slot (queues instead of immediately rejecting)
-    await rate_limit_queue.wait_for_slot(api_key, key_config["requests_per_minute"], priority, "completions", model)
-    
+    # Estimate prompt tokens
+    estimated_prompt_tokens = int(len(request.prompt.split()) * 1.3)
+
+    # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
+    await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "completions", model, priority)
+
     data = {
         "model": model,
         "prompt": request.prompt,
@@ -1741,6 +1843,8 @@ async def completions(
     except httpx.HTTPError as e:
         REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="completions").inc()
         raise HTTPException(status_code=503, detail="Backend service unavailable")
+    finally:
+        await rate_limiter.release(api_key)
 
 
 @app.post("/v1/embeddings")
@@ -1778,9 +1882,13 @@ async def embeddings(
         }
     )
     
-    # Wait for a rate-limit slot (queues instead of immediately rejecting)
-    await rate_limit_queue.wait_for_slot(api_key, key_config["requests_per_minute"], priority, "embeddings", model)
-    
+    # Estimate prompt tokens
+    input_list = request.input if isinstance(request.input, list) else [request.input]
+    estimated_prompt_tokens = int(sum(len(t.split()) * 1.3 for t in input_list))
+
+    # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
+    await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "embeddings", model, priority)
+
     # Normalize input to list
     input_texts = request.input if isinstance(request.input, list) else [request.input]
     
@@ -1821,6 +1929,7 @@ async def embeddings(
         
         except httpx.HTTPError as e:
             REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
+            await rate_limiter.release(api_key)
             raise HTTPException(status_code=503, detail="Backend service unavailable")
     
     # Sort by original index
@@ -1830,12 +1939,14 @@ async def embeddings(
     # Estimate token usage
     total_tokens = sum(len(text.split()) * 2 for text in input_texts)
     await postgres_client.add_token_usage(api_key, total_tokens, 0)
+    await redis_client.add_tpm_usage(api_key, total_tokens)
     TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
     
     duration = time.time() - start_time
     REQUEST_DURATION.labels(model=model, priority=priority, endpoint="embeddings").observe(duration)
     REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="embeddings").inc()
     
+    await rate_limiter.release(api_key)
     return {
         "object": "list",
         "data": embeddings_data,

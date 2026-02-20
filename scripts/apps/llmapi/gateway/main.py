@@ -661,10 +661,10 @@ class PostgresClient:
                     WHERE date = $1
                 """, today)
                 active_keys = await conn.fetchval("""
-                    SELECT COUNT(DISTINCT api_key)
-                    FROM usage_logs
-                    WHERE date = $1
-                """, today)
+                    SELECT COUNT(*)
+                    FROM api_keys
+                    WHERE revoked = FALSE
+                """)
                 key_rows = await conn.fetch("""
                     SELECT 
                         u.api_key,

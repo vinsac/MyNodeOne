@@ -24,7 +24,13 @@ NC='\033[0m'
 TOKEN_FILE="/etc/mynodeone/api-token"
 API_TOKEN=""
 if [[ -f "$TOKEN_FILE" ]]; then
-    API_TOKEN=$(cat "$TOKEN_FILE")
+    if [[ -r "$TOKEN_FILE" ]]; then
+        API_TOKEN=$(cat "$TOKEN_FILE")
+    else
+        echo -e "${YELLOW}Warning: Cannot read $TOKEN_FILE (permission denied)${NC}"
+        echo -e "${YELLOW}Run with sudo for full access: sudo $0${NC}"
+        echo ""
+    fi
 fi
 
 # Get control plane Tailscale IP
@@ -34,12 +40,23 @@ API_PORT="${API_PORT:-8443}"
 # Fetch nodes from API
 fetch_nodes() {
     local url="http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/nodes"
+    local http_code body
     
     if [[ -n "$API_TOKEN" ]]; then
-        curl -s -H "X-API-Token: $API_TOKEN" "$url" 2>/dev/null
+        body=$(curl -s -w "\n%{http_code}" -H "X-API-Token: $API_TOKEN" "$url" 2>/dev/null)
     else
-        curl -s "$url" 2>/dev/null
+        body=$(curl -s -w "\n%{http_code}" "$url" 2>/dev/null)
     fi
+    
+    http_code=$(echo "$body" | tail -1)
+    body=$(echo "$body" | head -n -1)
+    
+    if [[ "$http_code" == "401" ]]; then
+        echo "__AUTH_ERROR__"
+        return 0
+    fi
+    
+    echo "$body"
 }
 
 # Format timestamp
@@ -107,6 +124,30 @@ main() {
         echo "Nodes will appear here after they send their first heartbeat."
         echo ""
         exit 0
+    fi
+    
+    if [[ "$response" == "__AUTH_ERROR__" ]]; then
+        echo -e "${RED}Error: API authentication failed (401 Unauthorized)${NC}"
+        echo ""
+        if [[ -z "$API_TOKEN" ]]; then
+            echo "No API token was loaded. Run with sudo:"
+            echo "  sudo $0"
+        else
+            echo "Token may be invalid or expired. Check: $TOKEN_FILE"
+        fi
+        echo ""
+        exit 1
+    fi
+    
+    # Validate JSON before parsing
+    if ! echo "$response" | jq -e '.nodes' &>/dev/null; then
+        echo -e "${RED}Error: Unexpected response from Config API${NC}"
+        echo ""
+        echo "Response: $response"
+        echo ""
+        echo "If you see an auth error, try: sudo $0"
+        echo ""
+        exit 1
     fi
     
     # Parse and display nodes

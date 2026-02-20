@@ -922,6 +922,8 @@ data:
   # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
   # A 4096-token request costs ~40x more than a 100-token request
   DEFAULT_TOKENS_PER_MINUTE: "40000"
+  # Higher default TPM for admin-scoped keys created via Admin UI/API
+  ADMIN_DEFAULT_TOKENS_PER_MINUTE: "200000"
 EOF
 
 # Create ConfigMap with gateway Python code

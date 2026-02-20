@@ -20,6 +20,7 @@ NAMESPACE="llmapi"
 DEFAULT_TOKENS_PER_DAY=100000
 DEFAULT_REQUESTS_PER_MINUTE=60
 DEFAULT_TOKENS_PER_MINUTE=40000
+DEFAULT_ADMIN_TOKENS_PER_MINUTE=200000
 DEFAULT_SCOPES="inference"
 
 usage() {
@@ -38,7 +39,7 @@ usage() {
     echo "  --scopes <scopes>       Comma-separated scopes: inference,metrics,admin (default: inference)"
     echo "  --tokens <number>       Daily token quota (default: $DEFAULT_TOKENS_PER_DAY)"
     echo "  --rpm <number>          Requests per minute limit (default: $DEFAULT_REQUESTS_PER_MINUTE)"
-    echo "  --tpm <number>          Tokens per minute limit (default: $DEFAULT_TOKENS_PER_MINUTE)"
+    echo "  --tpm <number>          Tokens per minute limit (default: $DEFAULT_TOKENS_PER_MINUTE; admin default: $DEFAULT_ADMIN_TOKENS_PER_MINUTE)"
     echo ""
     echo "Examples:"
     echo "  $0 create --name \"my-app\" --scopes \"inference\""
@@ -100,6 +101,7 @@ cmd_create() {
     local tokens=$DEFAULT_TOKENS_PER_DAY
     local rpm=$DEFAULT_REQUESTS_PER_MINUTE
     local tpm=$DEFAULT_TOKENS_PER_MINUTE
+    local tpm_explicit=false
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -121,6 +123,7 @@ cmd_create() {
                 ;;
             --tpm)
                 tpm="$2"
+                tpm_explicit=true
                 shift 2
                 ;;
             *)
@@ -133,6 +136,11 @@ cmd_create() {
     
     if [ -z "$name" ]; then
         read -p "Enter a name for this API key: " name
+    fi
+
+    # If TPM wasn't explicitly set and key has admin scope, use higher default TPM.
+    if [ "$tpm_explicit" = false ] && [[ ",${scopes}," == *",admin,"* ]]; then
+        tpm=$DEFAULT_ADMIN_TOKENS_PER_MINUTE
     fi
     
     # Generate key

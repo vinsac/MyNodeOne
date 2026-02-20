@@ -70,6 +70,8 @@ class Config:
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
     DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000"))
+    # Higher default TPM for admin-scoped keys when not explicitly provided.
+    ADMIN_DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("ADMIN_DEFAULT_TOKENS_PER_MINUTE", "200000"))
     
     # Admin password (set via env var for security)
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
@@ -2722,7 +2724,7 @@ ADMIN_HTML = """
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                     <input type="number" id="key-rpm" placeholder="Requests/min (RPM)" value="60"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                    <input type="number" id="key-tpm" placeholder="Tokens/min (TPM)" value="40000"
+                    <input type="number" id="key-tpm" placeholder="Tokens/min (TPM) - optional (auto: 40k, admin: 200k)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                 </div>
                 <div class="mb-3">
@@ -3753,7 +3755,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             const name = document.getElementById('key-name').value.trim();
             const rpm = parseInt(document.getElementById('key-rpm').value) || 60;
             const tokens = parseInt(document.getElementById('key-tokens').value) || 100000;
-            const tpm = parseInt(document.getElementById('key-tpm').value) || 40000;
+            const rawTpm = document.getElementById('key-tpm').value.trim();
             
             // Get selected scopes
             const scopes = [];
@@ -3772,16 +3774,20 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             }
             
             try {
+                const payload = {
+                    name: name,
+                    requests_per_minute: rpm,
+                    tokens_per_day: tokens,
+                    scopes: scopes
+                };
+                if (rawTpm !== '') {
+                    payload.tokens_per_minute = parseInt(rawTpm);
+                }
+
                 const resp = await adminFetch(`${API_BASE}/admin/keys`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        name: name,
-                        requests_per_minute: rpm,
-                        tokens_per_day: tokens,
-                        tokens_per_minute: tpm,
-                        scopes: scopes
-                    })
+                    body: JSON.stringify(payload)
                 });
                 
                 if (resp.ok) {
@@ -3796,7 +3802,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     document.getElementById('key-name').value = '';
                     document.getElementById('key-rpm').value = '60';
                     document.getElementById('key-tokens').value = '100000';
-                    document.getElementById('key-tpm').value = '40000';
+                    document.getElementById('key-tpm').value = '';
                     document.getElementById('scope-inference').checked = true;
                     document.getElementById('scope-metrics').checked = false;
                     document.getElementById('scope-admin').checked = false;
@@ -3930,9 +3936,28 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
             detail=f"Invalid scopes. Must be a list containing: {valid_scopes}"
         )
     
-    requests_per_minute = body.get("requests_per_minute", 60)
-    tokens_per_day = body.get("tokens_per_day", 100000)
-    tokens_per_minute = body.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE)
+    try:
+        requests_per_minute = int(body.get("requests_per_minute", 60))
+        tokens_per_day = int(body.get("tokens_per_day", 100000))
+
+        default_tpm = (
+            config.ADMIN_DEFAULT_TOKENS_PER_MINUTE
+            if "admin" in scopes
+            else config.DEFAULT_TOKENS_PER_MINUTE
+        )
+        raw_tpm = body.get("tokens_per_minute", None)
+        tokens_per_minute = int(raw_tpm) if raw_tpm is not None else default_tpm
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail="requests_per_minute, tokens_per_day, and tokens_per_minute must be integers",
+        )
+
+    if requests_per_minute <= 0 or tokens_per_day <= 0 or tokens_per_minute <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="requests_per_minute, tokens_per_day, and tokens_per_minute must be > 0",
+        )
     
     key_id = secrets.token_hex(16)
     api_key = f"sk-mynodeone-{key_id}"

@@ -432,30 +432,30 @@
                     </div>
                 </div>
                 <ul class="service-list" id="services-list">
-                    <li class="service-item">
+                    <li class="service-item" data-static-host="grafana">
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-visibility-badge" style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">Grafana</span>
                         </div>
                         <a href="http://grafana.mynodeone.local" class="service-link">Open →</a>
                     </li>
-                    <li class="service-item">
+                    <li class="service-item" data-static-host="argocd">
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-visibility-badge" style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">ArgoCD</span>
                         </div>
                         <a href="https://argocd.mynodeone.local" class="service-link">Open →</a>
                     </li>
-                    <li class="service-item">
+                    <li class="service-item" data-static-host="prometheus">
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-visibility-badge" style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">Prometheus</span>
                         </div>
                         <a href="http://prometheus.mynodeone.local" class="service-link">Open →</a>
                     </li>
-                    <li class="service-item">
+                    <li class="service-item" data-static-host="longhorn">
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
+                            <span class="service-visibility-badge" style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 8px; font-size: 0.7em; font-weight: 600;">Private</span>
                             <span class="service-name">Longhorn UI</span>
                         </div>
                         <a href="http://longhorn.mynodeone.local" class="service-link">Open →</a>
@@ -700,6 +700,18 @@
             
             container.innerHTML = '';
 
+            const isServicePublic = (service) => service.public === true || service.public === 'true';
+
+            const applyVisibilityBadgeStyles = (badge, isPublic) => {
+                badge.textContent = isPublic ? 'Public' : 'Private';
+                badge.style.background = isPublic ? '#e3f2fd' : '#f3e5f5';
+                badge.style.color = isPublic ? '#1976d2' : '#7b1fa2';
+                badge.style.padding = '4px 8px';
+                badge.style.borderRadius = '8px';
+                badge.style.fontSize = '0.7em';
+                badge.style.fontWeight = '600';
+            };
+
             const buildServiceLink = (service, clusterDomain) => {
                 const host = service.local_name || service.subdomain || service.name;
                 const port = Number(service.port || 0);
@@ -718,8 +730,8 @@
             };
             
             // Update service counts
-            const publicServices = services.filter(s => s.public !== false).length;
-            const privateServices = services.filter(s => s.public === false).length;
+            const publicServices = services.filter(isServicePublic).length;
+            const privateServices = services.length - publicServices;
             const runningServices = services.filter(s => s.status === 'running' || s.status === 'Running').length;
             
             const publicCount = document.getElementById('public-services-count');
@@ -729,6 +741,26 @@
             if (publicCount) publicCount.textContent = publicServices;
             if (privateCount) privateCount.textContent = privateServices;
             if (runningCount) runningCount.textContent = runningServices;
+
+            // Update static service visibility badges from live registry data
+            const visibilityByHost = {};
+            services.forEach(service => {
+                const host = (service.local_name || service.subdomain || service.name || '').toLowerCase();
+                if (!host) return;
+                if (!(host in visibilityByHost)) {
+                    visibilityByHost[host] = false;
+                }
+                if (isServicePublic(service)) {
+                    visibilityByHost[host] = true;
+                }
+            });
+
+            document.querySelectorAll('#services-list li[data-static-host]').forEach((item) => {
+                const host = (item.dataset.staticHost || '').toLowerCase();
+                const badge = item.querySelector('.service-visibility-badge');
+                if (!badge) return;
+                applyVisibilityBadgeStyles(badge, visibilityByHost[host] === true);
+            });
             
             // Get cluster domain for dynamic services
             const clusterDomain = await getClusterDomain();
@@ -743,6 +775,15 @@
             additionalServices.forEach(service => {
                 const li = document.createElement('li');
                 li.className = 'service-item';
+
+                const serviceMeta = document.createElement('div');
+                serviceMeta.style.display = 'flex';
+                serviceMeta.style.alignItems = 'center';
+                serviceMeta.style.gap = '10px';
+
+                const isPublic = isServicePublic(service);
+                const visibilityBadge = document.createElement('span');
+                applyVisibilityBadgeStyles(visibilityBadge, isPublic);
                 
                 const span = document.createElement('span');
                 span.className = 'service-name';
@@ -753,7 +794,9 @@
                 link.className = 'service-link';
                 link.textContent = 'Open →';
                 
-                li.appendChild(span);
+                serviceMeta.appendChild(visibilityBadge);
+                serviceMeta.appendChild(span);
+                li.appendChild(serviceMeta);
                 li.appendChild(link);
                 container.appendChild(li);
             });

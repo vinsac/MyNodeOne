@@ -897,12 +897,12 @@ register_longhorn_ui() {
     
     # Register Longhorn service
     bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" register \
-        "longhorn" \
+        "longhorn-frontend" \
         "longhorn" \
         "longhorn-system" \
         "longhorn-frontend" \
         "80" \
-        "true" || {
+        "false" || {
         log_warn "Failed to register Longhorn UI in service registry"
         return 0
     }

@@ -1666,6 +1666,26 @@ echo "🔧 Management:"
 echo "   • Status:  ./scripts/apps/llmapi/monitor-llmapi.sh"
 echo "   • Keys:    ./scripts/apps/llmapi/manage-keys.sh"
 echo "   • Scale:   ./scripts/apps/llmapi/scale-backends.sh"
+echo "   • Health:  ./scripts/apps/llmapi/health-check.sh"
+echo ""
+
+# Install health monitoring service
+echo "🔧 Setting up automated health monitoring..."
+if [[ "$EUID" -eq 0 ]]; then
+    # Running as root, install systemd timer
+    echo "   Installing comprehensive health monitoring (runs every 5 minutes)..."
+    if bash "$SCRIPT_DIR/setup-health-monitoring.sh"; then
+        echo -e "   ${GREEN}✓ Health monitoring installed and started${NC}"
+        echo "   • Logs: /var/log/llmapi/llmapi-health-monitor.sh.log"
+        echo "   • Status: sudo systemctl status llmapi-health-monitor.timer"
+        echo "   • Disable: sudo systemctl disable llmapi-health-monitor.timer"
+    else
+        echo -e "   ${YELLOW}⚠ Health monitoring installation failed${NC}"
+    fi
+else
+    echo -e "   ${YELLOW}⚠ Run as root to install automated monitoring:${NC}"
+    echo "   sudo bash $SCRIPT_DIR/setup-health-monitoring.sh"
+fi
 echo ""
 echo "📖 Documentation: scripts/apps/llmapi/ARCHITECTURE.md"
 echo ""

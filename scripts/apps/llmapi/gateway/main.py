@@ -648,80 +648,135 @@ class PostgresClient:
             logger.error(f"Error getting usage stats: {e}")
             return {"api_key": api_key, "period_days": days, "hourly_data": []}
     
-    async def get_all_keys_stats(self) -> dict:
-        """Get aggregate statistics for all API keys."""
-        today = datetime.utcnow().date()
+    async def get_all_keys_stats(self, hours: int = 96) -> dict:
+        """Get aggregate statistics for all API keys over a rolling UTC window."""
+        window_hours = max(24, min(int(hours or 96), 168))
+        now_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        start_dt = now_utc - timedelta(hours=window_hours - 1)
+        start_date = start_dt.date()
+
         async def _query():
             async with self.pool.acquire() as conn:
-                summary_row = await conn.fetchrow("""
-                    SELECT 
-                        COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
-                        COALESCE(SUM(requests), 0) as total_requests
-                    FROM usage_logs
-                    WHERE date = $1
-                """, today)
                 active_keys = await conn.fetchval("""
                     SELECT COUNT(*)
                     FROM api_keys
                     WHERE revoked = FALSE
                 """)
-                key_rows = await conn.fetch("""
-                    SELECT 
+                usage_rows = await conn.fetch("""
+                    SELECT
                         u.api_key,
                         k.name,
-                        SUM(u.input_tokens + u.output_tokens) as tokens_today,
-                        SUM(u.requests) as requests_today,
+                        u.date,
+                        u.hour,
+                        u.input_tokens,
+                        u.output_tokens,
+                        u.requests,
                         k.tokens_per_day as tokens_limit,
                         k.requests_per_minute as rpm_limit,
                         k.tokens_per_minute as tpm_limit
                     FROM usage_logs u
                     JOIN api_keys k ON u.api_key = k.api_key
-                    WHERE u.date = $1 AND k.revoked = FALSE
-                    GROUP BY u.api_key, k.name, k.tokens_per_day, k.requests_per_minute, k.tokens_per_minute
-                    ORDER BY tokens_today DESC
-                """, today)
-                hourly_rows = await conn.fetch("""
-                    SELECT 
-                        date, hour,
-                        SUM(input_tokens + output_tokens) as tokens,
-                        SUM(requests) as requests
-                    FROM usage_logs
-                    WHERE date >= $1
-                    GROUP BY date, hour
-                    ORDER BY date DESC, hour DESC
-                    LIMIT 24
-                """, today - timedelta(days=1))
+                    WHERE u.date >= $1 AND k.revoked = FALSE
+                    ORDER BY u.date ASC, u.hour ASC, k.name ASC
+                """, start_date)
+
+                bucket_map = {}
+                bucket_order = []
+                for i in range(window_hours):
+                    bucket_dt = start_dt + timedelta(hours=i)
+                    iso = bucket_dt.isoformat() + "Z"
+                    bucket_map[iso] = {
+                        "timestamp_utc": iso,
+                        "hour_label_utc": bucket_dt.strftime("%Y-%m-%d %H:00 UTC"),
+                        "tokens": 0,
+                        "requests": 0,
+                    }
+                    bucket_order.append(iso)
+
+                key_totals = {}
+                key_hourly = []
+                total_tokens = 0
+                total_requests = 0
+
+                for row in usage_rows:
+                    bucket_dt = datetime.combine(row["date"], datetime.min.time()) + timedelta(hours=row["hour"])
+                    if bucket_dt < start_dt or bucket_dt > now_utc:
+                        continue
+
+                    iso = bucket_dt.isoformat() + "Z"
+                    tokens = int(row["input_tokens"]) + int(row["output_tokens"])
+                    requests = int(row["requests"])
+                    api_key = row["api_key"]
+
+                    bucket_map[iso]["tokens"] += tokens
+                    bucket_map[iso]["requests"] += requests
+                    total_tokens += tokens
+                    total_requests += requests
+
+                    if api_key not in key_totals:
+                        key_totals[api_key] = {
+                            "api_key": api_key,
+                            "name": row["name"],
+                            "api_key_preview": api_key[:16] + "...",
+                            "tokens_window": 0,
+                            "requests_window": 0,
+                            "tokens_limit": int(row["tokens_limit"]),
+                            "rpm_limit": int(row["rpm_limit"]),
+                            "tpm_limit": int(row["tpm_limit"]),
+                        }
+
+                    key_totals[api_key]["tokens_window"] += tokens
+                    key_totals[api_key]["requests_window"] += requests
+
+                    key_hourly.append({
+                        "api_key": api_key,
+                        "name": row["name"],
+                        "api_key_preview": api_key[:16] + "...",
+                        "timestamp_utc": iso,
+                        "tokens": tokens,
+                        "requests": requests,
+                    })
+
+                by_key = sorted(
+                    key_totals.values(),
+                    key=lambda item: (item["tokens_window"], item["requests_window"]),
+                    reverse=True,
+                )
+
                 return {
+                    "timezone": "UTC",
+                    "generated_at": now_utc.isoformat() + "Z",
+                    "window_hours": window_hours,
                     "summary": {
-                        "total_tokens_today": int(summary_row["total_tokens"]),
-                        "total_requests_today": int(summary_row["total_requests"]),
+                        "total_tokens_window": total_tokens,
+                        "total_requests_window": total_requests,
+                        "total_tokens_today": total_tokens,
+                        "total_requests_today": total_requests,
                         "active_keys": int(active_keys or 0),
                     },
-                    "by_key": [
-                        {
-                            "name": row["name"],
-                            "api_key_preview": row["api_key"][:16] + "...",
-                            "tokens_today": int(row["tokens_today"]),
-                            "tokens_limit": int(row["tokens_limit"]),
-                            "requests_today": int(row["requests_today"]),
-                            "rpm_limit": int(row["rpm_limit"]),
-                        }
-                        for row in key_rows
-                    ],
-                    "by_hour": [
-                        {
-                            "hour": f"{row['hour']:02d}:00",
-                            "tokens": int(row["tokens"]),
-                            "requests": int(row["requests"]),
-                        }
-                        for row in hourly_rows
-                    ]
+                    "by_key": by_key,
+                    "by_hour": [bucket_map[iso] for iso in bucket_order],
+                    "by_key_hour": key_hourly,
                 }
         try:
             return await self._execute_with_retry(_query)
         except Exception as e:
             logger.error(f"Error getting all keys stats: {e}")
-            return {"summary": {"total_tokens_today": 0, "total_requests_today": 0, "active_keys": 0}, "by_key": [], "by_hour": []}
+            return {
+                "timezone": "UTC",
+                "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+                "window_hours": window_hours,
+                "summary": {
+                    "total_tokens_window": 0,
+                    "total_requests_window": 0,
+                    "total_tokens_today": 0,
+                    "total_requests_today": 0,
+                    "active_keys": 0,
+                },
+                "by_key": [],
+                "by_hour": [],
+                "by_key_hour": [],
+            }
 
 
 postgres_client = PostgresClient()
@@ -2105,6 +2160,13 @@ ADMIN_LOGIN_HTML = """
                     <input 
                         type="password" 
                         id="api-key" 
+                        name="llmapi-admin-api-key"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        autocorrect="off"
+                        spellcheck="false"
+                        data-1p-ignore="true"
+                        data-lpignore="true"
                         placeholder="sk-mynodeone-xxxxxxxxxxxxx"
                         class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                         required
@@ -2437,7 +2499,7 @@ ADMIN_HTML = """
                     Required for gated models (Llama-3, CodeLlama, Mistral). Token is stored securely.
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="password" id="hf-token" placeholder="hf_xxxxx..." 
+                    <input type="password" id="hf-token" name="llmapi-hf-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" placeholder="hf_xxxxx..." 
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 col-span-2">
                     <button onclick="setHfToken()" 
                             class="bg-gray-600 hover:bg-gray-500 rounded px-4 py-2 text-sm font-medium transition">
@@ -2766,15 +2828,37 @@ ADMIN_HTML = """
                 <i data-lucide="bar-chart-3" class="w-5 h-5 text-green-400"></i>
                 Usage Statistics
             </h2>
+
+            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-sm text-gray-400 block mb-2">Rolling Window</label>
+                        <select id="stats-window-hours" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm">
+                            <option value="24">Last 24 hours</option>
+                            <option value="96" selected>Last 96 hours</option>
+                            <option value="168">Last 168 hours</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400 block mb-2">Chart Filter</label>
+                        <select id="stats-key-filter" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm">
+                            <option value="">All API keys</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="text-xs text-gray-500" id="stats-timezone">
+                    Loading timezone info...
+                </div>
+            </div>
             
             <!-- Summary Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div class="bg-gray-700 rounded-lg p-4">
-                    <p class="text-sm text-gray-400">Total Requests Today</p>
+                    <p class="text-sm text-gray-400">Requests in Window</p>
                     <p id="stats-total-requests" class="text-2xl font-bold text-green-400">-</p>
                 </div>
                 <div class="bg-gray-700 rounded-lg p-4">
-                    <p class="text-sm text-gray-400">Total Tokens Today</p>
+                    <p class="text-sm text-gray-400">Tokens in Window</p>
                     <p id="stats-total-tokens" class="text-2xl font-bold text-purple-400">-</p>
                 </div>
                 <div class="bg-gray-700 rounded-lg p-4">
@@ -2785,7 +2869,7 @@ ADMIN_HTML = """
             
             <!-- Usage by API Key -->
             <div class="mb-6">
-                <h3 class="font-medium mb-3">Usage by API Key</h3>
+                <h3 class="font-medium mb-3">Usage by API Key (Selected Window)</h3>
                 <div id="stats-by-key" class="space-y-2">
                     <p class="text-gray-400 text-sm">Loading...</p>
                 </div>
@@ -2793,13 +2877,13 @@ ADMIN_HTML = """
             
             <!-- Hourly Chart (simple bar representation) -->
             <div>
-                <h3 class="font-medium mb-3">Requests (Last 24 Hours)</h3>
+                <h3 id="stats-chart-title" class="font-medium mb-3">Requests (Rolling Window)</h3>
                 <div id="stats-hourly" class="flex items-end gap-1 h-24 bg-gray-700 rounded-lg p-2">
                     <p class="text-gray-400 text-sm">Loading...</p>
                 </div>
                 <div class="flex justify-between text-xs text-gray-500 mt-1 px-2">
-                    <span>24h ago</span>
-                    <span>Now</span>
+                    <span id="stats-range-start">Start</span>
+                    <span id="stats-range-end">Now</span>
                 </div>
             </div>
         </div>
@@ -2821,6 +2905,7 @@ ADMIN_HTML = """
         
         // API Key visibility state
         let keysVisible = false;
+        let statsCache = null;
         
         function maskKey(key) {
             if (!key) return '';
@@ -2847,6 +2932,106 @@ ADMIN_HTML = """
                 });
             }
             lucide.createIcons();
+        }
+
+        function getLocalTimezone() {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+        }
+
+        function formatLocalHour(timestampUtc) {
+            const date = new Date(timestampUtc);
+            return date.toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                hour12: true
+            });
+        }
+
+        function updateStatsKeyFilter(keys) {
+            const filterEl = document.getElementById('stats-key-filter');
+            if (!filterEl) return;
+
+            const currentValue = filterEl.value;
+            const options = ['<option value="">All API keys</option>'].concat(
+                (keys || []).map(k =>
+                    `<option value="${k.api_key}">${k.name} (${k.api_key_preview})</option>`
+                )
+            );
+            filterEl.innerHTML = options.join('');
+
+            const stillExists = (keys || []).some(k => k.api_key === currentValue);
+            filterEl.value = stillExists ? currentValue : '';
+        }
+
+        function renderHourlyChart() {
+            const hourlyEl = document.getElementById('stats-hourly');
+            const chartTitleEl = document.getElementById('stats-chart-title');
+            const rangeStartEl = document.getElementById('stats-range-start');
+            const rangeEndEl = document.getElementById('stats-range-end');
+            const keyFilterEl = document.getElementById('stats-key-filter');
+
+            if (!statsCache) {
+                hourlyEl.innerHTML = '<div class="text-gray-400 text-center py-4">No data yet</div>';
+                return;
+            }
+
+            const selectedKey = keyFilterEl?.value || '';
+            const baseSeries = (statsCache.by_hour || []).map(item => ({
+                timestamp_utc: item.timestamp_utc,
+                hour_label_utc: item.hour_label_utc,
+                tokens: item.tokens || 0,
+                requests: item.requests || 0,
+            }));
+
+            let chartData = baseSeries;
+            let selectedKeyMeta = null;
+
+            if (selectedKey) {
+                selectedKeyMeta = (statsCache.by_key || []).find(k => k.api_key === selectedKey) || null;
+                const seriesMap = {};
+                baseSeries.forEach(item => {
+                    seriesMap[item.timestamp_utc] = {
+                        timestamp_utc: item.timestamp_utc,
+                        hour_label_utc: item.hour_label_utc,
+                        tokens: 0,
+                        requests: 0,
+                    };
+                });
+
+                (statsCache.by_key_hour || [])
+                    .filter(item => item.api_key === selectedKey)
+                    .forEach(item => {
+                        if (seriesMap[item.timestamp_utc]) {
+                            seriesMap[item.timestamp_utc].tokens += item.tokens || 0;
+                            seriesMap[item.timestamp_utc].requests += item.requests || 0;
+                        }
+                    });
+
+                chartData = baseSeries.map(item => seriesMap[item.timestamp_utc]);
+            }
+
+            if (!chartData.length) {
+                hourlyEl.innerHTML = '<div class="text-gray-400 text-center py-4">No data yet</div>';
+                return;
+            }
+
+            const maxReq = Math.max(...chartData.map(h => h.requests || 0), 1);
+            const localTz = getLocalTimezone();
+            const titleSuffix = selectedKeyMeta ? `${selectedKeyMeta.name}` : 'All API keys';
+            chartTitleEl.textContent = `Requests (${statsCache.window_hours}h rolling, ${titleSuffix})`;
+
+            rangeStartEl.textContent = formatLocalHour(chartData[0].timestamp_utc);
+            rangeEndEl.textContent = formatLocalHour(chartData[chartData.length - 1].timestamp_utc);
+
+            hourlyEl.innerHTML = chartData.map(h => {
+                const height = Math.max(4, ((h.requests || 0) / maxReq) * 100);
+                const localHour = formatLocalHour(h.timestamp_utc);
+                const title = `${localHour} (${localTz}) • ${h.requests || 0} requests • ${(h.tokens || 0).toLocaleString()} tokens`;
+                return `<div class="flex-1 bg-green-500 rounded-t opacity-70 hover:opacity-100 transition cursor-pointer"
+                             style="height: ${height}%"
+                             title="${title}"></div>`;
+            }).join('');
         }
         
         // Admin API calls with API key authentication
@@ -3703,18 +3888,24 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
         
         async function loadStats() {
             try {
-                const resp = await adminFetch(`${API_BASE}/admin/stats`);
+                const hours = parseInt(document.getElementById('stats-window-hours')?.value || '96', 10);
+                const resp = await adminFetch(`${API_BASE}/admin/stats?hours=${hours}`);
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
+                statsCache = data;
                 
                 // Update stats cards with null checks
-                document.getElementById('stats-total-requests').textContent = (data.summary?.total_requests_today || 0).toLocaleString();
-                document.getElementById('stats-total-tokens').textContent = (data.summary?.total_tokens_today || 0).toLocaleString();
+                document.getElementById('stats-total-requests').textContent = (data.summary?.total_requests_window || 0).toLocaleString();
+                document.getElementById('stats-total-tokens').textContent = (data.summary?.total_tokens_window || 0).toLocaleString();
                 document.getElementById('stats-active-keys').textContent = data.summary?.active_keys || 0;
+
+                const timezoneEl = document.getElementById('stats-timezone');
+                timezoneEl.textContent = `Rolling ${data.window_hours || hours}h window. Stored in ${data.timezone || 'UTC'}, displayed in ${getLocalTimezone()}. Generated ${new Date(data.generated_at).toLocaleString()}.`;
                 
                 // Update usage by API key
                 const byKeyEl = document.getElementById('stats-by-key');
                 if (data.by_key && data.by_key.length > 0) {
+                    updateStatsKeyFilter(data.by_key);
                     byKeyEl.innerHTML = data.by_key.map(k => `
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
                             <div class="flex-1">
@@ -3722,29 +3913,19 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                                 <code class="text-xs text-gray-500">${k.api_key_preview}</code>
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
-                                <span>${k.requests_today || 0} requests</span>
-                                <span>${(k.tokens_today || 0).toLocaleString()} tokens</span>
+                                <span>${k.requests_window || 0} requests</span>
+                                <span>${(k.tokens_window || 0).toLocaleString()} tokens</span>
+                                <span>${k.rpm_limit || 0} RPM</span>
+                                <span>${(k.tpm_limit || 0).toLocaleString()} TPM</span>
                             </div>
                         </div>
                     `).join('');
                 } else {
+                    updateStatsKeyFilter([]);
                     byKeyEl.innerHTML = '<p class="text-gray-400 text-sm">No usage data yet</p>';
                 }
-                
-                // Update hourly chart with null checks
-                const hourlyEl = document.getElementById('stats-hourly');
-                if (data.by_hour && data.by_hour.length > 0) {
-                    const maxReq = Math.max(...data.by_hour.map(h => h.requests || 0), 1);
-                    hourlyEl.innerHTML = data.by_hour.map(h => {
-                        const height = Math.max(4, ((h.requests || 0) / maxReq) * 100);
-                        const title = `${h.hour}: ${h.requests || 0} requests, ${(h.tokens || 0).toLocaleString()} tokens`;
-                        return `<div class="flex-1 bg-green-500 rounded-t opacity-70 hover:opacity-100 transition cursor-pointer" 
-                                     style="height: ${height}%" title="${title}"></div>`;
-                    }).join('');
-                } else {
-                    hourlyEl.innerHTML = '<div class="text-gray-400 text-center py-4">No data yet</div>';
-                }
-                
+
+                renderHourlyChart();
             } catch (e) {
                 console.error('Failed to load stats:', e);
             }
@@ -3840,6 +4021,14 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 alert('Failed to revoke key: ' + e.message);
             }
         }
+
+        document.getElementById('stats-window-hours')?.addEventListener('change', () => {
+            loadStats();
+        });
+
+        document.getElementById('stats-key-filter')?.addEventListener('change', () => {
+            renderHourlyChart();
+        });
 
         // Validate API key and load everything on page load
         (async function() {
@@ -4010,10 +4199,10 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
 
 
 @app.get("/admin/stats")
-async def admin_get_stats(api_key: str = Depends(get_api_key)):
+async def admin_get_stats(hours: int = 96, api_key: str = Depends(get_api_key)):
     """Get comprehensive usage statistics for all API keys."""
     await require_scope("admin", api_key)
-    return await postgres_client.get_all_keys_stats()
+    return await postgres_client.get_all_keys_stats(hours=hours)
 
 
 # =============================================================================

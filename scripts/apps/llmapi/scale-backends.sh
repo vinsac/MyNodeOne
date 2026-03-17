@@ -96,8 +96,7 @@ case "$BACKEND" in
         kubectl patch configmap gateway-config -n "$NAMESPACE" \
             --type merge -p "{\"data\":{\"VLLM_URLS\":\"$VLLM_URLS\"}}"
         
-        # Restart gateway to pick up new config
-        kubectl rollout restart deployment/gateway -n "$NAMESPACE"
+        NAMESPACE="$NAMESPACE" bash "$SCRIPT_DIR/deploy-gateway.sh"
         
         echo -e "${GREEN}✓ vLLM scaled to $REPLICAS replicas${NC}"
         echo "   Gateway updated with URLs: $VLLM_URLS"

@@ -887,6 +887,7 @@ echo "🌐 Deploying API Gateway..."
 # Determine model names for gateway config
 LLAMACPP_MODEL_API_NAME="${LLAMACPP_MODEL_FILE%.gguf}"
 LLAMACPP_MODEL_API_NAME=$(echo "$LLAMACPP_MODEL_API_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+GATEWAY_CODE_SHA=$(sha256sum "$SCRIPT_DIR/gateway/main.py" | awk '{print $1}')
 
 # Update gateway config with custom settings
 cat <<EOF | kubectl apply -f -
@@ -933,7 +934,7 @@ kubectl create configmap gateway-code -n $NAMESPACE \
     --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy gateway using Python image with code from ConfigMap
-cat <<'EOF' | sed "s/\$NAMESPACE/$NAMESPACE/g" | kubectl apply -f -
+cat <<'EOF' | sed -e "s/\$NAMESPACE/$NAMESPACE/g" -e "s/\$GATEWAY_CODE_SHA/$GATEWAY_CODE_SHA/g" | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -950,6 +951,8 @@ spec:
     metadata:
       labels:
         app: llmapi-gateway
+      annotations:
+        llmapi.mynodeone.io/gateway-code-sha: "$GATEWAY_CODE_SHA"
     spec:
       serviceAccountName: gateway
       securityContext:
@@ -1666,6 +1669,7 @@ echo "🔧 Management:"
 echo "   • Status:  ./scripts/apps/llmapi/monitor-llmapi.sh"
 echo "   • Keys:    ./scripts/apps/llmapi/manage-keys.sh"
 echo "   • Scale:   ./scripts/apps/llmapi/scale-backends.sh"
+echo "   • Gateway: bash ./scripts/apps/llmapi/deploy-gateway.sh"
 echo "   • Health:  ./scripts/apps/llmapi/health-check.sh"
 echo ""
 
@@ -1709,7 +1713,7 @@ echo "   kubectl logs -n $NAMESPACE statefulset/vllm -f         # vLLM"
 echo "   kubectl logs -n $NAMESPACE deploy/llamacpp -c model-downloader -f  # llama.cpp"
 echo ""
 echo "   # Restart a component"
-echo "   kubectl rollout restart deployment/gateway -n $NAMESPACE"
+echo "   bash ./scripts/apps/llmapi/deploy-gateway.sh"
 echo ""
 
 # =============================================================================

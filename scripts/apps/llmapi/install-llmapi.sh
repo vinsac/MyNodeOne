@@ -1687,8 +1687,21 @@ if [[ "$EUID" -eq 0 ]]; then
         echo -e "   ${YELLOW}⚠ Health monitoring installation failed${NC}"
     fi
 else
-    echo -e "   ${YELLOW}⚠ Run as root to install automated monitoring:${NC}"
-    echo "   sudo bash $SCRIPT_DIR/setup-health-monitoring.sh"
+    if command -v sudo &>/dev/null; then
+        echo "   Installing comprehensive health monitoring with sudo (runs every 5 minutes)..."
+        if sudo bash "$SCRIPT_DIR/setup-health-monitoring.sh"; then
+            echo -e "   ${GREEN}✓ Health monitoring installed and started${NC}"
+            echo "   • Logs: /var/log/llmapi/llmapi-health-monitor.sh.log"
+            echo "   • Status: sudo systemctl status llmapi-health-monitor.timer"
+            echo "   • Disable: sudo systemctl disable llmapi-health-monitor.timer"
+        else
+            echo -e "   ${YELLOW}⚠ Health monitoring installation failed${NC}"
+            echo "   You can retry later with: sudo bash $SCRIPT_DIR/setup-health-monitoring.sh"
+        fi
+    else
+        echo -e "   ${YELLOW}⚠ sudo not found; install automated monitoring later with root privileges:${NC}"
+        echo "   bash $SCRIPT_DIR/setup-health-monitoring.sh"
+    fi
 fi
 echo ""
 echo "📖 Documentation: scripts/apps/llmapi/ARCHITECTURE.md"

@@ -23,6 +23,7 @@ from typing import AsyncGenerator, Optional
 import asyncpg
 import httpx
 import redis.asyncio as redis
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, Form
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -833,8 +834,8 @@ class RedisClient:
                     return default
             try:
                 return await coro_fn()
-            except (redis.exceptions.ConnectionError,
-                    redis.exceptions.TimeoutError,
+            except (RedisConnectionError,
+                    RedisTimeoutError,
                     ConnectionRefusedError,
                     OSError) as e:
                 if attempt == 0:
@@ -1643,10 +1644,17 @@ async def warm_redis_from_postgres():
     """
     try:
         keys = await postgres_client.list_api_keys()
-        if not keys:
-            logger.warning("warm_redis_from_postgres: no keys found in Postgres")
-            return
-        for k in keys:
+    except Exception as e:
+        logger.error(f"warm_redis_from_postgres: Postgres query failed: {e}")
+        return
+    
+    if not keys:
+        logger.warning("warm_redis_from_postgres: no keys found in Postgres")
+        return
+    
+    success_count = 0
+    for k in keys:
+        try:
             config_data = {
                 "name": k["name"],
                 "scopes": k["scopes"],
@@ -1656,9 +1664,15 @@ async def warm_redis_from_postgres():
                 "created_at": k["created_at"],
             }
             await redis_client.set_api_key_config(k["key"], config_data)
-        logger.info(f"warm_redis_from_postgres: cached {len(keys)} key(s) in Redis")
-    except Exception as e:
-        logger.error(f"warm_redis_from_postgres failed: {e}")
+            success_count += 1
+        except Exception as e:
+            # Redis failures are expected when Redis is down; fail-open behavior
+            logger.debug(f"warm_redis_from_postgres: Redis unavailable for key {k.get('name', 'unknown')}: {e}")
+    
+    if success_count > 0:
+        logger.info(f"warm_redis_from_postgres: cached {success_count}/{len(keys)} key(s) in Redis")
+    else:
+        logger.warning(f"warm_redis_from_postgres: Redis unavailable, could not cache {len(keys)} key(s)")
 
 
 @asynccontextmanager

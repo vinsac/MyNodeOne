@@ -16,6 +16,12 @@ NC='\033[0m'
 
 NAMESPACE="llmapi"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
+
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${YELLOW}  Uninstall LLM API Service${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -44,35 +50,33 @@ fi
 echo ""
 echo "Deleting PVCs and secrets..."
 # Delete PVCs first to ensure proper cleanup (namespace deletion may leave them orphaned)
-kubectl delete pvc -n "$NAMESPACE" \
-    llmapi-postgres-data \
-    llmapi-redis-data \
-    llmapi-models-vllm \
-    llmapi-models-llamacpp \
-    llmapi-models-embedding \
-    --timeout=300s 2>/dev/null || echo "  ⚠ Some PVCs may not exist"
+PVC_NAMES=$(kubectl get pvc -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+if [ -n "$PVC_NAMES" ]; then
+    printf '%s\n' "$PVC_NAMES" | xargs -r kubectl delete pvc -n "$NAMESPACE" --timeout=300s 2>/dev/null || echo "  ⚠ Some PVCs may not delete cleanly"
+fi
 
 # Delete secrets
-kubectl delete secret -n "$NAMESPACE" llmapi-db --ignore-not-found=true 2>/dev/null
+kubectl delete secret -n "$NAMESPACE" llmapi-db llmapi-secrets llmapi-prometheus-token --ignore-not-found=true 2>/dev/null || true
+
+if [[ "$EUID" -eq 0 ]]; then
+    systemctl stop llmapi-health-monitor.timer llmapi-health-monitor.service 2>/dev/null || true
+    systemctl disable llmapi-health-monitor.timer llmapi-health-monitor.service 2>/dev/null || true
+    rm -f /etc/systemd/system/llmapi-health-monitor.service /etc/systemd/system/llmapi-health-monitor.timer /usr/local/bin/llmapi-health-monitor.sh
+    systemctl daemon-reload 2>/dev/null || true
+fi
 
 echo "Deleting namespace $NAMESPACE..."
 kubectl delete namespace "$NAMESPACE" --timeout=300s
 
 # Clean up local files
-if [ -f "$HOME/.mynodeone/llmapi-key" ]; then
-    rm -f "$HOME/.mynodeone/llmapi-key"
-    echo "Removed local API key file"
-fi
+for key_file in "$HOME/.mynodeone/llmapi-key" "$HOME/.mynodeone/llmapi-admin-key" "$HOME/.mynodeone/llmapi-prometheus-key"; do
+    if [ -f "$key_file" ]; then
+        rm -f "$key_file"
+        echo "Removed local key file: $(basename "$key_file")"
+    fi
+done
 
 # Remove from service registry
-# Get script directory and project root using standardized utility
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Bootstrap with fallback pattern (auto-discovers if path is wrong)
-source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
-
 if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
     bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" unregister "llmapi" 2>/dev/null || true
 fi

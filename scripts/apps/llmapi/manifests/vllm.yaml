@@ -326,9 +326,9 @@ spec:
             ARGS="$ARGS --enable-auto-tool-choice"
           fi
 
-          # Expose Qwen3 thinking content through OpenAI-compatible reasoning fields.
+          # vLLM 0.9+ enables reasoning by selecting a reasoning parser.
           if [ "$ENABLE_REASONING_VALUE" = "true" ]; then
-            ARGS="$ARGS --enable-reasoning --reasoning-parser $REASONING_PARSER_VALUE"
+            ARGS="$ARGS --reasoning-parser $REASONING_PARSER_VALUE"
           fi
 
           echo "Starting vLLM with: $ARGS"

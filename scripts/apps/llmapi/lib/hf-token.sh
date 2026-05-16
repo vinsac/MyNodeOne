@@ -80,7 +80,7 @@ prompt_for_token() {
     echo ""
     echo "A HuggingFace token enables:"
     echo "  • Faster download speeds (authenticated users get priority)"
-    echo "  • Access to gated models (Llama 3, CodeLlama, etc.)"
+    echo "  • Access to gated models (Llama, Gemma, etc.)"
     echo "  • No rate limiting on model downloads"
     echo ""
     echo "Get your free token at: https://huggingface.co/settings/tokens"

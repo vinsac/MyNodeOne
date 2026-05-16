@@ -61,7 +61,7 @@ for model in models.data:
     print(f"{model.id} - Backend: {model.backend}")
 
 # Output:
-# qwen2.5-14b - Backend: vllm
+# qwen3-14b - Backend: vllm
 # nomic-embed-text - Backend: embedding
 ```
 
@@ -77,7 +77,7 @@ curl -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   "object": "list",
   "data": [
     {
-      "id": "qwen2.5-14b",
+      "id": "qwen3-14b",
       "object": "model",
       "created": 1703123456,
       "owned_by": "mynodeone",
@@ -109,7 +109,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[
         {"role": "user", "content": "What is the capital of France?"}
     ]
@@ -119,13 +119,15 @@ print(response.choices[0].message.content)
 # Output: The capital of France is Paris.
 ```
 
+The default `qwen3-14b` vLLM backend starts with Qwen3 reasoning enabled. vLLM exposes parsed thinking text through its OpenAI-compatible reasoning fields when supported by the client, while `message.content` remains the final answer.
+
 **cURL:**
 ```bash
 curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-14b",
+    "model": "qwen3-14b",
     "messages": [
       {"role": "user", "content": "What is the capital of France?"}
     ]
@@ -138,7 +140,7 @@ curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   "id": "chatcmpl-abc123",
   "object": "chat.completion",
   "created": 1703123456,
-  "model": "qwen2.5-14b",
+  "model": "qwen3-14b",
   "system_fingerprint": "vllm",
   "choices": [
     {
@@ -173,7 +175,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[
         {"role": "user", "content": "Write a haiku about coding"}
     ],
@@ -197,7 +199,7 @@ curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-14b",
+    "model": "qwen3-14b",
     "messages": [{"role": "user", "content": "Write a haiku"}],
     "stream": true
   }'
@@ -226,7 +228,7 @@ Content-Type: text/event-stream
 
 ```python
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Explain quantum computing"}
@@ -278,7 +280,7 @@ response = client.chat.completions.create(
 **Example: Creative writing (high temperature):**
 ```python
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[{"role": "user", "content": "Write a creative story"}],
     temperature=1.5,      # Higher = more creative
     max_tokens=1000,      # Longer response
@@ -289,7 +291,7 @@ response = client.chat.completions.create(
 **Example: Code generation (low temperature):**
 ```python
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[{"role": "user", "content": "Write a Python function to sort a list"}],
     temperature=0.2,      # Lower = more deterministic
     max_tokens=300,
@@ -303,7 +305,7 @@ curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-14b",
+    "model": "qwen3-14b",
     "messages": [{"role": "user", "content": "Explain AI"}],
     "temperature": 0.7,
     "max_tokens": 500,
@@ -408,7 +410,7 @@ response = client.chat.completions.create(
     "message": "Model 'gpt-4' is not currently loaded",
     "type": "model_not_found",
     "code": "model_not_found",
-    "available_models": ["qwen2.5-14b", "nomic-embed-text"],
+    "available_models": ["qwen3-14b", "nomic-embed-text"],
     "hint": "Call GET /v1/models first to see available models"
   },
   "status": 404
@@ -519,7 +521,7 @@ client = OpenAI(base_url="http://llmapi.cluster.local/v1", api_key="sk-...")
 for attempt in range(5):
     try:
         response = client.chat.completions.create(
-            model="qwen2.5-14b",
+            model="qwen3-14b",
             messages=[{"role": "user", "content": "Hello"}]
         )
         break
@@ -537,7 +539,7 @@ for attempt in range(5):
 
 ```python
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[{"role": "user", "content": "..." * 10000}],  # ← Too long
     max_tokens=50000  # ← Exceeds model capacity
 )
@@ -567,7 +569,7 @@ response = client.chat.completions.create(
 curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -d '{
-    "model": "qwen2.5-14b",
+    "model": "qwen3-14b",
     "messages": [],
     "temperature": 5.0
   }'
@@ -657,7 +659,7 @@ Tag requests with a priority level using the `X-Priority` header:
 curl -X POST http://llmapi.cluster.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "X-Priority: high" \
-  -d '{"model": "qwen2.5-14b", "messages": [...]}'
+  -d '{"model": "qwen3-14b", "messages": [...]}'
 ```
 
 **Priority Levels:**
@@ -767,7 +769,7 @@ client = OpenAI(base_url="...", api_key="...")
 
 try:
     response = client.chat.completions.create(
-        model="qwen2.5-14b",
+        model="qwen3-14b",
         messages=[{"role": "user", "content": "Hello"}]
     )
 except RateLimitError as e:
@@ -782,7 +784,7 @@ except APIError as e:
 ```python
 # ✅ Good: Stream for real-time UI updates
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[...],
     stream=True  # User sees response immediately
 )
@@ -793,7 +795,7 @@ response = client.chat.completions.create(
 ```python
 # Autocomplete (needs immediate response)
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[...],
     max_tokens=50,  # Short response
     extra_headers={"X-Priority": "realtime"}
@@ -969,7 +971,7 @@ curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
 curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
-  -d '{"model":"qwen2.5-14b","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"qwen3-14b","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 **Why this happens:**
@@ -998,7 +1000,7 @@ curl -X POST http://llmapi.example.com/v1/chat/completions  # ← HTTP
 curl -X POST https://llmapi.example.com/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \
-  -d '{"model":"qwen2.5-14b","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"qwen3-14b","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 **Rule:**
@@ -1050,7 +1052,7 @@ curl -d @request.json
 curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer sk-mynodeone-xxxxxx" \
   -H "Content-Type: application/json" \  # ← Required!
-  -d '{"model":"qwen2.5-14b","messages":[...]}'
+  -d '{"model":"qwen3-14b","messages":[...]}'
 ```
 
 ---
@@ -1065,7 +1067,7 @@ curl -X POST http://llmapi.mynodeone.local/v1/chat/completions \
   -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-14b",
+    "model": "qwen3-14b",
     "messages": [
       {"role": "user", "content": "<YOUR_QUESTION>"}
     ]
@@ -1076,7 +1078,7 @@ curl -X POST https://llmapi.<yourdomain>.com/v1/chat/completions \
   -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-14b",
+    "model": "qwen3-14b",
     "messages": [
       {"role": "user", "content": "<YOUR_QUESTION>"}
     ]

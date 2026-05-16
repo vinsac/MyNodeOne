@@ -50,54 +50,54 @@ check_vllm_models() {
     # Check for HuggingFace cache format models (models--Org--ModelName)
     for model_dir in "$MODEL_DIR"/models--*/; do
         if [[ -d "$model_dir" ]]; then
-        local     local model_name=$(basename "$model_dir")
-        # Check for required HF cache structure
-        if [[ -d "$model_dir/snapshots" ]] && [[ -d "$model_dir/blobs" ]]; then
-            local size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
-            echo -e "${GREEN}✓${NC} $model_name ($size)"
-            echo "  Format: HuggingFace Cache ✓"
-            echo "  Location: $model_dir"
-            
-            # Check if snapshots have actual files
-            local snapshot_count=$(find "$model_dir/snapshots" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-            if [[ $snapshot_count -gt 0 ]]; then
-                echo "  Snapshots: $snapshot_count"
-                valid_models=$((valid_models + 1))
+            local model_name=$(basename "$model_dir")
+            # Check for required HF cache structure
+            if [[ -d "$model_dir/snapshots" ]] && [[ -d "$model_dir/blobs" ]]; then
+                local size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
+                echo -e "${GREEN}✓${NC} $model_name ($size)"
+                echo "  Format: HuggingFace Cache ✓"
+                echo "  Location: $model_dir"
+
+                # Check if snapshots have actual files
+                local snapshot_count=$(find "$model_dir/snapshots" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+                if [[ $snapshot_count -gt 0 ]]; then
+                    echo "  Snapshots: $snapshot_count"
+                    valid_models=$((valid_models + 1))
+                else
+                    echo -e "  ${YELLOW}Warning: No snapshots found${NC}"
+                fi
             else
-                echo -e "  ${YELLOW}Warning: No snapshots found${NC}"
+                echo -e "${RED}✗${NC} $model_name"
+                echo "  Format: Incomplete HuggingFace Cache ✗"
+                echo "  Missing: snapshots/ or blobs/ directory"
+                invalid_models=$((invalid_models + 1))
             fi
-        else
-            echo -e "${RED}✗${NC} $model_name"
-            echo "  Format: Incomplete HuggingFace Cache ✗"
-            echo "  Missing: snapshots/ or blobs/ directory"
-            invalid_models=$((invalid_models + 1))
+            echo ""
         fi
-        echo ""
-    fi
-done
+    done
     
     # Check for flat structure models (non-HF format)
     for model_dir in "$MODEL_DIR"/*/; do
         if [[ -d "$model_dir" ]]; then
-        local     local model_name=$(basename "$model_dir")
-        
-        # Skip HF format models (already checked above)
-        if [[ "$model_name" == models--* ]] || [[ "$model_name" == "hub" ]] || \
-           [[ "$model_name" == "modules" ]] || [[ "$model_name" == ".locks" ]] || \
-           [[ "$model_name" == "xet" ]]; then
-            continue
+            local model_name=$(basename "$model_dir")
+
+            # Skip HF format models (already checked above)
+            if [[ "$model_name" == models--* ]] || [[ "$model_name" == "hub" ]] || \
+               [[ "$model_name" == "modules" ]] || [[ "$model_name" == ".locks" ]] || \
+               [[ "$model_name" == "xet" ]]; then
+                continue
+            fi
+
+            # This is a flat structure model
+            local size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
+            echo -e "${YELLOW}⚠${NC} $model_name ($size)"
+            echo "  Format: Flat Directory Structure ✗"
+            echo "  Location: $model_dir"
+            echo -e "  ${YELLOW}Action: Delete and re-download with huggingface_hub${NC}"
+            invalid_models=$((invalid_models + 1))
+            echo ""
         fi
-        
-        # This is a flat structure model
-        local size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
-        echo -e "${YELLOW}⚠${NC} $model_name ($size)"
-        echo "  Format: Flat Directory Structure ✗"
-        echo "  Location: $model_dir"
-        echo -e "  ${YELLOW}Action: Delete and re-download with huggingface_hub${NC}"
-        invalid_models=$((invalid_models + 1))
-        echo ""
-    fi
-done
+    done
     
     # Check for hub/ directory (part of HF cache)
     if [[ -d "$MODEL_DIR/hub" ]]; then
@@ -131,7 +131,7 @@ done
         echo "2. Re-download using huggingface_hub:"
         echo "   # From Python:"
         echo "   from huggingface_hub import snapshot_download"
-        echo "   snapshot_download(repo_id='Qwen/Qwen2.5-14B-Instruct-AWQ',"
+        echo "   snapshot_download(repo_id='Qwen/Qwen3-14B-AWQ',"
         echo "                     cache_dir='$MODEL_DIR')"
         echo ""
         echo "   # Or let vLLM init container download automatically"

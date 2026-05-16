@@ -340,16 +340,24 @@ fi
 echo ""
 
 # Model selection for vLLM
-VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
-VLLM_MODEL_NAME="qwen2.5-14b"
+VLLM_MODEL="Qwen/Qwen3-14B-AWQ"
+VLLM_MODEL_NAME="qwen3-14b"
+VLLM_QUANTIZATION="awq"
+VLLM_ENABLE_REASONING="true"
+VLLM_REASONING_PARSER="qwen3"
+VLLM_TOKENIZER_MODE="auto"
+VLLM_CONFIG_FORMAT="auto"
+VLLM_LOAD_FORMAT="auto"
+VLLM_TOOL_CALL_PARSER="none"
+VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
     echo "🤖 Choose primary GPU model (vLLM):"
     echo ""
-    echo "  Popular Models (AWQ quantized for fast GPU inference):"
-    echo "  1. Qwen2.5-14B (AWQ) - Best balance of quality and speed (~10GB VRAM)"
-    echo "  2. Qwen2.5-7B        - Faster, good for autocomplete (~6GB VRAM)"
-    echo "  3. Mistral-7B        - Fast, general purpose (~6GB VRAM)"
-    echo "  4. CodeLlama-34B (AWQ) - Best for coding tasks (~20GB VRAM)"
+    echo "  Popular Models:"
+    echo "  1. Qwen3-14B (AWQ)  - 32K context, reasoning enabled (~10GB weights + KV cache)"
+    echo "  2. Qwen3-8B         - Faster Qwen3 option (BF16/FP16, lower context recommended)"
+    echo "  3. Ministral 3 14B  - Latest Mistral 14B instruct preset (AWQ)"
+    echo "  4. Llama 3.2 3B     - Latest small Llama text instruct preset"
     echo ""
     echo "  Custom Model:"
     echo "  5. Enter your own HuggingFace model ID"
@@ -361,34 +369,85 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
     
     case "$MODEL_CHOICE" in
         1)
-            VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
-            VLLM_MODEL_NAME="qwen2.5-14b"
+            VLLM_MODEL="Qwen/Qwen3-14B-AWQ"
+            VLLM_MODEL_NAME="qwen3-14b"
+            VLLM_QUANTIZATION="awq"
+            VLLM_ENABLE_REASONING="true"
+            VLLM_REASONING_PARSER="qwen3"
+            VLLM_TOKENIZER_MODE="auto"
+            VLLM_CONFIG_FORMAT="auto"
+            VLLM_LOAD_FORMAT="auto"
+            VLLM_TOOL_CALL_PARSER="none"
+            VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
             ;;
         2)
-            VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct"
-            VLLM_MODEL_NAME="qwen2.5-7b"
+            VLLM_MODEL="Qwen/Qwen3-8B"
+            VLLM_MODEL_NAME="qwen3-8b"
+            VLLM_QUANTIZATION="none"
+            VLLM_ENABLE_REASONING="true"
+            VLLM_REASONING_PARSER="qwen3"
+            VLLM_TOKENIZER_MODE="auto"
+            VLLM_CONFIG_FORMAT="auto"
+            VLLM_LOAD_FORMAT="auto"
+            VLLM_TOOL_CALL_PARSER="none"
+            VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
             ;;
         3)
-            VLLM_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
-            VLLM_MODEL_NAME="mistral-7b"
+            VLLM_MODEL="cyankiwi/Ministral-3-14B-Instruct-2512-AWQ-4bit"
+            VLLM_MODEL_NAME="ministral3-14b"
+            VLLM_QUANTIZATION="awq"
+            VLLM_ENABLE_REASONING="false"
+            VLLM_REASONING_PARSER="qwen3"
+            VLLM_TOKENIZER_MODE="mistral"
+            VLLM_CONFIG_FORMAT="mistral"
+            VLLM_LOAD_FORMAT="mistral"
+            VLLM_TOOL_CALL_PARSER="mistral"
+            VLLM_ENABLE_AUTO_TOOL_CHOICE="true"
             ;;
         4)
-            VLLM_MODEL="TheBloke/CodeLlama-34B-Instruct-AWQ"
-            VLLM_MODEL_NAME="codellama-34b"
+            VLLM_MODEL="meta-llama/Llama-3.2-3B-Instruct"
+            VLLM_MODEL_NAME="llama3.2-3b"
+            VLLM_QUANTIZATION="none"
+            VLLM_ENABLE_REASONING="false"
+            VLLM_REASONING_PARSER="qwen3"
+            VLLM_TOKENIZER_MODE="auto"
+            VLLM_CONFIG_FORMAT="auto"
+            VLLM_LOAD_FORMAT="auto"
+            VLLM_TOOL_CALL_PARSER="llama3_json"
+            VLLM_ENABLE_AUTO_TOOL_CHOICE="true"
             ;;
         5)
             echo ""
-            echo "  Enter the HuggingFace model ID (e.g., Qwen/Qwen2.5-7B-Instruct)"
+            echo "  Enter the HuggingFace model ID (e.g., Qwen/Qwen3-14B-AWQ)"
             echo "  Find models at: https://huggingface.co/models?library=vllm"
             read -p "  Model ID: " VLLM_MODEL
             echo ""
             echo "  Enter a short name for API calls (e.g., qwen-7b, my-model)"
             read -p "  API name: " VLLM_MODEL_NAME
+            echo ""
+            echo "  Enter vLLM quantization (awq, gptq, or none)"
+            read -p "  Quantization [none]: " VLLM_QUANTIZATION
+            VLLM_QUANTIZATION="${VLLM_QUANTIZATION:-none}"
+            VLLM_ENABLE_REASONING="false"
+            VLLM_REASONING_PARSER="qwen3"
+            VLLM_TOKENIZER_MODE="auto"
+            VLLM_CONFIG_FORMAT="auto"
+            VLLM_LOAD_FORMAT="auto"
+            VLLM_TOOL_CALL_PARSER="none"
+            VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
             # Validate
             if [ -z "$VLLM_MODEL" ]; then
-                echo -e "${YELLOW}No model entered, using default Qwen2.5-14B${NC}"
-                VLLM_MODEL="Qwen/Qwen2.5-14B-Instruct-AWQ"
-                VLLM_MODEL_NAME="qwen2.5-14b"
+                echo -e "${YELLOW}No model entered, using default Qwen3-14B${NC}"
+                VLLM_MODEL="Qwen/Qwen3-14B-AWQ"
+                VLLM_MODEL_NAME="qwen3-14b"
+                VLLM_QUANTIZATION="awq"
+                VLLM_ENABLE_REASONING="true"
+                VLLM_REASONING_PARSER="qwen3"
+                VLLM_TOKENIZER_MODE="auto"
+                VLLM_CONFIG_FORMAT="auto"
+                VLLM_LOAD_FORMAT="auto"
+                VLLM_TOOL_CALL_PARSER="none"
+                VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
             fi
             ;;
     esac
@@ -396,20 +455,20 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
 fi
 
 # Model selection for llama.cpp
-# Default to Qwen2.5-14B (same as vLLM) for consistent responses across backends
-LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
-LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+# Default to Qwen3-14B (same family as vLLM) for consistent responses across backends
+LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
+LLAMACPP_MODEL_FILE="Qwen3-14B-Q4_K_M.gguf"
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🧠 Choose CPU/RAM model (llama.cpp - GGUF format):"
     echo ""
     echo -e "  ${GREEN}Recommended (same as GPU for consistent responses):${NC}"
-    echo "  1. Qwen2.5-14B (Q4_K_M)   - ~10GB RAM, matches GPU model ⭐"
-    echo "  2. Qwen2.5-14B (Q8_0)     - ~16GB RAM, higher quality version"
+    echo "  1. Qwen3-14B (Q4_K_M)     - ~9GB RAM, matches GPU model family ⭐"
+    echo "  2. Qwen3-14B (Q8_0)       - ~16GB RAM, higher quality version"
     echo ""
     echo "  Alternative Models:"
-    echo "  3. Llama-3.1-8B (Q8)      - ~10GB RAM, fast and good quality"
-    echo "  4. Llama-3.1-70B (Q4_K_M) - ~45GB RAM, excellent quality"
-    echo "  5. Mixtral-8x7B (Q4_K_M)  - ~30GB RAM, fast MoE architecture"
+    echo "  3. Llama-3.2-3B (Q8)      - ~4GB RAM, latest small Llama text instruct"
+    echo "  4. Llama-3.3-70B (Q4_K_M) - ~45GB RAM, latest 70B Llama instruct"
+    echo "  5. Ministral 3 14B (Q4_K_M) - ~9GB RAM, latest Mistral 14B instruct"
     echo ""
     echo "  Custom Model:"
     echo "  6. Enter your own GGUF URL from HuggingFace"
@@ -421,31 +480,31 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     
     case "$CPU_MODEL_CHOICE" in
         1)
-            # Qwen2.5-14B Q4 - same model as GPU vLLM (recommended)
-            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
-            LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+            # Qwen3-14B Q4 - same model family as GPU vLLM (recommended)
+            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Qwen3-14B-Q4_K_M.gguf"
             ;;
         2)
-            # Qwen2.5-14B Q8 - higher quality version
-            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q8_0.gguf"
-            LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q8_0.gguf"
+            # Qwen3-14B Q8 - higher quality version
+            LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q8_0.gguf"
+            LLAMACPP_MODEL_FILE="Qwen3-14B-Q8_0.gguf"
             ;;
         3)
-            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
-            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
+            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q8_0.gguf"
+            LLAMACPP_MODEL_FILE="Llama-3.2-3B-Instruct-Q8_0.gguf"
             ;;
         4)
-            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
-            LLAMACPP_MODEL_FILE="Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+            LLAMACPP_MODEL_URL="https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF/resolve/main/Llama-3.3-70B-Instruct-Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Llama-3.3-70B-Instruct-Q4_K_M.gguf"
             ;;
         5)
-            LLAMACPP_MODEL_URL="https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
-            LLAMACPP_MODEL_FILE="mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
+            LLAMACPP_MODEL_URL="https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512-GGUF/resolve/main/Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
+            LLAMACPP_MODEL_FILE="Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
             ;;
         6)
             echo ""
             echo "  Enter the full URL to the GGUF file"
-            echo "  Example: https://huggingface.co/TheBloke/Llama-2-13B-GGUF/resolve/main/llama-2-13b.Q4_K_M.gguf"
+            echo "  Example: https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
             echo "  Find models at: https://huggingface.co/models?library=gguf"
             read -p "  GGUF URL: " LLAMACPP_MODEL_URL
             # Extract filename from URL
@@ -457,9 +516,9 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
             fi
             # Validate
             if [ -z "$LLAMACPP_MODEL_URL" ]; then
-                echo -e "${YELLOW}No URL entered, using default Qwen2.5-14B${NC}"
-                LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
-                LLAMACPP_MODEL_FILE="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+                echo -e "${YELLOW}No URL entered, using default Qwen3-14B${NC}"
+                LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
+                LLAMACPP_MODEL_FILE="Qwen3-14B-Q4_K_M.gguf"
             fi
             ;;
     esac
@@ -701,10 +760,10 @@ COPYPOD
     if [[ "$model_type" == "vllm" ]]; then
         # Map VLLM_MODEL_NAME to actual directory name in /var/lib/llmapi/models/vllm/
         case "$VLLM_MODEL_NAME" in
-            "qwen2.5-14b") target_model="qwen2.5-14b-awq" ;;
-            "qwen2.5-7b") target_model="qwen2.5-7b-instruct" ;;
-            "mistral-7b") target_model="mistral-7b-instruct" ;;
-            "codellama-34b") target_model="codellama-34b-awq" ;;
+            "qwen3-14b") target_model="qwen3-14b-awq" ;;
+            "qwen3-8b") target_model="qwen3-8b" ;;
+            "ministral3-14b") target_model="ministral3-14b-awq" ;;
+            "llama3.2-3b") target_model="llama3.2-3b-instruct" ;;
             *) target_model="$VLLM_MODEL_NAME" ;;  # Fallback to exact name
         esac
         actual_source_path="/var/lib/llmapi/models/vllm/$target_model"
@@ -918,8 +977,8 @@ data:
   MAX_INFLIGHT_PER_BACKEND: "32"
   # Rate limiting: concurrency cap scales automatically with healthy GPU count
   # CONCURRENCY_PER_GPU × healthy_gpu_count = per-key concurrency cap
-  CONCURRENCY_PER_GPU: "4"
-  CONCURRENCY_PER_KEY_DEFAULT: "4"
+  CONCURRENCY_PER_GPU: "1"
+  CONCURRENCY_PER_KEY_DEFAULT: "1"
   # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
   # A 4096-token request costs ~40x more than a 100-token request
   DEFAULT_TOKENS_PER_MINUTE: "40000"
@@ -1078,7 +1137,7 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
     fi
     
     # Pre-pull vLLM image to avoid Docker Hub rate limits during deployment
-    VLLM_IMAGE="vllm/vllm-openai:v0.6.6.post1"
+    VLLM_IMAGE="vllm/vllm-openai:v0.15.1"
     echo "   📥 Pre-pulling vLLM image (this may take a few minutes)..."
     echo "      Image: $VLLM_IMAGE"
     
@@ -1103,12 +1162,20 @@ metadata:
 data:
   MODEL_NAME: "$VLLM_MODEL"
   SERVED_MODEL_NAME: "$VLLM_MODEL_NAME"
-  MAX_MODEL_LEN: "16384"
+  MAX_MODEL_LEN: "32768"
   GPU_MEMORY_UTILIZATION: "0.90"
-  MAX_NUM_SEQS: "32"
-  QUANTIZATION: "awq"
+  MAX_NUM_SEQS: "1"
+  MAX_NUM_BATCHED_TOKENS: "32768"
+  QUANTIZATION: "$VLLM_QUANTIZATION"
   ENABLE_CHUNKED_PREFILL: "true"
   ENFORCE_EAGER: "false"
+  ENABLE_REASONING: "$VLLM_ENABLE_REASONING"
+  REASONING_PARSER: "$VLLM_REASONING_PARSER"
+  TOKENIZER_MODE: "$VLLM_TOKENIZER_MODE"
+  CONFIG_FORMAT: "$VLLM_CONFIG_FORMAT"
+  LOAD_FORMAT: "$VLLM_LOAD_FORMAT"
+  TOOL_CALL_PARSER: "$VLLM_TOOL_CALL_PARSER"
+  ENABLE_AUTO_TOOL_CHOICE: "$VLLM_ENABLE_AUTO_TOOL_CHOICE"
 EOF
 
     # Deploy vLLM StatefulSet

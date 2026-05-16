@@ -18,7 +18,7 @@ Models are downloaded from **HuggingFace** automatically when the service starts
 
 **HuggingFace Account:**
 - **Not required** for most models (Qwen, Mistral, etc.)
-- **Required** for gated models (Llama-3, some Code models)
+- **Required** for gated models such as Llama
 - If using a gated model, create a free account at huggingface.co, accept the model license, then set `HF_TOKEN` in the deployment
 
 ### How does quantization work?
@@ -27,8 +27,8 @@ Models are downloaded from **HuggingFace** automatically when the service starts
 
 ```
 Pre-quantized model options:
-├── AWQ (vLLM)       → "Qwen/Qwen2.5-14B-Instruct-AWQ"     # 4-bit, good quality
-├── GPTQ (vLLM)      → "TheBloke/Llama-2-13B-GPTQ"        # 4-bit, compatible
+├── AWQ (vLLM)       → "Qwen/Qwen3-14B-AWQ"     # 4-bit, good quality
+├── AWQ (vLLM)       → "cyankiwi/Ministral-3-14B-Instruct-2512-AWQ-4bit" # 4-bit Mistral preset
 └── GGUF (llama.cpp) → "...Q4_K_M.gguf"                   # Q4=4-bit, Q8=8-bit
 ```
 
@@ -43,7 +43,7 @@ The API returns a **404 error** with the list of available models:
 ```json
 {
   "error": "Model 'deepseek-coder' is not currently loaded",
-  "available_models": ["qwen2.5-14b", "embedding"],
+  "available_models": ["qwen3-14b", "embedding"],
   "hint": "Call GET /v1/models first to see available models"
 }
 ```
@@ -62,7 +62,7 @@ Responses follow the **OpenAI API format** with an additional `system_fingerprin
   "id": "chatcmpl-abc123",
   "object": "chat.completion",
   "created": 1703123456,
-  "model": "qwen2.5-14b",
+  "model": "qwen3-14b",
   "system_fingerprint": "vllm",    // ← Backend that handled request
   "choices": [
     {
@@ -152,7 +152,7 @@ To create additional admin keys:
 |--------|-----|----------|
 | Change vLLM model | Enter HuggingFace model ID, click "Change Model" | ~10-30 min |
 | Change llama.cpp model | Enter GGUF URL, click "Change Model" | ~5-15 min |
-| Download Ollama model | Enter model name (e.g., `llama3.2`), click "Download" | None |
+| Download Ollama model | Enter model name (e.g., `qwen3:14b`), click "Download" | None |
 | Start/Stop llama.cpp | Click "Start/Stop" toggle | Immediate |
 | Set HuggingFace token | Paste token, click "Save" | None |
 | **Change context/memory** | Advanced Config section | Requires restart |
@@ -201,8 +201,8 @@ Request → Gateway → Check vLLM load
 ```
 
 **Recommended setup**: Run the **same model** on both GPU and CPU for consistent responses:
-- **GPU**: `Qwen2.5-14B-AWQ` (fast, default)
-- **CPU**: `Qwen2.5-14B-Q4_K_M` (same model, GGUF format)
+- **GPU**: `Qwen3-14B-AWQ` (fast, default)
+- **CPU**: `Qwen3-14B-Q4_K_M` (same model, GGUF format)
 
 **Configuration**:
 ```yaml
@@ -227,13 +227,13 @@ MAX_INFLIGHT_PER_BACKEND: "32"      # Requests before routing to next backend
 ```
 Current: vLLM running with Qwen-14B in GPU memory
     │
-    ▼  [Admin UI: Change to Mistral-7B]
+    ▼  [Admin UI: Change to Ministral 3 14B]
     │
 Pod Restart Triggered
     │
     ├─ Old pod terminates → Qwen-14B freed from VRAM
     │
-    └─ New pod starts → Downloads Mistral-7B from HuggingFace (~10-30 min)
+    └─ New pod starts → Downloads Ministral 3 14B from HuggingFace (~10-30 min)
                        → Loads into VRAM
 ```
 
@@ -253,7 +253,7 @@ Models are **cached persistently** on disk:
 ### What if an app requests a model not loaded on GPU?
 
 **Lazy loading via Ollama backend:**
-1. App requests "llama3.2" (not on vLLM)
+1. App requests "qwen3:14b" (not on vLLM)
 2. Gateway checks: Is it in Ollama cache?
 3. If cached → Ollama loads it (GPU+RAM overflow as needed)
 4. If not cached → Returns 404 with available models list
@@ -289,7 +289,7 @@ Admin UI → [Start] button → Pod starts, model reloads (2-5 min)
 | Model | Token Required? |
 |-------|----------------|
 | Qwen, Mistral, Phi | ❌ No |
-| Llama-3, CodeLlama | ✅ Yes |
+| Llama | ✅ Yes |
 | Gemma | ✅ Yes |
 | Ollama models | ❌ No (uses Ollama registry) |
 
@@ -318,11 +318,11 @@ GET /admin/models
 
 # Download a new model from HuggingFace
 POST /admin/models/download
-{"model": "Qwen/Qwen2.5-7B-Instruct", "backend": "ollama"}
+{"model": "Qwen/Qwen3-8B", "backend": "ollama"}
 
 # Set active model for a backend
 POST /admin/models/activate
-{"model": "qwen2.5-7b", "backend": "ollama"}
+{"model": "qwen3-8b", "backend": "ollama"}
 
 # Set HuggingFace token (for gated models)
 POST /admin/config
@@ -359,7 +359,7 @@ DELETE /admin/models/{model_name}
 | **Model Cache** | ❌ No | ❌ No | ✅ 1TB PVC | ❌ No |
 | **Change Model** | Restart (10-30min) | Restart (5-15min) | Instant (lazy load) | Fixed |
 | **Admin UI Control** | Change model | Start/Stop, Change | Download, Delete | None |
-| **Default Model** | Qwen2.5-14B-AWQ | Qwen2.5-14B-Q4 | On-demand | bge-m3 |
+| **Default Model** | Qwen3-14B-AWQ | Qwen3-14B-Q4 | On-demand | bge-m3 |
 | **Auto-unload when idle** | ❌ No | ❌ No | ✅ Yes (30min) | ❌ No |
 | **Best for** | Production | Large models (70B+) | Experimentation | Embeddings |
 
@@ -519,8 +519,8 @@ Go to **Admin UI → Advanced: Backend Configuration**:
 │  │  Control Plane  │   │     Worker Node         │   │   Overflow Handler   │   │
 │  │                 │   │                         │   │                      │   │
 │  │  Models:        │   │  Models:                │   │  Models:             │   │
-│  │  • Qwen2.5-14B  │   │  • Qwen2.5-14B (replica)│   │  • Llama3.1-70B-Q4   │   │
-│  │  • Mistral-7B   │   │  • CodeLlama-34B        │   │  • Mistral-7B-Q8     │   │
+│  │  • Qwen3-14B     │   │  • Qwen3-14B (replica)│   │  • Llama3.3-70B-Q4   │   │
+│  │  • Ministral3-14B│   │  • Llama3.2-3B        │   │  • Ministral3-14B-Q4 │   │
 │  └─────────────────┘   └─────────────────────────┘   └──────────────────────┘   │
 │                                                                                   │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐ │
@@ -569,7 +569,7 @@ The central orchestration layer that handles all incoming requests.
 
 | Layer | Mechanism | Default | Redis? | Fail behaviour |
 |-------|-----------|---------|--------|----------------|
-| **1. Concurrency** | Max in-flight per key | `4 × GPU count` | No (in-process) | Always enforced |
+| **1. Concurrency** | Max in-flight per key | `1 × GPU count` | No (in-process) | Always enforced |
 | **2. RPM** | Requests/minute sliding window | `60 RPM` | Yes | Fail-open if Redis down |
 | **3. TPM** | Tokens/minute sliding window | `40,000 TPM` | Yes | Fail-open if Redis down |
 | **4. Daily quota** | Total tokens/day (PostgreSQL) | `100,000 tokens` | No | Always enforced |
@@ -579,8 +579,8 @@ Server-side queuing holds open HTTP connections and uvicorn worker slots — a D
 
 **Concurrency scales with GPU count automatically:**
 ```
-1 GPU  → cap = 4 concurrent requests per key
-2 GPUs → cap = 8 concurrent requests per key   ← auto-detected via health check
+1 GPU  → cap = 1 concurrent request per key
+2 GPUs → cap = 2 concurrent requests per key   ← auto-detected via health check
 N GPUs → cap = N × CONCURRENCY_PER_GPU
 ```
 
@@ -674,7 +674,7 @@ LLMAPI uses a multi-tier storage strategy optimized for different deployment sce
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ 1. Pre-download (hostPath)                               │  │
 │  │    /var/lib/llmapi/models/vllm/                          │  │
-│  │    └─ qwen2.5-14b-awq/  (~9GB)                           │  │
+│  │    └─ qwen3-14b-awq/  (~9GB)                           │  │
 │  │                                                           │  │
 │  │ 2. Init Container Detection                              │  │
 │  │    ├─ Check PVC cache (previous runs)                    │  │
@@ -701,8 +701,8 @@ LLMAPI uses a multi-tier storage strategy optimized for different deployment sce
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ 1. S3-Compatible Object Storage (MinIO/S3/R2)            │  │
 │  │    s3://llmapi-models/                                    │  │
-│  │    ├─ vllm/qwen2.5-14b-awq/                              │  │
-│  │    ├─ vllm/mistral-7b-instruct/                          │  │
+│  │    ├─ vllm/qwen3-14b-awq/                              │  │
+│  │    ├─ vllm/ministral3-14b-awq/                          │  │
 │  │    └─ llamacpp/llama-3.1-70b-q4/                         │  │
 │  │                                                           │  │
 │  │ 2. Pre-download Job (CronJob)                            │  │
@@ -724,7 +724,7 @@ LLMAPI uses a multi-tier storage strategy optimized for different deployment sce
 # 1. Install the service - models download automatically
 ./scripts/apps/llmapi/install-llmapi.sh
 
-# Models download to: /var/lib/llmapi/models/vllm/models--Qwen--Qwen2.5-14B-Instruct-AWQ
+# Models download to: /var/lib/llmapi/models/vllm/models--Qwen--Qwen3-14B-AWQ
 #   - Uses parallel connections (up to 500 MB/s with hf_transfer)
 #   - Downloads once, used by all pods on that node
 
@@ -741,11 +741,11 @@ LLMAPI uses a multi-tier storage strategy optimized for different deployment sce
 **Storage Flow:**
 
 ```
-Host OS: /var/lib/llmapi/models/vllm/qwen2.5-14b-awq
+Host OS: /var/lib/llmapi/models/vllm/qwen3-14b-awq
             ↓ (mounted as hostPath)
-Pod Init:  /predownload/vllm/qwen2.5-14b-awq
+Pod Init:  /predownload/vllm/qwen3-14b-awq
             ↓ (cp -r to PVC)
-Pod Main:  /models/hub/qwen2.5-14b-awq (PVC)
+Pod Main:  /models/hub/qwen3-14b-awq (PVC)
             ↓ (vLLM loads from here)
 GPU VRAM:  Model loaded and running
 ```
@@ -803,17 +803,17 @@ spec:
             - |
               # Install dependencies
               pip install huggingface_hub hf_transfer boto3
-              
+
               # Download models from HuggingFace
               export HF_HUB_ENABLE_HF_TRANSFER=1
               python -c "
               from huggingface_hub import snapshot_download
-              snapshot_download('Qwen/Qwen2.5-14B-Instruct-AWQ', 
+              snapshot_download('Qwen/Qwen3-14B-AWQ',
                                 cache_dir='/tmp/models')
               "
-              
+
               # Upload to S3
-              aws s3 sync /tmp/models/ s3://llmapi-models/vllm/qwen2.5-14b-awq/
+              aws s3 sync /tmp/models/ s3://llmapi-models/vllm/qwen3-14b-awq/
             env:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
@@ -837,17 +837,17 @@ initContainers:
   args:
   - |
     # Check PVC cache first
-    if [ -d "/models/hub/qwen2.5-14b-awq" ]; then
+    if [ -d "/models/hub/qwen3-14b-awq" ]; then
       echo "✓ Model cached in PVC"
       exit 0
     fi
-    
+
     # Download from S3 (much faster than HuggingFace)
     echo "Downloading from S3..."
-    aws s3 sync s3://llmapi-models/vllm/qwen2.5-14b-awq/ \
-                /models/hub/qwen2.5-14b-awq/ \
+    aws s3 sync s3://llmapi-models/vllm/qwen3-14b-awq/ \
+                /models/hub/qwen3-14b-awq/ \
                 --only-show-errors
-    
+
     echo "✓ Model ready"
   volumeMounts:
   - name: models
@@ -952,7 +952,7 @@ curl https://llmapi.cluster.local/v1/chat/completions?priority=batch
 ```bash
 POST /v1/chat/completions
 {
-  "model": "qwen2.5-14b",
+  "model": "qwen3-14b",
   "messages": [{"role": "user", "content": "Hello"}],
   "stream": true,
   "max_tokens": 1000
@@ -999,11 +999,11 @@ GET /v1/usage
 
 | Model | Quantization | VRAM | Notes |
 |-------|--------------|------|-------|
-| Qwen2.5-7B | FP16 | ~14GB | Fast, good quality |
-| Qwen2.5-14B | AWQ-4bit | ~10GB | Best balance |
-| Mistral-7B | FP16 | ~14GB | Fast inference |
-| CodeLlama-34B | AWQ-4bit | ~20GB | Coding tasks |
-| Llama3.1-70B | Q4_K_M | CPU+40GB | Requires llama.cpp |
+| Qwen3-8B | FP16 | ~16GB | Fast, good quality |
+| Qwen3-14B | AWQ-4bit | ~10GB | Best balance |
+| Ministral 3 14B | AWQ-4bit | ~10GB | Latest Mistral 14B preset |
+| Llama 3.2 3B | FP16 | ~7GB | Latest small Llama text instruct |
+| Llama3.3-70B | Q4_K_M | CPU+40GB | Requires llama.cpp |
 
 ---
 

@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -44,51 +45,51 @@ logger = logging.getLogger(__name__)
 class Config:
     # Redis connection (for rate limiting and caching)
     REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-    
+
     # PostgreSQL connection (for API keys and usage tracking)
     POSTGRES_HOST = os.getenv("POSTGRES_HOST", "llmapi-postgres")
     POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
     POSTGRES_DB = os.getenv("POSTGRES_DB", "llmapi")
     POSTGRES_USER = os.getenv("POSTGRES_USER", "llmapi")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
-    
+
     # Backend URLs
     VLLM_URLS = os.getenv("VLLM_URLS", "http://vllm:8000").split(",")
     LLAMACPP_URL = os.getenv("LLAMACPP_URL", "http://llamacpp:8080")
     EMBEDDING_URL = os.getenv("EMBEDDING_URL", "http://embedding:8080")
     OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
-    
+
     # Default rate limits
     DEFAULT_REQUESTS_PER_MINUTE = int(os.getenv("DEFAULT_REQUESTS_PER_MINUTE", "60"))
     DEFAULT_TOKENS_PER_DAY = int(os.getenv("DEFAULT_TOKENS_PER_DAY", "100000"))
-    
+
     # Concurrency cap: max simultaneous in-flight requests per API key.
-    # Scales with GPU count: each GPU safely handles ~4 concurrent LLM requests.
+    # Scales with GPU count: the default 32K-context 3090 profile handles 1 request per GPU.
     # Override via env: CONCURRENCY_PER_KEY_DEFAULT / CONCURRENCY_PER_GPU
-    CONCURRENCY_PER_GPU = int(os.getenv("CONCURRENCY_PER_GPU", "4"))
-    CONCURRENCY_PER_KEY_DEFAULT = int(os.getenv("CONCURRENCY_PER_KEY_DEFAULT", "4"))
-    
+    CONCURRENCY_PER_GPU = int(os.getenv("CONCURRENCY_PER_GPU", "1"))
+    CONCURRENCY_PER_KEY_DEFAULT = int(os.getenv("CONCURRENCY_PER_KEY_DEFAULT", "1"))
+
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
     DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000"))
     # Higher default TPM for admin-scoped keys when not explicitly provided.
     ADMIN_DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("ADMIN_DEFAULT_TOKENS_PER_MINUTE", "200000"))
-    
+
     # Admin password (set via env var for security)
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
-    
+
     # Lazy loading settings
     LAZY_LOAD_ENABLED = os.getenv("LAZY_LOAD_ENABLED", "true").lower() == "true"
     LAZY_LOAD_BACKEND = os.getenv("LAZY_LOAD_BACKEND", "ollama")
     AUTO_DOWNLOAD = os.getenv("AUTO_DOWNLOAD", "false").lower() == "true"
-    
+
     # Horizontal scaling: route chat requests to least-loaded backend
     # When enabled, any chat model request routes to: GPU1 → GPU2 → ... → CPU
-    # This assumes all chat backends run equivalent models (e.g., all run Qwen2.5-14B)
+    # This assumes all chat backends run equivalent models (e.g., all run Qwen3-14B)
     HORIZONTAL_SCALING = os.getenv("HORIZONTAL_SCALING", "true").lower() == "true"
     # Max concurrent requests per backend before routing to next
     MAX_INFLIGHT_PER_BACKEND = int(os.getenv("MAX_INFLIGHT_PER_BACKEND", "32"))
-    
+
     # Model name aliases (map OpenAI names to our internal names)
     MODEL_ALIASES = {
         "gpt-4": "default",
@@ -121,7 +122,7 @@ class ModelRegistry:
             "embedding": {"url": config.EMBEDDING_URL, "status": "unknown", "models": []},
             "ollama": {"url": config.OLLAMA_URL, "status": "unknown", "models": [], "cached": []},
         }
-    
+
     def get_model(self, model_name: str) -> Optional[dict]:
         """Get model info if loaded, or check if lazy-loadable."""
         # Check aliases first
@@ -139,23 +140,23 @@ class ModelRegistry:
                 if info.get("backend") == "embedding" and info.get("status") == "ready":
                     return {"name": name, **info}
             return None
-        
+
         # Check loaded models
         if resolved in self.loaded_models:
             return {"name": resolved, **self.loaded_models[resolved]}
-        
+
         # Check if model is cached in Ollama (can be lazy-loaded)
         if resolved in self.cached_models and config.LAZY_LOAD_ENABLED:
             return {
-                "name": resolved, 
+                "name": resolved,
                 "backend": "ollama",
                 "status": "cached",
                 "lazy_load": True,
                 **self.cached_models[resolved]
             }
-        
+
         return None
-    
+
     def get_available_models(self) -> list[dict]:
         """Get list of available models (loaded + cached)."""
         models = []
@@ -184,7 +185,7 @@ class ModelRegistry:
                         "size": info.get("size"),
                     })
         return models
-    
+
     def update_cached_models(self, models: list[dict]):
         """Update list of cached models from Ollama."""
         self.cached_models = {}
@@ -200,7 +201,7 @@ class ModelRegistry:
                 "details": model.get("details", {}),
             }
         self.backends["ollama"]["cached"] = list(self.cached_models.keys())
-    
+
     def register_model(self, name: str, backend: str, status: str = "ready", info: dict = None):
         """Register a loaded model."""
         self.loaded_models[name] = {
@@ -212,7 +213,7 @@ class ModelRegistry:
         if name not in self.backends[backend]["models"]:
             self.backends[backend]["models"].append(name)
         logger.info(f"Registered model: {name} on {backend}")
-    
+
     def unregister_model(self, name: str):
         """Remove a model from registry."""
         if name in self.loaded_models:
@@ -221,7 +222,7 @@ class ModelRegistry:
             if backend and name in self.backends[backend]["models"]:
                 self.backends[backend]["models"].remove(name)
             logger.info(f"Unregistered model: {name}")
-    
+
     def update_backend_status(self, backend: str, status: str):
         """Update backend status."""
         if backend in self.backends:
@@ -336,11 +337,11 @@ class UsageResponse(BaseModel):
 
 class PostgresClient:
     """PostgreSQL client for API keys, usage logs, and model configs."""
-    
+
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
         self._reconnect_lock = asyncio.Lock()
-    
+
     async def connect(self):
         """Connect to PostgreSQL and initialize schema."""
         try:
@@ -359,7 +360,7 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Failed to connect to PostgreSQL: {e}")
             raise
-    
+
     async def _reconnect(self):
         """Recreate the connection pool after a failure (e.g. Postgres pod restart)."""
         async with self._reconnect_lock:
@@ -389,7 +390,7 @@ class PostgresClient:
                     logger.warning(f"PostgreSQL reconnect attempt {attempt}/5 failed: {e}")
                     await asyncio.sleep(5 * attempt)
             logger.error("All PostgreSQL reconnect attempts failed")
-    
+
     async def _execute_with_retry(self, fn):
         """Execute an async DB function, reconnecting once if the pool is broken."""
         for attempt in range(2):
@@ -406,13 +407,13 @@ class PostgresClient:
                 else:
                     logger.error(f"PostgreSQL operation failed after reconnect: {e}")
                     raise
-    
+
     async def close(self):
         """Close PostgreSQL connection pool."""
         if self.pool:
             await self.pool.close()
             logger.info("Closed PostgreSQL connection")
-    
+
     async def _init_schema(self):
         """Initialize database schema if not exists."""
         async with self.pool.acquire() as conn:
@@ -435,7 +436,7 @@ class PostgresClient:
                 ALTER TABLE api_keys
                 ADD COLUMN IF NOT EXISTS tokens_per_minute INTEGER NOT NULL DEFAULT 40000
             """)
-            
+
             # Create usage_logs table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS usage_logs (
@@ -451,19 +452,19 @@ class PostgresClient:
                     UNIQUE(api_key, date, hour)
                 )
             """)
-            
+
             # Create indexes
             await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_usage_logs_api_key_date 
+                CREATE INDEX IF NOT EXISTS idx_usage_logs_api_key_date
                 ON usage_logs(api_key, date DESC)
             """)
             await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_api_keys_created_at 
+                CREATE INDEX IF NOT EXISTS idx_api_keys_created_at
                 ON api_keys(created_at DESC)
             """)
-            
+
             logger.info("PostgreSQL schema initialized")
-    
+
     async def get_api_key_config(self, api_key: str) -> Optional[dict]:
         """Get API key configuration."""
         async def _query():
@@ -489,7 +490,7 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error fetching API key config: {e}")
             return None
-    
+
     async def set_api_key_config(self, api_key: str, config_data: dict):
         """Create or update API key configuration."""
         async def _query():
@@ -520,13 +521,13 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error setting API key config: {e}")
             raise
-    
+
     async def delete_api_key(self, api_key: str):
         """Mark API key as revoked."""
         async def _query():
             async with self.pool.acquire() as conn:
                 await conn.execute("""
-                    UPDATE api_keys 
+                    UPDATE api_keys
                     SET revoked = TRUE, updated_at = NOW()
                     WHERE api_key = $1
                 """, api_key)
@@ -535,7 +536,7 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error deleting API key: {e}")
             raise
-    
+
     async def list_api_keys(self, prefix: str = "sk-mynodeone-") -> list[dict]:
         """List all non-revoked API keys with given prefix."""
         async def _query():
@@ -564,7 +565,7 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error listing API keys: {e}")
             return []
-    
+
     async def add_token_usage(self, api_key: str, input_tokens: int, output_tokens: int):
         """Track token usage (hourly aggregation)."""
         now = datetime.utcnow()
@@ -587,14 +588,14 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error adding token usage: {e}")
             # Don't raise - usage tracking failures shouldn't block requests
-    
+
     async def get_token_usage(self, api_key: str) -> tuple[int, int]:
         """Get today's token usage for an API key."""
         today = datetime.utcnow().date()
         async def _query():
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow("""
-                    SELECT 
+                    SELECT
                         COALESCE(SUM(input_tokens), 0) as input_total,
                         COALESCE(SUM(output_tokens), 0) as output_total
                     FROM usage_logs
@@ -608,12 +609,12 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error getting token usage: {e}")
             return 0, 0
-    
+
     async def check_token_quota(self, api_key: str, daily_limit: int) -> bool:
         """Check if within daily token quota."""
         input_tokens, output_tokens = await self.get_token_usage(api_key)
         return (input_tokens + output_tokens) < daily_limit
-    
+
     async def get_usage_stats(self, api_key: str, days: int = 7) -> dict:
         """Get usage statistics for an API key over the last N days."""
         start_date = datetime.utcnow().date() - timedelta(days=days)
@@ -648,7 +649,7 @@ class PostgresClient:
         except Exception as e:
             logger.error(f"Error getting usage stats: {e}")
             return {"api_key": api_key, "period_days": days, "hourly_data": []}
-    
+
     async def get_all_keys_stats(self, hours: int = 96) -> dict:
         """Get aggregate statistics for all API keys over a rolling UTC window."""
         window_hours = max(24, min(int(hours or 96), 168))
@@ -790,15 +791,15 @@ class RedisClient:
     def __init__(self):
         self.client: Optional[redis.Redis] = None
         self._reconnect_lock = asyncio.Lock()
-    
+
     async def connect(self):
         self.client = redis.from_url(config.REDIS_URL, decode_responses=True)
         logger.info(f"Connected to Redis at {config.REDIS_URL}")
-    
+
     async def close(self):
         if self.client:
             await self.client.close()
-    
+
     async def _reconnect(self):
         """Recreate the Redis client after a connection failure."""
         async with self._reconnect_lock:
@@ -819,10 +820,10 @@ class RedisClient:
                     await asyncio.sleep(3 * attempt)
             logger.error("All Redis reconnect attempts failed; running without Redis")
             self.client = None
-    
+
     async def _safe(self, coro_fn, default=None):
         """Execute a Redis coroutine, reconnecting once on failure.
-        
+
         Returns `default` if Redis is unavailable so callers can fail-open
         (rate limiting skipped, cache miss, etc.) rather than crashing.
         """
@@ -848,10 +849,10 @@ class RedisClient:
                 logger.error(f"Redis unexpected error: {e}")
                 return default
         return default
-    
+
     async def check_rate_limit_with_info(self, api_key: str, requests_per_minute: int) -> tuple[bool, int]:
         """Check RPM limit. Returns (allowed, retry_after_seconds).
-        
+
         Fails OPEN (allows request) if Redis is unavailable so a Redis pod
         crash does not block all inference traffic.
         """
@@ -874,7 +875,7 @@ class RedisClient:
 
     async def check_tpm_limit(self, api_key: str, estimated_tokens: int, tokens_per_minute: int) -> tuple[bool, int]:
         """Check TPM limit using a sliding 60-second window. Returns (allowed, retry_after_seconds).
-        
+
         Charges estimated_tokens against the window.  Actual output tokens are
         charged separately after completion via add_tpm_usage().
         Fails OPEN if Redis is unavailable.
@@ -913,7 +914,7 @@ class RedisClient:
             ttl = await self.client.ttl(rpm_key)
             return int(current_rpm), max(0, ttl)
         return await self._safe(_fn, default=(0, 0))
-    
+
     async def enqueue_request(self, priority: str, request_id: str, data: dict):
         """Add request to priority queue."""
         queue_key = f"queue:{priority}"
@@ -922,7 +923,7 @@ class RedisClient:
             await self.client.set(f"request:{request_id}", json.dumps(data), ex=3600)
             QUEUE_DEPTH.labels(priority=priority).inc()
         await self._safe(_fn)
-    
+
     async def dequeue_request(self, priority: str) -> Optional[tuple[str, dict]]:
         """Get next request from queue."""
         queue_key = f"queue:{priority}"
@@ -937,19 +938,19 @@ class RedisClient:
                     return request_id, json.loads(data)
             return None
         return await self._safe(_fn, default=None)
-    
+
     async def cache_response(self, cache_key: str, response: str, ttl: int = 3600):
         """Cache a response."""
         async def _fn():
             await self.client.set(f"cache:{cache_key}", response, ex=ttl)
         await self._safe(_fn)
-    
+
     async def get_cached_response(self, cache_key: str) -> Optional[str]:
         """Get cached response."""
         async def _fn():
             return await self.client.get(f"cache:{cache_key}")
         return await self._safe(_fn, default=None)
-    
+
     async def get_api_key_config(self, api_key: str) -> Optional[dict]:
         """Get API key configuration."""
         async def _fn():
@@ -958,7 +959,7 @@ class RedisClient:
                 return json.loads(data)
             return None
         return await self._safe(_fn, default=None)
-    
+
     async def set_api_key_config(self, api_key: str, config: dict):
         """Set API key configuration."""
         async def _fn():
@@ -1026,7 +1027,7 @@ class RateLimiter:
 
     def _healthy_gpu_count(self) -> int:
         """Count healthy GPU (vLLM) backends to scale concurrency cap.
-        
+
         Defensive: returns 1 (not 0) if backend_manager is not yet initialised
         or its health dict is empty, so the cap is never accidentally zero.
         """
@@ -1041,7 +1042,7 @@ class RateLimiter:
 
     def _concurrency_cap(self, key_config: dict) -> int:
         """Per-key concurrency cap, scaled by healthy GPU count.
-        
+
         Values coming from Redis JSON may be strings; int() coercion is applied.
         Clamped to [1, 256] to prevent misconfiguration from opening unlimited slots.
         """
@@ -1182,7 +1183,7 @@ class RateLimiter:
 
     async def release(self, api_key: str) -> None:
         """Decrement in-flight counter after request completes or errors.
-        
+
         Safe to call multiple times — counter is clamped to 0.
         Swallows all exceptions so a release failure never crashes a request handler.
         """
@@ -1208,7 +1209,7 @@ class BackendManager:
         self.http_client: Optional[httpx.AsyncClient] = None
         self.backend_health: dict[str, bool] = {}
         self.backend_inflight: dict[str, int] = {}
-    
+
     async def start(self):
         self.http_client = httpx.AsyncClient(timeout=300.0)
         # Initialize health status
@@ -1223,37 +1224,37 @@ class BackendManager:
         self.backend_inflight[f"ollama:{config.OLLAMA_URL}"] = 0
         # Initial health check and model discovery
         await self.health_check()
-    
+
     async def stop(self):
         if self.http_client:
             await self.http_client.aclose()
-    
+
     def get_backend_url(self, model: str) -> tuple[str, str]:
         """
         Get backend URL for a model using simple load-balanced routing.
-        
+
         For chat models with HORIZONTAL_SCALING enabled:
           - Routes to least-loaded backend: GPU1 → GPU2 → ... → CPU
           - All chat backends are treated as equivalent (same model family)
-        
+
         For embedding models:
           - Always routes to dedicated embedding service
         """
         model_info = model_registry.get_model(model)
-        
+
         # Handle embedding requests - always go to embedding service
         if model_info and model_info.get("backend") == "embedding":
             return "embedding", config.EMBEDDING_URL
-        
+
         # For chat models with horizontal scaling, route to least-loaded backend
         if config.HORIZONTAL_SCALING:
             return self._get_least_loaded_chat_backend()
-        
+
         # Fallback: route based on model's registered backend
         if not model_info:
             # If model not found but we have healthy backends, try to route anyway
             return self._get_least_loaded_chat_backend()
-        
+
         backend_type = model_info.get("backend")
         if backend_type == "vllm":
             return self._get_least_loaded_vllm()
@@ -1263,7 +1264,7 @@ class BackendManager:
             return "ollama", config.OLLAMA_URL
         else:
             return None, None
-    
+
     def _get_least_loaded_chat_backend(self) -> tuple[str, str]:
         """
         Route to least-loaded chat backend.
@@ -1272,7 +1273,7 @@ class BackendManager:
         best_backend = None
         best_url = None
         min_inflight = float("inf")
-        
+
         # Check all vLLM instances (GPUs) first
         for url in config.VLLM_URLS:
             key = f"vllm:{url}"
@@ -1282,7 +1283,7 @@ class BackendManager:
                     min_inflight = inflight
                     best_backend = "vllm"
                     best_url = url
-        
+
         # If all vLLM instances are busy, try llama.cpp (CPU)
         if best_backend is None or min_inflight >= config.MAX_INFLIGHT_PER_BACKEND:
             llamacpp_key = f"llamacpp:{config.LLAMACPP_URL}"
@@ -1293,24 +1294,24 @@ class BackendManager:
                         min_inflight = inflight
                         best_backend = "llamacpp"
                         best_url = config.LLAMACPP_URL
-        
+
         # Last resort: Ollama
         if best_backend is None:
             ollama_key = f"ollama:{config.OLLAMA_URL}"
             if self.backend_health.get(ollama_key, False):
                 best_backend = "ollama"
                 best_url = config.OLLAMA_URL
-        
+
         if best_backend:
             logger.debug(f"Routing to {best_backend} ({best_url}), inflight={min_inflight}")
-        
+
         return best_backend, best_url
-    
+
     def _get_least_loaded_vllm(self) -> tuple[str, str]:
         """Get least-loaded vLLM instance."""
         best_url = config.VLLM_URLS[0] if config.VLLM_URLS else None
         min_inflight = float("inf")
-        
+
         for url in config.VLLM_URLS:
             key = f"vllm:{url}"
             if self.backend_health.get(key, False):
@@ -1318,9 +1319,9 @@ class BackendManager:
                 if inflight < min_inflight:
                     min_inflight = inflight
                     best_url = url
-        
+
         return "vllm", best_url
-    
+
     async def discover_models(self):
         """Query backends to discover loaded models."""
         # Discover vLLM models
@@ -1336,7 +1337,7 @@ class BackendManager:
                             logger.info(f"Discovered vLLM model: {model_id}")
             except Exception as e:
                 logger.debug(f"Could not discover vLLM models from {url}: {e}")
-        
+
         # Discover llama.cpp model (it serves one model)
         try:
             resp = await self.http_client.get(f"{config.LLAMACPP_URL}/health", timeout=5.0)
@@ -1347,7 +1348,7 @@ class BackendManager:
                 logger.info(f"Discovered llama.cpp model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover llama.cpp models: {e}")
-        
+
         # Discover embedding model
         try:
             resp = await self.http_client.get(f"{config.EMBEDDING_URL}/health", timeout=5.0)
@@ -1363,7 +1364,7 @@ class BackendManager:
                 logger.info(f"Discovered embedding model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover embedding models: {e}")
-        
+
         # Discover Ollama models (both loaded and cached)
         try:
             # Get list of all downloaded models
@@ -1373,7 +1374,7 @@ class BackendManager:
                 models = data.get("models", [])
                 model_registry.update_cached_models(models)
                 logger.info(f"Discovered {len(models)} Ollama cached models")
-            
+
             # Check which models are currently loaded (have active sessions)
             ps_resp = await self.http_client.get(f"{config.OLLAMA_URL}/api/ps", timeout=5.0)
             if ps_resp.status_code == 200:
@@ -1388,7 +1389,7 @@ class BackendManager:
                         logger.info(f"Discovered loaded Ollama model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover Ollama models: {e}")
-    
+
     async def load_ollama_model(self, model_name: str) -> bool:
         """Lazy-load a model in Ollama. Returns True if successful."""
         try:
@@ -1409,7 +1410,7 @@ class BackendManager:
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {e}")
             return False
-    
+
     async def pull_ollama_model(self, model_name: str) -> AsyncGenerator[str, None]:
         """Download a model from HuggingFace/Ollama registry. Yields progress."""
         try:
@@ -1424,7 +1425,7 @@ class BackendManager:
                         yield line
         except Exception as e:
             yield json.dumps({"error": str(e)})
-    
+
     async def health_check(self):
         """Check health of all backends and discover models."""
         for url in config.VLLM_URLS:
@@ -1437,7 +1438,7 @@ class BackendManager:
             self.backend_health[key] = healthy
             BACKEND_STATUS.labels(backend="vllm", url=url).set(1 if healthy else 0)
             model_registry.update_backend_status("vllm", "healthy" if healthy else "unhealthy")
-        
+
         # Check llama.cpp
         try:
             resp = await self.http_client.get(f"{config.LLAMACPP_URL}/health", timeout=5.0)
@@ -1447,7 +1448,7 @@ class BackendManager:
         self.backend_health[f"llamacpp:{config.LLAMACPP_URL}"] = healthy
         BACKEND_STATUS.labels(backend="llamacpp", url=config.LLAMACPP_URL).set(1 if healthy else 0)
         model_registry.update_backend_status("llamacpp", "healthy" if healthy else "unhealthy")
-        
+
         # Check embedding service
         try:
             resp = await self.http_client.get(f"{config.EMBEDDING_URL}/health", timeout=5.0)
@@ -1457,7 +1458,7 @@ class BackendManager:
         self.backend_health[f"embedding:{config.EMBEDDING_URL}"] = healthy
         BACKEND_STATUS.labels(backend="embedding", url=config.EMBEDDING_URL).set(1 if healthy else 0)
         model_registry.update_backend_status("embedding", "healthy" if healthy else "unhealthy")
-        
+
         # Check Ollama
         try:
             resp = await self.http_client.get(f"{config.OLLAMA_URL}/api/tags", timeout=5.0)
@@ -1467,10 +1468,10 @@ class BackendManager:
         self.backend_health[f"ollama:{config.OLLAMA_URL}"] = healthy
         BACKEND_STATUS.labels(backend="ollama", url=config.OLLAMA_URL).set(1 if healthy else 0)
         model_registry.update_backend_status("ollama", "healthy" if healthy else "unhealthy")
-        
+
         # Periodically rediscover models
         await self.discover_models()
-    
+
     async def forward_request(
         self,
         method: str,
@@ -1485,7 +1486,7 @@ class BackendManager:
         backend_info contains: backend_type, backend_url for response enrichment.
         """
         backend_type, url = self.get_backend_url(model)
-        
+
         if not backend_type or not url:
             raise HTTPException(
                 status_code=503,
@@ -1494,18 +1495,18 @@ class BackendManager:
                     "hint": "All inference backends are currently unhealthy. Check /health/backends for status."
                 }
             )
-        
+
         backend_key = f"{backend_type}:{url}"
-        
+
         backend_info = {
             "backend": backend_type,
             "backend_url": url,
         }
-        
+
         # Track in-flight requests
         self.backend_inflight[backend_key] = self.backend_inflight.get(backend_key, 0) + 1
         BACKEND_INFLIGHT.labels(backend=backend_type).inc()
-        
+
         try:
             if stream:
                 return self._stream_request(url, endpoint, data, backend_type, backend_key, backend_info), backend_info
@@ -1521,7 +1522,7 @@ class BackendManager:
             if not stream:
                 self.backend_inflight[backend_key] = max(0, self.backend_inflight.get(backend_key, 0) - 1)
                 BACKEND_INFLIGHT.labels(backend=backend_type).dec()
-    
+
     async def _stream_request(
         self,
         url: str,
@@ -1570,24 +1571,24 @@ security = HTTPBearer()
 
 async def get_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """Extract and validate API key from Authorization header.
-    
+
     Auth path: Redis cache first (fast) → Postgres fallback (authoritative).
     On a Redis cache miss the key is written back so subsequent requests are fast.
     This means auth survives a Postgres pod restart (Redis serves the cached copy)
     and also survives a Redis pod restart (Postgres re-warms the cache on next hit).
     """
     api_key = credentials.credentials
-    
+
     # 1. Try Redis cache first
     key_config = await redis_client.get_api_key_config(api_key)
     if key_config:
         return api_key
-    
+
     # 2. Cache miss - check Postgres (authoritative source)
     key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    
+
     # 3. Write back to Redis cache for future requests
     await redis_client.set_api_key_config(api_key, key_config)
     return api_key
@@ -1599,13 +1600,13 @@ async def require_scope(required_scope: str, api_key: str) -> str:
     key_config = await redis_client.get_api_key_config(api_key) or await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    
+
     scopes = key_config.get("scopes", ["inference"])  # Default: inference only
-    
+
     # Admin scope grants all permissions
     if "admin" in scopes:
         return api_key
-    
+
     if required_scope not in scopes:
         raise HTTPException(
             status_code=403,
@@ -1617,7 +1618,7 @@ async def require_scope(required_scope: str, api_key: str) -> str:
                 "hint": "Request a new API key with appropriate scopes from your administrator"
             }
         )
-    
+
     return api_key
 
 
@@ -1635,7 +1636,7 @@ async def get_priority(x_priority: str = Header(None)) -> str:
 
 async def warm_redis_from_postgres():
     """Load all active API keys from Postgres into Redis cache.
-    
+
     Called on startup and periodically so Redis always has a fresh
     copy of every key.  This means auth survives a Redis restart
     (next request re-warms the cache) and also means the gateway
@@ -1647,11 +1648,11 @@ async def warm_redis_from_postgres():
     except Exception as e:
         logger.error(f"warm_redis_from_postgres: Postgres query failed: {e}")
         return
-    
+
     if not keys:
         logger.warning("warm_redis_from_postgres: no keys found in Postgres")
         return
-    
+
     success_count = 0
     for k in keys:
         try:
@@ -1668,7 +1669,7 @@ async def warm_redis_from_postgres():
         except Exception as e:
             # Redis failures are expected when Redis is down; fail-open behavior
             logger.debug(f"warm_redis_from_postgres: Redis unavailable for key {k.get('name', 'unknown')}: {e}")
-    
+
     if success_count > 0:
         logger.info(f"warm_redis_from_postgres: cached {success_count}/{len(keys)} key(s) in Redis")
     else:
@@ -1682,11 +1683,11 @@ async def lifespan(app: FastAPI):
     await postgres_client.connect()
     await redis_client.connect()
     await backend_manager.start()
-    
+
     # Pre-populate Redis with all API keys from Postgres so auth
     # works immediately even if Postgres becomes temporarily unavailable
     await warm_redis_from_postgres()
-    
+
     # Start background health check
     async def health_check_loop():
         while True:
@@ -1695,19 +1696,19 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.error(f"Health check failed: {e}")
             await asyncio.sleep(30)
-    
+
     # Periodically re-sync Postgres → Redis (every 5 minutes)
     # Handles: Redis pod restart (cache wiped), new keys added via psql/manage-keys.sh
     async def postgres_redis_sync_loop():
         while True:
             await asyncio.sleep(300)
             await warm_redis_from_postgres()
-    
+
     health_task = asyncio.create_task(health_check_loop())
     sync_task = asyncio.create_task(postgres_redis_sync_loop())
-    
+
     yield
-    
+
     # Shutdown
     health_task.cancel()
     sync_task.cancel()
@@ -1797,7 +1798,7 @@ async def chat_completions(
     """OpenAI-compatible chat completions endpoint - requires \'inference\' scope."""
     await require_scope("inference", api_key)
     start_time = time.time()
-    
+
     # Resolve model - check if it exists
     model_info = model_registry.get_model(request.model)
     if not model_info:
@@ -1810,7 +1811,7 @@ async def chat_completions(
                 "hint": "Call GET /v1/models to see available models, or POST /admin/models/download to download new ones"
             }
         )
-    
+
     # Handle lazy loading for cached models
     if model_info.get("lazy_load") and model_info.get("status") == "cached":
         logger.info(f"Lazy-loading cached model: {request.model}")
@@ -1825,9 +1826,9 @@ async def chat_completions(
             )
         # Refresh model info after loading
         model_info = model_registry.get_model(request.model)
-    
+
     model = model_info.get("name", request.model)
-    
+
     # Get key config - Redis cache first (already warmed by get_api_key auth), Postgres fallback
     key_config = (
         await redis_client.get_api_key_config(api_key)
@@ -1838,7 +1839,7 @@ async def chat_completions(
             "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
         }
     )
-    
+
     # Estimate prompt tokens (word count × 1.3 is a fast approximation)
     estimated_prompt_tokens = int(sum(len(m.content.split()) * 1.3 for m in request.messages))
 
@@ -1850,7 +1851,7 @@ async def chat_completions(
         await rate_limiter.release(api_key)
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
-    
+
     # Build request data - exclude None values to avoid backend parse errors
     data = {
         "model": model,
@@ -1862,14 +1863,14 @@ async def chat_completions(
     }
     if request.stop:
         data["stop"] = request.stop
-    
+
     try:
         if request.stream:
             # Streaming response - backend info is injected into SSE events
             stream_gen, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/chat/completions", model, data, stream=True
             )
-            
+
             async def stream_generator():
                 total_output_tokens = 0
                 async for chunk in stream_gen:
@@ -1877,13 +1878,13 @@ async def chat_completions(
                     # Rough token counting from SSE data
                     if b'"content":' in chunk:
                         total_output_tokens += 1
-                
+
                 # Track usage after streaming completes
                 input_tokens = sum(len(m.content.split()) for m in request.messages) * 2  # Rough estimate
                 await postgres_client.add_token_usage(api_key, input_tokens, total_output_tokens)
                 TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                 TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
-            
+
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
             return StreamingResponse(
                 stream_generator(),
@@ -1898,16 +1899,16 @@ async def chat_completions(
             response, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/chat/completions", model, data
             )
-            
+
             if response.status_code != 200:
                 REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
                 raise HTTPException(status_code=response.status_code, detail=response.text)
-            
+
             result = response.json()
-            
+
             # Enrich response with backend info (OpenAI-compatible)
             result["system_fingerprint"] = backend_info.get("backend", "unknown")
-            
+
             # Track token usage
             usage = result.get("usage", {})
             input_tokens = usage.get("prompt_tokens", 0)
@@ -1916,13 +1917,13 @@ async def chat_completions(
             await redis_client.add_tpm_usage(api_key, output_tokens)  # charge actual output tokens to TPM window
             TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
             TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
-            
+
             duration = time.time() - start_time
             REQUEST_DURATION.labels(model=model, priority=priority, endpoint="chat").observe(duration)
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
-            
+
             return result
-    
+
     except httpx.HTTPError as e:
         REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
         logger.error(f"Backend error: {e}")
@@ -1940,7 +1941,7 @@ async def completions(
     """OpenAI-compatible completions endpoint."""
     start_time = time.time()
     model = config.MODEL_ALIASES.get(request.model, request.model)
-    
+
     # Get key config - Redis cache first, Postgres fallback
     key_config = (
         await redis_client.get_api_key_config(api_key)
@@ -1951,7 +1952,7 @@ async def completions(
             "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
         }
     )
-    
+
     # Estimate prompt tokens
     estimated_prompt_tokens = int(len(request.prompt.split()) * 1.3)
 
@@ -1965,17 +1966,17 @@ async def completions(
         "max_tokens": request.max_tokens,
         "stream": request.stream,
     }
-    
+
     try:
         if request.stream:
             stream_gen, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/completions", model, data, stream=True
             )
-            
+
             async def stream_generator():
                 async for chunk in stream_gen:
                     yield chunk
-            
+
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
@@ -1985,19 +1986,19 @@ async def completions(
             response, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/completions", model, data
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail=response.text)
-            
+
             result = response.json()
             result["system_fingerprint"] = backend_info.get("backend", "unknown")
-            
+
             duration = time.time() - start_time
             REQUEST_DURATION.labels(model=model, priority=priority, endpoint="completions").observe(duration)
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="completions").inc()
-            
+
             return result
-    
+
     except httpx.HTTPError as e:
         REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="completions").inc()
         raise HTTPException(status_code=503, detail="Backend service unavailable")
@@ -2014,7 +2015,7 @@ async def embeddings(
     """OpenAI-compatible embeddings endpoint - requires \'inference\' scope."""
     await require_scope("inference", api_key)
     start_time = time.time()
-    
+
     # Resolve model - check if it exists
     model_info = model_registry.get_model(request.model)
     if not model_info:
@@ -2027,9 +2028,9 @@ async def embeddings(
                 "hint": "Call GET /v1/models first to see available models"
             }
         )
-    
+
     model = model_info.get("name", request.model)
-    
+
     # Get key config - Redis cache first, Postgres fallback
     key_config = (
         await redis_client.get_api_key_config(api_key)
@@ -2040,7 +2041,7 @@ async def embeddings(
             "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
         }
     )
-    
+
     # Estimate prompt tokens
     input_list = request.input if isinstance(request.input, list) else [request.input]
     estimated_prompt_tokens = int(sum(len(t.split()) * 1.3 for t in input_list))
@@ -2050,7 +2051,7 @@ async def embeddings(
 
     # Normalize input to list
     input_texts = request.input if isinstance(request.input, list) else [request.input]
-    
+
     # Check cache for embeddings
     cache_hits = []
     cache_misses = []
@@ -2061,7 +2062,7 @@ async def embeddings(
             cache_hits.append((i, json.loads(cached)))
         else:
             cache_misses.append((i, text))
-    
+
     # Process cache misses
     backend_info = {"backend": "embedding"}
     if cache_misses:
@@ -2069,42 +2070,42 @@ async def embeddings(
             "model": model,
             "input": [text for _, text in cache_misses],
         }
-        
+
         try:
             response, backend_info = await backend_manager.forward_request(
                 "POST", "/v1/embeddings", model, data
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail=response.text)
-            
+
             result = response.json()
-            
+
             # Cache new embeddings
             for (orig_idx, text), emb_data in zip(cache_misses, result.get("data", [])):
                 cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
                 await redis_client.cache_response(cache_key, json.dumps(emb_data), ttl=86400)
                 cache_hits.append((orig_idx, emb_data))
-        
+
         except httpx.HTTPError as e:
             REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
             await rate_limiter.release(api_key)
             raise HTTPException(status_code=503, detail="Backend service unavailable")
-    
+
     # Sort by original index
     cache_hits.sort(key=lambda x: x[0])
     embeddings_data = [emb for _, emb in cache_hits]
-    
+
     # Estimate token usage
     total_tokens = sum(len(text.split()) * 2 for text in input_texts)
     await postgres_client.add_token_usage(api_key, total_tokens, 0)
     await redis_client.add_tpm_usage(api_key, total_tokens)
     TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
-    
+
     duration = time.time() - start_time
     REQUEST_DURATION.labels(model=model, priority=priority, endpoint="embeddings").observe(duration)
     REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="embeddings").inc()
-    
+
     await rate_limiter.release(api_key)
     return {
         "object": "list",
@@ -2125,13 +2126,13 @@ async def get_usage(api_key: str = Depends(get_api_key)):
             "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
         }
     )
-    
+
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
     current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
-    
+
     # Calculate reset time
     tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    
+
     return UsageResponse(
         tokens_used_today=input_tokens + output_tokens,
         tokens_limit_daily=key_config["tokens_per_day"],
@@ -2165,15 +2166,15 @@ ADMIN_LOGIN_HTML = """
                 <h1 class="text-3xl font-bold text-white mb-2">LLM API Admin</h1>
                 <p class="text-gray-400">Enter your admin API key to continue</p>
             </div>
-            
+
             <form onsubmit="handleLogin(event)" class="space-y-4">
                 <div>
                     <label for="api-key" class="block text-sm font-medium text-gray-300 mb-2">
                         Admin API Key
                     </label>
-                    <input 
-                        type="password" 
-                        id="api-key" 
+                    <input
+                        type="password"
+                        id="api-key"
                         name="llmapi-admin-api-key"
                         autocomplete="off"
                         autocapitalize="off"
@@ -2186,11 +2187,11 @@ ADMIN_LOGIN_HTML = """
                         required
                     />
                 </div>
-                
+
                 <div id="error-message" class="hidden bg-red-900 border border-red-700 text-red-200 rounded-lg p-3 text-sm">
                 </div>
-                
-                <button 
+
+                <button
                     type="submit"
                     class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
                 >
@@ -2198,7 +2199,7 @@ ADMIN_LOGIN_HTML = """
                     Login to Admin Dashboard
                 </button>
             </form>
-            
+
             <div class="mt-6 p-4 bg-gray-700 rounded-lg">
                 <p class="text-xs text-gray-400 mb-2">
                     <strong class="text-gray-300">Where to find your admin key:</strong>
@@ -2212,7 +2213,7 @@ ADMIN_LOGIN_HTML = """
                 </code>
             </div>
         </div>
-        
+
         <p class="text-center text-gray-500 text-xs mt-6">
             Your API key is stored locally in your browser and never transmitted to any third party.
         </p>
@@ -2220,19 +2221,19 @@ ADMIN_LOGIN_HTML = """
 
     <script>
         lucide.createIcons();
-        
+
         async function handleLogin(event) {
             event.preventDefault();
-            
+
             const apiKey = document.getElementById('api-key').value.trim();
             const errorDiv = document.getElementById('error-message');
-            
+
             // Validate format
             if (!apiKey.startsWith('sk-mynodeone-')) {
                 showError('Invalid API key format. Key must start with "sk-mynodeone-"');
                 return;
             }
-            
+
             // Test the API key by calling /admin/models
             try {
                 const response = await fetch('/admin/models', {
@@ -2240,7 +2241,7 @@ ADMIN_LOGIN_HTML = """
                         'Authorization': `Bearer ${apiKey}`
                     }
                 });
-                
+
                 if (response.ok) {
                     // Key is valid, store it and redirect
                     localStorage.setItem('llmapi_admin_key', apiKey);
@@ -2257,13 +2258,13 @@ ADMIN_LOGIN_HTML = """
                 showError('Failed to connect to API: ' + e.message);
             }
         }
-        
+
         function showError(message) {
             const errorDiv = document.getElementById('error-message');
             errorDiv.textContent = message;
             errorDiv.classList.remove('hidden');
         }
-        
+
         // Check if already logged in
         const storedKey = localStorage.getItem('llmapi_admin_key');
         if (storedKey) {
@@ -2347,7 +2348,7 @@ ADMIN_HTML = """
                 <i data-lucide="boxes" class="w-5 h-5 text-purple-400"></i>
                 Model Management
             </h2>
-            
+
             <!-- Section: Ollama (Flexible) -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-purple-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2355,7 +2356,7 @@ ADMIN_HTML = """
                         <i data-lucide="sparkles" class="w-4 h-4 text-purple-400"></i>
                         Ollama (Flexible Backend)
                     </h3>
-                    <a href="https://ollama.com/library" target="_blank" 
+                    <a href="https://ollama.com/library" target="_blank"
                        class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
                         <i data-lucide="external-link" class="w-3 h-3"></i>
                         Browse Models
@@ -2365,9 +2366,9 @@ ADMIN_HTML = """
                     Best for: Quick experimentation, smaller models, CPU/GPU flexible. Models are cached locally.
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" id="model-name" placeholder="Model name (e.g., llama3.2, qwen2.5:7b, mistral)" 
+                    <input type="text" id="model-name" placeholder="Model name (e.g., qwen3:14b, llama3.2:3b, mistral)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 col-span-2">
-                    <button onclick="downloadModel()" 
+                    <button onclick="downloadModel()"
                             class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="download" class="w-4 h-4"></i>
                         Download
@@ -2380,13 +2381,13 @@ ADMIN_HTML = """
                     <p id="download-status" class="text-xs text-gray-400 mt-1"></p>
                 </div>
                 <p class="text-xs text-gray-500 mt-2">
-                    Popular: <code class="bg-gray-600 px-1 rounded">llama3.2</code> 
-                    <code class="bg-gray-600 px-1 rounded">qwen2.5:7b</code>
+                    Popular: <code class="bg-gray-600 px-1 rounded">qwen3:14b</code>
+                    <code class="bg-gray-600 px-1 rounded">llama3.2:3b</code>
                     <code class="bg-gray-600 px-1 rounded">mistral</code>
-                    <code class="bg-gray-600 px-1 rounded">codellama</code>
+                    <code class="bg-gray-600 px-1 rounded">gemma3:4b</code>
                 </p>
             </div>
-            
+
             <!-- Section: vLLM (GPU) -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-green-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2396,7 +2397,7 @@ ADMIN_HTML = """
                     </h3>
                     <div class="flex items-center gap-2">
                         <span class="text-xs bg-red-900 text-red-300 px-2 py-1 rounded">~10-30 min to change</span>
-                        <a href="https://huggingface.co/models?other=awq" target="_blank" 
+                        <a href="https://huggingface.co/models?other=awq" target="_blank"
                            class="text-xs text-green-400 hover:text-green-300 flex items-center gap-1">
                             <i data-lucide="external-link" class="w-3 h-3"></i>
                             Browse AWQ Models
@@ -2407,9 +2408,9 @@ ADMIN_HTML = """
                     Best for: Production workloads, high throughput. Uses GPU VRAM. Requires AWQ/GPTQ quantized models for 24GB VRAM.
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" id="vllm-model" placeholder="HuggingFace model (e.g., Qwen/Qwen2.5-14B-Instruct-AWQ)" 
+                    <input type="text" id="vllm-model" placeholder="HuggingFace model (e.g., Qwen/Qwen3-14B-AWQ)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 col-span-2">
-                    <button onclick="changeVllmModel()" 
+                    <button onclick="changeVllmModel()"
                             class="bg-green-700 hover:bg-green-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         Change Model
@@ -2417,12 +2418,12 @@ ADMIN_HTML = """
                 </div>
                 <p id="vllm-current" class="text-xs text-gray-500 mt-2">Current: Loading...</p>
                 <p class="text-xs text-gray-500 mt-1">
-                    Recommended for 24GB VRAM: 
-                    <code class="bg-gray-600 px-1 rounded">Qwen/Qwen2.5-14B-Instruct-AWQ</code>
-                    <code class="bg-gray-600 px-1 rounded">TheBloke/Llama-2-13B-chat-AWQ</code>
+                    Recommended for 24GB VRAM:
+                    <code class="bg-gray-600 px-1 rounded">Qwen/Qwen3-14B-AWQ</code>
+                    <code class="bg-gray-600 px-1 rounded">meta-llama/Llama-3.2-3B-Instruct</code>
                 </p>
             </div>
-            
+
             <!-- Section: llama.cpp (CPU) -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-blue-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2436,7 +2437,7 @@ ADMIN_HTML = """
                                 class="text-xs bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 transition">
                             Start/Stop
                         </button>
-                        <a href="https://huggingface.co/models?library=gguf&sort=downloads" target="_blank" 
+                        <a href="https://huggingface.co/models?library=gguf&sort=downloads" target="_blank"
                            class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
                             <i data-lucide="external-link" class="w-3 h-3"></i>
                             Browse GGUF Models
@@ -2447,9 +2448,9 @@ ADMIN_HTML = """
                     Best for: 70B+ models that don't fit in GPU. Uses system RAM (~40GB for 70B). Stop when not in use to free memory.
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" id="llamacpp-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../model.Q4_K_M.gguf)" 
+                    <input type="text" id="llamacpp-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../model.Q4_K_M.gguf)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 col-span-2">
-                    <button onclick="changeLlamacppModel()" 
+                    <button onclick="changeLlamacppModel()"
                             class="bg-blue-700 hover:bg-blue-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         Change Model
@@ -2457,12 +2458,12 @@ ADMIN_HTML = """
                 </div>
                 <p id="llamacpp-current" class="text-xs text-gray-500 mt-2">Current: Loading...</p>
                 <p class="text-xs text-gray-500 mt-1">
-                    Recommended for 256GB RAM: 
-                    <code class="bg-gray-600 px-1 rounded text-xs">Llama-3.1-70B-Q4_K_M.gguf</code>
-                    <code class="bg-gray-600 px-1 rounded text-xs">Qwen2.5-72B-Q4_K_M.gguf</code>
+                    Recommended for 256GB RAM:
+                    <code class="bg-gray-600 px-1 rounded text-xs">Llama-3.3-70B-Q4_K_M.gguf</code>
+                    <code class="bg-gray-600 px-1 rounded text-xs">Qwen3-14B-Q4_K_M.gguf</code>
                 </p>
             </div>
-            
+
             <!-- Section: Embedding -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-yellow-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2470,7 +2471,7 @@ ADMIN_HTML = """
                         <i data-lucide="binary" class="w-4 h-4 text-yellow-400"></i>
                         Embedding Model
                     </h3>
-                    <a href="https://huggingface.co/models?pipeline_tag=feature-extraction&library=gguf&sort=downloads" target="_blank" 
+                    <a href="https://huggingface.co/models?pipeline_tag=feature-extraction&library=gguf&sort=downloads" target="_blank"
                        class="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1">
                         <i data-lucide="external-link" class="w-3 h-3"></i>
                         Browse Embedding Models
@@ -2480,9 +2481,9 @@ ADMIN_HTML = """
                     Used for: Document search, RAG, semantic similarity. Runs on CPU, lightweight (~150MB).
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" id="embedding-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../nomic-embed-text.gguf)" 
+                    <input type="text" id="embedding-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../nomic-embed-text.gguf)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 col-span-2">
-                    <button onclick="changeEmbeddingModel()" 
+                    <button onclick="changeEmbeddingModel()"
                             class="bg-yellow-700 hover:bg-yellow-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         Change Model
@@ -2490,12 +2491,12 @@ ADMIN_HTML = """
                 </div>
                 <p id="embedding-current" class="text-xs text-gray-500 mt-2">Current: Loading...</p>
                 <p class="text-xs text-gray-500 mt-1">
-                    Recommended: 
+                    Recommended:
                     <code class="bg-gray-600 px-1 rounded text-xs">nomic-embed-text-v1.5.Q8_0.gguf</code>
                     <code class="bg-gray-600 px-1 rounded text-xs">bge-base-en-v1.5.Q8_0.gguf</code>
                 </p>
             </div>
-            
+
             <!-- Section: HuggingFace Token -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-gray-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2503,25 +2504,25 @@ ADMIN_HTML = """
                         <i data-lucide="key-round" class="w-4 h-4 text-gray-400"></i>
                         HuggingFace Token
                     </h3>
-                    <a href="https://huggingface.co/settings/tokens" target="_blank" 
+                    <a href="https://huggingface.co/settings/tokens" target="_blank"
                        class="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1">
                         <i data-lucide="external-link" class="w-3 h-3"></i>
                         Get Token
                     </a>
                 </div>
                 <p class="text-xs text-gray-400 mb-3">
-                    Required for gated models (Llama-3, CodeLlama, Mistral). Token is stored securely.
+                    Required for gated models such as Llama. Token is stored securely.
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="password" id="hf-token" name="llmapi-hf-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" placeholder="hf_xxxxx..." 
+                    <input type="password" id="hf-token" name="llmapi-hf-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" placeholder="hf_xxxxx..."
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 col-span-2">
-                    <button onclick="setHfToken()" 
+                    <button onclick="setHfToken()"
                             class="bg-gray-600 hover:bg-gray-500 rounded px-4 py-2 text-sm font-medium transition">
                         Save Token
                     </button>
                 </div>
             </div>
-            
+
             <!-- Advanced: Backend Configuration -->
             <details class="bg-gray-700 rounded-lg p-4 mb-4">
                 <summary class="font-medium cursor-pointer flex items-center gap-2">
@@ -2536,9 +2537,9 @@ ADMIN_HTML = """
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400">Context Length</label>
-                                <input type="number" id="vllm-ctx" value="16384" 
+                                <input type="number" id="vllm-ctx" value="32768"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
-                                <p class="text-xs text-gray-500 mt-1">8K-32K typical</p>
+                                <p class="text-xs text-gray-500 mt-1">Qwen3 native max</p>
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">GPU Memory %</label>
@@ -2547,10 +2548,10 @@ ADMIN_HTML = """
                                 <p class="text-xs text-gray-500 mt-1">90=safe, 95=aggressive</p>
                             </div>
                             <div>
-                                <label class="text-xs text-gray-400">Max Batch Size</label>
-                                <input type="number" id="vllm-batch" value="32" 
+                                <label class="text-xs text-gray-400">Max Sequences</label>
+                                <input type="number" id="vllm-batch" value="1"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
-                                <p class="text-xs text-gray-500 mt-1">Concurrent requests</p>
+                                <p class="text-xs text-gray-500 mt-1">1 for 32K on 3090</p>
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">Quantization</label>
@@ -2560,78 +2561,92 @@ ADMIN_HTML = """
                                     <option value="none">None (FP16)</option>
                                 </select>
                             </div>
+                            <div>
+                                <label class="text-xs text-gray-400">Batched Tokens</label>
+                                <input type="number" id="vllm-batched-tokens" value="32768"
+                                       class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
+                                <p class="text-xs text-gray-500 mt-1">Prefill token cap</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400">Reasoning</label>
+                                <select id="vllm-reasoning" class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
+                                    <option value="true">Enabled</option>
+                                    <option value="false">Disabled</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Qwen3 parser</p>
+                            </div>
                         </div>
-                        <button onclick="updateVllmConfig()" 
+                        <button onclick="updateVllmConfig()"
                                 class="mt-3 bg-green-700 hover:bg-green-600 rounded px-3 py-1 text-xs">
                             Apply vLLM Config
                         </button>
                     </div>
-                    
+
                     <!-- llama.cpp Config -->
                     <div class="border-l-2 border-blue-500 pl-4">
                         <h4 class="text-sm font-medium text-blue-400 mb-2">llama.cpp Configuration</h4>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400">Context Length</label>
-                                <input type="number" id="llamacpp-ctx" value="32768" 
+                                <input type="number" id="llamacpp-ctx" value="32768"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                                 <p class="text-xs text-gray-500 mt-1">32K+ for 256GB RAM</p>
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">Batch Size</label>
-                                <input type="number" id="llamacpp-batch" value="4096" 
+                                <input type="number" id="llamacpp-batch" value="4096"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">CPU Threads</label>
-                                <input type="number" id="llamacpp-threads" value="16" 
+                                <input type="number" id="llamacpp-threads" value="16"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">Parallel Slots</label>
-                                <input type="number" id="llamacpp-parallel" value="4" 
+                                <input type="number" id="llamacpp-parallel" value="4"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                                 <p class="text-xs text-gray-500 mt-1">Concurrent users</p>
                             </div>
                         </div>
-                        <button onclick="updateLlamacppConfig()" 
+                        <button onclick="updateLlamacppConfig()"
                                 class="mt-3 bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 text-xs">
                             Apply llama.cpp Config
                         </button>
                     </div>
-                    
+
                     <!-- Embedding Config -->
                     <div class="border-l-2 border-yellow-500 pl-4">
                         <h4 class="text-sm font-medium text-yellow-400 mb-2">Embedding Configuration</h4>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400">Context Size</label>
-                                <input type="number" id="embedding-ctx" value="8192" 
+                                <input type="number" id="embedding-ctx" value="8192"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">Batch Size</label>
-                                <input type="number" id="embedding-batch" value="512" 
+                                <input type="number" id="embedding-batch" value="512"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">CPU Threads</label>
-                                <input type="number" id="embedding-threads" value="4" 
+                                <input type="number" id="embedding-threads" value="4"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                         </div>
-                        <button onclick="updateEmbeddingConfig()" 
+                        <button onclick="updateEmbeddingConfig()"
                                 class="mt-3 bg-yellow-700 hover:bg-yellow-600 rounded px-3 py-1 text-xs">
                             Apply Embedding Config
                         </button>
                     </div>
-                    
+
                     <p class="text-xs text-gray-500 mt-2">
                         ⚠️ <strong>OOM Prevention:</strong> If you get out-of-memory errors, reduce context length or GPU memory %.
                     </p>
                 </div>
             </details>
-            
+
             <!-- Models List -->
             <h3 class="font-medium mb-3">Loaded Models</h3>
             <div id="models-list" class="space-y-2">
@@ -2649,7 +2664,7 @@ ADMIN_HTML = """
                 <i data-lucide="zap" class="w-5 h-5 text-orange-400"></i>
                 GPU Scaling & Resource Management
             </h2>
-            
+
             <!-- Cluster GPU Overview -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4">
                 <div class="flex items-center justify-between mb-3">
@@ -2666,7 +2681,7 @@ ADMIN_HTML = """
                     <p class="text-sm text-gray-400">Loading GPU information...</p>
                 </div>
             </div>
-            
+
             <!-- vLLM Scaling Control -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-green-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2681,7 +2696,7 @@ ADMIN_HTML = """
                 <p class="text-xs text-gray-400 mb-3">
                     Scale vLLM replicas to use multiple GPUs for higher throughput. Each replica uses 1 GPU.
                 </p>
-                
+
                 <!-- Replica Buttons (dynamically generated based on available GPUs) -->
                 <div class="flex items-center gap-3 mb-3">
                     <span class="text-sm text-gray-400">Replicas:</span>
@@ -2695,12 +2710,12 @@ ADMIN_HTML = """
                 <p class="text-xs text-gray-500 mb-2">
                     Buttons adjust automatically based on available GPUs in cluster
                 </p>
-                
+
                 <!-- Pod Status -->
                 <div id="vllm-pods" class="mt-3 space-y-1 text-xs">
                     <!-- Dynamic pod status will be inserted here -->
                 </div>
-                
+
                 <div class="mt-3 p-3 bg-gray-800 rounded text-xs text-gray-400">
                     <p><strong class="text-gray-300">💡 Tip:</strong> Each vLLM replica:</p>
                     <ul class="list-disc list-inside mt-1 ml-2 space-y-1">
@@ -2711,7 +2726,7 @@ ADMIN_HTML = """
                     </ul>
                 </div>
             </div>
-            
+
             <!-- llamacpp Control -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4 border-l-4 border-blue-500">
                 <div class="flex items-center justify-between mb-3">
@@ -2732,7 +2747,7 @@ ADMIN_HTML = """
                 <p class="text-xs text-gray-400 mb-3">
                     llama.cpp uses CPU and RAM for 70B+ models. Stop when not needed to free up ~64 GB RAM.
                 </p>
-                
+
                 <div class="mt-3 p-3 bg-yellow-900 bg-opacity-30 rounded text-xs border border-yellow-600">
                     <p class="text-yellow-200"><strong>⚠️ RAM Management:</strong></p>
                     <p class="text-yellow-300 mt-1">
@@ -2741,7 +2756,7 @@ ADMIN_HTML = """
                     </p>
                 </div>
             </div>
-            
+
             <!-- Quick Actions -->
             <div class="bg-gray-700 rounded-lg p-4">
                 <h3 class="font-medium mb-3 flex items-center gap-2">
@@ -2749,22 +2764,22 @@ ADMIN_HTML = """
                     Quick Actions
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <button onclick="quickAction('max-gpu')" 
+                    <button onclick="quickAction('max-gpu')"
                             class="bg-green-700 hover:bg-green-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="zap" class="w-4 h-4"></i>
                         Max GPU Mode (Use All GPUs)
                     </button>
-                    <button onclick="quickAction('save-ram')" 
+                    <button onclick="quickAction('save-ram')"
                             class="bg-blue-700 hover:bg-blue-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="save" class="w-4 h-4"></i>
                         Save RAM (Stop llamacpp)
                     </button>
-                    <button onclick="quickAction('balanced')" 
+                    <button onclick="quickAction('balanced')"
                             class="bg-purple-700 hover:bg-purple-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="scale" class="w-4 h-4"></i>
                         Balanced Mode (1 GPU + CPU)
                     </button>
-                    <button onclick="quickAction('stop-all')" 
+                    <button onclick="quickAction('stop-all')"
                             class="bg-red-700 hover:bg-red-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="power" class="w-4 h-4"></i>
                         Stop All (Free Resources)
@@ -2783,18 +2798,18 @@ ADMIN_HTML = """
                     <i data-lucide="key" class="w-5 h-5 text-yellow-400"></i>
                     API Keys
                 </h2>
-                <button onclick="toggleKeyVisibility()" id="toggle-keys-btn" 
+                <button onclick="toggleKeyVisibility()" id="toggle-keys-btn"
                         class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs flex items-center gap-2 transition">
                     <i data-lucide="eye-off" class="w-4 h-4" id="toggle-icon"></i>
                     <span id="toggle-text">Show Keys</span>
                 </button>
             </div>
-            
+
             <!-- Create Key Form -->
             <div class="bg-gray-700 rounded-lg p-4 mb-4">
                 <h3 class="font-medium mb-3">Create New Key</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                    <input type="text" id="key-name" placeholder="Key name" 
+                    <input type="text" id="key-name" placeholder="Key name"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                     <input type="number" id="key-tokens" placeholder="Tokens/day" value="100000"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
@@ -2821,7 +2836,7 @@ ADMIN_HTML = """
                     </div>
                     <p class="text-xs text-gray-500 mt-1">Admin scope grants all permissions</p>
                 </div>
-                <button onclick="createKey()" 
+                <button onclick="createKey()"
                         class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition">
                     Create Key
                 </button>
@@ -2830,7 +2845,7 @@ ADMIN_HTML = """
                     <code id="new-key-value" class="block bg-gray-900 rounded p-2 mt-1 text-green-400 text-sm font-mono break-all"></code>
                 </div>
             </div>
-            
+
             <div id="keys-list" class="space-y-2">
                 <p class="text-gray-400">Loading...</p>
             </div>
@@ -2864,7 +2879,7 @@ ADMIN_HTML = """
                     Loading timezone info...
                 </div>
             </div>
-            
+
             <!-- Summary Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div class="bg-gray-700 rounded-lg p-4">
@@ -2880,7 +2895,7 @@ ADMIN_HTML = """
                     <p id="stats-active-keys" class="text-2xl font-bold text-blue-400">-</p>
                 </div>
             </div>
-            
+
             <!-- Usage by API Key -->
             <div class="mb-6">
                 <h3 class="font-medium mb-3">Usage by API Key (Selected Window)</h3>
@@ -2888,7 +2903,7 @@ ADMIN_HTML = """
                     <p class="text-gray-400 text-sm">Loading...</p>
                 </div>
             </div>
-            
+
             <!-- Hourly Chart (simple bar representation) -->
             <div>
                 <h3 id="stats-chart-title" class="font-medium mb-3">Requests (Rolling Window)</h3>
@@ -2908,30 +2923,30 @@ ADMIN_HTML = """
         lucide.createIcons();
 
         const API_BASE = window.location.origin;
-        
+
         // Get API key from localStorage
         const API_KEY = localStorage.getItem('llmapi_admin_key');
-        
+
         // Redirect to login if no key
         if (!API_KEY) {
             window.location.href = '/admin';
         }
-        
+
         // API Key visibility state
         let keysVisible = false;
         let statsCache = null;
-        
+
         function maskKey(key) {
             if (!key) return '';
             return key.substring(0, 12) + '...' + key.substring(key.length - 4);
         }
-        
+
         function toggleKeyVisibility() {
             keysVisible = !keysVisible;
             const toggleIcon = document.getElementById('toggle-icon');
             const toggleText = document.getElementById('toggle-text');
             const keyElements = document.querySelectorAll('.api-key-display');
-            
+
             if (keysVisible) {
                 toggleIcon.setAttribute('data-lucide', 'eye');
                 toggleText.textContent = 'Hide Keys';
@@ -3047,7 +3062,7 @@ ADMIN_HTML = """
                              title="${title}"></div>`;
             }).join('');
         }
-        
+
         // Admin API calls with API key authentication
         async function adminFetch(url, options = {}) {
             try {
@@ -3055,11 +3070,11 @@ ADMIN_HTML = """
                     ...options.headers,
                     'Authorization': `Bearer ${API_KEY}`
                 };
-                const response = await fetch(url, { 
+                const response = await fetch(url, {
                     ...options,
                     headers
                 });
-                
+
                 // Handle authentication failures
                 if (response.status === 401 || response.status === 403) {
                     localStorage.removeItem('llmapi_admin_key');
@@ -3067,14 +3082,14 @@ ADMIN_HTML = """
                     window.location.href = '/admin';
                     return null;
                 }
-                
+
                 return response;
             } catch (e) {
                 console.error('API call failed:', e);
                 throw e;
             }
         }
-        
+
         // Validate API key works on page load
         async function validateApiKey() {
             try {
@@ -3095,7 +3110,7 @@ ADMIN_HTML = """
                 return false;
             }
         }
-        
+
         // Logout function
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
@@ -3109,14 +3124,14 @@ ADMIN_HTML = """
                 const resp = await adminFetch(`${API_BASE}/health/backends`);
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
-                
+
                 // Update backend status
                 for (const [key, healthy] of Object.entries(data.backends)) {
                     const [backend, url] = key.split(':');
                     const el = document.getElementById(`${backend}-status`);
                     if (el) {
-                        el.innerHTML = healthy 
-                            ? '<span class="text-green-400">● Online</span>' 
+                        el.innerHTML = healthy
+                            ? '<span class="text-green-400">● Online</span>'
                             : '<span class="text-red-400">● Offline</span>';
                     }
                 }
@@ -3130,10 +3145,10 @@ ADMIN_HTML = """
                 const resp = await adminFetch(`${API_BASE}/admin/models`);
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
-                
+
                 const list = document.getElementById('models-list');
                 let html = '';
-                
+
                 // Show download status if present
                 if (data.download_status) {
                     const ds = data.download_status;
@@ -3162,7 +3177,7 @@ ADMIN_HTML = """
                         `;
                     }
                 }
-                
+
                 // Show loaded models
                 if (data.models && data.models.length > 0) {
                     html += data.models.map(m => `
@@ -3177,7 +3192,7 @@ ADMIN_HTML = """
                                     ${m.status}
                                 </span>
                                 ${m.backend === 'ollama' ? `
-                                    <button onclick="deleteModel('${m.id}')" 
+                                    <button onclick="deleteModel('${m.id}')"
                                             class="text-red-400 hover:text-red-300 transition p-1" title="Delete model">
                                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                                     </button>
@@ -3188,45 +3203,45 @@ ADMIN_HTML = """
                 } else if (!data.download_status || data.download_status.status !== 'downloading') {
                     html += '<p class="text-yellow-400">No models loaded. Use the form above to download a model.</p>';
                 }
-                
+
                 list.innerHTML = html;
                 lucide.createIcons();
             } catch (e) {
                 console.error('Failed to load models:', e);
             }
         }
-        
+
         function formatSize(bytes) {
             if (!bytes) return '';
             const gb = bytes / (1024 * 1024 * 1024);
             return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
         }
-        
+
         async function downloadModel() {
             const modelName = document.getElementById('model-name').value.trim();
             if (!modelName) {
                 alert('Please enter a model name');
                 return;
             }
-            
+
             document.getElementById('download-progress').classList.remove('hidden');
             document.getElementById('download-status').textContent = 'Starting download...';
             document.getElementById('download-bar').style.width = '0%';
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/models/download`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({model: modelName})
                 });
-                
+
                 const reader = resp.body.getReader();
                 const decoder = new TextDecoder();
-                
+
                 while (true) {
                     const {done, value} = await reader.read();
                     if (done) break;
-                    
+
                     const lines = decoder.decode(value).split('\\n');
                     for (const line of lines) {
                         if (!line) continue;
@@ -3245,12 +3260,12 @@ ADMIN_HTML = """
                         } catch (e) {}
                     }
                 }
-                
+
                 document.getElementById('download-status').textContent = 'Download complete!';
                 document.getElementById('download-bar').style.width = '100%';
                 document.getElementById('model-name').value = '';
                 loadModels();
-                
+
                 setTimeout(() => {
                     document.getElementById('download-progress').classList.add('hidden');
                 }, 3000);
@@ -3258,10 +3273,10 @@ ADMIN_HTML = """
                 document.getElementById('download-status').textContent = 'Error: ' + e.message;
             }
         }
-        
+
         async function deleteModel(modelName) {
             if (!confirm(`Delete model "${modelName}"? This will free up disk space but the model will need to be re-downloaded to use again.`)) return;
-            
+
             try {
                 await adminFetch(`${API_BASE}/admin/models/${encodeURIComponent(modelName)}`, {method: 'DELETE'});
                 loadModels();
@@ -3269,14 +3284,14 @@ ADMIN_HTML = """
                 alert('Failed to delete model: ' + e.message);
             }
         }
-        
+
         async function changeVllmModel() {
             const model = document.getElementById('vllm-model').value.trim();
             if (!model) {
                 alert('Please enter a HuggingFace model ID');
                 return;
             }
-            
+
             const confirmed = confirm(
                 `⚠️ CHANGE vLLM MODEL\\n\\n` +
                 `New model: ${model}\\n\\n` +
@@ -3288,7 +3303,7 @@ ADMIN_HTML = """
                 `Continue?`
             );
             if (!confirmed) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/vllm`, {
                     method: 'POST',
@@ -3307,7 +3322,7 @@ ADMIN_HTML = """
                 alert('Failed to change model: ' + e.message);
             }
         }
-        
+
         async function changeLlamacppModel() {
             const modelUrl = document.getElementById('llamacpp-model').value.trim();
             if (!modelUrl) {
@@ -3318,7 +3333,7 @@ ADMIN_HTML = """
                 alert('URL must point to a .gguf file');
                 return;
             }
-            
+
             const confirmed = confirm(
                 `⚠️ CHANGE llama.cpp MODEL\\n\\n` +
                 `New model URL: ${modelUrl}\\n\\n` +
@@ -3330,7 +3345,7 @@ ADMIN_HTML = """
                 `Continue?`
             );
             if (!confirmed) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/llamacpp`, {
                     method: 'POST',
@@ -3349,13 +3364,13 @@ ADMIN_HTML = """
                 alert('Failed to change model: ' + e.message);
             }
         }
-        
+
         async function loadBackendConfig() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/config`);
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
-                
+
                 if (data.vllm_model) {
                     document.getElementById('vllm-current').textContent = 'Current: ' + data.vllm_model;
                 }
@@ -3369,7 +3384,7 @@ ADMIN_HTML = """
                     const filename = url.split('/').pop();
                     document.getElementById('embedding-current').textContent = 'Current: ' + filename;
                 }
-                
+
                 // Update llama.cpp running status
                 const llamacppStatus = document.getElementById('llamacpp-running');
                 if (data.llamacpp_replicas > 0) {
@@ -3383,7 +3398,7 @@ ADMIN_HTML = """
                 console.error('Failed to load backend config:', e);
             }
         }
-        
+
         async function changeEmbeddingModel() {
             const modelUrl = document.getElementById('embedding-model').value.trim();
             if (!modelUrl) {
@@ -3394,7 +3409,7 @@ ADMIN_HTML = """
                 alert('URL must point to a .gguf file');
                 return;
             }
-            
+
             const confirmed = confirm(
                 `⚠️ CHANGE EMBEDDING MODEL\\n\\n` +
                 `New model URL: ${modelUrl}\\n\\n` +
@@ -3405,7 +3420,7 @@ ADMIN_HTML = """
                 `Continue?`
             );
             if (!confirmed) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/embedding`, {
                     method: 'POST',
@@ -3424,21 +3439,21 @@ ADMIN_HTML = """
                 alert('Failed to change model: ' + e.message);
             }
         }
-        
+
         async function updateEmbeddingConfig() {
             const ctx = document.getElementById('embedding-ctx').value;
             const batch = document.getElementById('embedding-batch').value;
             const threads = document.getElementById('embedding-threads').value;
-            
+
             const msg = `This will restart embedding service with:
 • Context: ${ctx} tokens
 • Batch Size: ${batch}
 • Threads: ${threads}
 
 Continue?`;
-            
+
             if (!confirm(msg)) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/embedding/config`, {
                     method: 'POST',
@@ -3460,18 +3475,18 @@ Continue?`;
                 alert('Failed: ' + e.message);
             }
         }
-        
+
         async function toggleLlamacpp() {
             const statusEl = document.getElementById('llamacpp-running');
             const isRunning = statusEl.textContent === 'Running';
-            
+
             const action = isRunning ? 'stop' : 'start';
-            const message = isRunning 
+            const message = isRunning
                 ? 'Stop llama.cpp? This will free ~40GB RAM but the model will need to reload when started again.'
                 : 'Start llama.cpp? This will load the model into RAM (~40GB for 70B models). Takes 2-5 minutes.';
-            
+
             if (!confirm(message)) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/llamacpp/scale`, {
                     method: 'POST',
@@ -3489,14 +3504,14 @@ Continue?`;
                 alert('Failed: ' + e.message);
             }
         }
-        
+
         // GPU Scaling Functions
         async function refreshGpuStatus() {
             try {
                 const gpuResp = await adminFetch(`${API_BASE}/admin/cluster/gpus`);
                 if (!gpuResp) return;
                 const gpuData = await gpuResp.json();
-                
+
                 const gpuContainer = document.getElementById('cluster-gpus');
                 if (gpuData.gpus && gpuData.gpus.length > 0) {
                     gpuContainer.innerHTML = `
@@ -3517,41 +3532,41 @@ Continue?`;
                             </div>
                         `).join('')}
                     `;
-                    
+
                     // Dynamically generate vLLM replica buttons based on total GPUs
                     updateVllmReplicaButtons(gpuData.total_gpus);
                 } else {
                     gpuContainer.innerHTML = '<p class="text-sm text-gray-400">No GPUs detected in cluster</p>';
                     updateVllmReplicaButtons(0);
                 }
-                
+
                 lucide.createIcons();
             } catch (e) {
                 console.error('Failed to load GPU status:', e);
-                document.getElementById('cluster-gpus').innerHTML = 
+                document.getElementById('cluster-gpus').innerHTML =
                     '<p class="text-sm text-red-400">Failed to load GPU info</p>';
             }
-            
+
             // Also refresh vLLM replica status
             await refreshVllmStatus();
         }
-        
+
         function updateVllmReplicaButtons(totalGpus) {
             const container = document.getElementById('vllm-replica-buttons');
             if (!container) return;
-            
+
             // Generate buttons from 0 to totalGpus (max 10 for sanity)
             const maxButtons = Math.min(totalGpus, 10);
             let buttonsHtml = '';
-            
+
             // Button 0 (Off)
             buttonsHtml += `
-                <button onclick="scaleVllm(0)" id="vllm-btn-0" 
+                <button onclick="scaleVllm(0)" id="vllm-btn-0"
                         class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
                     0 (Off)
                 </button>
             `;
-            
+
             // Buttons 1 to maxButtons
             for (let i = 1; i <= maxButtons; i++) {
                 buttonsHtml += `
@@ -3561,25 +3576,25 @@ Continue?`;
                     </button>
                 `;
             }
-            
+
             container.innerHTML = buttonsHtml;
         }
-        
+
         async function refreshVllmStatus() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/vllm/replicas`);
                 if (!resp) return;
                 const data = await resp.json();
-                
+
                 // Update status badge
                 const badge = document.getElementById('vllm-replica-status');
                 badge.textContent = `${data.ready}/${data.desired} Ready`;
                 badge.className = `text-xs px-2 py-1 rounded ${
-                    data.ready === data.desired && data.desired > 0 
-                        ? 'bg-green-900 text-green-300' 
+                    data.ready === data.desired && data.desired > 0
+                        ? 'bg-green-900 text-green-300'
                         : 'bg-yellow-900 text-yellow-300'
                 }`;
-                
+
                 // Update button states
                 for (let i = 0; i <= 2; i++) {
                     const btn = document.getElementById(`vllm-btn-${i}`);
@@ -3591,7 +3606,7 @@ Continue?`;
                         }
                     }
                 }
-                
+
                 // Update pod status
                 const podContainer = document.getElementById('vllm-pods');
                 if (data.pods && data.pods.length > 0) {
@@ -3615,21 +3630,21 @@ Continue?`;
                 console.error('Failed to load vLLM status:', e);
             }
         }
-        
+
         async function scaleVllm(replicas) {
-            const message = replicas === 0 
+            const message = replicas === 0
                 ? 'Scale vLLM down to 0 replicas? This will stop GPU inference and free all GPUs.'
                 : `Scale vLLM to ${replicas} replica${replicas > 1 ? 's' : ''}? This requires ${replicas} available GPU${replicas > 1 ? 's' : ''} and takes 5-10 minutes to initialize.`;
-            
+
             if (!confirm(message)) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/vllm/scale`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({replicas: replicas})
                 });
-                
+
                 if (resp.ok) {
                     const data = await resp.json();
                     alert(data.message || `vLLM scaling to ${replicas} replicas`);
@@ -3642,26 +3657,26 @@ Continue?`;
                 alert('Failed to scale vLLM: ' + e.message);
             }
         }
-        
+
         async function toggleLlamacppNew() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/config`);
                 if (!resp) return;
                 const data = await resp.json();
                 const isRunning = data.llamacpp_replicas > 0;
-                
+
                 const message = isRunning
                     ? 'Stop llama.cpp? This will free ~64GB RAM, allowing vLLM to schedule if RAM was insufficient.'
                     : 'Start llama.cpp? This uses ~64GB RAM for 70B models. Takes 2-5 minutes to load.';
-                
+
                 if (!confirm(message)) return;
-                
+
                 const scaleResp = await adminFetch(`${API_BASE}/admin/backend/llamacpp/scale`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({replicas: isRunning ? 0 : 1})
                 });
-                
+
                 if (scaleResp.ok) {
                     alert(isRunning ? 'llamacpp stopping - RAM will be freed' : 'llamacpp starting - takes 2-5 min');
                     await refreshLlamacppStatus();
@@ -3673,13 +3688,13 @@ Continue?`;
                 alert('Failed: ' + e.message);
             }
         }
-        
+
         async function refreshLlamacppStatus() {
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/config`);
                 if (!resp) return;
                 const data = await resp.json();
-                
+
                 const badge = document.getElementById('llamacpp-status-badge');
                 if (data.llamacpp_replicas > 0) {
                     badge.textContent = 'Running';
@@ -3692,7 +3707,7 @@ Continue?`;
                 console.error('Failed to refresh llamacpp status:', e);
             }
         }
-        
+
         async function quickAction(action) {
             try {
                 // Get current GPU count
@@ -3700,10 +3715,10 @@ Continue?`;
                 if (!gpuResp) return;
                 const gpuData = await gpuResp.json();
                 const totalGpus = gpuData.total_gpus || 0;
-                
+
                 let message = '';
                 let actions = [];
-                
+
                 switch (action) {
                     case 'max-gpu':
                         if (totalGpus === 0) {
@@ -3739,21 +3754,21 @@ Continue?`;
                         ];
                         break;
                 }
-                
+
                 if (!confirm(message)) return;
-                
+
                 for (const act of actions) {
-                    const endpoint = act.type === 'vllm' 
+                    const endpoint = act.type === 'vllm'
                         ? `${API_BASE}/admin/backend/vllm/scale`
                         : `${API_BASE}/admin/backend/llamacpp/scale`;
-                    
+
                     await adminFetch(endpoint, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({replicas: act.replicas})
                     });
                 }
-                
+
                 alert('Quick action applied! Services are scaling...');
                 setTimeout(() => {
                     refreshGpuStatus();
@@ -3763,14 +3778,14 @@ Continue?`;
                 alert('Failed to apply quick action: ' + e.message);
             }
         }
-        
+
         async function setHfToken() {
             const token = document.getElementById('hf-token').value.trim();
             if (!token) {
                 alert('Please enter a HuggingFace token');
                 return;
             }
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/config`, {
                     method: 'POST',
@@ -3787,23 +3802,27 @@ Continue?`;
                 alert('Failed to save token: ' + e.message);
             }
         }
-        
+
         async function updateVllmConfig() {
             const ctx = document.getElementById('vllm-ctx').value;
             const gpuMem = document.getElementById('vllm-gpu-mem').value;
             const batch = document.getElementById('vllm-batch').value;
+            const batchedTokens = document.getElementById('vllm-batched-tokens').value;
             const quant = document.getElementById('vllm-quant').value;
-            
+            const reasoning = document.getElementById('vllm-reasoning').value === 'true';
+
             const msg = `This will restart vLLM with:
 • Context: ${ctx} tokens
 • GPU Memory: ${gpuMem}%
-• Batch Size: ${batch}
+• Max Sequences: ${batch}
+• Batched Tokens: ${batchedTokens}
 • Quantization: ${quant}
+• Reasoning Parser: ${reasoning ? 'qwen3 enabled' : 'disabled'}
 
 vLLM will be unavailable for ~5-10 minutes. Continue?`;
-            
+
             if (!confirm(msg)) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/vllm/config`, {
                     method: 'POST',
@@ -3812,7 +3831,10 @@ vLLM will be unavailable for ~5-10 minutes. Continue?`;
                         max_model_len: parseInt(ctx),
                         gpu_memory_utilization: parseInt(gpuMem) / 100,
                         max_num_seqs: parseInt(batch),
-                        quantization: quant
+                        max_num_batched_tokens: parseInt(batchedTokens),
+                        quantization: quant,
+                        enable_reasoning: reasoning,
+                        reasoning_parser: 'qwen3'
                     })
                 });
                 if (resp.ok) {
@@ -3826,13 +3848,13 @@ vLLM will be unavailable for ~5-10 minutes. Continue?`;
                 alert('Failed: ' + e.message);
             }
         }
-        
+
         async function updateLlamacppConfig() {
             const ctx = document.getElementById('llamacpp-ctx').value;
             const batch = document.getElementById('llamacpp-batch').value;
             const threads = document.getElementById('llamacpp-threads').value;
             const parallel = document.getElementById('llamacpp-parallel').value;
-            
+
             const msg = `This will restart llama.cpp with:
 • Context: ${ctx} tokens
 • Batch Size: ${batch}
@@ -3840,9 +3862,9 @@ vLLM will be unavailable for ~5-10 minutes. Continue?`;
 • Parallel Slots: ${parallel}
 
 llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
-            
+
             if (!confirm(msg)) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/backend/llamacpp/config`, {
                     method: 'POST',
@@ -3871,7 +3893,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 const resp = await adminFetch(`${API_BASE}/admin/keys`);
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
-                
+
                 const list = document.getElementById('keys-list');
                 if (data.keys && data.keys.length > 0) {
                     list.innerHTML = data.keys.map(k => `
@@ -3884,7 +3906,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                                 <span>${k.requests_per_minute} RPM</span>
                                 <span>${(k.tokens_per_minute || 40000).toLocaleString()} TPM</span>
                                 <span>${k.tokens_per_day.toLocaleString()} tokens/day</span>
-                                <button onclick="revokeKey('${k.key}')" 
+                                <button onclick="revokeKey('${k.key}')"
                                         class="text-red-400 hover:text-red-300 transition">
                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                 </button>
@@ -3899,7 +3921,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 console.error('Failed to load keys:', e);
             }
         }
-        
+
         async function loadStats() {
             try {
                 const hours = parseInt(document.getElementById('stats-window-hours')?.value || '96', 10);
@@ -3907,7 +3929,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 if (!resp) return; // Auth failure, already redirected
                 const data = await resp.json();
                 statsCache = data;
-                
+
                 // Update stats cards with null checks
                 document.getElementById('stats-total-requests').textContent = (data.summary?.total_requests_window || 0).toLocaleString();
                 document.getElementById('stats-total-tokens').textContent = (data.summary?.total_tokens_window || 0).toLocaleString();
@@ -3915,7 +3937,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
 
                 const timezoneEl = document.getElementById('stats-timezone');
                 timezoneEl.textContent = `Rolling ${data.window_hours || hours}h window. Stored in ${data.timezone || 'UTC'}, displayed in ${getLocalTimezone()}. Generated ${new Date(data.generated_at).toLocaleString()}.`;
-                
+
                 // Update usage by API key
                 const byKeyEl = document.getElementById('stats-by-key');
                 if (data.by_key && data.by_key.length > 0) {
@@ -3944,30 +3966,30 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 console.error('Failed to load stats:', e);
             }
         }
-        
+
         // API Key Management Functions
         async function createKey() {
             const name = document.getElementById('key-name').value.trim();
             const rpm = parseInt(document.getElementById('key-rpm').value) || 60;
             const tokens = parseInt(document.getElementById('key-tokens').value) || 100000;
             const rawTpm = document.getElementById('key-tpm').value.trim();
-            
+
             // Get selected scopes
             const scopes = [];
             if (document.getElementById('scope-inference').checked) scopes.push('inference');
             if (document.getElementById('scope-metrics').checked) scopes.push('metrics');
             if (document.getElementById('scope-admin').checked) scopes.push('admin');
-            
+
             if (!name) {
                 alert('Please enter a key name');
                 return;
             }
-            
+
             if (scopes.length === 0) {
                 alert('Please select at least one scope');
                 return;
             }
-            
+
             try {
                 const payload = {
                     name: name,
@@ -3984,15 +4006,15 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
                 });
-                
+
                 if (resp.ok) {
                     const data = await resp.json();
                     const resultDiv = document.getElementById('new-key-result');
                     const keyValueEl = document.getElementById('new-key-value');
-                    
+
                     keyValueEl.textContent = data.key;
                     resultDiv.classList.remove('hidden');
-                    
+
                     // Clear form
                     document.getElementById('key-name').value = '';
                     document.getElementById('key-rpm').value = '60';
@@ -4001,10 +4023,10 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     document.getElementById('scope-inference').checked = true;
                     document.getElementById('scope-metrics').checked = false;
                     document.getElementById('scope-admin').checked = false;
-                    
+
                     // Reload keys list
                     loadKeys();
-                    
+
                     alert('API key created! Save it now - this is the only time it will be shown.');
                 } else {
                     const errData = await resp.json();
@@ -4014,15 +4036,15 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 alert('Failed to create key: ' + e.message);
             }
         }
-        
+
         async function revokeKey(key) {
             if (!confirm('Are you sure you want to revoke this API key? This action cannot be undone.')) return;
-            
+
             try {
                 const resp = await adminFetch(`${API_BASE}/admin/keys/${encodeURIComponent(key)}`, {
                     method: 'DELETE'
                 });
-                
+
                 if (resp.ok) {
                     alert('API key revoked successfully');
                     loadKeys();
@@ -4048,7 +4070,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
         (async function() {
             const isValid = await validateApiKey();
             if (!isValid) return; // Validation failed, already redirected
-            
+
             loadStatus();
             loadModels();
             loadKeys();
@@ -4057,7 +4079,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             refreshGpuStatus();
             refreshLlamacppStatus();
         })();
-        
+
         // Refresh status every 30 seconds
         setInterval(loadStatus, 30000);
         setInterval(loadBackendConfig, 60000);
@@ -4092,20 +4114,20 @@ async def admin_dashboard():
 async def admin_list_models(api_key: str = Depends(get_api_key)):
     """List all models (admin endpoint)."""
     await require_scope("admin", api_key)
-    
+
     # Get vLLM download status from Redis
     download_status = None
     status = await redis_client.get_value("vllm:download:status")
     error = await redis_client.get_value("vllm:download:error")
     model = await redis_client.get_value("vllm:download:model")
-    
+
     if status:
         download_status = {
             "status": status,
             "model": model if model else "unknown",
             "error": error if error else None
         }
-    
+
     return {
         "models": model_registry.get_available_models(),
         "backends": model_registry.backends,
@@ -4126,11 +4148,11 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
     """Create a new API key (admin endpoint)."""
     await require_scope("admin", api_key)
     import secrets
-    
+
     body = await request.json()
     name = body.get("name", "unnamed")
     scopes = body.get("scopes", ["inference"])  # Default to inference only
-    
+
     # Validate scopes
     valid_scopes = ["inference", "metrics", "admin"]
     if not isinstance(scopes, list) or not all(s in valid_scopes for s in scopes):
@@ -4138,7 +4160,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
             status_code=400,
             detail=f"Invalid scopes. Must be a list containing: {valid_scopes}"
         )
-    
+
     try:
         requests_per_minute = int(body.get("requests_per_minute", 60))
         tokens_per_day = int(body.get("tokens_per_day", 100000))
@@ -4161,10 +4183,10 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
             status_code=400,
             detail="requests_per_minute, tokens_per_day, and tokens_per_minute must be > 0",
         )
-    
+
     key_id = secrets.token_hex(16)
     api_key = f"sk-mynodeone-{key_id}"
-    
+
     key_config = {
         "name": name,
         "scopes": scopes,
@@ -4173,10 +4195,10 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
         "tokens_per_minute": tokens_per_minute,
         "created_at": datetime.utcnow().isoformat(),
     }
-    
+
     await postgres_client.set_api_key_config(api_key, key_config)
     await redis_client.set_api_key_config(api_key, key_config)
-    
+
     return {"key": api_key, "config": key_config}
 
 
@@ -4197,10 +4219,10 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
     key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=404, detail="API key not found")
-    
+
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
     current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
-    
+
     return {
         "api_key": api_key[:20] + "...",
         "name": key_config.get("name"),
@@ -4229,16 +4251,16 @@ async def admin_download_model(request: Request, api_key: str = Depends(get_api_
     await require_scope("admin", api_key)
     body = await request.json()
     model_name = body.get("model")
-    
+
     if not model_name:
         raise HTTPException(status_code=400, detail="Model name is required")
-    
+
     async def stream_progress():
         async for line in backend_manager.pull_ollama_model(model_name):
             yield line + "\n"
         # Refresh model list after download
         await backend_manager.discover_models()
-    
+
     return StreamingResponse(stream_progress(), media_type="application/x-ndjson")
 
 
@@ -4268,10 +4290,10 @@ async def admin_load_model(request: Request, api_key: str = Depends(get_api_key)
     await require_scope("admin", api_key)
     body = await request.json()
     model_name = body.get("model")
-    
+
     if not model_name:
         raise HTTPException(status_code=400, detail="Model name is required")
-    
+
     success = await backend_manager.load_ollama_model(model_name)
     if success:
         return {"status": "loaded", "model": model_name}
@@ -4284,34 +4306,34 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
     """Update configuration (e.g., HF token)."""
     await require_scope("admin", api_key)
     body = await request.json()
-    
+
     # Update HF token in Kubernetes secret
     if "hf_token" in body:
         hf_token = body["hf_token"]
-        
+
         try:
             from kubernetes import client, config as k8s_config
             import base64
-            
+
             try:
                 k8s_config.load_incluster_config()
             except:
                 k8s_config.load_kube_config()
-            
+
             core_v1 = client.CoreV1Api()
             namespace = os.getenv("NAMESPACE", "llmapi")
-            
+
             # Update hf-token secret
             secret = core_v1.read_namespaced_secret("hf-token", namespace)
             secret.data["token"] = base64.b64encode(hf_token.encode()).decode()
             core_v1.replace_namespaced_secret("hf-token", namespace, secret)
-            
+
             # Also store in Redis for UI display
             await redis_client.set_value("config:hf_token", hf_token)
-            
+
             logger.info("HuggingFace token updated successfully")
             return {"status": "saved", "message": "HuggingFace token updated. Restart vLLM pods to use new token."}
-            
+
         except ImportError as e:
             # Kubernetes client required for proper token storage
             logger.error(f"Kubernetes client not available: {e}")
@@ -4322,7 +4344,7 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
         except Exception as e:
             logger.error(f"Failed to update HF token: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
-    
+
     return {"status": "no changes"}
 
 
@@ -4335,7 +4357,7 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
     vllm_model = await redis_client.get_value("config:vllm_model")
     llamacpp_model_url = await redis_client.get_value("config:llamacpp_model_url")
     llamacpp_replicas = 0
-    
+
     # Try to get from Kubernetes ConfigMaps if not in Redis
     try:
         from kubernetes import client, config as k8s_config
@@ -4343,11 +4365,11 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Get vLLM model from ConfigMap
         if not vllm_model:
             try:
@@ -4355,7 +4377,7 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
                 vllm_model = vllm_config.data.get("MODEL_NAME", "Not configured")
             except Exception as e:
                 logger.debug(f"Could not read vllm-config: {e}")
-        
+
         # Get llamacpp model URL from ConfigMap
         if not llamacpp_model_url:
             try:
@@ -4363,14 +4385,14 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
                 llamacpp_model_url = llamacpp_config.data.get("MODEL_URL", "Not configured")
             except Exception as e:
                 logger.debug(f"Could not read llamacpp-config: {e}")
-        
+
         # Get llama.cpp replica count
         try:
             deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
             llamacpp_replicas = deploy.spec.replicas or 0
         except Exception as e:
             logger.debug(f"Could not get llama.cpp replicas: {e}")
-        
+
         # Get embedding model URL from ConfigMap
         embedding_model_url = None
         try:
@@ -4378,11 +4400,11 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
             embedding_model_url = embedding_config.data.get("MODEL_URL", "Not configured")
         except Exception as e:
             logger.debug(f"Could not read embedding-config: {e}")
-            
+
     except Exception as e:
         logger.debug(f"Kubernetes API error: {e}")
         embedding_model_url = None
-    
+
     # Final fallback to environment variables
     if not vllm_model or vllm_model == "Not configured":
         vllm_model = os.getenv("VLLM_MODEL_ID") or os.getenv("MODEL_NAME", "Not configured")
@@ -4390,7 +4412,7 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
         llamacpp_model_url = os.getenv("LLAMACPP_MODEL_URL", "Not configured")
     if not embedding_model_url or embedding_model_url == "Not configured":
         embedding_model_url = os.getenv("EMBEDDING_MODEL_URL", "Not configured")
-    
+
     return {
         "hf_token_configured": hf_token_set,
         "lazy_load_enabled": config.LAZY_LOAD_ENABLED,
@@ -4412,50 +4434,141 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
 # Backend Model Change Endpoints (requires RBAC permissions)
 # =============================================================================
 
+def _validate_hf_model_id(model_id: str) -> str:
+    model_id = model_id.strip()
+    if not model_id:
+        raise HTTPException(status_code=400, detail="model_id is required")
+    if len(model_id) > 200 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", model_id):
+        raise HTTPException(status_code=400, detail="model_id contains unsupported characters")
+    if ".." in model_id or "//" in model_id or model_id.endswith("/"):
+        raise HTTPException(status_code=400, detail="model_id is not a valid HuggingFace model ID")
+    return model_id
+
+
+def _validate_served_model_name(name: str) -> str:
+    name = name.strip().lower()
+    if not name or len(name) > 100 or not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", name):
+        raise HTTPException(status_code=400, detail="served_model_name contains unsupported characters")
+    return name
+
+
+def _derive_served_model_name(model_id: str) -> str:
+    model_lower = model_id.lower()
+    known_names = {
+        "qwen/qwen3-14b-awq": "qwen3-14b",
+        "qwen/qwen3-8b": "qwen3-8b",
+        "cyankiwi/ministral-3-14b-instruct-2512-awq-4bit": "ministral3-14b",
+        "meta-llama/llama-3.2-3b-instruct": "llama3.2-3b",
+    }
+    if model_lower in known_names:
+        return known_names[model_lower]
+
+    name = model_id.split("/")[-1].lower()
+    for suffix in ("-instruct", "-awq", "-gptq", "-4bit"):
+        name = name.replace(suffix, "")
+    name = re.sub(r"[^a-z0-9._-]+", "-", name).strip("-")
+    return _validate_served_model_name(name)
+
+
+def _infer_vllm_family_config(model_id: str) -> dict[str, str]:
+    model_lower = model_id.lower()
+    family_config = {
+        "QUANTIZATION": "none",
+        "ENABLE_REASONING": "false",
+        "REASONING_PARSER": "qwen3",
+        "TOKENIZER_MODE": "auto",
+        "CONFIG_FORMAT": "auto",
+        "LOAD_FORMAT": "auto",
+        "TOOL_CALL_PARSER": "none",
+        "ENABLE_AUTO_TOOL_CHOICE": "false",
+    }
+    if "qwen3" in model_lower:
+        family_config["ENABLE_REASONING"] = "true"
+        if "awq" in model_lower:
+            family_config["QUANTIZATION"] = "awq"
+    elif "ministral" in model_lower or "mistral" in model_lower:
+        family_config.update({
+            "QUANTIZATION": "awq" if "awq" in model_lower else "none",
+            "TOKENIZER_MODE": "mistral",
+            "CONFIG_FORMAT": "mistral",
+            "LOAD_FORMAT": "mistral",
+            "TOOL_CALL_PARSER": "mistral",
+            "ENABLE_AUTO_TOOL_CHOICE": "true",
+        })
+    elif "llama" in model_lower:
+        family_config.update({
+            "TOOL_CALL_PARSER": "llama3_json",
+            "ENABLE_AUTO_TOOL_CHOICE": "true",
+        })
+    return family_config
+
+
+def _validated_int_field(body: dict, field: str, minimum: int, maximum: int) -> Optional[int]:
+    if field not in body:
+        return None
+    try:
+        value = int(body[field])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{field} must be an integer")
+    if not minimum <= value <= maximum:
+        raise HTTPException(status_code=400, detail=f"{field} must be between {minimum} and {maximum}")
+    return value
+
+
+def _validated_float_field(body: dict, field: str, minimum: float, maximum: float) -> Optional[float]:
+    if field not in body:
+        return None
+    try:
+        value = float(body[field])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{field} must be a number")
+    if not minimum <= value <= maximum:
+        raise HTTPException(status_code=400, detail=f"{field} must be between {minimum} and {maximum}")
+    return value
+
+
 @app.post("/admin/backend/vllm")
 async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_api_key)):
     """Change the vLLM model. This triggers a pod restart with new model."""
     await require_scope("admin", api_key)
     body = await request.json()
-    model_id = body.get("model_id")
-    
-    if not model_id:
-        raise HTTPException(status_code=400, detail="model_id is required")
-    
+    model_id = _validate_hf_model_id(str(body.get("model_id", "")))
+    served_model_name = body.get("served_model_name")
+    if served_model_name:
+        served_model_name = _validate_served_model_name(str(served_model_name))
+    else:
+        served_model_name = _derive_served_model_name(model_id)
+    family_config = _infer_vllm_family_config(model_id)
+
     try:
         # Try to use Kubernetes API
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
-        # Derive served model name from model ID (e.g., "Qwen/Qwen2.5-14B-Instruct-AWQ" -> "qwen2.5-14b")
-        served_model_name = model_id.split('/')[-1].lower()
-        served_model_name = served_model_name.replace('-instruct', '').replace('-awq', '').replace('-gptq', '')
-        # Keep only model name without quantization suffixes
-        if '-' in served_model_name:
-            parts = served_model_name.split('-')
-            # Usually format is: modelname-version-size, keep first 2-3 parts
-            served_model_name = '-'.join(parts[:3]) if len(parts) > 2 else served_model_name
-        
+
         # Update vllm-config ConfigMap with new MODEL_NAME and SERVED_MODEL_NAME
         # This is what the init container reads to download the model
         try:
             configmap = core_v1.read_namespaced_config_map("vllm-config", namespace)
+            if configmap.data is None:
+                configmap.data = {}
             configmap.data["MODEL_NAME"] = model_id
             configmap.data["SERVED_MODEL_NAME"] = served_model_name
+            for key, value in family_config.items():
+                configmap.data[key] = value
             core_v1.replace_namespaced_config_map("vllm-config", namespace, configmap)
             logger.info(f"Updated vllm-config ConfigMap: MODEL_NAME={model_id}, SERVED_MODEL_NAME={served_model_name}")
         except Exception as e:
             logger.error(f"Failed to update ConfigMap: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to update ConfigMap: {str(e)}")
-        
+
         # Trigger rollout restart by updating pod template annotation
         # This will cause StatefulSet to recreate pods with new ConfigMap values
         sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
@@ -4463,13 +4576,13 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
             sts.spec.template.metadata.annotations = {}
         sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
         apps_v1.patch_namespaced_stateful_set("vllm", namespace, sts)
-        
+
         # Store in Redis for UI
         await redis_client.set_value("config:vllm_model", model_id)
-        
+
         logger.info(f"vLLM model change initiated: {model_id} (served as {served_model_name})")
         return {"status": "initiated", "model_id": model_id, "served_model_name": served_model_name, "message": "vLLM pod is restarting with new model"}
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
     except Exception as e:
@@ -4483,28 +4596,28 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
     await require_scope("admin", api_key)
     body = await request.json()
     model_url = body.get("model_url")
-    
+
     if not model_url:
         raise HTTPException(status_code=400, detail="model_url is required")
-    
+
     if not model_url.endswith(".gguf"):
         raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Extract model filename from URL
         model_file = model_url.split("/")[-1]
-        
+
         # Update llamacpp-config ConfigMap with new MODEL_URL and MODEL_FILE
         # This is what the init container reads to download the model
         try:
@@ -4516,7 +4629,7 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         except Exception as e:
             logger.error(f"Failed to update ConfigMap: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to update ConfigMap: {str(e)}")
-        
+
         # Trigger rollout restart by updating pod template annotation
         # This will cause Deployment to recreate pods with new ConfigMap values
         deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
@@ -4524,13 +4637,13 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
         apps_v1.patch_namespaced_deployment("llamacpp", namespace, deploy)
-        
+
         # Store in Redis for UI
         await redis_client.set_value("config:llamacpp_model_url", model_url)
-        
+
         logger.info(f"llama.cpp model change initiated: {model_url} (file: {model_file})")
         return {"status": "initiated", "model_url": model_url, "model_file": model_file, "message": "llama.cpp pod is restarting with new model"}
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
     except Exception as e:
@@ -4543,45 +4656,72 @@ async def admin_update_vllm_config(request: Request, api_key: str = Depends(get_
     """Update vLLM configuration (context length, GPU memory, etc.). Triggers pod restart."""
     await require_scope("admin", api_key)
     body = await request.json()
-    
+    config_updates = {}
+
+    max_model_len = _validated_int_field(body, "max_model_len", 1024, 131072)
+    if max_model_len is not None:
+        config_updates["MAX_MODEL_LEN"] = str(max_model_len)
+    gpu_memory_utilization = _validated_float_field(body, "gpu_memory_utilization", 0.10, 0.99)
+    if gpu_memory_utilization is not None:
+        config_updates["GPU_MEMORY_UTILIZATION"] = str(gpu_memory_utilization)
+    max_num_seqs = _validated_int_field(body, "max_num_seqs", 1, 256)
+    if max_num_seqs is not None:
+        config_updates["MAX_NUM_SEQS"] = str(max_num_seqs)
+    max_num_batched_tokens = _validated_int_field(body, "max_num_batched_tokens", 1024, 262144)
+    if max_num_batched_tokens is not None:
+        config_updates["MAX_NUM_BATCHED_TOKENS"] = str(max_num_batched_tokens)
+
+    if "quantization" in body:
+        quantization = str(body["quantization"]).strip().lower()
+        if quantization not in {"none", "awq", "gptq"}:
+            raise HTTPException(status_code=400, detail="quantization must be one of: none, awq, gptq")
+        config_updates["QUANTIZATION"] = quantization
+    if "enable_reasoning" in body:
+        if not isinstance(body["enable_reasoning"], bool):
+            raise HTTPException(status_code=400, detail="enable_reasoning must be a boolean")
+        config_updates["ENABLE_REASONING"] = "true" if body["enable_reasoning"] else "false"
+    if "reasoning_parser" in body:
+        reasoning_parser = str(body["reasoning_parser"]).strip().lower()
+        if reasoning_parser not in {"qwen3", "deepseek_r1"}:
+            raise HTTPException(status_code=400, detail="reasoning_parser must be one of: qwen3, deepseek_r1")
+        config_updates["REASONING_PARSER"] = reasoning_parser
+
+    if not config_updates:
+        raise HTTPException(status_code=400, detail="No supported vLLM config fields provided")
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Get current ConfigMap
         cm = core_v1.read_namespaced_config_map("vllm-config", namespace)
-        
+        if cm.data is None:
+            cm.data = {}
+
         # Update values
-        if "max_model_len" in body:
-            cm.data["MAX_MODEL_LEN"] = str(body["max_model_len"])
-        if "gpu_memory_utilization" in body:
-            cm.data["GPU_MEMORY_UTILIZATION"] = str(body["gpu_memory_utilization"])
-        if "max_num_seqs" in body:
-            cm.data["MAX_NUM_SEQS"] = str(body["max_num_seqs"])
-        if "quantization" in body:
-            cm.data["QUANTIZATION"] = body["quantization"]
-        
+        cm.data.update(config_updates)
+
         # Apply ConfigMap update
         core_v1.patch_namespaced_config_map("vllm-config", namespace, cm)
-        
+
         # Trigger rollout restart
         sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
         if sts.spec.template.metadata.annotations is None:
             sts.spec.template.metadata.annotations = {}
         sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
         apps_v1.patch_namespaced_stateful_set("vllm", namespace, sts)
-        
-        logger.info(f"vLLM config updated: {body}")
-        return {"status": "updated", "config": body, "message": "vLLM pod is restarting with new config"}
-        
+
+        logger.info(f"vLLM config updated: {config_updates}")
+        return {"status": "updated", "config": config_updates, "message": "vLLM pod is restarting with new config"}
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -4594,22 +4734,22 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
     """Update llama.cpp configuration (context size, threads, etc.). Triggers pod restart."""
     await require_scope("admin", api_key)
     body = await request.json()
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Get current ConfigMap
         cm = core_v1.read_namespaced_config_map("llamacpp-config", namespace)
-        
+
         # Update values
         if "context_size" in body:
             cm.data["CONTEXT_SIZE"] = str(body["context_size"])
@@ -4619,20 +4759,20 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
             cm.data["THREADS"] = str(body["threads"])
         if "parallel" in body:
             cm.data["PARALLEL"] = str(body["parallel"])
-        
+
         # Apply ConfigMap update
         core_v1.patch_namespaced_config_map("llamacpp-config", namespace, cm)
-        
+
         # Trigger rollout restart
         deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
         apps_v1.patch_namespaced_deployment("llamacpp", namespace, deploy)
-        
+
         logger.info(f"llama.cpp config updated: {body}")
         return {"status": "updated", "config": body, "message": "llama.cpp pod is restarting with new config"}
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -4644,30 +4784,30 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
 async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
     """Get GPU availability across cluster nodes."""
     await require_scope("admin", api_key)
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
-        
+
         # Get all nodes
         nodes = core_v1.list_node()
-        
+
         gpu_info = []
         for node in nodes.items:
             node_name = node.metadata.name
             allocatable = node.status.allocatable or {}
             capacity = node.status.capacity or {}
-            
+
             # Check for NVIDIA GPUs
             gpu_allocatable = int(allocatable.get("nvidia.com/gpu", 0))
             gpu_capacity = int(capacity.get("nvidia.com/gpu", 0))
-            
+
             if gpu_capacity > 0:
                 gpu_info.append({
                     "node": node_name,
@@ -4675,13 +4815,13 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
                     "available": gpu_allocatable,
                     "allocated": gpu_capacity - gpu_allocatable
                 })
-        
+
         return {
             "gpus": gpu_info,
             "total_gpus": sum(g["total"] for g in gpu_info),
             "available_gpus": sum(g["available"] for g in gpu_info)
         }
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -4693,30 +4833,30 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
 async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
     """Get current vLLM replica count and status."""
     await require_scope("admin", api_key)
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         apps_v1 = client.AppsV1Api()
         core_v1 = client.CoreV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Get StatefulSet
         sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
         desired = sts.spec.replicas or 0
         ready = sts.status.ready_replicas or 0
-        
+
         # Get pod statuses
         pods = core_v1.list_namespaced_pod(
             namespace,
             label_selector="app=vllm"
         )
-        
+
         pod_status = []
         for pod in pods.items:
             pod_status.append({
@@ -4725,13 +4865,13 @@ async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
                 "phase": pod.status.phase,
                 "ready": all(cs.ready for cs in pod.status.container_statuses or [])
             })
-        
+
         return {
             "desired": desired,
             "ready": ready,
             "pods": pod_status
         }
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -4745,42 +4885,42 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
     await require_scope("admin", api_key)
     body = await request.json()
     replicas = body.get("replicas", 1)
-    
+
     if replicas < 0 or replicas > 10:
         raise HTTPException(status_code=400, detail="replicas must be between 0 and 10")
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         apps_v1 = client.AppsV1Api()
         core_v1 = client.CoreV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Check GPU availability
         nodes = core_v1.list_node()
         total_gpus = 0
         for node in nodes.items:
             allocatable = node.status.allocatable or {}
             total_gpus += int(allocatable.get("nvidia.com/gpu", 0))
-        
+
         if replicas > total_gpus:
             raise HTTPException(
                 status_code=400,
                 detail=f"Requested {replicas} replicas but only {total_gpus} GPUs available in cluster"
             )
-        
+
         # Scale the StatefulSet
         apps_v1.patch_namespaced_stateful_set_scale(
             "vllm",
             namespace,
             {"spec": {"replicas": replicas}}
         )
-        
+
         # Update gateway config with new vLLM URLs
         if replicas > 0:
             vllm_urls = ",".join([f"http://vllm-{i}.vllm:8000" for i in range(replicas)])
@@ -4788,7 +4928,7 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
                 cm = core_v1.read_namespaced_config_map("gateway-config", namespace)
                 cm.data["VLLM_URLS"] = vllm_urls
                 core_v1.patch_namespaced_config_map("gateway-config", namespace, cm)
-                
+
                 # Restart gateway to pick up new URLs
                 deploy = apps_v1.read_namespaced_deployment("gateway", namespace)
                 if deploy.spec.template.metadata.annotations is None:
@@ -4798,14 +4938,14 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
             except Exception as e:
                 logger.warning(f"Gateway config update failed (non-critical): {e}")
                 # Don't fail the scale operation, but log it
-        
+
         logger.info(f"vLLM scaled to {replicas} replicas")
         return {
             "status": "scaled",
             "replicas": replicas,
             "message": f"vLLM {'scaling up - pods will initialize in 5-10 minutes' if replicas > 0 else 'scaling down - GPUs will be freed'}"
         }
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -4819,28 +4959,28 @@ async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_
     await require_scope("admin", api_key)
     body = await request.json()
     replicas = body.get("replicas", 1)
-    
+
     if replicas < 0 or replicas > 1:
         raise HTTPException(status_code=400, detail="replicas must be 0 or 1")
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Scale the deployment
         apps_v1.patch_namespaced_deployment_scale(
             "llamacpp",
             namespace,
             {"spec": {"replicas": replicas}}
         )
-        
+
         action = "started" if replicas > 0 else "stopped"
         logger.info(f"llama.cpp {action} (replicas={replicas})")
         return {
@@ -4848,7 +4988,7 @@ async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_
             "replicas": replicas,
             "message": f"llama.cpp {'starting - model will load in 2-5 minutes' if replicas > 0 else 'stopping - RAM will be freed'}"
         }
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -4862,44 +5002,44 @@ async def admin_change_embedding_model(request: Request, api_key: str = Depends(
     await require_scope("admin", api_key)
     body = await request.json()
     model_url = body.get("model_url")
-    
+
     if not model_url:
         raise HTTPException(status_code=400, detail="model_url is required")
-    
+
     if not model_url.endswith(".gguf"):
         raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Update ConfigMap with new model URL
         cm = core_v1.read_namespaced_config_map("embedding-config", namespace)
         cm.data["MODEL_URL"] = model_url
         cm.data["MODEL_FILE"] = model_url.split("/")[-1]
         core_v1.patch_namespaced_config_map("embedding-config", namespace, cm)
-        
+
         # Trigger rollout restart
         deploy = apps_v1.read_namespaced_deployment("embedding", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
         apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
-        
+
         # Store in Redis for UI
         await redis_client.set_value("config:embedding_model_url", model_url)
-        
+
         logger.info(f"Embedding model change initiated: {model_url}")
         return {"status": "initiated", "model_url": model_url, "message": "Embedding pod is restarting with new model"}
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
     except Exception as e:
@@ -4912,22 +5052,22 @@ async def admin_update_embedding_config(request: Request, api_key: str = Depends
     """Update embedding configuration (context size, batch size, threads). Triggers pod restart."""
     await require_scope("admin", api_key)
     body = await request.json()
-    
+
     try:
         from kubernetes import client, config as k8s_config
-        
+
         try:
             k8s_config.load_incluster_config()
         except ConfigException:
             k8s_config.load_kube_config()
-        
+
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
         namespace = os.getenv("NAMESPACE", "llmapi")
-        
+
         # Get current ConfigMap
         cm = core_v1.read_namespaced_config_map("embedding-config", namespace)
-        
+
         # Update values
         if "context_size" in body:
             cm.data["CONTEXT_SIZE"] = str(body["context_size"])
@@ -4935,20 +5075,20 @@ async def admin_update_embedding_config(request: Request, api_key: str = Depends
             cm.data["BATCH_SIZE"] = str(body["batch_size"])
         if "threads" in body:
             cm.data["THREADS"] = str(body["threads"])
-        
+
         # Apply ConfigMap update
         core_v1.patch_namespaced_config_map("embedding-config", namespace, cm)
-        
+
         # Trigger rollout restart
         deploy = apps_v1.read_namespaced_deployment("embedding", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
         apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
-        
+
         logger.info(f"Embedding config updated: {body}")
         return {"status": "updated", "config": body, "message": "Embedding pod is restarting with new config"}
-        
+
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:

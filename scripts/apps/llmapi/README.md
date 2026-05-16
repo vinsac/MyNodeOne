@@ -57,13 +57,13 @@ Models download automatically via init containers on **first pod startup only**.
 - **Location**: `/var/lib/llmapi/models/vllm/`
 - **Format**: HuggingFace cache structure (`models--Org--ModelName/snapshots/<hash>/`)
 - **Download**: Uses `huggingface_hub` with `hf_transfer` for parallel downloads (~3-5 min)
-- **Example**: `models--Qwen--Qwen2.5-14B-Instruct-AWQ/snapshots/abc123/`
+- **Example**: `models--Qwen--Qwen3-14B-AWQ/snapshots/abc123/`
 
 ### llama.cpp Models (CPU Inference)
 - **Location**: `/var/lib/llmapi/models/llamacpp/`
 - **Format**: Single GGUF file per model
 - **Download**: Uses `aria2c` or `wget` from HuggingFace URLs (~5-10 min for 70B)
-- **Example**: `Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf`
+- **Example**: `Llama-3.3-70B-Instruct-Q4_K_M.gguf`
 
 ### Embedding Models
 - **Location**: `/var/lib/llmapi/models/embedding/`
@@ -78,13 +78,13 @@ Different backends have different format requirements:
 ```
 /var/lib/llmapi/models/
 ├── vllm/                                           # HuggingFace cache format
-│   ├── models--Qwen--Qwen2.5-14B-Instruct-AWQ/
+│   ├── models--Qwen--Qwen3-14B-AWQ/
 │   │   ├── snapshots/abc123/
 │   │   ├── blobs/
 │   │   └── refs/main
 │   └── hub/
 ├── llamacpp/                                       # Single GGUF file
-│   └── Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf
+│   └── Qwen3-14B-Q4_K_M.gguf
 └── embedding/                                      # Single GGUF file
     └── nomic-embed-text-v1.5.Q8_0.gguf
 ```
@@ -132,7 +132,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="qwen2.5-14b",
+    model="qwen3-14b",
     messages=[{"role": "user", "content": "Hello!"}],
     stream=True
 )
@@ -246,11 +246,11 @@ curl -H "Authorization: Bearer $ADMIN_KEY" \
 
 | Feature | Description |
 |---------|-------------|
-| **Download Ollama Models** | Enter model name (e.g., `llama3.2`), click Download |
+| **Download Ollama Models** | Enter model name (e.g., `qwen3:14b`), click Download |
 | **Change vLLM Model** | Enter HuggingFace model ID, triggers pod restart (~10-30 min) |
 | **Change llama.cpp Model** | Enter GGUF URL, triggers pod restart (~5-15 min) |
 | **Start/Stop llama.cpp** | Free RAM when not needed (model stays loaded otherwise) |
-| **Set HuggingFace Token** | Required for gated models (Llama-3, CodeLlama) on vLLM |
+| **Set HuggingFace Token** | Required for gated models such as Llama on vLLM |
 | **Manage API Keys** | Create, view, and revoke keys |
 | **View Usage Stats** | Track token consumption per key |
 | **Backend Status** | Check health of all 4 backends |
@@ -261,11 +261,25 @@ curl -H "Authorization: Bearer $ADMIN_KEY" \
 
 | Model | Type | Backend | Purpose |
 |-------|------|---------|---------|
-| `Qwen2.5-14B-AWQ` | Chat | vLLM (GPU) | Primary - fast GPU inference |
-| `Qwen2.5-14B-Q4` | Chat | llama.cpp (CPU) | Overflow - same model on CPU |
+| `Qwen3-14B-AWQ` | Chat | vLLM (GPU) | Primary - fast GPU inference |
+| `Qwen3-14B-Q4` | Chat | llama.cpp (CPU) | Overflow - same model on CPU |
 | `bge-m3` | Embedding | Dedicated | Document indexing |
 
 **Same model on GPU and CPU**: Using the same model family ensures consistent responses regardless of which backend handles the request.
+
+### Default vLLM Runtime
+
+The installer uses a conservative RTX 3090 profile for the default Qwen3 GPU backend:
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| Model | `Qwen/Qwen3-14B-AWQ` | 4-bit AWQ Qwen3 14B |
+| Served name | `qwen3-14b` | OpenAI-compatible API model name |
+| Context length | `32768` | Native Qwen3 context window |
+| Max sequences | `1` | One active sequence per GPU for 32K stability |
+| Max batched tokens | `32768` | Allows one full-context prefill |
+| GPU memory utilization | `0.90` | Leaves VRAM headroom on 24GB cards |
+| Reasoning parser | `qwen3` | Exposes Qwen3 thinking content through vLLM reasoning fields |
 
 ## Architecture
 
@@ -318,8 +332,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
 
 # Manage models
 ./scripts/apps/llmapi/manage-models.sh list
-./scripts/apps/llmapi/manage-models.sh add qwen2.5-7b
-./scripts/apps/llmapi/manage-models.sh remove codellama-34b
+./scripts/apps/llmapi/manage-models.sh add-vllm --model Qwen/Qwen3-8B --name qwen3-8b --quantization none
+./scripts/apps/llmapi/manage-models.sh add-llamacpp --url https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512-GGUF/resolve/main/Ministral-3-14B-Instruct-2512-Q4_K_M.gguf --name ministral3-14b-q4
 ```
 
 ## Rate Limiting
@@ -328,16 +342,16 @@ The gateway enforces three layers of protection per API key, checked in order:
 
 | Layer | Mechanism | Default | Configurable? |
 |-------|-----------|---------|---------------|
-| **1. Concurrency** | Max simultaneous in-flight requests | `4 × GPU count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_KEY_DEFAULT` |
+| **1. Concurrency** | Max simultaneous in-flight requests | `1 × GPU count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_KEY_DEFAULT` |
 | **2. RPM** | Requests per minute (Redis sliding window) | `60 RPM` | `DEFAULT_REQUESTS_PER_MINUTE` (per-key via `manage-keys.sh`) |
 | **3. TPM** | Tokens per minute (Redis sliding window) | `40,000 TPM` | `DEFAULT_TOKENS_PER_MINUTE` (per-key via `manage-keys.sh`) |
 
 **All limits return HTTP 429 immediately** with a structured error body and accurate `Retry-After` header — the same pattern used by OpenAI, Anthropic, and Azure OpenAI. There is no server-side queuing (which would be a DDoS vector).
 
 **Concurrency scales automatically with GPUs:**
-- 1 GPU → cap = 4 concurrent requests per key
-- 2 GPUs → cap = 8 concurrent requests per key
-- N GPUs → cap = N × 4 (override with `CONCURRENCY_PER_GPU`)
+- 1 GPU → cap = 1 concurrent request per key
+- 2 GPUs → cap = 2 concurrent requests per key
+- N GPUs → cap = N × 1 (override with `CONCURRENCY_PER_GPU`)
 
 **429 error body format:**
 ```json
@@ -345,9 +359,9 @@ The gateway enforces three layers of protection per API key, checked in order:
   "detail": {
     "error": {
       "type": "concurrency_limit_exceeded",
-      "message": "You have 4 requests in-flight. Limit is 4 (1 GPU × 4 slots). Retry in ~5s.",
-      "current_inflight": 4,
-      "limit": 4,
+      "message": "You have 1 request in-flight. Limit is 1 (1 GPU × 1 slot). Retry in ~5s.",
+      "current_inflight": 1,
+      "limit": 1,
       "retry_after": 5
     }
   }
@@ -374,8 +388,8 @@ Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the
 | `DEFAULT_REQUESTS_PER_MINUTE` | `60` | RPM limit for new keys |
 | `DEFAULT_TOKENS_PER_DAY` | `100000` | Daily token quota for new keys |
 | `DEFAULT_TOKENS_PER_MINUTE` | `40000` | TPM limit for new keys |
-| `CONCURRENCY_PER_GPU` | `4` | Concurrency slots per healthy GPU |
-| `CONCURRENCY_PER_KEY_DEFAULT` | `4` | Base concurrency when no GPUs detected |
+| `CONCURRENCY_PER_GPU` | `1` | Concurrency slots per healthy GPU |
+| `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Base concurrency when no GPUs detected |
 | `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend |
 | `MAX_INFLIGHT_PER_BACKEND` | `32` | Requests before routing to next backend |
 
@@ -391,10 +405,10 @@ Prometheus metrics are exposed at `/metrics` (requires `metrics` scope):
 
 ```bash
 # Request rate by status (success, rate_limited, concurrency_exceeded, tpm_exceeded)
-llmapi_requests_total{model="qwen2.5-14b", priority="normal", status="success", endpoint="chat"}
+llmapi_requests_total{model="qwen3-14b", priority="normal", status="success", endpoint="chat"}
 
 # Token usage
-llmapi_tokens_total{model="qwen2.5-14b", direction="output"}
+llmapi_tokens_total{model="qwen3-14b", direction="output"}
 
 # Concurrency rejections (DDoS / burst protection)
 llmapi_concurrency_rejected_total{endpoint="chat"}
@@ -406,7 +420,7 @@ llmapi_tpm_rejected_total{endpoint="chat"}
 llmapi_backend_requests_inflight{backend="vllm:http://vllm-0.vllm:8000"}
 
 # Request duration histogram
-llmapi_request_duration_seconds{model="qwen2.5-14b", endpoint="chat"}
+llmapi_request_duration_seconds{model="qwen3-14b", endpoint="chat"}
 ```
 
 **Live rate limiter state** (requires `metrics` scope):

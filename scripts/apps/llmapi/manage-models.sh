@@ -24,8 +24,6 @@ usage() {
     echo "  add-vllm          Add a model to vLLM (GPU)"
     echo "  add-llamacpp      Add a model to llama.cpp (CPU)"
     echo "  add-embedding     Add an embedding model"
-    echo "  remove            Remove a model"
-    echo "  set-default       Set the default model"
     echo ""
     echo "Options for 'add-vllm':"
     echo "  --model <hf-model>    HuggingFace model ID"
@@ -38,8 +36,8 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 list"
-    echo "  $0 add-vllm --model 'Qwen/Qwen2.5-7B-Instruct' --name 'qwen2.5-7b'"
-    echo "  $0 add-llamacpp --url 'https://huggingface.co/.../model.gguf' --name 'llama3-70b'"
+    echo "  $0 add-vllm --model 'Qwen/Qwen3-14B-AWQ' --name 'qwen3-14b'"
+    echo "  $0 add-llamacpp --url 'https://huggingface.co/.../model.gguf' --name 'llama3.3-70b'"
 }
 
 # Check prerequisites
@@ -53,6 +51,79 @@ check_prereqs() {
         echo -e "${RED}Error: LLM API not installed. Run install-llmapi.sh first.${NC}"
         exit 1
     fi
+}
+
+set_vllm_family_config() {
+    local model_lower
+    model_lower=$(echo "$model" | tr '[:upper:]' '[:lower:]')
+
+    enable_reasoning="false"
+    reasoning_parser="qwen3"
+    tokenizer_mode="auto"
+    config_format="auto"
+    load_format="auto"
+    tool_call_parser="none"
+    enable_auto_tool_choice="false"
+
+    case "$model_lower" in
+        *qwen3*)
+            enable_reasoning="true"
+            reasoning_parser="qwen3"
+            if [[ "$quantization_explicit" != "true" && "$model_lower" == *awq* ]]; then
+                quantization="awq"
+            fi
+            ;;
+        *ministral*|*mistral*)
+            if [[ "$quantization_explicit" != "true" && "$model_lower" == *awq* ]]; then
+                quantization="awq"
+            elif [[ "$quantization_explicit" != "true" ]]; then
+                quantization="none"
+            fi
+            tokenizer_mode="mistral"
+            config_format="mistral"
+            load_format="mistral"
+            tool_call_parser="mistral"
+            enable_auto_tool_choice="true"
+            ;;
+        *llama*)
+            if [[ "$quantization_explicit" != "true" ]]; then
+                quantization="none"
+            fi
+            tool_call_parser="llama3_json"
+            enable_auto_tool_choice="true"
+            ;;
+    esac
+}
+
+vllm_patch_json() {
+    MODEL_NAME="$model" \
+    SERVED_MODEL_NAME="$name" \
+    QUANTIZATION="$quantization" \
+    ENABLE_REASONING="$enable_reasoning" \
+    REASONING_PARSER="$reasoning_parser" \
+    TOKENIZER_MODE="$tokenizer_mode" \
+    CONFIG_FORMAT="$config_format" \
+    LOAD_FORMAT="$load_format" \
+    TOOL_CALL_PARSER="$tool_call_parser" \
+    ENABLE_AUTO_TOOL_CHOICE="$enable_auto_tool_choice" \
+    python3 - <<'PY'
+import json
+import os
+
+keys = [
+    "MODEL_NAME",
+    "SERVED_MODEL_NAME",
+    "QUANTIZATION",
+    "ENABLE_REASONING",
+    "REASONING_PARSER",
+    "TOKENIZER_MODE",
+    "CONFIG_FORMAT",
+    "LOAD_FORMAT",
+    "TOOL_CALL_PARSER",
+    "ENABLE_AUTO_TOOL_CHOICE",
+]
+print(json.dumps({"data": {key: os.environ[key] for key in keys}}))
+PY
 }
 
 # List models
@@ -95,7 +166,15 @@ cmd_list() {
 cmd_add_vllm() {
     local model=""
     local name=""
-    local quantization="awq"
+    local quantization="none"
+    local quantization_explicit="false"
+    local enable_reasoning="false"
+    local reasoning_parser="qwen3"
+    local tokenizer_mode="auto"
+    local config_format="auto"
+    local load_format="auto"
+    local tool_call_parser="none"
+    local enable_auto_tool_choice="false"
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -109,6 +188,7 @@ cmd_add_vllm() {
                 ;;
             --quantization)
                 quantization="$2"
+                quantization_explicit="true"
                 shift 2
                 ;;
             *)
@@ -121,25 +201,38 @@ cmd_add_vllm() {
     
     if [ -z "$model" ]; then
         echo "Available model presets:"
-        echo "  1. Qwen/Qwen2.5-14B-Instruct-AWQ"
-        echo "  2. Qwen/Qwen2.5-7B-Instruct"
-        echo "  3. mistralai/Mistral-7B-Instruct-v0.3"
-        echo "  4. TheBloke/CodeLlama-34B-Instruct-AWQ"
+        echo "  1. Qwen/Qwen3-14B-AWQ"
+        echo "  2. Qwen/Qwen3-8B"
+        echo "  3. cyankiwi/Ministral-3-14B-Instruct-2512-AWQ-4bit"
+        echo "  4. meta-llama/Llama-3.2-3B-Instruct"
         echo "  5. Custom"
         read -p "Choose [1-5]: " choice
         case "$choice" in
-            1) model="Qwen/Qwen2.5-14B-Instruct-AWQ"; name="qwen2.5-14b" ;;
-            2) model="Qwen/Qwen2.5-7B-Instruct"; name="qwen2.5-7b"; quantization="none" ;;
-            3) model="mistralai/Mistral-7B-Instruct-v0.3"; name="mistral-7b"; quantization="none" ;;
-            4) model="TheBloke/CodeLlama-34B-Instruct-AWQ"; name="codellama-34b" ;;
+            1) model="Qwen/Qwen3-14B-AWQ"; name="qwen3-14b"; quantization="awq"; enable_reasoning="true" ;;
+            2) model="Qwen/Qwen3-8B"; name="qwen3-8b"; quantization="none"; enable_reasoning="true" ;;
+            3) model="cyankiwi/Ministral-3-14B-Instruct-2512-AWQ-4bit"; name="ministral3-14b"; quantization="awq"; tokenizer_mode="mistral"; config_format="mistral"; load_format="mistral"; tool_call_parser="mistral"; enable_auto_tool_choice="true" ;;
+            4) model="meta-llama/Llama-3.2-3B-Instruct"; name="llama3.2-3b"; quantization="none"; tool_call_parser="llama3_json"; enable_auto_tool_choice="true" ;;
             5) read -p "Enter HuggingFace model ID: " model
-               read -p "Enter API name: " name ;;
+               read -p "Enter API name: " name
+               read -p "Quantization [none]: " quantization
+               quantization="${quantization:-none}"
+               quantization_explicit="true" ;;
         esac
     fi
     
     if [ -z "$name" ]; then
         name=$(echo "$model" | sed 's|.*/||' | tr '[:upper:]' '[:lower:]')
     fi
+
+    set_vllm_family_config
+
+    case "$quantization" in
+        none|awq|gptq) ;;
+        *)
+            echo -e "${RED}Error: quantization must be one of: none, awq, gptq${NC}"
+            exit 1
+            ;;
+    esac
     
     echo ""
     echo "Updating vLLM configuration..."
@@ -149,11 +242,7 @@ cmd_add_vllm() {
     
     # Update ConfigMap
     kubectl patch configmap vllm-config -n "$NAMESPACE" --type merge \
-        -p "{\"data\":{\"MODEL_NAME\":\"$model\",\"QUANTIZATION\":\"$quantization\"}}"
-    
-    # Update StatefulSet args
-    kubectl patch statefulset vllm -n "$NAMESPACE" --type='json' \
-        -p="[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/args\",\"value\":[\"--model\",\"$model\",\"--max-model-len\",\"8192\",\"--gpu-memory-utilization\",\"0.90\",\"--quantization\",\"$quantization\",\"--host\",\"0.0.0.0\",\"--port\",\"8000\",\"--served-model-name\",\"$name\",\"--trust-remote-code\"]}]"
+        -p "$(vllm_patch_json)"
     
     echo ""
     echo -e "${GREEN}✓ vLLM model updated${NC}"
@@ -191,21 +280,21 @@ cmd_add_llamacpp() {
     
     if [ -z "$url" ]; then
         echo "Available model presets:"
-        echo "  1. Meta-Llama-3.1-70B-Instruct Q4_K_M (~45GB)"
-        echo "  2. Meta-Llama-3.1-70B-Instruct Q5_K_M (~55GB)"
-        echo "  3. Mixtral-8x7B Q4_K_M (~30GB)"
-        echo "  4. Meta-Llama-3.1-8B Q8 (~10GB)"
+        echo "  1. Llama-3.3-70B-Instruct Q4_K_M (~45GB)"
+        echo "  2. Llama-3.3-70B-Instruct Q5_K_S (~49GB)"
+        echo "  3. Ministral 3 14B Instruct Q4_K_M (~9GB)"
+        echo "  4. Llama-3.2-3B Q8 (~4GB)"
         echo "  5. Custom GGUF URL"
         read -p "Choose [1-5]: " choice
         case "$choice" in
-            1) url="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
-               name="llama3.1-70b-q4" ;;
-            2) url="https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q5_K_M.gguf"
-               name="llama3.1-70b-q5" ;;
-            3) url="https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
-               name="mixtral-8x7b" ;;
-            4) url="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
-               name="llama3.1-8b" ;;
+            1) url="https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF/resolve/main/Llama-3.3-70B-Instruct-Q4_K_M.gguf"
+               name="llama3.3-70b-q4" ;;
+            2) url="https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF/resolve/main/Llama-3.3-70B-Instruct-Q5_K_S.gguf"
+               name="llama3.3-70b-q5" ;;
+            3) url="https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512-GGUF/resolve/main/Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
+               name="ministral3-14b-q4" ;;
+            4) url="https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q8_0.gguf"
+               name="llama3.2-3b" ;;
             5) read -p "Enter GGUF URL: " url
                read -p "Enter API name: " name ;;
         esac

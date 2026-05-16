@@ -38,32 +38,32 @@ spec:
         args:
         - |
           set -e
-          
+
           # Install redis-cli for status reporting (lightweight, <1MB)
           echo "Installing redis-cli for status reporting..."
           apt-get update -qq && apt-get install -y -qq redis-tools 2>/dev/null || true
-          
+
           # Helper function to report errors to Redis for admin UI visibility
           report_error() {
             local error_msg="$1"
             echo "ERROR: $error_msg"
-            
+
             # Try to write error to Redis so admin UI can show it
             if command -v redis-cli >/dev/null 2>&1; then
               redis-cli -h redis SET "vllm:download:error" "$error_msg" EX 3600 2>/dev/null || true
               redis-cli -h redis SET "vllm:download:status" "failed" EX 3600 2>/dev/null || true
             fi
-            
+
             exit 1
           }
-          
+
           # Report download start
           if command -v redis-cli >/dev/null 2>&1; then
             redis-cli -h redis SET "vllm:download:status" "downloading" EX 3600 2>/dev/null || true
             redis-cli -h redis SET "vllm:download:model" "$MODEL_NAME" EX 3600 2>/dev/null || true
             redis-cli -h redis DEL "vllm:download:error" 2>/dev/null || true
           fi
-          
+
           # CRITICAL: Export HF_TOKEN at the very start for huggingface_hub library
           # The library checks this env var globally, not just in function calls
           if [ -n "$HF_TOKEN" ]; then
@@ -71,21 +71,21 @@ spec:
           elif [ -n "$HUGGING_FACE_HUB_TOKEN" ]; then
             export HF_TOKEN="$HUGGING_FACE_HUB_TOKEN"
           fi
-          
+
           echo "=== vLLM Model Pre-Download ==="
           echo "Model: $MODEL_NAME"
           echo "HF Token (HF_TOKEN): $([ -n \"$HF_TOKEN\" ] && echo 'SET' || echo 'NOT SET')"
           echo "HF Token (HUGGING_FACE_HUB_TOKEN): $([ -n \"$HUGGING_FACE_HUB_TOKEN\" ] && echo 'SET' || echo 'NOT SET')"
-          
+
           # Model name without org prefix for directory matching
           MODEL_SHORT=$(echo "$MODEL_NAME" | sed 's|.*/||' | tr '[:upper:]' '[:lower:]')
-          
+
           # 1. Check if model already exists on hostPath (persistent across reinstalls)
           # Models are stored directly on node disk at /var/lib/llmapi/models/vllm
           # This directory is shared across all vLLM pods on this node
           CACHE_DIR="/models/models--$(echo $MODEL_NAME | tr '/' '--')"
           CACHE_DIR_HUB="/models/hub/models--$(echo $MODEL_NAME | tr '/' '--')"
-          
+
           for DIR in "$CACHE_DIR" "$CACHE_DIR_HUB"; do
             if [ -d "$DIR/snapshots" ] && [ "$(ls -A $DIR/snapshots 2>/dev/null)" ]; then
               CACHED_SIZE=$(du -sh "$DIR" 2>/dev/null | cut -f1)
@@ -99,47 +99,47 @@ spec:
               fi
             fi
           done
-          
+
           # 2. No cached model found - download from HuggingFace directly to hostPath
           # Models persist on node disk and are reused across pod restarts/reinstalls
           echo ""
           echo "No cached model found on hostPath."
-          
+
           echo "Downloading from HuggingFace to hostPath..."
           echo "Model will persist on this node for future use."
-          
+
           # Prepare /models directory with correct permissions BEFORE download
           # This prevents "Read-only file system" errors when creating lock files
           echo "Preparing model directory..."
           mkdir -p /models/.locks
           chown -R 1000:1000 /models
           chmod -R 755 /models
-          
+
           # Try aria2c first (16 parallel connections), fallback to hf_transfer
           if command -v aria2 >/dev/null 2>&1; then
             echo "Installing aria2 for multi-connection downloads..."
             apt-get update -qq && apt-get install -y -qq aria2 2>/dev/null || apk add --no-cache aria2 2>/dev/null || true
           fi
-          
+
           if command -v aria2c >/dev/null 2>&1; then
             echo ""
             echo "Using aria2c (16 parallel connections, 5-10x faster)"
             echo ""
-            
+
             # Install huggingface-cli to resolve model files
             pip install --quiet --no-cache-dir huggingface_hub
-            
+
             # Get list of files to download
             python3 << 'PYEOF'
           import os
           from huggingface_hub import list_repo_files
-          
+
           model_name = os.environ.get("MODEL_NAME")
           token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
-          
+
           print("Fetching file list...")
           files = list_repo_files(model_name, token=token if token else None)
-          
+
           # Download key files (safetensors, json configs)
           base_url = f"https://huggingface.co/{model_name}/resolve/main"
           for f in files:
@@ -147,12 +147,12 @@ spec:
                   url = f"{base_url}/{f}"
                   out_dir = f"/models/hub/models--{model_name.replace('/', '--')}/snapshots/main"
                   os.makedirs(out_dir, exist_ok=True)
-                  
+
                   aria_cmd = f"aria2c -x 16 -s 16 -c --allow-overwrite=true"
                   if token := os.environ.get("HUGGING_FACE_HUB_TOKEN"):
                       aria_cmd += f' --header="Authorization: Bearer {token}"'
                   aria_cmd += f' -d "{out_dir}" -o "{f.split("/")[-1]}" "{url}"'
-                  
+
                   print(f"Downloading {f}...")
                   os.system(aria_cmd)
           PYEOF
@@ -161,22 +161,22 @@ spec:
             echo "Installing huggingface_hub with hf_transfer..."
             pip install --quiet --no-cache-dir huggingface_hub hf_transfer
             export HF_HUB_ENABLE_HF_TRANSFER=1
-            
+
             echo ""
             echo "Using hf_transfer for accelerated download (up to 500 MB/s)"
             echo "HF_TOKEN status before download: $([ -n \"$HF_TOKEN\" ] && echo 'SET' || echo 'NOT SET')"
             echo ""
-            
+
             # Download with resume support and progress using Python API
             python3 << PYEOF
           import os
           import sys
           from huggingface_hub import snapshot_download
           from huggingface_hub.errors import RepositoryNotFoundError, HfHubHTTPError
-          
+
           model_name = os.environ.get("MODEL_NAME")
           token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-          
+
           print(f"Downloading {model_name}...")
           try:
               snapshot_download(
@@ -201,26 +201,26 @@ spec:
               print(f"ERROR: Failed to download model: {e}", file=sys.stderr)
               sys.exit(1)
           PYEOF
-            
+
             if [ $? -ne 0 ]; then
               report_error "Model download failed. Check model name or HuggingFace token."
             fi
           fi
-          
+
           # Verify download
           if find "/models" -name "*.safetensors" 2>/dev/null | head -1 | grep -q .; then
             FINAL_SIZE=$(du -sh /models 2>/dev/null | cut -f1)
             echo ""
             echo "✓ Download complete. Model cached on hostPath: $FINAL_SIZE"
             echo "✓ Model will be reused on next pod restart/reinstall"
-            
+
             # CRITICAL: Fix permissions for vLLM container to write lock files
             # Set ownership to 1000:1000 (vLLM user) and make writable
             echo "Fixing permissions for vLLM container..."
             chown -R 1000:1000 /models
             chmod -R 755 /models
             echo "✓ Permissions fixed"
-            
+
             # Report success to Redis
             if command -v redis-cli >/dev/null 2>&1; then
               redis-cli -h redis SET "vllm:download:status" "success" EX 3600 2>/dev/null || true
@@ -260,37 +260,77 @@ spec:
             memory: "4Gi"
       containers:
       - name: vllm
-        image: vllm/vllm-openai:v0.6.6.post1
+        image: vllm/vllm-openai:v0.15.1
         ports:
         - containerPort: 8000
           name: http
         command: ["/bin/sh", "-c"]
         args:
         - |
-          ARGS="--model $(MODEL_NAME) \
-                --max-model-len $(MAX_MODEL_LEN) \
-                --gpu-memory-utilization $(GPU_MEMORY_UTILIZATION) \
-                --max-num-seqs $(MAX_NUM_SEQS) \
+          MODEL_NAME_VALUE="${MODEL_NAME:-Qwen/Qwen3-14B-AWQ}"
+          SERVED_MODEL_NAME_VALUE="${SERVED_MODEL_NAME:-qwen3-14b}"
+          MAX_MODEL_LEN_VALUE="${MAX_MODEL_LEN:-32768}"
+          GPU_MEMORY_UTILIZATION_VALUE="${GPU_MEMORY_UTILIZATION:-0.90}"
+          MAX_NUM_SEQS_VALUE="${MAX_NUM_SEQS:-1}"
+          MAX_NUM_BATCHED_TOKENS_VALUE="${MAX_NUM_BATCHED_TOKENS:-32768}"
+          QUANTIZATION_VALUE="${QUANTIZATION:-awq}"
+          ENABLE_CHUNKED_PREFILL_VALUE="${ENABLE_CHUNKED_PREFILL:-true}"
+          ENFORCE_EAGER_VALUE="${ENFORCE_EAGER:-false}"
+          ENABLE_REASONING_VALUE="${ENABLE_REASONING:-true}"
+          REASONING_PARSER_VALUE="${REASONING_PARSER:-qwen3}"
+          TOKENIZER_MODE_VALUE="${TOKENIZER_MODE:-auto}"
+          CONFIG_FORMAT_VALUE="${CONFIG_FORMAT:-auto}"
+          LOAD_FORMAT_VALUE="${LOAD_FORMAT:-auto}"
+          TOOL_CALL_PARSER_VALUE="${TOOL_CALL_PARSER:-none}"
+          ENABLE_AUTO_TOOL_CHOICE_VALUE="${ENABLE_AUTO_TOOL_CHOICE:-false}"
+
+          ARGS="--model ${MODEL_NAME_VALUE} \
+                --max-model-len ${MAX_MODEL_LEN_VALUE} \
+                --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION_VALUE} \
+                --max-num-seqs ${MAX_NUM_SEQS_VALUE} \
+                --max-num-batched-tokens ${MAX_NUM_BATCHED_TOKENS_VALUE} \
                 --host 0.0.0.0 \
                 --port 8000 \
-                --served-model-name $(SERVED_MODEL_NAME) \
+                --served-model-name ${SERVED_MODEL_NAME_VALUE} \
                 --trust-remote-code"
-          
+
           # Add quantization if not 'none'
-          if [ "$(QUANTIZATION)" != "none" ]; then
-            ARGS="$ARGS --quantization $(QUANTIZATION)"
+          if [ "$QUANTIZATION_VALUE" != "none" ]; then
+            ARGS="$ARGS --quantization $QUANTIZATION_VALUE"
           fi
-          
+
           # Add chunked prefill if enabled
-          if [ "$(ENABLE_CHUNKED_PREFILL)" = "true" ]; then
+          if [ "$ENABLE_CHUNKED_PREFILL_VALUE" = "true" ]; then
             ARGS="$ARGS --enable-chunked-prefill"
           fi
-          
+
           # Add enforce eager if enabled (helps with OOM)
-          if [ "$(ENFORCE_EAGER)" = "true" ]; then
+          if [ "$ENFORCE_EAGER_VALUE" = "true" ]; then
             ARGS="$ARGS --enforce-eager"
           fi
-          
+
+          # Some model families need explicit tokenizer/config/load formats.
+          if [ -n "$TOKENIZER_MODE_VALUE" ] && [ "$TOKENIZER_MODE_VALUE" != "auto" ]; then
+            ARGS="$ARGS --tokenizer-mode $TOKENIZER_MODE_VALUE"
+          fi
+          if [ -n "$CONFIG_FORMAT_VALUE" ] && [ "$CONFIG_FORMAT_VALUE" != "auto" ]; then
+            ARGS="$ARGS --config-format $CONFIG_FORMAT_VALUE"
+          fi
+          if [ -n "$LOAD_FORMAT_VALUE" ] && [ "$LOAD_FORMAT_VALUE" != "auto" ]; then
+            ARGS="$ARGS --load-format $LOAD_FORMAT_VALUE"
+          fi
+          if [ -n "$TOOL_CALL_PARSER_VALUE" ] && [ "$TOOL_CALL_PARSER_VALUE" != "none" ]; then
+            ARGS="$ARGS --tool-call-parser $TOOL_CALL_PARSER_VALUE"
+          fi
+          if [ "$ENABLE_AUTO_TOOL_CHOICE_VALUE" = "true" ]; then
+            ARGS="$ARGS --enable-auto-tool-choice"
+          fi
+
+          # Expose Qwen3 thinking content through OpenAI-compatible reasoning fields.
+          if [ "$ENABLE_REASONING_VALUE" = "true" ]; then
+            ARGS="$ARGS --enable-reasoning --reasoning-parser $REASONING_PARSER_VALUE"
+          fi
+
           echo "Starting vLLM with: $ARGS"
           exec python3 -m vllm.entrypoints.openai.api_server $ARGS
         envFrom:

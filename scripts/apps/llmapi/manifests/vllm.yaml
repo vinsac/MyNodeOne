@@ -260,7 +260,7 @@ spec:
             memory: "4Gi"
       containers:
       - name: vllm
-        image: vllm/vllm-openai:v0.15.1
+        image: vllm/vllm-openai:v0.10.2
         ports:
         - containerPort: 8000
           name: http

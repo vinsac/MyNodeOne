@@ -1137,7 +1137,7 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
     fi
     
     # Pre-pull vLLM image to avoid Docker Hub rate limits during deployment
-    VLLM_IMAGE="vllm/vllm-openai:v0.15.1"
+    VLLM_IMAGE="vllm/vllm-openai:v0.10.2"
     echo "   📥 Pre-pulling vLLM image (this may take a few minutes)..."
     echo "      Image: $VLLM_IMAGE"
     

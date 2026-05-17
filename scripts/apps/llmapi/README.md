@@ -280,6 +280,9 @@ The installer uses a conservative RTX 3090 profile for the default Qwen3 GPU bac
 | Max batched tokens | `32768` | Allows one full-context prefill |
 | GPU memory utilization | `0.90` | Leaves VRAM headroom on 24GB cards |
 | Reasoning parser | `qwen3` | Exposes Qwen3 thinking content through vLLM reasoning fields |
+| vLLM image | `vllm/vllm-openai:v0.10.2` | Verified on RTX 3090 nodes with NVIDIA 580.142 |
+
+**vLLM image compatibility**: The image tag is intentionally pinned. `vllm/vllm-openai:v0.15.1` was tested on the RTX 3090 cluster and failed during PyTorch CUDA initialization with `cudaGetDeviceCount()` error 803, even though `nvidia-smi` worked in the pod. Do not upgrade the vLLM image without running a Kubernetes GPU smoke test that confirms `torch.cuda.is_available()` is `True` and vLLM can start the default Qwen3 model.
 
 ## Architecture
 
@@ -446,6 +449,17 @@ kubectl logs -n llmapi -l app=vllm -f
 # Check backend health
 curl http://llmapi.cluster.local/health/backends
 ```
+
+### vLLM CUDA Version Mismatch
+
+If vLLM exits with an error like:
+
+```text
+RuntimeError: Unexpected error from cudaGetDeviceCount()
+Error 803: system has unsupported display driver / cuda driver combination
+```
+
+first test whether Kubernetes GPU access works with a plain CUDA image. If that succeeds but vLLM fails, the vLLM image's bundled PyTorch CUDA runtime is likely incompatible with the node driver. The current default, `vllm/vllm-openai:v0.10.2`, was validated on the RTX 3090 nodes and should not be replaced by a newer tag until the new image passes the same smoke test.
 
 ## Uninstall
 

@@ -597,6 +597,8 @@ N GPUs → cap = N × CONCURRENCY_PER_GPU
 
 High-performance GPU inference using vLLM with continuous batching.
 
+**Runtime image**: The deployment pins `vllm/vllm-openai:v0.10.2`. This is intentional for the RTX 3090 cluster: `v0.15.1` was tested and failed PyTorch CUDA initialization with `cudaGetDeviceCount()` error 803 on nodes using NVIDIA driver 580.142. A successful `nvidia-smi` inside the pod is not sufficient; the image must also pass a PyTorch CUDA check and start the default Qwen3 model.
+
 **Why vLLM:**
 - **Continuous Batching**: Handles 10-50x more concurrent requests than Ollama
 - **PagedAttention**: 50% better VRAM efficiency
@@ -607,6 +609,7 @@ High-performance GPU inference using vLLM with continuous batching.
 - One vLLM instance per GPU
 - Each instance can serve multiple models (with memory management)
 - Horizontal scaling by adding GPU workers
+- Upgrade the vLLM image only after validating `torch.cuda.is_available()`, `torch.cuda.device_count()`, and Qwen3 startup in a GPU pod on the target nodes
 
 ### 3. llama.cpp Server (CPU/RAM Overflow)
 

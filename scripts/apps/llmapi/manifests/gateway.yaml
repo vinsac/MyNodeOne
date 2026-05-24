@@ -23,17 +23,30 @@ data:
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
   AUTO_DOWNLOAD: "false"
-  # Horizontal scaling: route to least-loaded backend (GPU1 → GPU2 → CPU)
+  # Horizontal scaling: route to least-loaded backend (GPU1 -> GPU2 -> CPU)
   # When enabled, all chat backends are treated as equivalent
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
+  MAX_INFLIGHT_PER_VLLM_BACKEND: "1"
+  MAX_INFLIGHT_PER_EMBEDDING_BACKEND: "4"
+  MAX_INFLIGHT_PER_LLAMACPP_BACKEND: "1"
+  MAX_INFLIGHT_PER_OLLAMA_BACKEND: "1"
   # Rate limiting
   CONCURRENCY_PER_GPU: "1"
   CONCURRENCY_PER_KEY_DEFAULT: "1"
   CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
+  CONCURRENCY_PER_LLAMACPP_REPLICA: "1"
+  CONCURRENCY_PER_OLLAMA_REPLICA: "1"
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
+  BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
+  DEFAULT_TOKENS_PER_MINUTE: "40000"
   DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE: "60"
   DEFAULT_EMBEDDING_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE: "60"
+  DEFAULT_LLAMACPP_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_OLLAMA_REQUESTS_PER_MINUTE: "60"
+  DEFAULT_OLLAMA_TOKENS_PER_MINUTE: "40000"
+  ADMIN_DEFAULT_TOKENS_PER_MINUTE: "200000"
   # Admin password (change this!)
   ADMIN_PASSWORD: "admin"
 ---
@@ -45,7 +58,7 @@ metadata:
   labels:
     app: llmapi-gateway
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: llmapi-gateway

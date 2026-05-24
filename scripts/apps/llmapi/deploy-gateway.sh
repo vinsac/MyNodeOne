@@ -36,9 +36,14 @@ GATEWAY_CODE_SHA=$(sha256sum "$MAIN_FILE" | awk '{print $1}')
 ROLLOUT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 echo "📄 Updating gateway code ConfigMap..."
-kubectl create configmap gateway-code -n "$NAMESPACE" \
-    --from-file=main.py="$MAIN_FILE" \
-    --dry-run=client -o yaml | kubectl apply -f -
+if kubectl get configmap gateway-code -n "$NAMESPACE" &>/dev/null; then
+    kubectl create configmap gateway-code -n "$NAMESPACE" \
+        --from-file=main.py="$MAIN_FILE" \
+        --dry-run=client -o yaml | kubectl replace -f -
+else
+    kubectl create configmap gateway-code -n "$NAMESPACE" \
+        --from-file=main.py="$MAIN_FILE"
+fi
 
 echo "🚀 Rolling gateway deployment..."
 kubectl patch deployment gateway -n "$NAMESPACE" --type merge \

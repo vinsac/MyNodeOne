@@ -425,7 +425,7 @@ response = client.chat.completions.create(
 
 #### **429 Too Many Requests - Rate limit exceeded**
 
-The gateway enforces three independent rate limits per API key and per service pool. Chat/completions use the chat/GPU pool, while embeddings use a separate embedding pool with separate RPM/TPM windows. Each limit returns a structured error body with an accurate `Retry-After` header.
+The gateway enforces three independent rate limits per API key and per service pool. vLLM/GPU, embedding, llama.cpp, and Ollama traffic each use separate concurrency, RPM, and TPM buckets, so one backend class cannot consume another class's slots. Each limit returns a structured error body with an accurate `Retry-After` header.
 
 ---
 
@@ -435,12 +435,12 @@ The gateway enforces three independent rate limits per API key and per service p
 {
   "detail": {
     "error": {
-      "type": "concurrency_limit_exceeded",
-      "message": "You have 2 chat request(s) in-flight. Limit is 2 (chat pool: 2 GPU(s) × 1 slots). Retry in ~5s when an in-flight request completes.",
-      "limit_bucket": "chat",
-      "current_inflight": 2,
-      "limit": 2,
-      "retry_after": 5
+	      "type": "concurrency_limit_exceeded",
+	      "message": "You have 2 vllm request(s) in-flight. Limit is 2 (vLLM pool: 2 GPU(s) x 1 slots). Retry in ~5s when an in-flight request completes.",
+	      "limit_bucket": "vllm",
+	      "current_inflight": 2,
+	      "limit": 2,
+	      "retry_after": 5
     }
   }
 }
@@ -451,12 +451,21 @@ The gateway enforces three independent rate limits per API key and per service p
 Retry-After: 5
 ```
 
-**Fix:** Wait ~5s for an in-flight request in the same `limit_bucket` to finish, then retry. Chat limits scale with healthy GPU count. Embedding limits scale separately with healthy embedding replicas.
+**Fix:** Wait ~5s for an in-flight request in the same `limit_bucket` to finish, then retry. vLLM limits scale with healthy GPU count. Embedding, llama.cpp, and Ollama limits scale separately with their healthy service replicas.
 
-If `current_inflight` stays pinned while backends are idle, the gateway now prunes stale in-flight leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`). Admins can also clear the current gateway process immediately:
+If `current_inflight` stays pinned while backends are idle, the gateway prunes stale per-key leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) and stale backend leases after `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` (default `600`). A background maintenance task runs this pruning even without new traffic. Admins can also clear the current gateway process immediately:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     http://llmapi.cluster.local/admin/rate-limiter/reset
+```
+
+To reset one pool in the current gateway process:
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"limit_bucket":"vllm","backend":"vllm"}' \
      http://llmapi.cluster.local/admin/rate-limiter/reset
 ```
 

@@ -975,29 +975,46 @@ data:
   # Horizontal scaling: route to least-loaded backend (GPU → CPU)
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
+  MAX_INFLIGHT_PER_VLLM_BACKEND: "1"
+  MAX_INFLIGHT_PER_EMBEDDING_BACKEND: "4"
+  MAX_INFLIGHT_PER_LLAMACPP_BACKEND: "1"
+  MAX_INFLIGHT_PER_OLLAMA_BACKEND: "1"
   # Rate limiting: concurrency cap scales automatically with healthy GPU count
   # CONCURRENCY_PER_GPU × healthy_gpu_count = per-key concurrency cap
   CONCURRENCY_PER_GPU: "1"
   CONCURRENCY_PER_KEY_DEFAULT: "1"
   # Embeddings have a separate limiter pool and do not consume GPU/chat slots
   CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
+  CONCURRENCY_PER_LLAMACPP_REPLICA: "1"
+  CONCURRENCY_PER_OLLAMA_REPLICA: "1"
   # Self-heal leaked in-flight slots after this many seconds
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
+  BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
   # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
   # A 4096-token request costs ~40x more than a 100-token request
   DEFAULT_TOKENS_PER_MINUTE: "40000"
   # Separate embedding RPM/TPM windows
   DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
   DEFAULT_EMBEDDING_TOKENS_PER_MINUTE: "40000"
+  # Separate fallback backend RPM/TPM windows
+  DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
+  DEFAULT_LLAMACPP_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_OLLAMA_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
+  DEFAULT_OLLAMA_TOKENS_PER_MINUTE: "40000"
   # Higher default TPM for admin-scoped keys created via Admin UI/API
   ADMIN_DEFAULT_TOKENS_PER_MINUTE: "200000"
 EOF
 
 # Create ConfigMap with gateway Python code
 echo "📄 Creating gateway code ConfigMap..."
-kubectl create configmap gateway-code -n $NAMESPACE \
-    --from-file=main.py="$SCRIPT_DIR/gateway/main.py" \
-    --dry-run=client -o yaml | kubectl apply -f -
+if kubectl get configmap gateway-code -n "$NAMESPACE" &>/dev/null; then
+    kubectl create configmap gateway-code -n "$NAMESPACE" \
+        --from-file=main.py="$SCRIPT_DIR/gateway/main.py" \
+        --dry-run=client -o yaml | kubectl replace -f -
+else
+    kubectl create configmap gateway-code -n "$NAMESPACE" \
+        --from-file=main.py="$SCRIPT_DIR/gateway/main.py"
+fi
 
 # Deploy gateway using Python image with code from ConfigMap
 cat <<'EOF' | sed -e "s/\$NAMESPACE/$NAMESPACE/g" -e "s/\$GATEWAY_CODE_SHA/$GATEWAY_CODE_SHA/g" | kubectl apply -f -
@@ -1009,7 +1026,7 @@ metadata:
   labels:
     app: llmapi-gateway
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: llmapi-gateway

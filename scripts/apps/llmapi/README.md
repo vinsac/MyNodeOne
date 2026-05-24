@@ -345,30 +345,33 @@ The gateway enforces three layers of protection per API key, checked in order:
 
 | Layer | Mechanism | Default | Configurable? |
 |-------|-----------|---------|---------------|
-| **1. Concurrency** | Max simultaneous in-flight requests per service pool | Chat: `1 × GPU count`; embeddings: `4 × embedding replica count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_KEY_DEFAULT`, `CONCURRENCY_PER_EMBEDDING_REPLICA` |
-| **2. RPM** | Requests per minute (Redis sliding window) per service pool | Chat: `60 RPM`; embeddings: `60 RPM` | `DEFAULT_REQUESTS_PER_MINUTE`, `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE` |
-| **3. TPM** | Tokens per minute (Redis sliding window) per service pool | Chat: `40,000 TPM`; embeddings: `40,000 TPM` | `DEFAULT_TOKENS_PER_MINUTE`, `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE` |
+| **1. Concurrency** | Max simultaneous in-flight requests per service pool | vLLM: `1 x GPU count`; embeddings: `4 x replica count`; llama.cpp/Ollama: `1 x replica count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_EMBEDDING_REPLICA`, `CONCURRENCY_PER_LLAMACPP_REPLICA`, `CONCURRENCY_PER_OLLAMA_REPLICA` |
+| **2. RPM** | Requests per minute (Redis sliding window) per service pool | `60 RPM` per pool | `DEFAULT_REQUESTS_PER_MINUTE`, `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE`, `DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE`, `DEFAULT_OLLAMA_REQUESTS_PER_MINUTE` |
+| **3. TPM** | Tokens per minute (Redis sliding window) per service pool | `40,000 TPM` per pool | `DEFAULT_TOKENS_PER_MINUTE`, `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE`, `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE`, `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` |
 
 **All limits return HTTP 429 immediately** with a structured error body and accurate `Retry-After` header — the same pattern used by OpenAI, Anthropic, and Azure OpenAI. There is no server-side queuing (which would be a DDoS vector).
 
 **Concurrency is split by service pool:**
-- Chat/completions use the chat pool, scaled by healthy vLLM GPUs: 2 GPUs → 2 concurrent Qwen requests per key.
-- Embeddings use the embeddings pool, scaled by healthy embedding replicas: 1 embedding replica → 4 concurrent embedding requests per key.
-- A full embedding pool does not block Qwen/chat, and a full chat/GPU pool does not block embeddings.
+- vLLM uses the GPU pool, scaled by healthy vLLM GPUs: 2 GPUs -> 2 concurrent Qwen requests per key, with 1 request routed to each GPU backend by default.
+- Embeddings use the embedding pool, scaled by healthy embedding replicas: 1 embedding replica -> 4 concurrent embedding requests per key by default.
+- llama.cpp and Ollama have independent fallback pools, so CPU/Ollama traffic cannot consume vLLM or embedding slots.
+- A full embedding pool does not block Qwen/vLLM, and a full GPU pool does not block embeddings.
 
-**Self-healing concurrency leases:** In-flight slots are tracked as timestamped leases, not permanent counters. If a handler crashes or a client disconnect edge case misses cleanup, the gateway prunes stale leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) instead of blocking the key forever.
+**Self-healing concurrency leases:** In-flight slots are tracked as timestamped leases, not permanent counters. If a handler crashes or a client disconnect edge case misses cleanup, the gateway prunes stale per-key leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) and stale backend leases after `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` (default `600`) instead of blocking clients forever. A background maintenance task prunes those leases even when no new requests arrive.
+
+The default gateway deployment runs one replica so the in-process concurrency leases are authoritative for the backend pool. If you scale the gateway horizontally, each gateway pod maintains its own local leases unless a distributed lease store is added.
 
 **429 error body format:**
 ```json
 {
   "detail": {
     "error": {
-      "type": "concurrency_limit_exceeded",
-      "message": "You have 2 chat request(s) in-flight. Limit is 2 (chat pool: 2 GPU(s) × 1 slots). Retry in ~5s when an in-flight request completes.",
-      "limit_bucket": "chat",
-      "current_inflight": 2,
-      "limit": 2,
-      "retry_after": 5
+	      "type": "concurrency_limit_exceeded",
+	      "message": "You have 2 vllm request(s) in-flight. Limit is 2 (vLLM pool: 2 GPU(s) x 1 slots). Retry in ~5s when an in-flight request completes.",
+	      "limit_bucket": "vllm",
+	      "current_inflight": 2,
+	      "limit": 2,
+	      "retry_after": 5
     }
   }
 }
@@ -396,12 +399,23 @@ Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the
 | `DEFAULT_TOKENS_PER_MINUTE` | `40000` | TPM limit for new keys |
 | `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE` | `60` | Separate embedding RPM limit for new keys |
 | `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE` | `40000` | Separate embedding TPM limit for new keys |
+| `DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE` | `60` | Separate llama.cpp RPM limit for new keys |
+| `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE` | `40000` | Separate llama.cpp TPM limit for new keys |
+| `DEFAULT_OLLAMA_REQUESTS_PER_MINUTE` | `60` | Separate Ollama RPM limit for new keys |
+| `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` | `40000` | Separate Ollama TPM limit for new keys |
 | `CONCURRENCY_PER_GPU` | `1` | Concurrency slots per healthy GPU |
 | `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Base concurrency when no GPUs detected |
 | `CONCURRENCY_PER_EMBEDDING_REPLICA` | `4` | Concurrency slots per healthy embedding replica |
+| `CONCURRENCY_PER_LLAMACPP_REPLICA` | `1` | Concurrency slots per healthy llama.cpp replica |
+| `CONCURRENCY_PER_OLLAMA_REPLICA` | `1` | Concurrency slots per healthy Ollama replica |
 | `CONCURRENCY_LEASE_TTL_SECONDS` | `600` | Max age before an in-flight slot is considered stale and pruned |
+| `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` | `600` | Max age before a backend routing slot is considered stale and pruned |
 | `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend |
-| `MAX_INFLIGHT_PER_BACKEND` | `32` | Requests before routing to next backend |
+| `MAX_INFLIGHT_PER_VLLM_BACKEND` | `1` | Max simultaneous requests routed to each vLLM backend |
+| `MAX_INFLIGHT_PER_EMBEDDING_BACKEND` | `4` | Max simultaneous requests routed to each embedding backend |
+| `MAX_INFLIGHT_PER_LLAMACPP_BACKEND` | `1` | Max simultaneous requests routed to each llama.cpp backend |
+| `MAX_INFLIGHT_PER_OLLAMA_BACKEND` | `1` | Max simultaneous requests routed to each Ollama backend |
+| `MAX_INFLIGHT_PER_BACKEND` | `32` | Legacy fallback when a backend type has no specific cap |
 
 Override at install time via environment variables or edit the ConfigMap directly:
 ```bash

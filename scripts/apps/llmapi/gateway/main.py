@@ -70,9 +70,15 @@ class Config:
     CONCURRENCY_PER_KEY_DEFAULT = int(os.getenv("CONCURRENCY_PER_KEY_DEFAULT", "1"))
     # Embeddings run on their own service, so they must not consume chat/GPU slots.
     CONCURRENCY_PER_EMBEDDING_REPLICA = int(os.getenv("CONCURRENCY_PER_EMBEDDING_REPLICA", "4"))
+    CONCURRENCY_PER_LLAMACPP_REPLICA = int(os.getenv("CONCURRENCY_PER_LLAMACPP_REPLICA", "1"))
+    CONCURRENCY_PER_OLLAMA_REPLICA = int(os.getenv("CONCURRENCY_PER_OLLAMA_REPLICA", "1"))
     # Safety valve for leaked in-flight slots. This should be comfortably above
     # the non-streaming backend timeout (300s) so active requests are not pruned.
     CONCURRENCY_LEASE_TTL_SECONDS = int(os.getenv("CONCURRENCY_LEASE_TTL_SECONDS", "600"))
+    BACKEND_INFLIGHT_LEASE_TTL_SECONDS = int(os.getenv(
+        "BACKEND_INFLIGHT_LEASE_TTL_SECONDS",
+        os.getenv("CONCURRENCY_LEASE_TTL_SECONDS", "600")
+    ))
 
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
@@ -83,6 +89,22 @@ class Config:
     ))
     DEFAULT_EMBEDDING_TOKENS_PER_MINUTE = int(os.getenv(
         "DEFAULT_EMBEDDING_TOKENS_PER_MINUTE",
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
+    ))
+    DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE = int(os.getenv(
+        "DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE",
+        os.getenv("DEFAULT_REQUESTS_PER_MINUTE", "60")
+    ))
+    DEFAULT_LLAMACPP_TOKENS_PER_MINUTE = int(os.getenv(
+        "DEFAULT_LLAMACPP_TOKENS_PER_MINUTE",
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
+    ))
+    DEFAULT_OLLAMA_REQUESTS_PER_MINUTE = int(os.getenv(
+        "DEFAULT_OLLAMA_REQUESTS_PER_MINUTE",
+        os.getenv("DEFAULT_REQUESTS_PER_MINUTE", "60")
+    ))
+    DEFAULT_OLLAMA_TOKENS_PER_MINUTE = int(os.getenv(
+        "DEFAULT_OLLAMA_TOKENS_PER_MINUTE",
         os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
     ))
     # Higher default TPM for admin-scoped keys when not explicitly provided.
@@ -102,6 +124,22 @@ class Config:
     HORIZONTAL_SCALING = os.getenv("HORIZONTAL_SCALING", "true").lower() == "true"
     # Max concurrent requests per backend before routing to next
     MAX_INFLIGHT_PER_BACKEND = int(os.getenv("MAX_INFLIGHT_PER_BACKEND", "32"))
+    MAX_INFLIGHT_PER_VLLM_BACKEND = int(os.getenv(
+        "MAX_INFLIGHT_PER_VLLM_BACKEND",
+        os.getenv("CONCURRENCY_PER_GPU", "1")
+    ))
+    MAX_INFLIGHT_PER_EMBEDDING_BACKEND = int(os.getenv(
+        "MAX_INFLIGHT_PER_EMBEDDING_BACKEND",
+        os.getenv("CONCURRENCY_PER_EMBEDDING_REPLICA", "4")
+    ))
+    MAX_INFLIGHT_PER_LLAMACPP_BACKEND = int(os.getenv(
+        "MAX_INFLIGHT_PER_LLAMACPP_BACKEND",
+        os.getenv("CONCURRENCY_PER_LLAMACPP_REPLICA", "1")
+    ))
+    MAX_INFLIGHT_PER_OLLAMA_BACKEND = int(os.getenv(
+        "MAX_INFLIGHT_PER_OLLAMA_BACKEND",
+        os.getenv("CONCURRENCY_PER_OLLAMA_REPLICA", "1")
+    ))
 
     # Model name aliases (map OpenAI names to our internal names)
     MODEL_ALIASES = {
@@ -1047,6 +1085,8 @@ class RateLimiter:
         resources and adds latency unpredictability.
     """
 
+    SERVICE_BUCKETS = ("vllm", "embedding", "llamacpp", "ollama")
+
     # In-process concurrency leases: {"api_key:pool": [acquired_at_epoch_seconds, ...]}
     # Redis is NOT used here — in-process is sufficient because each gateway
     # pod tracks its own share; the concurrency cap is per-pod intentionally
@@ -1076,66 +1116,111 @@ class RateLimiter:
 
     def _healthy_embedding_count(self) -> int:
         """Count healthy embedding replicas to scale the embedding concurrency cap."""
+        return self._healthy_backend_count("embedding")
+
+    def _healthy_backend_count(self, backend_type: str) -> int:
+        """Count healthy backend instances of one type, with a safe minimum of one."""
         try:
             count = sum(
                 1 for key, healthy in backend_manager.backend_health.items()
-                if key.startswith("embedding:") and healthy
+                if key.startswith(f"{backend_type}:") and healthy
             )
             return max(1, count)
         except Exception:
             return 1
 
-    def _limit_bucket(self, endpoint: str) -> str:
-        """Map API endpoints to independent limiter pools."""
-        return "embeddings" if endpoint == "embeddings" else "chat"
+    def _limit_bucket(self, endpoint: str, backend_type: Optional[str] = None) -> str:
+        """Map a request to an independent service limiter pool."""
+        if backend_type in self.SERVICE_BUCKETS:
+            return backend_type
+        if endpoint == "embeddings":
+            return "embedding"
+        return "vllm"
 
     def _lease_key(self, api_key: str, bucket: str) -> str:
         return f"{api_key}:{bucket}"
 
     def _split_lease_key(self, lease_key: str) -> tuple[str, str]:
         if ":" not in lease_key:
-            return lease_key, "chat"
+            return lease_key, "vllm"
         api_key, bucket = lease_key.rsplit(":", 1)
         return api_key, bucket
 
-    def _concurrency_cap(self, key_config: dict, bucket: str = "chat") -> int:
+    def _concurrency_cap(self, key_config: dict, bucket: str = "vllm") -> int:
         """Per-key concurrency cap for a limiter pool.
 
-        Chat/completions are capped by healthy GPU count. Embeddings use their
-        own cap based on healthy embedding replicas, so indexing traffic cannot
-        consume Qwen/vLLM request slots.
+        vLLM is capped by healthy GPU count. Embeddings, llama.cpp, and Ollama
+        use their own caps based on their healthy service instances, so one
+        backend pool cannot consume another pool's request slots.
 
         Values coming from Redis JSON may be strings; int() coercion is applied.
         Clamped to [1, 256] to prevent misconfiguration from opening unlimited slots.
         """
         try:
-            if bucket == "embeddings":
+            if bucket == "embedding":
                 raw = key_config.get(
                     "embedding_concurrency_per_key",
                     config.CONCURRENCY_PER_EMBEDDING_REPLICA * self._healthy_embedding_count()
                 )
+            elif bucket == "llamacpp":
+                raw = key_config.get(
+                    "llamacpp_concurrency_per_key",
+                    config.CONCURRENCY_PER_LLAMACPP_REPLICA * self._healthy_backend_count("llamacpp")
+                )
+            elif bucket == "ollama":
+                raw = key_config.get(
+                    "ollama_concurrency_per_key",
+                    config.CONCURRENCY_PER_OLLAMA_REPLICA * self._healthy_backend_count("ollama")
+                )
             else:
                 raw = key_config.get(
-                    "chat_concurrency_per_key",
+                    "vllm_concurrency_per_key",
                     key_config.get(
-                        "concurrency_per_key",
-                        config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
+                        "chat_concurrency_per_key",
+                        key_config.get(
+                            "concurrency_per_key",
+                            config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
+                        )
                     )
                 )
             return max(1, min(256, int(raw)))
         except (TypeError, ValueError):
-            if bucket == "embeddings":
+            if bucket == "embedding":
                 return config.CONCURRENCY_PER_EMBEDDING_REPLICA
+            if bucket == "llamacpp":
+                return config.CONCURRENCY_PER_LLAMACPP_REPLICA
+            if bucket == "ollama":
+                return config.CONCURRENCY_PER_OLLAMA_REPLICA
             return config.CONCURRENCY_PER_KEY_DEFAULT
 
     def _rpm_limit(self, key_config: dict, bucket: str) -> int:
-        if bucket == "embeddings":
+        if bucket == "embedding":
             return self._safe_int(
                 key_config.get(
                     "embedding_requests_per_minute",
                     config.DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE
                 ),
                 default=config.DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE,
+                min_val=1,
+                max_val=100_000,
+            )
+        if bucket == "llamacpp":
+            return self._safe_int(
+                key_config.get(
+                    "llamacpp_requests_per_minute",
+                    config.DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE
+                ),
+                default=config.DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE,
+                min_val=1,
+                max_val=100_000,
+            )
+        if bucket == "ollama":
+            return self._safe_int(
+                key_config.get(
+                    "ollama_requests_per_minute",
+                    config.DEFAULT_OLLAMA_REQUESTS_PER_MINUTE
+                ),
+                default=config.DEFAULT_OLLAMA_REQUESTS_PER_MINUTE,
                 min_val=1,
                 max_val=100_000,
             )
@@ -1147,13 +1232,33 @@ class RateLimiter:
         )
 
     def _tpm_limit(self, key_config: dict, bucket: str) -> int:
-        if bucket == "embeddings":
+        if bucket == "embedding":
             return self._safe_int(
                 key_config.get(
                     "embedding_tokens_per_minute",
                     config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE,
+                min_val=1,
+                max_val=10_000_000,
+            )
+        if bucket == "llamacpp":
+            return self._safe_int(
+                key_config.get(
+                    "llamacpp_tokens_per_minute",
+                    config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE
+                ),
+                default=config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE,
+                min_val=1,
+                max_val=10_000_000,
+            )
+        if bucket == "ollama":
+            return self._safe_int(
+                key_config.get(
+                    "ollama_tokens_per_minute",
+                    config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE
+                ),
+                default=config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE,
                 min_val=1,
                 max_val=10_000_000,
             )
@@ -1165,13 +1270,23 @@ class RateLimiter:
         )
 
     def _concurrency_limit_description(self, bucket: str) -> str:
-        if bucket == "embeddings":
+        if bucket == "embedding":
             return (
                 f"embedding pool: {self._healthy_embedding_count()} embedding replica(s) "
                 f"\u00d7 {config.CONCURRENCY_PER_EMBEDDING_REPLICA} slots"
             )
+        if bucket == "llamacpp":
+            return (
+                f"llama.cpp pool: {self._healthy_backend_count('llamacpp')} replica(s) "
+                f"\u00d7 {config.CONCURRENCY_PER_LLAMACPP_REPLICA} slots"
+            )
+        if bucket == "ollama":
+            return (
+                f"Ollama pool: {self._healthy_backend_count('ollama')} replica(s) "
+                f"\u00d7 {config.CONCURRENCY_PER_OLLAMA_REPLICA} slots"
+            )
         return (
-            f"chat pool: {self._healthy_gpu_count()} GPU(s) "
+            f"vLLM pool: {self._healthy_gpu_count()} GPU(s) "
             f"\u00d7 {config.CONCURRENCY_PER_GPU} slots"
         )
 
@@ -1265,6 +1380,7 @@ class RateLimiter:
         endpoint: str,
         model: str,
         priority: str,
+        limit_bucket: Optional[str] = None,
     ) -> None:
         """
         Run all three checks in order.  Raises HTTPException(429) immediately
@@ -1280,7 +1396,9 @@ class RateLimiter:
           - Redis failures in RPM/TPM checks fail-open (allow the request) so a
             Redis outage does not block inference.
         """
-        bucket = self._limit_bucket(endpoint)
+        bucket = limit_bucket or self._limit_bucket(endpoint)
+        if bucket not in self.SERVICE_BUCKETS:
+            bucket = self._limit_bucket(endpoint)
         # Coerce all limits — key_config values from Redis JSON may be strings
         rpm_limit = self._rpm_limit(key_config, bucket)
         tpm_limit = self._tpm_limit(key_config, bucket)
@@ -1386,14 +1504,17 @@ class RateLimiter:
             logger.error(f"Unexpected error in rate limiter check_and_acquire: {e}", exc_info=True)
             # Fail-open: do not block inference due to rate-limiter bugs
 
-    async def release(self, api_key: str, endpoint: str) -> None:
+    async def release(self, api_key: str, endpoint: str, limit_bucket: Optional[str] = None) -> None:
         """Release one in-flight lease after request completes or errors.
 
         Safe to call multiple times.
         Swallows all exceptions so a release failure never crashes a request handler.
         """
         try:
-            lease_key = self._lease_key(api_key, self._limit_bucket(endpoint))
+            bucket = limit_bucket or self._limit_bucket(endpoint)
+            if bucket not in self.SERVICE_BUCKETS:
+                bucket = self._limit_bucket(endpoint)
+            lease_key = self._lease_key(api_key, bucket)
             async with self._lock:
                 leases = self._leases.get(lease_key, [])
                 if leases:
@@ -1421,11 +1542,15 @@ class RateLimiter:
                 "last_snapshot_pruned": pruned,
                 "healthy_gpus": self._healthy_gpu_count(),
                 "healthy_embedding_replicas": self._healthy_embedding_count(),
-                # Kept for backward compatibility; this is the chat/GPU cap.
-                "concurrency_cap_per_key": self._concurrency_cap({}, "chat"),
+                "healthy_backend_instances": {
+                    bucket: self._healthy_backend_count(bucket)
+                    for bucket in self.SERVICE_BUCKETS
+                },
+                # Kept for backward compatibility; this is the vLLM/GPU cap.
+                "concurrency_cap_per_key": self._concurrency_cap({}, "vllm"),
                 "concurrency_caps_per_key": {
-                    "chat": self._concurrency_cap({}, "chat"),
-                    "embeddings": self._concurrency_cap({}, "embeddings"),
+                    bucket: self._concurrency_cap({}, bucket)
+                    for bucket in self.SERVICE_BUCKETS
                 },
             }
 
@@ -1465,6 +1590,7 @@ class BackendManager:
         self.http_client: Optional[httpx.AsyncClient] = None
         self.backend_health: dict[str, bool] = {}
         self.backend_inflight: dict[str, int] = {}
+        self.backend_leases: dict[str, list[float]] = {}
 
     async def start(self):
         self.http_client = httpx.AsyncClient(timeout=300.0)
@@ -1472,18 +1598,137 @@ class BackendManager:
         for url in config.VLLM_URLS:
             self.backend_health[f"vllm:{url}"] = False
             self.backend_inflight[f"vllm:{url}"] = 0
+            self.backend_leases[f"vllm:{url}"] = []
         self.backend_health[f"llamacpp:{config.LLAMACPP_URL}"] = False
         self.backend_inflight[f"llamacpp:{config.LLAMACPP_URL}"] = 0
+        self.backend_leases[f"llamacpp:{config.LLAMACPP_URL}"] = []
         self.backend_health[f"embedding:{config.EMBEDDING_URL}"] = False
         self.backend_inflight[f"embedding:{config.EMBEDDING_URL}"] = 0
+        self.backend_leases[f"embedding:{config.EMBEDDING_URL}"] = []
         self.backend_health[f"ollama:{config.OLLAMA_URL}"] = False
         self.backend_inflight[f"ollama:{config.OLLAMA_URL}"] = 0
+        self.backend_leases[f"ollama:{config.OLLAMA_URL}"] = []
         # Initial health check and model discovery
         await self.health_check()
 
     async def stop(self):
         if self.http_client:
             await self.http_client.aclose()
+
+    def _backend_lease_ttl_seconds(self) -> int:
+        try:
+            return max(60, int(config.BACKEND_INFLIGHT_LEASE_TTL_SECONDS))
+        except (TypeError, ValueError):
+            return 600
+
+    def _backend_type_from_key(self, backend_key: str) -> str:
+        return backend_key.split(":", 1)[0] if ":" in backend_key else backend_key
+
+    def _backend_capacity(self, backend_type: str) -> int:
+        if backend_type == "vllm":
+            return max(1, config.MAX_INFLIGHT_PER_VLLM_BACKEND)
+        if backend_type == "embedding":
+            return max(1, config.MAX_INFLIGHT_PER_EMBEDDING_BACKEND)
+        if backend_type == "llamacpp":
+            return max(1, config.MAX_INFLIGHT_PER_LLAMACPP_BACKEND)
+        if backend_type == "ollama":
+            return max(1, config.MAX_INFLIGHT_PER_OLLAMA_BACKEND)
+        return max(1, config.MAX_INFLIGHT_PER_BACKEND)
+
+    def _sync_backend_inflight_metrics(self) -> None:
+        totals: dict[str, int] = {"vllm": 0, "llamacpp": 0, "embedding": 0, "ollama": 0}
+        for key, count in self.backend_inflight.items():
+            totals[self._backend_type_from_key(key)] = totals.get(self._backend_type_from_key(key), 0) + count
+        for backend_type, total in totals.items():
+            BACKEND_INFLIGHT.labels(backend=backend_type).set(total)
+
+    def _prune_backend_leases(self, backend_key: Optional[str] = None, now: Optional[float] = None) -> int:
+        """Drop stale backend routing leases and refresh backend_inflight counts."""
+        now = now or time.time()
+        ttl = self._backend_lease_ttl_seconds()
+        keys = [backend_key] if backend_key else list(self.backend_leases.keys())
+        pruned_total = 0
+
+        for key in keys:
+            leases = self.backend_leases.get(key, [])
+            active = [acquired_at for acquired_at in leases if now - acquired_at < ttl]
+            pruned = len(leases) - len(active)
+            if pruned:
+                pruned_total += pruned
+                logger.warning(
+                    "Pruned %s stale backend in-flight lease(s) for %s after %ss",
+                    pruned,
+                    key,
+                    ttl,
+                )
+            self.backend_leases[key] = active
+            self.backend_inflight[key] = len(active)
+
+        self._sync_backend_inflight_metrics()
+        return pruned_total
+
+    def _backend_inflight_for(self, backend_key: str) -> int:
+        self._prune_backend_leases(backend_key)
+        return self.backend_inflight.get(backend_key, 0)
+
+    def _acquire_backend(self, backend_key: str) -> None:
+        self._prune_backend_leases(backend_key)
+        leases = self.backend_leases.setdefault(backend_key, [])
+        leases.append(time.time())
+        self.backend_inflight[backend_key] = len(leases)
+        self._sync_backend_inflight_metrics()
+
+    def _release_backend(self, backend_key: str) -> None:
+        leases = self.backend_leases.get(backend_key, [])
+        if leases:
+            leases.pop(0)
+        self.backend_leases[backend_key] = leases
+        self.backend_inflight[backend_key] = len(leases)
+        self._sync_backend_inflight_metrics()
+
+    def snapshot(self) -> dict:
+        pruned = self._prune_backend_leases()
+        return {
+            "inflight": dict(self.backend_inflight),
+            "oldest_lease_age_seconds": {
+                key: int(time.time() - min(leases))
+                for key, leases in self.backend_leases.items()
+                if leases
+            },
+            "lease_ttl_seconds": self._backend_lease_ttl_seconds(),
+            "last_snapshot_pruned": pruned,
+        }
+
+    def reset(
+        self,
+        backend_type: Optional[str] = None,
+        backend_key: Optional[str] = None,
+    ) -> dict:
+        """Clear backend routing leases for this gateway process."""
+        self._prune_backend_leases()
+        before = dict(self.backend_inflight)
+
+        if backend_key:
+            keys = [backend_key]
+        elif backend_type:
+            keys = [
+                key for key in self.backend_leases.keys()
+                if self._backend_type_from_key(key) == backend_type
+            ]
+        else:
+            keys = list(self.backend_leases.keys())
+
+        cleared = sum(len(self.backend_leases.get(key, [])) for key in keys)
+        for key in keys:
+            self.backend_leases[key] = []
+            self.backend_inflight[key] = 0
+
+        self._sync_backend_inflight_metrics()
+        return {
+            "cleared": cleared,
+            "before": before,
+            "after": dict(self.backend_inflight),
+        }
 
     def get_backend_url(self, model: str) -> tuple[str, str]:
         """
@@ -1496,6 +1741,7 @@ class BackendManager:
         For embedding models:
           - Always routes to dedicated embedding service
         """
+        self._prune_backend_leases()
         model_info = model_registry.get_model(model)
 
         # Handle embedding requests - always go to embedding service
@@ -1521,6 +1767,55 @@ class BackendManager:
         else:
             return None, None
 
+    def reserve_backend(self, model: str) -> dict:
+        """Select and reserve a backend slot before awaited work.
+
+        This prevents concurrent requests from racing into the same GPU before
+        backend in-flight state is visible to the next request.
+        """
+        backend_type, url = self.get_backend_url(model)
+
+        if not backend_type or not url:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "No healthy backend available",
+                    "hint": "All inference backends are currently unhealthy or at capacity. Check /health/backends for status."
+                }
+            )
+
+        backend_key = f"{backend_type}:{url}"
+        current = self._backend_inflight_for(backend_key)
+        capacity = self._backend_capacity(backend_type)
+        if current >= capacity:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": {
+                        "type": "backend_concurrency_limit_exceeded",
+                        "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
+                        "limit_bucket": backend_type,
+                        "current_inflight": current,
+                        "limit": capacity,
+                        "retry_after": 5,
+                    }
+                },
+                headers={"Retry-After": "5"},
+            )
+
+        self._acquire_backend(backend_key)
+        return {
+            "backend": backend_type,
+            "backend_url": url,
+            "backend_key": backend_key,
+            "pre_acquired": True,
+        }
+
+    def release_reserved_backend(self, backend_info: Optional[dict]) -> None:
+        if backend_info and backend_info.get("pre_acquired") and backend_info.get("backend_key"):
+            self._release_backend(backend_info["backend_key"])
+            backend_info["pre_acquired"] = False
+
     def _get_least_loaded_chat_backend(self) -> tuple[str, str]:
         """
         Route to least-loaded chat backend.
@@ -1529,54 +1824,80 @@ class BackendManager:
         best_backend = None
         best_url = None
         min_inflight = float("inf")
+        full_backend = None
+        full_url = None
+        min_full_inflight = float("inf")
+
+        def remember_full_candidate(backend_type: str, url: str, inflight: int) -> None:
+            nonlocal full_backend, full_url, min_full_inflight
+            if inflight < min_full_inflight:
+                min_full_inflight = inflight
+                full_backend = backend_type
+                full_url = url
 
         # Check all vLLM instances (GPUs) first
         for url in config.VLLM_URLS:
             key = f"vllm:{url}"
             if self.backend_health.get(key, False):
-                inflight = self.backend_inflight.get(key, 0)
-                if inflight < min_inflight and inflight < config.MAX_INFLIGHT_PER_BACKEND:
+                inflight = self._backend_inflight_for(key)
+                if inflight < min_inflight and inflight < self._backend_capacity("vllm"):
                     min_inflight = inflight
                     best_backend = "vllm"
                     best_url = url
+                else:
+                    remember_full_candidate("vllm", url, inflight)
 
         # If all vLLM instances are busy, try llama.cpp (CPU)
-        if best_backend is None or min_inflight >= config.MAX_INFLIGHT_PER_BACKEND:
+        if best_backend is None:
             llamacpp_key = f"llamacpp:{config.LLAMACPP_URL}"
             if self.backend_health.get(llamacpp_key, False):
-                inflight = self.backend_inflight.get(llamacpp_key, 0)
-                if inflight < config.MAX_INFLIGHT_PER_BACKEND:
+                inflight = self._backend_inflight_for(llamacpp_key)
+                if inflight < self._backend_capacity("llamacpp"):
                     if best_backend is None or inflight < min_inflight:
                         min_inflight = inflight
                         best_backend = "llamacpp"
                         best_url = config.LLAMACPP_URL
+                else:
+                    remember_full_candidate("llamacpp", config.LLAMACPP_URL, inflight)
 
         # Last resort: Ollama
         if best_backend is None:
             ollama_key = f"ollama:{config.OLLAMA_URL}"
             if self.backend_health.get(ollama_key, False):
-                best_backend = "ollama"
-                best_url = config.OLLAMA_URL
+                inflight = self._backend_inflight_for(ollama_key)
+                if inflight < self._backend_capacity("ollama"):
+                    min_inflight = inflight
+                    best_backend = "ollama"
+                    best_url = config.OLLAMA_URL
+                else:
+                    remember_full_candidate("ollama", config.OLLAMA_URL, inflight)
 
         if best_backend:
             logger.debug(f"Routing to {best_backend} ({best_url}), inflight={min_inflight}")
+        elif full_backend:
+            return full_backend, full_url
 
         return best_backend, best_url
 
     def _get_least_loaded_vllm(self) -> tuple[str, str]:
         """Get least-loaded vLLM instance."""
-        best_url = config.VLLM_URLS[0] if config.VLLM_URLS else None
+        best_url = None
         min_inflight = float("inf")
+        full_url = None
+        min_full_inflight = float("inf")
 
         for url in config.VLLM_URLS:
             key = f"vllm:{url}"
             if self.backend_health.get(key, False):
-                inflight = self.backend_inflight.get(key, 0)
-                if inflight < min_inflight:
+                inflight = self._backend_inflight_for(key)
+                if inflight < min_inflight and inflight < self._backend_capacity("vllm"):
                     min_inflight = inflight
                     best_url = url
+                elif inflight < min_full_inflight:
+                    min_full_inflight = inflight
+                    full_url = url
 
-        return "vllm", best_url
+        return ("vllm", best_url or full_url) if (best_url or full_url) else (None, None)
 
     async def discover_models(self):
         """Query backends to discover loaded models."""
@@ -1734,14 +2055,20 @@ class BackendManager:
         endpoint: str,
         model: str,
         data: dict,
-        stream: bool = False
+        stream: bool = False,
+        backend_override: Optional[tuple[str, str]] = None,
+        pre_acquired_backend: Optional[dict] = None,
     ) -> tuple[httpx.Response | AsyncGenerator, dict]:
         """
         Forward request to appropriate backend.
         Returns (response, backend_info) tuple.
         backend_info contains: backend_type, backend_url for response enrichment.
         """
-        backend_type, url = self.get_backend_url(model)
+        if pre_acquired_backend:
+            backend_type = pre_acquired_backend["backend"]
+            url = pre_acquired_backend["backend_url"]
+        else:
+            backend_type, url = backend_override or self.get_backend_url(model)
 
         if not backend_type or not url:
             raise HTTPException(
@@ -1759,9 +2086,26 @@ class BackendManager:
             "backend_url": url,
         }
 
-        # Track in-flight requests
-        self.backend_inflight[backend_key] = self.backend_inflight.get(backend_key, 0) + 1
-        BACKEND_INFLIGHT.labels(backend=backend_type).inc()
+        # Track in-flight requests with timestamped leases so routing self-heals.
+        if not pre_acquired_backend:
+            current = self._backend_inflight_for(backend_key)
+            capacity = self._backend_capacity(backend_type)
+            if current >= capacity:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": {
+                            "type": "backend_concurrency_limit_exceeded",
+                            "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
+                            "limit_bucket": backend_type,
+                            "current_inflight": current,
+                            "limit": capacity,
+                            "retry_after": 5,
+                        }
+                    },
+                    headers={"Retry-After": "5"},
+                )
+            self._acquire_backend(backend_key)
 
         try:
             if stream:
@@ -1776,8 +2120,9 @@ class BackendManager:
                 return response, backend_info
         finally:
             if not stream:
-                self.backend_inflight[backend_key] = max(0, self.backend_inflight.get(backend_key, 0) - 1)
-                BACKEND_INFLIGHT.labels(backend=backend_type).dec()
+                if pre_acquired_backend:
+                    pre_acquired_backend["pre_acquired"] = False
+                self._release_backend(backend_key)
 
     async def _stream_request(
         self,
@@ -1812,8 +2157,7 @@ class BackendManager:
                             pass  # If parsing fails, send original chunk
                     yield chunk
         finally:
-            self.backend_inflight[backend_key] = max(0, self.backend_inflight.get(backend_key, 0) - 1)
-            BACKEND_INFLIGHT.labels(backend=backend_type).dec()
+            self._release_backend(backend_key)
 
 
 backend_manager = BackendManager()
@@ -1960,14 +2304,26 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(300)
             await warm_redis_from_postgres()
 
+    # Prune stale request/backend leases even if no new traffic reaches the pod.
+    async def limiter_maintenance_loop():
+        while True:
+            try:
+                await rate_limiter.snapshot()
+                backend_manager.snapshot()
+            except Exception as e:
+                logger.error(f"Limiter maintenance failed: {e}")
+            await asyncio.sleep(30)
+
     health_task = asyncio.create_task(health_check_loop())
     sync_task = asyncio.create_task(postgres_redis_sync_loop())
+    limiter_task = asyncio.create_task(limiter_maintenance_loop())
 
     yield
 
     # Shutdown
     health_task.cancel()
     sync_task.cancel()
+    limiter_task.cancel()
     await postgres_client.close()
     await redis_client.close()
     await backend_manager.stop()
@@ -2011,9 +2367,11 @@ async def health_backends(
     """Backend health status - requires \'metrics\' scope."""
     await require_scope("metrics", api_key)
     limiter_snapshot = await rate_limiter.snapshot()
+    backend_snapshot = backend_manager.snapshot()
     return {
         "backends": backend_manager.backend_health,
-        "inflight": backend_manager.backend_inflight,
+        "inflight": backend_snapshot["inflight"],
+        "backend_inflight": backend_snapshot,
         "rate_limiter": limiter_snapshot,
     }
 
@@ -2081,6 +2439,9 @@ async def chat_completions(
         model_info = model_registry.get_model(request.model)
 
     model = model_info.get("name", request.model)
+    backend_reservation = backend_manager.reserve_backend(model)
+    limit_bucket = backend_reservation["backend"]
+    backend_owned_by_handler = True
 
     # Get key config - Redis cache first (already warmed by get_api_key auth), Postgres fallback
     key_config = (
@@ -2097,17 +2458,26 @@ async def chat_completions(
     estimated_prompt_tokens = int(sum(len(m.content.split()) * 1.3 for m in request.messages))
 
     # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
-    await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "chat", model, priority)
+    try:
+        await rate_limiter.check_and_acquire(
+            api_key, key_config, estimated_prompt_tokens, "chat", model, priority,
+            limit_bucket=limit_bucket,
+        )
+    except Exception:
+        backend_manager.release_reserved_backend(backend_reservation)
+        raise
     release_on_exit = True
 
     # Check token quota
     try:
         quota_ok = await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"])
     except Exception:
-        await rate_limiter.release(api_key, "chat")
+        await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
+        backend_manager.release_reserved_backend(backend_reservation)
         raise
     if not quota_ok:
-        await rate_limiter.release(api_key, "chat")
+        await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
+        backend_manager.release_reserved_backend(backend_reservation)
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
 
@@ -2127,8 +2497,10 @@ async def chat_completions(
         if request.stream:
             # Streaming response - backend info is injected into SSE events
             stream_gen, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/chat/completions", model, data, stream=True
+                "POST", "/v1/chat/completions", model, data, stream=True,
+                pre_acquired_backend=backend_reservation,
             )
+            backend_owned_by_handler = False
 
             async def stream_generator():
                 total_output_tokens = 0
@@ -2145,7 +2517,7 @@ async def chat_completions(
                     TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                     TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
                 finally:
-                    await rate_limiter.release(api_key, "chat")
+                    await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
 
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
             release_on_exit = False
@@ -2160,8 +2532,10 @@ async def chat_completions(
         else:
             # Non-streaming response
             response, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/chat/completions", model, data
+                "POST", "/v1/chat/completions", model, data,
+                pre_acquired_backend=backend_reservation,
             )
+            backend_owned_by_handler = False
 
             if response.status_code != 200:
                 REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
@@ -2177,7 +2551,7 @@ async def chat_completions(
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
             await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
-            await redis_client.add_tpm_usage(api_key, output_tokens, bucket="chat")  # charge actual output tokens to TPM window
+            await redis_client.add_tpm_usage(api_key, output_tokens, bucket=limit_bucket)  # charge actual output tokens to TPM window
             TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
             TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
 
@@ -2193,7 +2567,9 @@ async def chat_completions(
         raise HTTPException(status_code=503, detail="Backend service unavailable")
     finally:
         if release_on_exit:
-            await rate_limiter.release(api_key, "chat")
+            await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
+        if backend_owned_by_handler:
+            backend_manager.release_reserved_backend(backend_reservation)
 
 
 @app.post("/v1/completions")
@@ -2205,6 +2581,9 @@ async def completions(
     """OpenAI-compatible completions endpoint."""
     start_time = time.time()
     model = config.MODEL_ALIASES.get(request.model, request.model)
+    backend_reservation = backend_manager.reserve_backend(model)
+    limit_bucket = backend_reservation["backend"]
+    backend_owned_by_handler = True
 
     # Get key config - Redis cache first, Postgres fallback
     key_config = (
@@ -2221,7 +2600,14 @@ async def completions(
     estimated_prompt_tokens = int(len(request.prompt.split()) * 1.3)
 
     # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
-    await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "completions", model, priority)
+    try:
+        await rate_limiter.check_and_acquire(
+            api_key, key_config, estimated_prompt_tokens, "completions", model, priority,
+            limit_bucket=limit_bucket,
+        )
+    except Exception:
+        backend_manager.release_reserved_backend(backend_reservation)
+        raise
     release_on_exit = True
 
     data = {
@@ -2235,15 +2621,17 @@ async def completions(
     try:
         if request.stream:
             stream_gen, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/completions", model, data, stream=True
+                "POST", "/v1/completions", model, data, stream=True,
+                pre_acquired_backend=backend_reservation,
             )
+            backend_owned_by_handler = False
 
             async def stream_generator():
                 try:
                     async for chunk in stream_gen:
                         yield chunk
                 finally:
-                    await rate_limiter.release(api_key, "completions")
+                    await rate_limiter.release(api_key, "completions", limit_bucket=limit_bucket)
 
             release_on_exit = False
             return StreamingResponse(
@@ -2253,8 +2641,10 @@ async def completions(
             )
         else:
             response, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/completions", model, data
+                "POST", "/v1/completions", model, data,
+                pre_acquired_backend=backend_reservation,
             )
+            backend_owned_by_handler = False
 
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -2273,7 +2663,9 @@ async def completions(
         raise HTTPException(status_code=503, detail="Backend service unavailable")
     finally:
         if release_on_exit:
-            await rate_limiter.release(api_key, "completions")
+            await rate_limiter.release(api_key, "completions", limit_bucket=limit_bucket)
+        if backend_owned_by_handler:
+            backend_manager.release_reserved_backend(backend_reservation)
 
 
 @app.post("/v1/embeddings")
@@ -2298,8 +2690,18 @@ async def embeddings(
                 "hint": "Call GET /v1/models first to see available models"
             }
         )
+    if model_info.get("backend") != "embedding":
+        available = [m["id"] for m in model_registry.get_available_models() if m.get("backend") == "embedding"]
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": f"Model '{request.model}' is not an embedding model",
+                "available_embedding_models": available,
+            }
+        )
 
     model = model_info.get("name", request.model)
+    limit_bucket = "embedding"
 
     # Get key config - Redis cache first, Postgres fallback
     key_config = (
@@ -2317,8 +2719,13 @@ async def embeddings(
     estimated_prompt_tokens = int(sum(len(t.split()) * 1.3 for t in input_list))
 
     # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
-    await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "embeddings", model, priority)
+    await rate_limiter.check_and_acquire(
+        api_key, key_config, estimated_prompt_tokens, "embeddings", model, priority,
+        limit_bucket=limit_bucket,
+    )
 
+    backend_reservation = None
+    backend_owned_by_handler = False
     try:
         # Normalize input to list
         input_texts = request.input if isinstance(request.input, list) else [request.input]
@@ -2337,6 +2744,8 @@ async def embeddings(
         # Process cache misses
         backend_info = {"backend": "embedding"}
         if cache_misses:
+            backend_reservation = backend_manager.reserve_backend(model)
+            backend_owned_by_handler = True
             data = {
                 "model": model,
                 "input": [text for _, text in cache_misses],
@@ -2344,8 +2753,10 @@ async def embeddings(
 
             try:
                 response, backend_info = await backend_manager.forward_request(
-                    "POST", "/v1/embeddings", model, data
+                    "POST", "/v1/embeddings", model, data,
+                    pre_acquired_backend=backend_reservation,
                 )
+                backend_owned_by_handler = False
 
                 if response.status_code != 200:
                     raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -2369,7 +2780,7 @@ async def embeddings(
         # Estimate token usage
         total_tokens = sum(len(text.split()) * 2 for text in input_texts)
         await postgres_client.add_token_usage(api_key, total_tokens, 0)
-        await redis_client.add_tpm_usage(api_key, total_tokens, bucket="embeddings")
+        await redis_client.add_tpm_usage(api_key, total_tokens, bucket=limit_bucket)
         TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
 
         duration = time.time() - start_time
@@ -2383,7 +2794,9 @@ async def embeddings(
             "usage": {"prompt_tokens": total_tokens, "total_tokens": total_tokens}
         }
     finally:
-        await rate_limiter.release(api_key, "embeddings")
+        await rate_limiter.release(api_key, "embeddings", limit_bucket=limit_bucket)
+        if backend_owned_by_handler:
+            backend_manager.release_reserved_backend(backend_reservation)
 
 
 @app.get("/v1/usage")
@@ -2399,9 +2812,10 @@ async def get_usage(api_key: str = Depends(get_api_key)):
     )
 
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
-    chat_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="chat")
-    embedding_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="embeddings")
-    current_rpm = chat_rpm + embedding_rpm
+    bucket_rpms = {}
+    for bucket in rate_limiter.SERVICE_BUCKETS:
+        bucket_rpms[bucket], _ = await redis_client.get_rate_limit_info(api_key, bucket=bucket)
+    current_rpm = sum(bucket_rpms.values())
 
     # Calculate reset time
     tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
@@ -2410,7 +2824,10 @@ async def get_usage(api_key: str = Depends(get_api_key)):
         tokens_used_today=input_tokens + output_tokens,
         tokens_limit_daily=key_config["tokens_per_day"],
         requests_used_minute=current_rpm,
-        requests_limit_minute=rate_limiter._rpm_limit(key_config, "chat") + rate_limiter._rpm_limit(key_config, "embeddings"),
+        requests_limit_minute=sum(
+            rate_limiter._rpm_limit(key_config, bucket)
+            for bucket in rate_limiter.SERVICE_BUCKETS
+        ),
         quota_reset_at=tomorrow.isoformat() + "Z"
     )
 
@@ -4494,29 +4911,31 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=404, detail="API key not found")
 
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
-    chat_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="chat")
-    embedding_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="embeddings")
+    bucket_rpms = {}
+    for bucket in rate_limiter.SERVICE_BUCKETS:
+        bucket_rpms[bucket], _ = await redis_client.get_rate_limit_info(api_key, bucket=bucket)
+    bucket_limits = {
+        bucket: {
+            "requests_this_minute": bucket_rpms[bucket],
+            "requests_limit_rpm": rate_limiter._rpm_limit(key_config, bucket),
+            "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, bucket),
+        }
+        for bucket in rate_limiter.SERVICE_BUCKETS
+    }
 
     return {
         "api_key": api_key[:20] + "...",
         "name": key_config.get("name"),
         "tokens_used_today": input_tokens + output_tokens,
         "tokens_limit_daily": key_config.get("tokens_per_day"),
-        "requests_this_minute": chat_rpm + embedding_rpm,
-        "requests_limit_rpm": rate_limiter._rpm_limit(key_config, "chat") + rate_limiter._rpm_limit(key_config, "embeddings"),
-        "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, "chat") + rate_limiter._tpm_limit(key_config, "embeddings"),
-        "rate_limit_buckets": {
-            "chat": {
-                "requests_this_minute": chat_rpm,
-                "requests_limit_rpm": rate_limiter._rpm_limit(key_config, "chat"),
-                "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, "chat"),
-            },
-            "embeddings": {
-                "requests_this_minute": embedding_rpm,
-                "requests_limit_rpm": rate_limiter._rpm_limit(key_config, "embeddings"),
-                "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, "embeddings"),
-            },
-        },
+        "requests_this_minute": sum(bucket_rpms.values()),
+        "requests_limit_rpm": sum(
+            bucket["requests_limit_rpm"] for bucket in bucket_limits.values()
+        ),
+        "tokens_limit_tpm": sum(
+            bucket["tokens_limit_tpm"] for bucket in bucket_limits.values()
+        ),
+        "rate_limit_buckets": bucket_limits,
     }
 
 
@@ -4538,16 +4957,33 @@ async def admin_reset_rate_limiter(request: Request, admin_key: str = Depends(ge
 
     target_api_key = body.get("api_key") if isinstance(body, dict) else None
     target_bucket = body.get("limit_bucket") if isinstance(body, dict) else None
-    if target_bucket is not None and target_bucket not in {"chat", "embeddings"}:
-        raise HTTPException(status_code=400, detail="limit_bucket must be 'chat' or 'embeddings'")
+    valid_buckets = set(rate_limiter.SERVICE_BUCKETS)
+    if target_bucket is not None and target_bucket not in valid_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"limit_bucket must be one of: {', '.join(rate_limiter.SERVICE_BUCKETS)}",
+        )
+
+    target_backend = body.get("backend") if isinstance(body, dict) else None
+    target_backend_key = body.get("backend_key") if isinstance(body, dict) else None
+    if target_backend is not None and target_backend not in valid_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"backend must be one of: {', '.join(rate_limiter.SERVICE_BUCKETS)}",
+        )
 
     result = await rate_limiter.reset(target_api_key, target_bucket)
+    backend_result = None
+    if not target_api_key:
+        backend_result = backend_manager.reset(target_backend, target_backend_key)
     return {
         "status": "reset",
         "scope": "api_key" if target_api_key else "gateway_process",
         "limit_bucket": target_bucket or "all",
+        "backend": target_backend or target_backend_key or ("skipped" if target_api_key else "all"),
         "note": "This resets only the gateway process that handled the request. Roll the deployment to reset all replicas immediately.",
-        **result,
+        "rate_limiter": result,
+        "backend_limiter": backend_result,
     }
 
 

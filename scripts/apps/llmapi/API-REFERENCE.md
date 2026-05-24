@@ -425,7 +425,7 @@ response = client.chat.completions.create(
 
 #### **429 Too Many Requests - Rate limit exceeded**
 
-The gateway enforces three independent rate limits per API key and per service pool. vLLM/GPU, embedding, llama.cpp, and Ollama traffic each use separate concurrency, RPM, and TPM buckets, so one backend class cannot consume another class's slots. Each limit returns a structured error body with an accurate `Retry-After` header.
+The gateway enforces three independent rate limits per API key and per service pool. vLLM/GPU, embedding, llama.cpp, and Ollama traffic each use separate concurrency, RPM, and TPM buckets, so one backend class cannot consume another class's slots. A key's `tokens_per_minute` applies independently to each service bucket unless a service-specific TPM override is present. Each limit returns a structured error body with an accurate `Retry-After` header.
 
 ---
 

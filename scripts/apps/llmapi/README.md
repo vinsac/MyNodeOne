@@ -357,6 +357,8 @@ The gateway enforces three layers of protection per API key, checked in order:
 - llama.cpp and Ollama have independent fallback pools, so CPU/Ollama traffic cannot consume vLLM or embedding slots.
 - A full embedding pool does not block Qwen/vLLM, and a full GPU pool does not block embeddings.
 
+RPM/TPM windows are also separated by service pool. A key's `tokens_per_minute` applies independently to vLLM, embedding, llama.cpp, and Ollama unless a service-specific TPM override is present.
+
 **Self-healing concurrency leases:** In-flight slots are tracked as timestamped leases, not permanent counters. If a handler crashes or a client disconnect edge case misses cleanup, the gateway prunes stale per-key leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) and stale backend leases after `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` (default `600`) instead of blocking clients forever. A background maintenance task prunes those leases even when no new requests arrive.
 
 The default gateway deployment runs one replica so the in-process concurrency leases are authoritative for the backend pool. If you scale the gateway horizontally, each gateway pod maintains its own local leases unless a distributed lease store is added.

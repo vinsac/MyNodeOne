@@ -1252,11 +1252,12 @@ class RateLimiter:
         )
 
     def _tpm_limit(self, key_config: dict, bucket: str) -> int:
+        key_tpm = key_config.get("tokens_per_minute")
         if bucket == "embedding":
             return self._safe_int(
                 key_config.get(
                     "embedding_tokens_per_minute",
-                    config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE
+                    key_tpm if key_tpm is not None else config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE,
                 min_val=config.MIN_TOKENS_PER_MINUTE,
@@ -1266,7 +1267,7 @@ class RateLimiter:
             return self._safe_int(
                 key_config.get(
                     "llamacpp_tokens_per_minute",
-                    config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE
+                    key_tpm if key_tpm is not None else config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE,
                 min_val=config.MIN_TOKENS_PER_MINUTE,
@@ -1276,7 +1277,7 @@ class RateLimiter:
             return self._safe_int(
                 key_config.get(
                     "ollama_tokens_per_minute",
-                    config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE
+                    key_tpm if key_tpm is not None else config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE,
                 min_val=config.MIN_TOKENS_PER_MINUTE,

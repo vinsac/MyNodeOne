@@ -68,6 +68,8 @@ class Config:
     # Override via env: CONCURRENCY_PER_KEY_DEFAULT / CONCURRENCY_PER_GPU
     CONCURRENCY_PER_GPU = int(os.getenv("CONCURRENCY_PER_GPU", "1"))
     CONCURRENCY_PER_KEY_DEFAULT = int(os.getenv("CONCURRENCY_PER_KEY_DEFAULT", "1"))
+    # Embeddings run on their own service, so they must not consume chat/GPU slots.
+    CONCURRENCY_PER_EMBEDDING_REPLICA = int(os.getenv("CONCURRENCY_PER_EMBEDDING_REPLICA", "4"))
     # Safety valve for leaked in-flight slots. This should be comfortably above
     # the non-streaming backend timeout (300s) so active requests are not pruned.
     CONCURRENCY_LEASE_TTL_SECONDS = int(os.getenv("CONCURRENCY_LEASE_TTL_SECONDS", "600"))
@@ -75,6 +77,14 @@ class Config:
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
     DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000"))
+    DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE = int(os.getenv(
+        "DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE",
+        os.getenv("DEFAULT_REQUESTS_PER_MINUTE", "60")
+    ))
+    DEFAULT_EMBEDDING_TOKENS_PER_MINUTE = int(os.getenv(
+        "DEFAULT_EMBEDDING_TOKENS_PER_MINUTE",
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
+    ))
     # Higher default TPM for admin-scoped keys when not explicitly provided.
     ADMIN_DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("ADMIN_DEFAULT_TOKENS_PER_MINUTE", "200000"))
 
@@ -853,13 +863,24 @@ class RedisClient:
                 return default
         return default
 
-    async def check_rate_limit_with_info(self, api_key: str, requests_per_minute: int) -> tuple[bool, int]:
+    def _rate_key(self, api_key: str, bucket: Optional[str], metric: str) -> str:
+        """Redis rate-limit key. Bucketed keys isolate chat and embeddings quotas."""
+        if bucket:
+            return f"ratelimit:{api_key}:{bucket}:{metric}"
+        return f"ratelimit:{api_key}:{metric}"
+
+    async def check_rate_limit_with_info(
+        self,
+        api_key: str,
+        requests_per_minute: int,
+        bucket: Optional[str] = None,
+    ) -> tuple[bool, int]:
         """Check RPM limit. Returns (allowed, retry_after_seconds).
 
         Fails OPEN (allows request) if Redis is unavailable so a Redis pod
         crash does not block all inference traffic.
         """
-        key = f"ratelimit:{api_key}:rpm"
+        key = self._rate_key(api_key, bucket, "rpm")
         async def _fn():
             pipe = self.client.pipeline()
             pipe.get(key)
@@ -876,14 +897,20 @@ class RedisClient:
         result = await self._safe(_fn, default=(True, 0))  # fail-open
         return result
 
-    async def check_tpm_limit(self, api_key: str, estimated_tokens: int, tokens_per_minute: int) -> tuple[bool, int]:
+    async def check_tpm_limit(
+        self,
+        api_key: str,
+        estimated_tokens: int,
+        tokens_per_minute: int,
+        bucket: Optional[str] = None,
+    ) -> tuple[bool, int]:
         """Check TPM limit using a sliding 60-second window. Returns (allowed, retry_after_seconds).
 
         Charges estimated_tokens against the window.  Actual output tokens are
         charged separately after completion via add_tpm_usage().
         Fails OPEN if Redis is unavailable.
         """
-        key = f"ratelimit:{api_key}:tpm"
+        key = self._rate_key(api_key, bucket, "tpm")
         async def _fn():
             pipe = self.client.pipeline()
             pipe.get(key)
@@ -899,9 +926,9 @@ class RedisClient:
             return True, 0
         return await self._safe(_fn, default=(True, 0))  # fail-open
 
-    async def add_tpm_usage(self, api_key: str, output_tokens: int) -> None:
+    async def add_tpm_usage(self, api_key: str, output_tokens: int, bucket: Optional[str] = None) -> None:
         """Charge output tokens to the TPM window after a request completes."""
-        key = f"ratelimit:{api_key}:tpm"
+        key = self._rate_key(api_key, bucket, "tpm")
         async def _fn():
             pipe = self.client.pipeline()
             pipe.incrby(key, output_tokens)
@@ -909,9 +936,9 @@ class RedisClient:
             await pipe.execute()
         await self._safe(_fn)
 
-    async def get_rate_limit_info(self, api_key: str) -> tuple[int, int]:
+    async def get_rate_limit_info(self, api_key: str, bucket: Optional[str] = None) -> tuple[int, int]:
         """Get current RPM usage and TTL."""
-        rpm_key = f"ratelimit:{api_key}:rpm"
+        rpm_key = self._rate_key(api_key, bucket, "rpm")
         async def _fn():
             current_rpm = await self.client.get(rpm_key) or 0
             ttl = await self.client.ttl(rpm_key)
@@ -1020,7 +1047,7 @@ class RateLimiter:
         resources and adds latency unpredictability.
     """
 
-    # In-process concurrency leases: {api_key: [acquired_at_epoch_seconds, ...]}
+    # In-process concurrency leases: {"api_key:pool": [acquired_at_epoch_seconds, ...]}
     # Redis is NOT used here — in-process is sufficient because each gateway
     # pod tracks its own share; the concurrency cap is per-pod intentionally
     # (a 2-replica gateway effectively doubles the global cap, matching the
@@ -1028,6 +1055,7 @@ class RateLimiter:
     #
     # Leases are timestamped so missed releases from handler bugs, cancelled
     # requests, or worker edge cases self-heal instead of wedging a pod forever.
+    # Pools are separate so embeddings cannot consume chat/GPU capacity.
     _leases: dict[str, list[float]] = {}
     _lock = asyncio.Lock()
 
@@ -1046,20 +1074,106 @@ class RateLimiter:
         except Exception:
             return 1  # safe default during startup / health-check races
 
-    def _concurrency_cap(self, key_config: dict) -> int:
-        """Per-key concurrency cap, scaled by healthy GPU count.
+    def _healthy_embedding_count(self) -> int:
+        """Count healthy embedding replicas to scale the embedding concurrency cap."""
+        try:
+            count = sum(
+                1 for key, healthy in backend_manager.backend_health.items()
+                if key.startswith("embedding:") and healthy
+            )
+            return max(1, count)
+        except Exception:
+            return 1
+
+    def _limit_bucket(self, endpoint: str) -> str:
+        """Map API endpoints to independent limiter pools."""
+        return "embeddings" if endpoint == "embeddings" else "chat"
+
+    def _lease_key(self, api_key: str, bucket: str) -> str:
+        return f"{api_key}:{bucket}"
+
+    def _split_lease_key(self, lease_key: str) -> tuple[str, str]:
+        if ":" not in lease_key:
+            return lease_key, "chat"
+        api_key, bucket = lease_key.rsplit(":", 1)
+        return api_key, bucket
+
+    def _concurrency_cap(self, key_config: dict, bucket: str = "chat") -> int:
+        """Per-key concurrency cap for a limiter pool.
+
+        Chat/completions are capped by healthy GPU count. Embeddings use their
+        own cap based on healthy embedding replicas, so indexing traffic cannot
+        consume Qwen/vLLM request slots.
 
         Values coming from Redis JSON may be strings; int() coercion is applied.
         Clamped to [1, 256] to prevent misconfiguration from opening unlimited slots.
         """
         try:
-            raw = key_config.get(
-                "concurrency_per_key",
-                config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
-            )
+            if bucket == "embeddings":
+                raw = key_config.get(
+                    "embedding_concurrency_per_key",
+                    config.CONCURRENCY_PER_EMBEDDING_REPLICA * self._healthy_embedding_count()
+                )
+            else:
+                raw = key_config.get(
+                    "chat_concurrency_per_key",
+                    key_config.get(
+                        "concurrency_per_key",
+                        config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
+                    )
+                )
             return max(1, min(256, int(raw)))
         except (TypeError, ValueError):
+            if bucket == "embeddings":
+                return config.CONCURRENCY_PER_EMBEDDING_REPLICA
             return config.CONCURRENCY_PER_KEY_DEFAULT
+
+    def _rpm_limit(self, key_config: dict, bucket: str) -> int:
+        if bucket == "embeddings":
+            return self._safe_int(
+                key_config.get(
+                    "embedding_requests_per_minute",
+                    config.DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE
+                ),
+                default=config.DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE,
+                min_val=1,
+                max_val=100_000,
+            )
+        return self._safe_int(
+            key_config.get("requests_per_minute", config.DEFAULT_REQUESTS_PER_MINUTE),
+            default=config.DEFAULT_REQUESTS_PER_MINUTE,
+            min_val=1,
+            max_val=100_000,
+        )
+
+    def _tpm_limit(self, key_config: dict, bucket: str) -> int:
+        if bucket == "embeddings":
+            return self._safe_int(
+                key_config.get(
+                    "embedding_tokens_per_minute",
+                    config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE
+                ),
+                default=config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE,
+                min_val=1,
+                max_val=10_000_000,
+            )
+        return self._safe_int(
+            key_config.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE),
+            default=config.DEFAULT_TOKENS_PER_MINUTE,
+            min_val=1,
+            max_val=10_000_000,
+        )
+
+    def _concurrency_limit_description(self, bucket: str) -> str:
+        if bucket == "embeddings":
+            return (
+                f"embedding pool: {self._healthy_embedding_count()} embedding replica(s) "
+                f"\u00d7 {config.CONCURRENCY_PER_EMBEDDING_REPLICA} slots"
+            )
+        return (
+            f"chat pool: {self._healthy_gpu_count()} GPU(s) "
+            f"\u00d7 {config.CONCURRENCY_PER_GPU} slots"
+        )
 
     def _lease_ttl_seconds(self) -> int:
         """Return the max age for an in-flight lease before it is considered stale."""
@@ -1068,14 +1182,26 @@ class RateLimiter:
         except (TypeError, ValueError):
             return 600
 
-    def _mask_key(self, api_key: str) -> str:
-        return f"{api_key[:16]}..." if api_key else "<unknown>"
+    def _mask_key(self, lease_key: str) -> str:
+        api_key, bucket = self._split_lease_key(lease_key)
+        return f"{api_key[:16]}...:{bucket}" if api_key else f"<unknown>:{bucket}"
 
-    def _prune_expired_locked(self, api_key: Optional[str] = None, now: Optional[float] = None) -> int:
+    def _prune_expired_locked(
+        self,
+        api_key: Optional[str] = None,
+        bucket: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> int:
         """Drop stale leases. Caller must hold _lock."""
         now = now or time.time()
         ttl = self._lease_ttl_seconds()
-        keys = [api_key] if api_key else list(self._leases.keys())
+        if api_key and bucket:
+            keys = [self._lease_key(api_key, bucket)]
+        elif api_key:
+            prefix = f"{api_key}:"
+            keys = [key for key in self._leases.keys() if key.startswith(prefix)]
+        else:
+            keys = list(self._leases.keys())
         pruned_total = 0
 
         for key in keys:
@@ -1102,18 +1228,26 @@ class RateLimiter:
 
         return pruned_total
 
-    def _inflight_counts_locked(self) -> dict[str, int]:
+    def _inflight_counts_locked(self) -> dict[str, dict[str, int]]:
         """Return current per-key lease counts. Caller should hold _lock."""
-        return {key: len(leases) for key, leases in self._leases.items() if leases}
+        counts: dict[str, dict[str, int]] = {}
+        for lease_key, leases in self._leases.items():
+            if not leases:
+                continue
+            api_key, bucket = self._split_lease_key(lease_key)
+            counts.setdefault(api_key, {})[bucket] = len(leases)
+        return counts
 
-    def _oldest_lease_ages_locked(self, now: Optional[float] = None) -> dict[str, int]:
+    def _oldest_lease_ages_locked(self, now: Optional[float] = None) -> dict[str, dict[str, int]]:
         """Return oldest active lease age per key in seconds. Caller should hold _lock."""
         now = now or time.time()
-        return {
-            key: int(now - min(leases))
-            for key, leases in self._leases.items()
-            if leases
-        }
+        ages: dict[str, dict[str, int]] = {}
+        for lease_key, leases in self._leases.items():
+            if not leases:
+                continue
+            api_key, bucket = self._split_lease_key(lease_key)
+            ages.setdefault(api_key, {})[bucket] = int(now - min(leases))
+        return ages
 
     def _safe_int(self, value, default: int, min_val: int = 1, max_val: int = 10_000_000) -> int:
         """Coerce a value from key_config (may be str from Redis JSON) to int,
@@ -1146,25 +1280,21 @@ class RateLimiter:
           - Redis failures in RPM/TPM checks fail-open (allow the request) so a
             Redis outage does not block inference.
         """
+        bucket = self._limit_bucket(endpoint)
         # Coerce all limits — key_config values from Redis JSON may be strings
-        rpm_limit = self._safe_int(
-            key_config.get("requests_per_minute", config.DEFAULT_REQUESTS_PER_MINUTE),
-            default=config.DEFAULT_REQUESTS_PER_MINUTE, min_val=1, max_val=100_000
-        )
-        tpm_limit = self._safe_int(
-            key_config.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE),
-            default=config.DEFAULT_TOKENS_PER_MINUTE, min_val=1, max_val=10_000_000
-        )
+        rpm_limit = self._rpm_limit(key_config, bucket)
+        tpm_limit = self._tpm_limit(key_config, bucket)
         estimated_prompt_tokens = max(0, int(estimated_prompt_tokens))
-        concurrency_cap = self._concurrency_cap(key_config)
+        concurrency_cap = self._concurrency_cap(key_config, bucket)
+        lease_key = self._lease_key(api_key, bucket)
         acquired = False
 
         try:
             # --- 1. Concurrency cap (cheapest check, no Redis, no network) ---
             async with self._lock:
                 now = time.time()
-                self._prune_expired_locked(api_key, now=now)
-                leases = self._leases.setdefault(api_key, [])
+                self._prune_expired_locked(api_key, bucket, now=now)
+                leases = self._leases.setdefault(lease_key, [])
                 current = len(leases)
                 if current >= concurrency_cap:
                     CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
@@ -1173,10 +1303,10 @@ class RateLimiter:
                         status_code=429,
                         detail={
                             "error": {"type": "concurrency_limit_exceeded",
-                                      "message": f"You have {current} requests in-flight. "
-                                                 f"Limit is {concurrency_cap} (scales with GPU count: "
-                                                 f"{self._healthy_gpu_count()} GPU(s) \u00d7 {config.CONCURRENCY_PER_GPU} slots). "
+                                      "message": f"You have {current} {bucket} request(s) in-flight. "
+                                                 f"Limit is {concurrency_cap} ({self._concurrency_limit_description(bucket)}). "
                                                  f"Retry in ~5s when an in-flight request completes.",
+                                      "limit_bucket": bucket,
                                       "current_inflight": current,
                                       "limit": concurrency_cap,
                                       "retry_after": 5},
@@ -1188,9 +1318,9 @@ class RateLimiter:
 
             # --- 2. RPM check (Redis sliding window, fails-open on Redis error) ---
             try:
-                rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(api_key, rpm_limit)
+                rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(api_key, rpm_limit, bucket=bucket)
             except Exception as e:
-                logger.warning(f"RPM check failed for {api_key[:16]}… (fail-open): {e}")
+                logger.warning(f"RPM check failed for {api_key[:16]}…:{bucket} (fail-open): {e}")
                 rpm_ok, retry_after_rpm = True, 0
 
             if not rpm_ok:
@@ -1199,8 +1329,9 @@ class RateLimiter:
                     status_code=429,
                     detail={
                         "error": {"type": "rate_limit_exceeded",
-                                  "message": f"Rate limit exceeded: {rpm_limit} requests/minute. "
+                                  "message": f"{bucket} rate limit exceeded: {rpm_limit} requests/minute. "
                                              f"Retry in {retry_after_rpm}s.",
+                                  "limit_bucket": bucket,
                                   "limit": rpm_limit,
                                   "retry_after": retry_after_rpm},
                     },
@@ -1209,9 +1340,11 @@ class RateLimiter:
 
             # --- 3. TPM check (Redis sliding window, fails-open on Redis error) ---
             try:
-                tpm_ok, retry_after_tpm = await redis_client.check_tpm_limit(api_key, estimated_prompt_tokens, tpm_limit)
+                tpm_ok, retry_after_tpm = await redis_client.check_tpm_limit(
+                    api_key, estimated_prompt_tokens, tpm_limit, bucket=bucket
+                )
             except Exception as e:
-                logger.warning(f"TPM check failed for {api_key[:16]}… (fail-open): {e}")
+                logger.warning(f"TPM check failed for {api_key[:16]}…:{bucket} (fail-open): {e}")
                 tpm_ok, retry_after_tpm = True, 0
 
             if not tpm_ok:
@@ -1221,8 +1354,9 @@ class RateLimiter:
                     status_code=429,
                     detail={
                         "error": {"type": "tokens_per_minute_exceeded",
-                                  "message": f"Token rate limit exceeded: {tpm_limit} tokens/minute. "
+                                  "message": f"{bucket} token rate limit exceeded: {tpm_limit} tokens/minute. "
                                              f"Retry in {retry_after_tpm}s.",
+                                  "limit_bucket": bucket,
                                   "limit": tpm_limit,
                                   "estimated_prompt_tokens": estimated_prompt_tokens,
                                   "retry_after": retry_after_tpm},
@@ -1234,45 +1368,46 @@ class RateLimiter:
             # Release counter if we acquired it but a limit check failed
             if acquired:
                 async with self._lock:
-                    leases = self._leases.get(api_key, [])
+                    leases = self._leases.get(lease_key, [])
                     if leases:
                         leases.pop(0)
                     if not leases:
-                        self._leases.pop(api_key, None)
+                        self._leases.pop(lease_key, None)
             raise
         except Exception as e:
             # Unexpected error: release counter and fail-open (log + allow)
             if acquired:
                 async with self._lock:
-                    leases = self._leases.get(api_key, [])
+                    leases = self._leases.get(lease_key, [])
                     if leases:
                         leases.pop(0)
                     if not leases:
-                        self._leases.pop(api_key, None)
+                        self._leases.pop(lease_key, None)
             logger.error(f"Unexpected error in rate limiter check_and_acquire: {e}", exc_info=True)
             # Fail-open: do not block inference due to rate-limiter bugs
 
-    async def release(self, api_key: str) -> None:
+    async def release(self, api_key: str, endpoint: str) -> None:
         """Release one in-flight lease after request completes or errors.
 
         Safe to call multiple times.
         Swallows all exceptions so a release failure never crashes a request handler.
         """
         try:
+            lease_key = self._lease_key(api_key, self._limit_bucket(endpoint))
             async with self._lock:
-                leases = self._leases.get(api_key, [])
+                leases = self._leases.get(lease_key, [])
                 if leases:
                     # Remove the oldest lease first. If an older request leaked,
                     # this keeps newer active leases accurately represented.
                     leases.pop(0)
                 if not leases:
-                    self._leases.pop(api_key, None)
+                    self._leases.pop(lease_key, None)
         except Exception as e:
-            logger.error(f"Failed to release rate-limiter counter for {api_key[:16]}…: {e}")
+            logger.error(f"Failed to release rate-limiter counter for {api_key[:16]}…/{endpoint}: {e}")
 
-    def get_inflight(self) -> dict[str, int]:
+    def get_inflight(self) -> dict[str, dict[str, int]]:
         """Return current per-key in-flight counts (zero-value keys excluded)."""
-        return {key: len(leases) for key, leases in self._leases.items() if leases}
+        return self._inflight_counts_locked()
 
     async def snapshot(self) -> dict:
         """Return and refresh live limiter state for diagnostics."""
@@ -1285,17 +1420,30 @@ class RateLimiter:
                 "lease_ttl_seconds": self._lease_ttl_seconds(),
                 "last_snapshot_pruned": pruned,
                 "healthy_gpus": self._healthy_gpu_count(),
-                "concurrency_cap_per_key": self._concurrency_cap({}),
+                "healthy_embedding_replicas": self._healthy_embedding_count(),
+                # Kept for backward compatibility; this is the chat/GPU cap.
+                "concurrency_cap_per_key": self._concurrency_cap({}, "chat"),
+                "concurrency_caps_per_key": {
+                    "chat": self._concurrency_cap({}, "chat"),
+                    "embeddings": self._concurrency_cap({}, "embeddings"),
+                },
             }
 
-    async def reset(self, api_key: Optional[str] = None) -> dict:
+    async def reset(self, api_key: Optional[str] = None, bucket: Optional[str] = None) -> dict:
         """Clear limiter leases for one API key or for the current gateway process."""
         async with self._lock:
             self._prune_expired_locked()
             before = self._inflight_counts_locked()
-            if api_key:
-                cleared = len(self._leases.get(api_key, []))
-                self._leases.pop(api_key, None)
+            if api_key and bucket:
+                lease_key = self._lease_key(api_key, bucket)
+                cleared = len(self._leases.get(lease_key, []))
+                self._leases.pop(lease_key, None)
+            elif api_key:
+                prefix = f"{api_key}:"
+                matching_keys = [key for key in self._leases.keys() if key.startswith(prefix)]
+                cleared = sum(len(self._leases.get(key, [])) for key in matching_keys)
+                for key in matching_keys:
+                    self._leases.pop(key, None)
             else:
                 cleared = sum(len(leases) for leases in self._leases.values())
                 self._leases.clear()
@@ -1956,10 +2104,10 @@ async def chat_completions(
     try:
         quota_ok = await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"])
     except Exception:
-        await rate_limiter.release(api_key)
+        await rate_limiter.release(api_key, "chat")
         raise
     if not quota_ok:
-        await rate_limiter.release(api_key)
+        await rate_limiter.release(api_key, "chat")
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
 
@@ -1997,7 +2145,7 @@ async def chat_completions(
                     TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                     TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
                 finally:
-                    await rate_limiter.release(api_key)
+                    await rate_limiter.release(api_key, "chat")
 
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
             release_on_exit = False
@@ -2029,7 +2177,7 @@ async def chat_completions(
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
             await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
-            await redis_client.add_tpm_usage(api_key, output_tokens)  # charge actual output tokens to TPM window
+            await redis_client.add_tpm_usage(api_key, output_tokens, bucket="chat")  # charge actual output tokens to TPM window
             TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
             TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
 
@@ -2045,7 +2193,7 @@ async def chat_completions(
         raise HTTPException(status_code=503, detail="Backend service unavailable")
     finally:
         if release_on_exit:
-            await rate_limiter.release(api_key)
+            await rate_limiter.release(api_key, "chat")
 
 
 @app.post("/v1/completions")
@@ -2095,7 +2243,7 @@ async def completions(
                     async for chunk in stream_gen:
                         yield chunk
                 finally:
-                    await rate_limiter.release(api_key)
+                    await rate_limiter.release(api_key, "completions")
 
             release_on_exit = False
             return StreamingResponse(
@@ -2125,7 +2273,7 @@ async def completions(
         raise HTTPException(status_code=503, detail="Backend service unavailable")
     finally:
         if release_on_exit:
-            await rate_limiter.release(api_key)
+            await rate_limiter.release(api_key, "completions")
 
 
 @app.post("/v1/embeddings")
@@ -2221,7 +2369,7 @@ async def embeddings(
         # Estimate token usage
         total_tokens = sum(len(text.split()) * 2 for text in input_texts)
         await postgres_client.add_token_usage(api_key, total_tokens, 0)
-        await redis_client.add_tpm_usage(api_key, total_tokens)
+        await redis_client.add_tpm_usage(api_key, total_tokens, bucket="embeddings")
         TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
 
         duration = time.time() - start_time
@@ -2235,7 +2383,7 @@ async def embeddings(
             "usage": {"prompt_tokens": total_tokens, "total_tokens": total_tokens}
         }
     finally:
-        await rate_limiter.release(api_key)
+        await rate_limiter.release(api_key, "embeddings")
 
 
 @app.get("/v1/usage")
@@ -2251,7 +2399,9 @@ async def get_usage(api_key: str = Depends(get_api_key)):
     )
 
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
-    current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
+    chat_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="chat")
+    embedding_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="embeddings")
+    current_rpm = chat_rpm + embedding_rpm
 
     # Calculate reset time
     tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
@@ -2260,7 +2410,7 @@ async def get_usage(api_key: str = Depends(get_api_key)):
         tokens_used_today=input_tokens + output_tokens,
         tokens_limit_daily=key_config["tokens_per_day"],
         requests_used_minute=current_rpm,
-        requests_limit_minute=key_config["requests_per_minute"],
+        requests_limit_minute=rate_limiter._rpm_limit(key_config, "chat") + rate_limiter._rpm_limit(key_config, "embeddings"),
         quota_reset_at=tomorrow.isoformat() + "Z"
     )
 
@@ -2749,7 +2899,7 @@ ADMIN_HTML = """
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400">Batch Size</label>
-                                <input type="number" id="embedding-batch" value="512"
+                                <input type="number" id="embedding-batch" value="8192"
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                             <div>
@@ -4344,16 +4494,29 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=404, detail="API key not found")
 
     input_tokens, output_tokens = await postgres_client.get_token_usage(api_key)
-    current_rpm, ttl = await redis_client.get_rate_limit_info(api_key)
+    chat_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="chat")
+    embedding_rpm, _ = await redis_client.get_rate_limit_info(api_key, bucket="embeddings")
 
     return {
         "api_key": api_key[:20] + "...",
         "name": key_config.get("name"),
         "tokens_used_today": input_tokens + output_tokens,
         "tokens_limit_daily": key_config.get("tokens_per_day"),
-        "requests_this_minute": current_rpm,
-        "requests_limit_rpm": key_config.get("requests_per_minute"),
-        "tokens_limit_tpm": key_config.get("tokens_per_minute"),
+        "requests_this_minute": chat_rpm + embedding_rpm,
+        "requests_limit_rpm": rate_limiter._rpm_limit(key_config, "chat") + rate_limiter._rpm_limit(key_config, "embeddings"),
+        "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, "chat") + rate_limiter._tpm_limit(key_config, "embeddings"),
+        "rate_limit_buckets": {
+            "chat": {
+                "requests_this_minute": chat_rpm,
+                "requests_limit_rpm": rate_limiter._rpm_limit(key_config, "chat"),
+                "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, "chat"),
+            },
+            "embeddings": {
+                "requests_this_minute": embedding_rpm,
+                "requests_limit_rpm": rate_limiter._rpm_limit(key_config, "embeddings"),
+                "tokens_limit_tpm": rate_limiter._tpm_limit(key_config, "embeddings"),
+            },
+        },
     }
 
 
@@ -4374,10 +4537,15 @@ async def admin_reset_rate_limiter(request: Request, admin_key: str = Depends(ge
         body = {}
 
     target_api_key = body.get("api_key") if isinstance(body, dict) else None
-    result = await rate_limiter.reset(target_api_key)
+    target_bucket = body.get("limit_bucket") if isinstance(body, dict) else None
+    if target_bucket is not None and target_bucket not in {"chat", "embeddings"}:
+        raise HTTPException(status_code=400, detail="limit_bucket must be 'chat' or 'embeddings'")
+
+    result = await rate_limiter.reset(target_api_key, target_bucket)
     return {
         "status": "reset",
         "scope": "api_key" if target_api_key else "gateway_process",
+        "limit_bucket": target_bucket or "all",
         "note": "This resets only the gateway process that handled the request. Roll the deployment to reset all replicas immediately.",
         **result,
     }

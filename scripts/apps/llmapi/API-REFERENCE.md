@@ -425,7 +425,7 @@ response = client.chat.completions.create(
 
 #### **429 Too Many Requests - Rate limit exceeded**
 
-The gateway enforces three independent rate limits per API key. Each returns a structured error body with an accurate `Retry-After` header.
+The gateway enforces three independent rate limits per API key and per service pool. Chat/completions use the chat/GPU pool, while embeddings use a separate embedding pool with separate RPM/TPM windows. Each limit returns a structured error body with an accurate `Retry-After` header.
 
 ---
 
@@ -436,9 +436,10 @@ The gateway enforces three independent rate limits per API key. Each returns a s
   "detail": {
     "error": {
       "type": "concurrency_limit_exceeded",
-      "message": "You have 4 requests in-flight. Limit is 4 (1 GPU × 4 slots). Retry in ~5s when an in-flight request completes.",
-      "current_inflight": 4,
-      "limit": 4,
+      "message": "You have 2 chat request(s) in-flight. Limit is 2 (chat pool: 2 GPU(s) × 1 slots). Retry in ~5s when an in-flight request completes.",
+      "limit_bucket": "chat",
+      "current_inflight": 2,
+      "limit": 2,
       "retry_after": 5
     }
   }
@@ -450,7 +451,7 @@ The gateway enforces three independent rate limits per API key. Each returns a s
 Retry-After: 5
 ```
 
-**Fix:** Wait ~5s for an in-flight request to finish, then retry. The limit scales automatically with GPU count (2 GPUs → limit = 8).
+**Fix:** Wait ~5s for an in-flight request in the same `limit_bucket` to finish, then retry. Chat limits scale with healthy GPU count. Embedding limits scale separately with healthy embedding replicas.
 
 If `current_inflight` stays pinned while backends are idle, the gateway now prunes stale in-flight leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`). Admins can also clear the current gateway process immediately:
 

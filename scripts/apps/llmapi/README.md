@@ -345,16 +345,16 @@ The gateway enforces three layers of protection per API key, checked in order:
 
 | Layer | Mechanism | Default | Configurable? |
 |-------|-----------|---------|---------------|
-| **1. Concurrency** | Max simultaneous in-flight requests | `1 × GPU count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_KEY_DEFAULT` |
-| **2. RPM** | Requests per minute (Redis sliding window) | `60 RPM` | `DEFAULT_REQUESTS_PER_MINUTE` (per-key via `manage-keys.sh`) |
-| **3. TPM** | Tokens per minute (Redis sliding window) | `40,000 TPM` | `DEFAULT_TOKENS_PER_MINUTE` (per-key via `manage-keys.sh`) |
+| **1. Concurrency** | Max simultaneous in-flight requests per service pool | Chat: `1 × GPU count`; embeddings: `4 × embedding replica count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_KEY_DEFAULT`, `CONCURRENCY_PER_EMBEDDING_REPLICA` |
+| **2. RPM** | Requests per minute (Redis sliding window) per service pool | Chat: `60 RPM`; embeddings: `60 RPM` | `DEFAULT_REQUESTS_PER_MINUTE`, `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE` |
+| **3. TPM** | Tokens per minute (Redis sliding window) per service pool | Chat: `40,000 TPM`; embeddings: `40,000 TPM` | `DEFAULT_TOKENS_PER_MINUTE`, `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE` |
 
 **All limits return HTTP 429 immediately** with a structured error body and accurate `Retry-After` header — the same pattern used by OpenAI, Anthropic, and Azure OpenAI. There is no server-side queuing (which would be a DDoS vector).
 
-**Concurrency scales automatically with GPUs:**
-- 1 GPU → cap = 1 concurrent request per key
-- 2 GPUs → cap = 2 concurrent requests per key
-- N GPUs → cap = N × 1 (override with `CONCURRENCY_PER_GPU`)
+**Concurrency is split by service pool:**
+- Chat/completions use the chat pool, scaled by healthy vLLM GPUs: 2 GPUs → 2 concurrent Qwen requests per key.
+- Embeddings use the embeddings pool, scaled by healthy embedding replicas: 1 embedding replica → 4 concurrent embedding requests per key.
+- A full embedding pool does not block Qwen/chat, and a full chat/GPU pool does not block embeddings.
 
 **Self-healing concurrency leases:** In-flight slots are tracked as timestamped leases, not permanent counters. If a handler crashes or a client disconnect edge case misses cleanup, the gateway prunes stale leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) instead of blocking the key forever.
 
@@ -364,9 +364,10 @@ The gateway enforces three layers of protection per API key, checked in order:
   "detail": {
     "error": {
       "type": "concurrency_limit_exceeded",
-      "message": "You have 1 request in-flight. Limit is 1 (1 GPU × 1 slot). Retry in ~5s.",
-      "current_inflight": 1,
-      "limit": 1,
+      "message": "You have 2 chat request(s) in-flight. Limit is 2 (chat pool: 2 GPU(s) × 1 slots). Retry in ~5s when an in-flight request completes.",
+      "limit_bucket": "chat",
+      "current_inflight": 2,
+      "limit": 2,
       "retry_after": 5
     }
   }
@@ -393,8 +394,11 @@ Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the
 | `DEFAULT_REQUESTS_PER_MINUTE` | `60` | RPM limit for new keys |
 | `DEFAULT_TOKENS_PER_DAY` | `100000` | Daily token quota for new keys |
 | `DEFAULT_TOKENS_PER_MINUTE` | `40000` | TPM limit for new keys |
+| `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE` | `60` | Separate embedding RPM limit for new keys |
+| `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE` | `40000` | Separate embedding TPM limit for new keys |
 | `CONCURRENCY_PER_GPU` | `1` | Concurrency slots per healthy GPU |
 | `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Base concurrency when no GPUs detected |
+| `CONCURRENCY_PER_EMBEDDING_REPLICA` | `4` | Concurrency slots per healthy embedding replica |
 | `CONCURRENCY_LEASE_TTL_SECONDS` | `600` | Max age before an in-flight slot is considered stale and pruned |
 | `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend |
 | `MAX_INFLIGHT_PER_BACKEND` | `32` | Requests before routing to next backend |
@@ -404,6 +408,14 @@ Override at install time via environment variables or edit the ConfigMap directl
 kubectl edit configmap gateway-config -n llmapi
 kubectl rollout restart deployment/gateway -n llmapi
 ```
+
+Embedding defaults are set in the `embedding-config` ConfigMap:
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `CONTEXT_SIZE` | `8192` | Maximum embedding context window |
+| `BATCH_SIZE` | `8192` | llama.cpp logical and physical eval batch; passed to both `--batch-size` and `--ubatch-size` so long chunks under the context limit are accepted |
+| `THREADS` | `4` | CPU threads for embedding inference |
 
 ## Monitoring
 

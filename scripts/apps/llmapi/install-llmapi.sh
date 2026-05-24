@@ -979,11 +979,16 @@ data:
   # CONCURRENCY_PER_GPU × healthy_gpu_count = per-key concurrency cap
   CONCURRENCY_PER_GPU: "1"
   CONCURRENCY_PER_KEY_DEFAULT: "1"
+  # Embeddings have a separate limiter pool and do not consume GPU/chat slots
+  CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
   # Self-heal leaked in-flight slots after this many seconds
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
   # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
   # A 4096-token request costs ~40x more than a 100-token request
   DEFAULT_TOKENS_PER_MINUTE: "40000"
+  # Separate embedding RPM/TPM windows
+  DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
+  DEFAULT_EMBEDDING_TOKENS_PER_MINUTE: "40000"
   # Higher default TPM for admin-scoped keys created via Admin UI/API
   ADMIN_DEFAULT_TOKENS_PER_MINUTE: "200000"
 EOF

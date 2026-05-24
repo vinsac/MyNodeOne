@@ -9,7 +9,9 @@ data:
   MODEL_FILE: "nomic-embed-text-v1.5.Q8_0.gguf"
   # Server settings
   CONTEXT_SIZE: "8192"
-  BATCH_SIZE: "512"
+  # llama.cpp requires the physical batch to cover the largest embedding input.
+  # Keep this aligned with CONTEXT_SIZE so valid long chunks are not rejected.
+  BATCH_SIZE: "8192"
   THREADS: "4"
 ---
 apiVersion: apps/v1
@@ -111,6 +113,8 @@ spec:
         - "--ctx-size"
         - "$(CONTEXT_SIZE)"
         - "--batch-size"
+        - "$(BATCH_SIZE)"
+        - "--ubatch-size"
         - "$(BATCH_SIZE)"
         - "--threads"
         - "$(THREADS)"

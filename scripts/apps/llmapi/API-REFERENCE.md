@@ -452,6 +452,13 @@ Retry-After: 5
 
 **Fix:** Wait ~5s for an in-flight request to finish, then retry. The limit scales automatically with GPU count (2 GPUs → limit = 8).
 
+If `current_inflight` stays pinned while backends are idle, the gateway now prunes stale in-flight leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`). Admins can also clear the current gateway process immediately:
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     http://llmapi.cluster.local/admin/rate-limiter/reset
+```
+
 ---
 
 **429 — RPM limit** (too many requests per minute)

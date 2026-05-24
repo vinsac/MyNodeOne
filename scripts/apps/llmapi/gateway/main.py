@@ -68,6 +68,9 @@ class Config:
     # Override via env: CONCURRENCY_PER_KEY_DEFAULT / CONCURRENCY_PER_GPU
     CONCURRENCY_PER_GPU = int(os.getenv("CONCURRENCY_PER_GPU", "1"))
     CONCURRENCY_PER_KEY_DEFAULT = int(os.getenv("CONCURRENCY_PER_KEY_DEFAULT", "1"))
+    # Safety valve for leaked in-flight slots. This should be comfortably above
+    # the non-streaming backend timeout (300s) so active requests are not pruned.
+    CONCURRENCY_LEASE_TTL_SECONDS = int(os.getenv("CONCURRENCY_LEASE_TTL_SECONDS", "600"))
 
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
@@ -1017,12 +1020,15 @@ class RateLimiter:
         resources and adds latency unpredictability.
     """
 
-    # In-process concurrency counters: {api_key: current_inflight}
+    # In-process concurrency leases: {api_key: [acquired_at_epoch_seconds, ...]}
     # Redis is NOT used here — in-process is sufficient because each gateway
     # pod tracks its own share; the concurrency cap is per-pod intentionally
     # (a 2-replica gateway effectively doubles the global cap, matching the
     # fact that 2 pods can serve 2x as many requests).
-    _inflight: dict[str, int] = {}
+    #
+    # Leases are timestamped so missed releases from handler bugs, cancelled
+    # requests, or worker edge cases self-heal instead of wedging a pod forever.
+    _leases: dict[str, list[float]] = {}
     _lock = asyncio.Lock()
 
     def _healthy_gpu_count(self) -> int:
@@ -1054,6 +1060,60 @@ class RateLimiter:
             return max(1, min(256, int(raw)))
         except (TypeError, ValueError):
             return config.CONCURRENCY_PER_KEY_DEFAULT
+
+    def _lease_ttl_seconds(self) -> int:
+        """Return the max age for an in-flight lease before it is considered stale."""
+        try:
+            return max(60, int(config.CONCURRENCY_LEASE_TTL_SECONDS))
+        except (TypeError, ValueError):
+            return 600
+
+    def _mask_key(self, api_key: str) -> str:
+        return f"{api_key[:16]}..." if api_key else "<unknown>"
+
+    def _prune_expired_locked(self, api_key: Optional[str] = None, now: Optional[float] = None) -> int:
+        """Drop stale leases. Caller must hold _lock."""
+        now = now or time.time()
+        ttl = self._lease_ttl_seconds()
+        keys = [api_key] if api_key else list(self._leases.keys())
+        pruned_total = 0
+
+        for key in keys:
+            leases = self._leases.get(key, [])
+            if not leases:
+                self._leases.pop(key, None)
+                continue
+
+            active = [acquired_at for acquired_at in leases if now - acquired_at < ttl]
+            pruned = len(leases) - len(active)
+            if pruned:
+                pruned_total += pruned
+                logger.warning(
+                    "Pruned %s stale rate-limiter in-flight lease(s) for %s after %ss",
+                    pruned,
+                    self._mask_key(key),
+                    ttl,
+                )
+
+            if active:
+                self._leases[key] = active
+            else:
+                self._leases.pop(key, None)
+
+        return pruned_total
+
+    def _inflight_counts_locked(self) -> dict[str, int]:
+        """Return current per-key lease counts. Caller should hold _lock."""
+        return {key: len(leases) for key, leases in self._leases.items() if leases}
+
+    def _oldest_lease_ages_locked(self, now: Optional[float] = None) -> dict[str, int]:
+        """Return oldest active lease age per key in seconds. Caller should hold _lock."""
+        now = now or time.time()
+        return {
+            key: int(now - min(leases))
+            for key, leases in self._leases.items()
+            if leases
+        }
 
     def _safe_int(self, value, default: int, min_val: int = 1, max_val: int = 10_000_000) -> int:
         """Coerce a value from key_config (may be str from Redis JSON) to int,
@@ -1102,7 +1162,10 @@ class RateLimiter:
         try:
             # --- 1. Concurrency cap (cheapest check, no Redis, no network) ---
             async with self._lock:
-                current = self._inflight.get(api_key, 0)
+                now = time.time()
+                self._prune_expired_locked(api_key, now=now)
+                leases = self._leases.setdefault(api_key, [])
+                current = len(leases)
                 if current >= concurrency_cap:
                     CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
                     REQUEST_COUNT.labels(model=model, priority=priority, status="concurrency_exceeded", endpoint=endpoint).inc()
@@ -1120,7 +1183,7 @@ class RateLimiter:
                         },
                         headers={"Retry-After": "5"},
                     )
-                self._inflight[api_key] = current + 1
+                leases.append(now)
                 acquired = True
 
             # --- 2. RPM check (Redis sliding window, fails-open on Redis error) ---
@@ -1171,31 +1234,76 @@ class RateLimiter:
             # Release counter if we acquired it but a limit check failed
             if acquired:
                 async with self._lock:
-                    self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+                    leases = self._leases.get(api_key, [])
+                    if leases:
+                        leases.pop(0)
+                    if not leases:
+                        self._leases.pop(api_key, None)
             raise
         except Exception as e:
             # Unexpected error: release counter and fail-open (log + allow)
             if acquired:
                 async with self._lock:
-                    self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+                    leases = self._leases.get(api_key, [])
+                    if leases:
+                        leases.pop(0)
+                    if not leases:
+                        self._leases.pop(api_key, None)
             logger.error(f"Unexpected error in rate limiter check_and_acquire: {e}", exc_info=True)
             # Fail-open: do not block inference due to rate-limiter bugs
 
     async def release(self, api_key: str) -> None:
-        """Decrement in-flight counter after request completes or errors.
+        """Release one in-flight lease after request completes or errors.
 
-        Safe to call multiple times — counter is clamped to 0.
+        Safe to call multiple times.
         Swallows all exceptions so a release failure never crashes a request handler.
         """
         try:
             async with self._lock:
-                self._inflight[api_key] = max(0, self._inflight.get(api_key, 1) - 1)
+                leases = self._leases.get(api_key, [])
+                if leases:
+                    # Remove the oldest lease first. If an older request leaked,
+                    # this keeps newer active leases accurately represented.
+                    leases.pop(0)
+                if not leases:
+                    self._leases.pop(api_key, None)
         except Exception as e:
             logger.error(f"Failed to release rate-limiter counter for {api_key[:16]}…: {e}")
 
     def get_inflight(self) -> dict[str, int]:
         """Return current per-key in-flight counts (zero-value keys excluded)."""
-        return {k: v for k, v in self._inflight.items() if v > 0}
+        return {key: len(leases) for key, leases in self._leases.items() if leases}
+
+    async def snapshot(self) -> dict:
+        """Return and refresh live limiter state for diagnostics."""
+        async with self._lock:
+            now = time.time()
+            pruned = self._prune_expired_locked(now=now)
+            return {
+                "per_key_inflight": self._inflight_counts_locked(),
+                "oldest_lease_age_seconds": self._oldest_lease_ages_locked(now=now),
+                "lease_ttl_seconds": self._lease_ttl_seconds(),
+                "last_snapshot_pruned": pruned,
+                "healthy_gpus": self._healthy_gpu_count(),
+                "concurrency_cap_per_key": self._concurrency_cap({}),
+            }
+
+    async def reset(self, api_key: Optional[str] = None) -> dict:
+        """Clear limiter leases for one API key or for the current gateway process."""
+        async with self._lock:
+            self._prune_expired_locked()
+            before = self._inflight_counts_locked()
+            if api_key:
+                cleared = len(self._leases.get(api_key, []))
+                self._leases.pop(api_key, None)
+            else:
+                cleared = sum(len(leases) for leases in self._leases.values())
+                self._leases.clear()
+            return {
+                "cleared": cleared,
+                "before": before,
+                "after": self._inflight_counts_locked(),
+            }
 
 
 rate_limiter = RateLimiter()
@@ -1754,14 +1862,11 @@ async def health_backends(
 ):
     """Backend health status - requires \'metrics\' scope."""
     await require_scope("metrics", api_key)
+    limiter_snapshot = await rate_limiter.snapshot()
     return {
         "backends": backend_manager.backend_health,
         "inflight": backend_manager.backend_inflight,
-        "rate_limiter": {
-            "per_key_inflight": rate_limiter.get_inflight(),
-            "healthy_gpus": rate_limiter._healthy_gpu_count(),
-            "concurrency_cap_per_key": rate_limiter._concurrency_cap({}),
-        },
+        "rate_limiter": limiter_snapshot,
     }
 
 
@@ -1845,9 +1950,15 @@ async def chat_completions(
 
     # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
     await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "chat", model, priority)
+    release_on_exit = True
 
     # Check token quota
-    if not await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"]):
+    try:
+        quota_ok = await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"])
+    except Exception:
+        await rate_limiter.release(api_key)
+        raise
+    if not quota_ok:
         await rate_limiter.release(api_key)
         REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
         raise HTTPException(status_code=429, detail="Daily token quota exceeded")
@@ -1873,19 +1984,23 @@ async def chat_completions(
 
             async def stream_generator():
                 total_output_tokens = 0
-                async for chunk in stream_gen:
-                    yield chunk
-                    # Rough token counting from SSE data
-                    if b'"content":' in chunk:
-                        total_output_tokens += 1
+                try:
+                    async for chunk in stream_gen:
+                        yield chunk
+                        # Rough token counting from SSE data
+                        if b'"content":' in chunk:
+                            total_output_tokens += 1
 
-                # Track usage after streaming completes
-                input_tokens = sum(len(m.content.split()) for m in request.messages) * 2  # Rough estimate
-                await postgres_client.add_token_usage(api_key, input_tokens, total_output_tokens)
-                TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
-                TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
+                    # Track usage after streaming completes
+                    input_tokens = sum(len(m.content.split()) for m in request.messages) * 2  # Rough estimate
+                    await postgres_client.add_token_usage(api_key, input_tokens, total_output_tokens)
+                    TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
+                    TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
+                finally:
+                    await rate_limiter.release(api_key)
 
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
+            release_on_exit = False
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
@@ -1929,7 +2044,8 @@ async def chat_completions(
         logger.error(f"Backend error: {e}")
         raise HTTPException(status_code=503, detail="Backend service unavailable")
     finally:
-        await rate_limiter.release(api_key)
+        if release_on_exit:
+            await rate_limiter.release(api_key)
 
 
 @app.post("/v1/completions")
@@ -1958,6 +2074,7 @@ async def completions(
 
     # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
     await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "completions", model, priority)
+    release_on_exit = True
 
     data = {
         "model": model,
@@ -1974,9 +2091,13 @@ async def completions(
             )
 
             async def stream_generator():
-                async for chunk in stream_gen:
-                    yield chunk
+                try:
+                    async for chunk in stream_gen:
+                        yield chunk
+                finally:
+                    await rate_limiter.release(api_key)
 
+            release_on_exit = False
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
@@ -2003,7 +2124,8 @@ async def completions(
         REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="completions").inc()
         raise HTTPException(status_code=503, detail="Backend service unavailable")
     finally:
-        await rate_limiter.release(api_key)
+        if release_on_exit:
+            await rate_limiter.release(api_key)
 
 
 @app.post("/v1/embeddings")
@@ -2049,70 +2171,71 @@ async def embeddings(
     # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
     await rate_limiter.check_and_acquire(api_key, key_config, estimated_prompt_tokens, "embeddings", model, priority)
 
-    # Normalize input to list
-    input_texts = request.input if isinstance(request.input, list) else [request.input]
+    try:
+        # Normalize input to list
+        input_texts = request.input if isinstance(request.input, list) else [request.input]
 
-    # Check cache for embeddings
-    cache_hits = []
-    cache_misses = []
-    for i, text in enumerate(input_texts):
-        cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
-        cached = await redis_client.get_cached_response(cache_key)
-        if cached:
-            cache_hits.append((i, json.loads(cached)))
-        else:
-            cache_misses.append((i, text))
+        # Check cache for embeddings
+        cache_hits = []
+        cache_misses = []
+        for i, text in enumerate(input_texts):
+            cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
+            cached = await redis_client.get_cached_response(cache_key)
+            if cached:
+                cache_hits.append((i, json.loads(cached)))
+            else:
+                cache_misses.append((i, text))
 
-    # Process cache misses
-    backend_info = {"backend": "embedding"}
-    if cache_misses:
-        data = {
+        # Process cache misses
+        backend_info = {"backend": "embedding"}
+        if cache_misses:
+            data = {
+                "model": model,
+                "input": [text for _, text in cache_misses],
+            }
+
+            try:
+                response, backend_info = await backend_manager.forward_request(
+                    "POST", "/v1/embeddings", model, data
+                )
+
+                if response.status_code != 200:
+                    raise HTTPException(status_code=response.status_code, detail=response.text)
+
+                result = response.json()
+
+                # Cache new embeddings
+                for (orig_idx, text), emb_data in zip(cache_misses, result.get("data", [])):
+                    cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
+                    await redis_client.cache_response(cache_key, json.dumps(emb_data), ttl=86400)
+                    cache_hits.append((orig_idx, emb_data))
+
+            except httpx.HTTPError as e:
+                REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
+                raise HTTPException(status_code=503, detail="Backend service unavailable")
+
+        # Sort by original index
+        cache_hits.sort(key=lambda x: x[0])
+        embeddings_data = [emb for _, emb in cache_hits]
+
+        # Estimate token usage
+        total_tokens = sum(len(text.split()) * 2 for text in input_texts)
+        await postgres_client.add_token_usage(api_key, total_tokens, 0)
+        await redis_client.add_tpm_usage(api_key, total_tokens)
+        TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
+
+        duration = time.time() - start_time
+        REQUEST_DURATION.labels(model=model, priority=priority, endpoint="embeddings").observe(duration)
+        REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="embeddings").inc()
+
+        return {
+            "object": "list",
+            "data": embeddings_data,
             "model": model,
-            "input": [text for _, text in cache_misses],
+            "usage": {"prompt_tokens": total_tokens, "total_tokens": total_tokens}
         }
-
-        try:
-            response, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/embeddings", model, data
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail=response.text)
-
-            result = response.json()
-
-            # Cache new embeddings
-            for (orig_idx, text), emb_data in zip(cache_misses, result.get("data", [])):
-                cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
-                await redis_client.cache_response(cache_key, json.dumps(emb_data), ttl=86400)
-                cache_hits.append((orig_idx, emb_data))
-
-        except httpx.HTTPError as e:
-            REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
-            await rate_limiter.release(api_key)
-            raise HTTPException(status_code=503, detail="Backend service unavailable")
-
-    # Sort by original index
-    cache_hits.sort(key=lambda x: x[0])
-    embeddings_data = [emb for _, emb in cache_hits]
-
-    # Estimate token usage
-    total_tokens = sum(len(text.split()) * 2 for text in input_texts)
-    await postgres_client.add_token_usage(api_key, total_tokens, 0)
-    await redis_client.add_tpm_usage(api_key, total_tokens)
-    TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
-
-    duration = time.time() - start_time
-    REQUEST_DURATION.labels(model=model, priority=priority, endpoint="embeddings").observe(duration)
-    REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="embeddings").inc()
-
-    await rate_limiter.release(api_key)
-    return {
-        "object": "list",
-        "data": embeddings_data,
-        "model": model,
-        "usage": {"prompt_tokens": total_tokens, "total_tokens": total_tokens}
-    }
+    finally:
+        await rate_limiter.release(api_key)
 
 
 @app.get("/v1/usage")
@@ -4239,6 +4362,25 @@ async def admin_get_stats(hours: int = 96, api_key: str = Depends(get_api_key)):
     """Get comprehensive usage statistics for all API keys."""
     await require_scope("admin", api_key)
     return await postgres_client.get_all_keys_stats(hours=hours)
+
+
+@app.post("/admin/rate-limiter/reset")
+async def admin_reset_rate_limiter(request: Request, admin_key: str = Depends(get_api_key)):
+    """Clear in-process concurrency limiter leases for this gateway pod."""
+    await require_scope("admin", admin_key)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    target_api_key = body.get("api_key") if isinstance(body, dict) else None
+    result = await rate_limiter.reset(target_api_key)
+    return {
+        "status": "reset",
+        "scope": "api_key" if target_api_key else "gateway_process",
+        "note": "This resets only the gateway process that handled the request. Roll the deployment to reset all replicas immediately.",
+        **result,
+    }
 
 
 # =============================================================================

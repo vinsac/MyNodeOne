@@ -356,6 +356,8 @@ The gateway enforces three layers of protection per API key, checked in order:
 - 2 GPUs → cap = 2 concurrent requests per key
 - N GPUs → cap = N × 1 (override with `CONCURRENCY_PER_GPU`)
 
+**Self-healing concurrency leases:** In-flight slots are tracked as timestamped leases, not permanent counters. If a handler crashes or a client disconnect edge case misses cleanup, the gateway prunes stale leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) instead of blocking the key forever.
+
 **429 error body format:**
 ```json
 {
@@ -393,6 +395,7 @@ Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the
 | `DEFAULT_TOKENS_PER_MINUTE` | `40000` | TPM limit for new keys |
 | `CONCURRENCY_PER_GPU` | `1` | Concurrency slots per healthy GPU |
 | `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Base concurrency when no GPUs detected |
+| `CONCURRENCY_LEASE_TTL_SECONDS` | `600` | Max age before an in-flight slot is considered stale and pruned |
 | `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend |
 | `MAX_INFLIGHT_PER_BACKEND` | `32` | Requests before routing to next backend |
 
@@ -432,6 +435,17 @@ curl -H "Authorization: Bearer $PROMETHEUS_KEY" \
      http://llmapi.cluster.local/health/backends
 # Returns: backends, inflight, rate_limiter.per_key_inflight,
 #          rate_limiter.healthy_gpus, rate_limiter.concurrency_cap_per_key
+```
+
+**Reset this gateway process's limiter state** (requires `admin` scope):
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     http://llmapi.cluster.local/admin/rate-limiter/reset
+```
+
+With multiple gateway replicas, roll the deployment to clear every process immediately:
+```bash
+kubectl rollout restart deployment/gateway -n llmapi
 ```
 
 ## Troubleshooting

@@ -992,15 +992,16 @@ data:
   BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
   # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
   # A 4096-token request costs ~40x more than a 100-token request
-  DEFAULT_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_TOKENS_PER_MINUTE: "200000"
+  MIN_TOKENS_PER_MINUTE: "200000"
   # Separate embedding RPM/TPM windows
   DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
-  DEFAULT_EMBEDDING_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_EMBEDDING_TOKENS_PER_MINUTE: "200000"
   # Separate fallback backend RPM/TPM windows
   DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
-  DEFAULT_LLAMACPP_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_LLAMACPP_TOKENS_PER_MINUTE: "200000"
   DEFAULT_OLLAMA_REQUESTS_PER_MINUTE: "$DEFAULT_RPM"
-  DEFAULT_OLLAMA_TOKENS_PER_MINUTE: "40000"
+  DEFAULT_OLLAMA_TOKENS_PER_MINUTE: "200000"
   # Higher default TPM for admin-scoped keys created via Admin UI/API
   ADMIN_DEFAULT_TOKENS_PER_MINUTE: "200000"
 EOF
@@ -1576,7 +1577,10 @@ create_api_key() {
     local scopes="$2"
     local rpm="$3"
     local tokens="$4"
-    local tpm="${5:-40000}"
+    local tpm="${5:-200000}"
+    if [[ "$tpm" =~ ^[0-9]+$ ]] && [ "$tpm" -lt 200000 ]; then
+        tpm=200000
+    fi
     
     local key_id=$(openssl rand -hex 16)
     local api_key="sk-mynodeone-${key_id}"
@@ -1603,8 +1607,8 @@ create_api_key() {
 # Generate 3 API keys with different scopes
 # Args: name  scopes    rpm   tokens/day  tokens/min
 ADMIN_KEY=$(create_api_key      "admin-ui"   "admin"     1000  10000000  200000)
-PROMETHEUS_KEY=$(create_api_key "prometheus" "metrics"   100   1000000   40000)
-API_KEY=$(create_api_key        "default"    "inference" 100   1000000   40000)
+PROMETHEUS_KEY=$(create_api_key "prometheus" "metrics"   100   1000000   200000)
+API_KEY=$(create_api_key        "default"    "inference" 100   1000000   200000)
 
 if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
     echo -e "${GREEN}✓ API keys created${NC}"

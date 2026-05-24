@@ -502,8 +502,8 @@ Retry-After: 42
   "detail": {
     "error": {
       "type": "tokens_per_minute_exceeded",
-      "message": "Token rate limit exceeded: 40000 tokens/minute. Retry in 38s.",
-      "limit": 40000,
+      "message": "Token rate limit exceeded: 200000 tokens/minute. Retry in 38s.",
+      "limit": 200000,
       "estimated_prompt_tokens": 3200,
       "retry_after": 38
     }

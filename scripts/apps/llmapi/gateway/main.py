@@ -82,14 +82,18 @@ class Config:
 
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
-    DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000"))
+    DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("DEFAULT_TOKENS_PER_MINUTE", "200000"))
+    MIN_TOKENS_PER_MINUTE = int(os.getenv(
+        "MIN_TOKENS_PER_MINUTE",
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "200000")
+    ))
     DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE = int(os.getenv(
         "DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE",
         os.getenv("DEFAULT_REQUESTS_PER_MINUTE", "60")
     ))
     DEFAULT_EMBEDDING_TOKENS_PER_MINUTE = int(os.getenv(
         "DEFAULT_EMBEDDING_TOKENS_PER_MINUTE",
-        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "200000")
     ))
     DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE = int(os.getenv(
         "DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE",
@@ -97,7 +101,7 @@ class Config:
     ))
     DEFAULT_LLAMACPP_TOKENS_PER_MINUTE = int(os.getenv(
         "DEFAULT_LLAMACPP_TOKENS_PER_MINUTE",
-        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "200000")
     ))
     DEFAULT_OLLAMA_REQUESTS_PER_MINUTE = int(os.getenv(
         "DEFAULT_OLLAMA_REQUESTS_PER_MINUTE",
@@ -105,7 +109,7 @@ class Config:
     ))
     DEFAULT_OLLAMA_TOKENS_PER_MINUTE = int(os.getenv(
         "DEFAULT_OLLAMA_TOKENS_PER_MINUTE",
-        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "40000")
+        os.getenv("DEFAULT_TOKENS_PER_MINUTE", "200000")
     ))
     # Higher default TPM for admin-scoped keys when not explicitly provided.
     ADMIN_DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("ADMIN_DEFAULT_TOKENS_PER_MINUTE", "200000"))
@@ -476,7 +480,7 @@ class PostgresClient:
                     scopes TEXT[] NOT NULL DEFAULT '{inference}',
                     requests_per_minute INTEGER NOT NULL DEFAULT 60,
                     tokens_per_day INTEGER NOT NULL DEFAULT 100000,
-                    tokens_per_minute INTEGER NOT NULL DEFAULT 40000,
+                    tokens_per_minute INTEGER NOT NULL DEFAULT 200000,
                     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     revoked BOOLEAN NOT NULL DEFAULT FALSE
@@ -485,8 +489,21 @@ class PostgresClient:
             # Migration: add tokens_per_minute to existing installs that predate this column
             await conn.execute("""
                 ALTER TABLE api_keys
-                ADD COLUMN IF NOT EXISTS tokens_per_minute INTEGER NOT NULL DEFAULT 40000
+                ADD COLUMN IF NOT EXISTS tokens_per_minute INTEGER NOT NULL DEFAULT 200000
             """)
+            await conn.execute("""
+                ALTER TABLE api_keys
+                ALTER COLUMN tokens_per_minute SET DEFAULT 200000
+            """)
+            await conn.execute(
+                """
+                UPDATE api_keys
+                SET tokens_per_minute = $1,
+                    updated_at = NOW()
+                WHERE tokens_per_minute < $1
+                """,
+                config.MIN_TOKENS_PER_MINUTE,
+            )
 
             # Create usage_logs table
             await conn.execute("""
@@ -564,7 +581,10 @@ class PostgresClient:
                     config_data.get("scopes", ["inference"]),
                     config_data.get("requests_per_minute", 60),
                     config_data.get("tokens_per_day", 100000),
-                    config_data.get("tokens_per_minute", 40000),
+                    max(
+                        config.MIN_TOKENS_PER_MINUTE,
+                        int(config_data.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE)),
+                    ),
                     datetime.fromisoformat(config_data.get("created_at", datetime.utcnow().isoformat()))
                 )
         try:
@@ -1239,7 +1259,7 @@ class RateLimiter:
                     config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_EMBEDDING_TOKENS_PER_MINUTE,
-                min_val=1,
+                min_val=config.MIN_TOKENS_PER_MINUTE,
                 max_val=10_000_000,
             )
         if bucket == "llamacpp":
@@ -1249,7 +1269,7 @@ class RateLimiter:
                     config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_LLAMACPP_TOKENS_PER_MINUTE,
-                min_val=1,
+                min_val=config.MIN_TOKENS_PER_MINUTE,
                 max_val=10_000_000,
             )
         if bucket == "ollama":
@@ -1259,13 +1279,13 @@ class RateLimiter:
                     config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE
                 ),
                 default=config.DEFAULT_OLLAMA_TOKENS_PER_MINUTE,
-                min_val=1,
+                min_val=config.MIN_TOKENS_PER_MINUTE,
                 max_val=10_000_000,
             )
         return self._safe_int(
             key_config.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE),
             default=config.DEFAULT_TOKENS_PER_MINUTE,
-            min_val=1,
+            min_val=config.MIN_TOKENS_PER_MINUTE,
             max_val=10_000_000,
         )
 
@@ -4594,7 +4614,7 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
                                 <span>${k.requests_per_minute} RPM</span>
-                                <span>${(k.tokens_per_minute || 40000).toLocaleString()} TPM</span>
+                                <span>${(k.tokens_per_minute || 200000).toLocaleString()} TPM</span>
                                 <span>${k.tokens_per_day.toLocaleString()} tokens/day</span>
                                 <button onclick="revokeKey('${k.key}')"
                                         class="text-red-400 hover:text-red-300 transition">
@@ -4862,6 +4882,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
         )
         raw_tpm = body.get("tokens_per_minute", None)
         tokens_per_minute = int(raw_tpm) if raw_tpm is not None else default_tpm
+        tokens_per_minute = max(config.MIN_TOKENS_PER_MINUTE, tokens_per_minute)
     except (TypeError, ValueError):
         raise HTTPException(
             status_code=400,

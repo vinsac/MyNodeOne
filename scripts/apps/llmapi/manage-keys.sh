@@ -19,7 +19,7 @@ NAMESPACE="llmapi"
 # Default quotas
 DEFAULT_TOKENS_PER_DAY=100000
 DEFAULT_REQUESTS_PER_MINUTE=60
-DEFAULT_TOKENS_PER_MINUTE=40000
+DEFAULT_TOKENS_PER_MINUTE=200000
 DEFAULT_ADMIN_TOKENS_PER_MINUTE=200000
 DEFAULT_SCOPES="inference"
 
@@ -141,6 +141,9 @@ cmd_create() {
     # If TPM wasn't explicitly set and key has admin scope, use higher default TPM.
     if [ "$tpm_explicit" = false ] && [[ ",${scopes}," == *",admin,"* ]]; then
         tpm=$DEFAULT_ADMIN_TOKENS_PER_MINUTE
+    fi
+    if [[ "$tpm" =~ ^[0-9]+$ ]] && [ "$tpm" -lt "$DEFAULT_TOKENS_PER_MINUTE" ]; then
+        tpm=$DEFAULT_TOKENS_PER_MINUTE
     fi
     
     # Generate key
@@ -311,7 +314,12 @@ cmd_update() {
     [ -n "$name" ] && updates+=("name = '${name}'")
     [ -n "$tokens" ] && updates+=("tokens_per_day = ${tokens}")
     [ -n "$rpm" ] && updates+=("requests_per_minute = ${rpm}")
-    [ -n "$tpm" ] && updates+=("tokens_per_minute = ${tpm}")
+    if [ -n "$tpm" ]; then
+        if [[ "$tpm" =~ ^[0-9]+$ ]] && [ "$tpm" -lt "$DEFAULT_TOKENS_PER_MINUTE" ]; then
+            tpm=$DEFAULT_TOKENS_PER_MINUTE
+        fi
+        updates+=("tokens_per_minute = ${tpm}")
+    fi
     
     if [ -n "$scopes" ]; then
         local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/')

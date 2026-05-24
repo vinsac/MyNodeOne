@@ -347,7 +347,7 @@ The gateway enforces three layers of protection per API key, checked in order:
 |-------|-----------|---------|---------------|
 | **1. Concurrency** | Max simultaneous in-flight requests per service pool | vLLM: `1 x GPU count`; embeddings: `4 x replica count`; llama.cpp/Ollama: `1 x replica count` | `CONCURRENCY_PER_GPU`, `CONCURRENCY_PER_EMBEDDING_REPLICA`, `CONCURRENCY_PER_LLAMACPP_REPLICA`, `CONCURRENCY_PER_OLLAMA_REPLICA` |
 | **2. RPM** | Requests per minute (Redis sliding window) per service pool | `60 RPM` per pool | `DEFAULT_REQUESTS_PER_MINUTE`, `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE`, `DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE`, `DEFAULT_OLLAMA_REQUESTS_PER_MINUTE` |
-| **3. TPM** | Tokens per minute (Redis sliding window) per service pool | `40,000 TPM` per pool | `DEFAULT_TOKENS_PER_MINUTE`, `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE`, `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE`, `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` |
+| **3. TPM** | Tokens per minute (Redis sliding window) per service pool | `200,000 TPM` per pool | `DEFAULT_TOKENS_PER_MINUTE`, `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE`, `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE`, `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` |
 
 **All limits return HTTP 429 immediately** with a structured error body and accurate `Retry-After` header — the same pattern used by OpenAI, Anthropic, and Azure OpenAI. There is no server-side queuing (which would be a DDoS vector).
 
@@ -396,13 +396,14 @@ Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the
 |---------|---------|-------------|
 | `DEFAULT_REQUESTS_PER_MINUTE` | `60` | RPM limit for new keys |
 | `DEFAULT_TOKENS_PER_DAY` | `100000` | Daily token quota for new keys |
-| `DEFAULT_TOKENS_PER_MINUTE` | `40000` | TPM limit for new keys |
+| `DEFAULT_TOKENS_PER_MINUTE` | `200000` | TPM limit for new keys |
+| `MIN_TOKENS_PER_MINUTE` | `200000` | Runtime floor for any configured TPM below this value |
 | `DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE` | `60` | Separate embedding RPM limit for new keys |
-| `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE` | `40000` | Separate embedding TPM limit for new keys |
+| `DEFAULT_EMBEDDING_TOKENS_PER_MINUTE` | `200000` | Separate embedding TPM limit for new keys |
 | `DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE` | `60` | Separate llama.cpp RPM limit for new keys |
-| `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE` | `40000` | Separate llama.cpp TPM limit for new keys |
+| `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE` | `200000` | Separate llama.cpp TPM limit for new keys |
 | `DEFAULT_OLLAMA_REQUESTS_PER_MINUTE` | `60` | Separate Ollama RPM limit for new keys |
-| `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` | `40000` | Separate Ollama TPM limit for new keys |
+| `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` | `200000` | Separate Ollama TPM limit for new keys |
 | `CONCURRENCY_PER_GPU` | `1` | Concurrency slots per healthy GPU |
 | `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Base concurrency when no GPUs detected |
 | `CONCURRENCY_PER_EMBEDDING_REPLICA` | `4` | Concurrency slots per healthy embedding replica |

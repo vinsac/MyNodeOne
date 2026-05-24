@@ -571,7 +571,7 @@ The central orchestration layer that handles all incoming requests.
 |-------|-----------|---------|--------|----------------|
 | **1. Concurrency** | Max in-flight per key | `1 × GPU count` | No (in-process) | Always enforced |
 | **2. RPM** | Requests/minute sliding window | `60 RPM` | Yes | Fail-open if Redis down |
-| **3. TPM** | Tokens/minute sliding window | `40,000 TPM` | Yes | Fail-open if Redis down |
+| **3. TPM** | Tokens/minute sliding window | `200,000 TPM` | Yes | Fail-open if Redis down |
 | **4. Daily quota** | Total tokens/day (PostgreSQL) | `100,000 tokens` | No | Always enforced |
 
 **Why immediate 429 (no server-side queue)?**

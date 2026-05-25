@@ -948,6 +948,17 @@ LLAMACPP_MODEL_API_NAME="${LLAMACPP_MODEL_FILE%.gguf}"
 LLAMACPP_MODEL_API_NAME=$(echo "$LLAMACPP_MODEL_API_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
 GATEWAY_CODE_SHA=$(sha256sum "$SCRIPT_DIR/gateway/main.py" | awk '{print $1}')
 
+# Build VLLM_URLS from GPU count so every GPU pod is registered.
+# With GPU_COUNT=2 this produces http://vllm-0.vllm:8000,http://vllm-1.vllm:8000
+VLLM_URLS_LIST=""
+EFFECTIVE_GPU_COUNT="${GPU_COUNT:-1}"
+if [ "$EFFECTIVE_GPU_COUNT" -lt 1 ] 2>/dev/null; then EFFECTIVE_GPU_COUNT=1; fi
+for i in $(seq 0 $((EFFECTIVE_GPU_COUNT - 1))); do
+    [ -n "$VLLM_URLS_LIST" ] && VLLM_URLS_LIST="${VLLM_URLS_LIST},"
+    VLLM_URLS_LIST="${VLLM_URLS_LIST}http://vllm-${i}.vllm:8000"
+done
+COMPUTED_VLLM_URLS="${VLLM_URLS_LIST:-http://vllm-0.vllm:8000}"
+
 # Update gateway config with custom settings
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -961,7 +972,7 @@ data:
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "llmapi"
   POSTGRES_USER: "llmapi"
-  VLLM_URLS: "http://vllm-0.vllm:8000"
+  VLLM_URLS: "$COMPUTED_VLLM_URLS"
   LLAMACPP_URL: "http://llamacpp:8080"
   EMBEDDING_URL: "http://embedding:8080"
   LLAMACPP_MODEL_NAME: "${LLAMACPP_MODEL_NAME:-llama-cpu}"
@@ -1203,8 +1214,11 @@ data:
   ENABLE_AUTO_TOOL_CHOICE: "$VLLM_ENABLE_AUTO_TOOL_CHOICE"
 EOF
 
-    # Deploy vLLM StatefulSet
+    # Deploy vLLM StatefulSet and scale replicas to match GPU count
     kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
+    if [ "$EFFECTIVE_GPU_COUNT" -gt 1 ] 2>/dev/null; then
+        kubectl scale statefulset vllm -n "$NAMESPACE" --replicas="$EFFECTIVE_GPU_COUNT"
+    fi
     
     # Setup predownload directory for pre-downloaded models
     # Init container will check /predownload first before downloading

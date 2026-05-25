@@ -9,7 +9,7 @@ data:
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "llmapi"
   POSTGRES_USER: "llmapi"
-  VLLM_URLS: "http://vllm-0.vllm:8000"
+  VLLM_URLS: "http://vllm-0.vllm:8000,http://vllm-1.vllm:8000"
   LLAMACPP_URL: "http://llamacpp:8080"
   EMBEDDING_URL: "http://embedding:8080"
   OLLAMA_URL: "http://ollama:11434"

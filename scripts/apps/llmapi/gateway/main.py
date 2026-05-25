@@ -475,11 +475,20 @@ class PostgresClient:
             logger.error("All PostgreSQL reconnect attempts failed")
 
     async def _execute_with_retry(self, fn):
-        """Execute an async DB function, reconnecting once if the pool is broken."""
+        """Execute an async DB function, reconnecting once if the pool is broken.
+
+        If the pool has never been established (postgres was down at startup),
+        tries to reconnect first so degraded-mode gateways self-heal.
+        """
         for attempt in range(2):
             try:
                 if self.pool is None:
                     await self._reconnect()
+                # Pool may still be None if all reconnect attempts failed.
+                if self.pool is None:
+                    raise asyncpg.exceptions.ConnectionDoesNotExistError(
+                        "PostgreSQL pool is not available"
+                    )
                 return await fn()
             except (OSError, asyncpg.exceptions.ConnectionDoesNotExistError,
                     asyncpg.exceptions.InterfaceError,
@@ -2349,14 +2358,21 @@ async def warm_redis_from_postgres():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    # Startup
-    await postgres_client.connect()
+    # Startup — Redis first (fast path for auth cache)
     await redis_client.connect()
     await backend_manager.start()
 
-    # Pre-populate Redis with all API keys from Postgres so auth
-    # works immediately even if Postgres becomes temporarily unavailable
-    await warm_redis_from_postgres()
+    # Postgres — don't crash the gateway if Postgres is unavailable at startup.
+    # All Postgres calls already use _execute_with_retry which reconnects on demand,
+    # so the gateway starts in degraded mode and self-heals once Postgres recovers.
+    try:
+        await postgres_client.connect()
+        await warm_redis_from_postgres()
+    except Exception as e:
+        logger.error(
+            f"Postgres unavailable at startup ({e}). "
+            "Starting in degraded mode — usage tracking will retry automatically."
+        )
 
     # Start background health check
     async def health_check_loop():
@@ -2587,7 +2603,12 @@ async def chat_completions(
                     TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                     TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
                 finally:
-                    await stream_gen.aclose()
+                    # Close in its own try so a close-error never blocks rate_limiter.release.
+                    # The backend slot is released inside _stream_request.finally via aclose().
+                    try:
+                        await stream_gen.aclose()
+                    except Exception as _close_err:
+                        logger.warning("Error closing backend stream: %s", _close_err)
                     await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
 
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
@@ -2702,7 +2723,10 @@ async def completions(
                     async for chunk in stream_gen:
                         yield chunk
                 finally:
-                    await stream_gen.aclose()
+                    try:
+                        await stream_gen.aclose()
+                    except Exception as _close_err:
+                        logger.warning("Error closing backend stream: %s", _close_err)
                     await rate_limiter.release(api_key, "completions", limit_bucket=limit_bucket)
 
             release_on_exit = False

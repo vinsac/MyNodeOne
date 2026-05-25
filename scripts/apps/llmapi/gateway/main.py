@@ -2587,6 +2587,7 @@ async def chat_completions(
                     TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                     TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
                 finally:
+                    await stream_gen.aclose()
                     await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
 
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
@@ -2701,6 +2702,7 @@ async def completions(
                     async for chunk in stream_gen:
                         yield chunk
                 finally:
+                    await stream_gen.aclose()
                     await rate_limiter.release(api_key, "completions", limit_bucket=limit_bucket)
 
             release_on_exit = False

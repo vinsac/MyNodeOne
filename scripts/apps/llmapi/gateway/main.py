@@ -1640,6 +1640,10 @@ class BackendManager:
         self.backend_health: dict[str, bool] = {}
         self.backend_inflight: dict[str, int] = {}
         self.backend_leases: dict[str, list[float]] = {}
+        # Protects routing + acquisition so two concurrent requests cannot
+        # both observe the same backend as least-loaded before either has
+        # incremented its inflight counter.
+        self._routing_lock = asyncio.Lock()
 
     async def start(self):
         self.http_client = httpx.AsyncClient(timeout=300.0)
@@ -1816,49 +1820,52 @@ class BackendManager:
         else:
             return None, None
 
-    def reserve_backend(self, model: str) -> dict:
-        """Select and reserve a backend slot before awaited work.
+    async def reserve_backend(self, model: str) -> dict:
+        """Select and atomically reserve a backend slot before awaited work.
 
-        This prevents concurrent requests from racing into the same GPU before
-        backend in-flight state is visible to the next request.
+        The routing lock ensures that two concurrent requests cannot both
+        observe the same backend as least-loaded before either has incremented
+        its inflight counter, which would cause the second to see 1/1 in-flight
+        on the same backend and get a spurious 429.
         """
-        backend_type, url = self.get_backend_url(model)
+        async with self._routing_lock:
+            backend_type, url = self.get_backend_url(model)
 
-        if not backend_type or not url:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "No healthy backend available",
-                    "hint": "All inference backends are currently unhealthy or at capacity. Check /health/backends for status."
-                }
-            )
-
-        backend_key = f"{backend_type}:{url}"
-        current = self._backend_inflight_for(backend_key)
-        capacity = self._backend_capacity(backend_type)
-        if current >= capacity:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error": {
-                        "type": "backend_concurrency_limit_exceeded",
-                        "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
-                        "limit_bucket": backend_type,
-                        "current_inflight": current,
-                        "limit": capacity,
-                        "retry_after": 5,
+            if not backend_type or not url:
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "No healthy backend available",
+                        "hint": "All inference backends are currently unhealthy or at capacity. Check /health/backends for status."
                     }
-                },
-                headers={"Retry-After": "5"},
-            )
+                )
 
-        self._acquire_backend(backend_key)
-        return {
-            "backend": backend_type,
-            "backend_url": url,
-            "backend_key": backend_key,
-            "pre_acquired": True,
-        }
+            backend_key = f"{backend_type}:{url}"
+            current = self._backend_inflight_for(backend_key)
+            capacity = self._backend_capacity(backend_type)
+            if current >= capacity:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": {
+                            "type": "backend_concurrency_limit_exceeded",
+                            "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
+                            "limit_bucket": backend_type,
+                            "current_inflight": current,
+                            "limit": capacity,
+                            "retry_after": 5,
+                        }
+                    },
+                    headers={"Retry-After": "5"},
+                )
+
+            self._acquire_backend(backend_key)
+            return {
+                "backend": backend_type,
+                "backend_url": url,
+                "backend_key": backend_key,
+                "pre_acquired": True,
+            }
 
     def release_reserved_backend(self, backend_info: Optional[dict]) -> None:
         if backend_info and backend_info.get("pre_acquired") and backend_info.get("backend_key"):
@@ -2136,25 +2143,39 @@ class BackendManager:
         }
 
         # Track in-flight requests with timestamped leases so routing self-heals.
+        # The routing lock keeps route selection + acquisition atomic so two
+        # concurrent requests don't both pick the same backend before either
+        # increments its counter.
         if not pre_acquired_backend:
-            current = self._backend_inflight_for(backend_key)
-            capacity = self._backend_capacity(backend_type)
-            if current >= capacity:
-                raise HTTPException(
-                    status_code=429,
-                    detail={
-                        "error": {
-                            "type": "backend_concurrency_limit_exceeded",
-                            "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
-                            "limit_bucket": backend_type,
-                            "current_inflight": current,
-                            "limit": capacity,
-                            "retry_after": 5,
-                        }
-                    },
-                    headers={"Retry-After": "5"},
-                )
-            self._acquire_backend(backend_key)
+            async with self._routing_lock:
+                # Re-read url under the lock in case another coroutine just
+                # acquired the backend we were originally routed to.
+                backend_type, url = backend_override or self.get_backend_url(model)
+                if not backend_type or not url:
+                    raise HTTPException(
+                        status_code=503,
+                        detail={"error": "No healthy backend available",
+                                "hint": "All inference backends are currently unhealthy. Check /health/backends for status."}
+                    )
+                backend_key = f"{backend_type}:{url}"
+                current = self._backend_inflight_for(backend_key)
+                capacity = self._backend_capacity(backend_type)
+                if current >= capacity:
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "error": {
+                                "type": "backend_concurrency_limit_exceeded",
+                                "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
+                                "limit_bucket": backend_type,
+                                "current_inflight": current,
+                                "limit": capacity,
+                                "retry_after": 5,
+                            }
+                        },
+                        headers={"Retry-After": "5"},
+                    )
+                self._acquire_backend(backend_key)
 
         try:
             if stream:
@@ -2488,7 +2509,7 @@ async def chat_completions(
         model_info = model_registry.get_model(request.model)
 
     model = model_info.get("name", request.model)
-    backend_reservation = backend_manager.reserve_backend(model)
+    backend_reservation = await backend_manager.reserve_backend(model)
     limit_bucket = backend_reservation["backend"]
     backend_owned_by_handler = True
 
@@ -2630,7 +2651,7 @@ async def completions(
     """OpenAI-compatible completions endpoint."""
     start_time = time.time()
     model = config.MODEL_ALIASES.get(request.model, request.model)
-    backend_reservation = backend_manager.reserve_backend(model)
+    backend_reservation = await backend_manager.reserve_backend(model)
     limit_bucket = backend_reservation["backend"]
     backend_owned_by_handler = True
 
@@ -2793,7 +2814,7 @@ async def embeddings(
         # Process cache misses
         backend_info = {"backend": "embedding"}
         if cache_misses:
-            backend_reservation = backend_manager.reserve_backend(model)
+            backend_reservation = await backend_manager.reserve_backend(model)
             backend_owned_by_handler = True
             data = {
                 "model": model,

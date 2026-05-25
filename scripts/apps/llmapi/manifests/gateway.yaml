@@ -75,14 +75,36 @@ spec:
       priorityClassName: mynodeone-app
       serviceAccountName: gateway
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
+        allowPrivilegeEscalation: false
+      initContainers:
+      - name: install-deps
+        image: python:3.11-slim
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes asyncpg sqlalchemy --quiet
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: app-deps
+          mountPath: /app/deps
       containers:
       - name: gateway
-        image: ghcr.io/mynodeone/llmapi-gateway:latest
+        image: python:3.11-slim
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          export PYTHONPATH=/app/deps
+          cd /app && python -m uvicorn main:app --host 0.0.0.0 --port 8000
         ports:
         - containerPort: 8000
           name: http
@@ -101,28 +123,39 @@ spec:
             name: gateway-config
         resources:
           requests:
-            memory: "32Mi"
-            cpu: "50m"
+            cpu: "500m"
+            memory: "512Mi"
           limits:
+            cpu: "2"
             memory: "2Gi"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
+            drop: [ALL]
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 10
+          initialDelaySeconds: 120
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 5
+          initialDelaySeconds: 60
           periodSeconds: 5
+        volumeMounts:
+        - name: gateway-code
+          mountPath: /app/main.py
+          subPath: main.py
+        - name: app-deps
+          mountPath: /app/deps
+      volumes:
+      - name: gateway-code
+        configMap:
+          name: gateway-code
+      - name: app-deps
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

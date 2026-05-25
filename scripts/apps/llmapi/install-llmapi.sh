@@ -1051,7 +1051,7 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes asyncpg sqlalchemy --quiet
+          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes==31.0.0 asyncpg sqlalchemy --quiet
         volumeMounts:
         - name: app-deps
           mountPath: /app/deps

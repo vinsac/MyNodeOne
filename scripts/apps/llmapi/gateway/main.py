@@ -155,6 +155,34 @@ class Config:
 
 config = Config()
 
+
+def get_k8s_clients():
+    """Return Kubernetes API clients with an explicit in-cluster auth header.
+
+    kubernetes-client 36.x can load the service-account token but omit the
+    Authorization header for generated clients. Setting the header here keeps
+    the admin UI working across client versions.
+    """
+    from kubernetes import client, config as k8s_config
+
+    try:
+        k8s_config.load_incluster_config()
+    except ConfigException:
+        k8s_config.load_kube_config()
+
+    api_client = client.ApiClient()
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    if os.getenv("KUBERNETES_SERVICE_HOST") and os.path.exists(token_path):
+        try:
+            with open(token_path, "r", encoding="utf-8") as token_file:
+                token = token_file.read().strip()
+            if token:
+                api_client.default_headers["Authorization"] = f"Bearer {token}"
+        except OSError as e:
+            logger.warning(f"Could not read Kubernetes service-account token: {e}")
+
+    return client.CoreV1Api(api_client), client.AppsV1Api(api_client)
+
 # =============================================================================
 # Model Registry - Tracks loaded models dynamically
 # =============================================================================
@@ -5080,15 +5108,9 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
         hf_token = body["hf_token"]
 
         try:
-            from kubernetes import client, config as k8s_config
             import base64
 
-            try:
-                k8s_config.load_incluster_config()
-            except:
-                k8s_config.load_kube_config()
-
-            core_v1 = client.CoreV1Api()
+            core_v1, _ = get_k8s_clients()
             namespace = os.getenv("NAMESPACE", "llmapi")
 
             # Update hf-token secret
@@ -5128,14 +5150,7 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
 
     # Try to get from Kubernetes ConfigMaps if not in Redis
     try:
-        from kubernetes import client, config as k8s_config
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get vLLM model from ConfigMap
@@ -5310,15 +5325,7 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
 
     try:
         # Try to use Kubernetes API
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Update vllm-config ConfigMap with new MODEL_NAME and SERVED_MODEL_NAME
@@ -5372,15 +5379,7 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Extract model filename from URL
@@ -5458,15 +5457,7 @@ async def admin_update_vllm_config(request: Request, api_key: str = Depends(get_
         raise HTTPException(status_code=400, detail="No supported vLLM config fields provided")
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get current ConfigMap
@@ -5504,15 +5495,7 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
     body = await request.json()
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get current ConfigMap
@@ -5554,17 +5537,30 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
     await require_scope("admin", api_key)
 
     try:
-        from kubernetes import client, config as k8s_config
+        core_v1, _ = get_k8s_clients()
 
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
+        namespace = os.getenv("NAMESPACE", "llmapi")
 
-        core_v1 = client.CoreV1Api()
-
-        # Get all nodes
+        # Get all nodes and subtract GPU requests from active pods in this namespace.
         nodes = core_v1.list_node()
+        pods = core_v1.list_namespaced_pod(namespace)
+        allocated_by_node: dict[str, int] = {}
+
+        for pod in pods.items:
+            if pod.status.phase in {"Succeeded", "Failed"} or not pod.spec.node_name:
+                continue
+            pod_gpu_request = 0
+            for container in pod.spec.containers or []:
+                resources = container.resources
+                requests = resources.requests if resources and resources.requests else {}
+                limits = resources.limits if resources and resources.limits else {}
+                requested = int(requests.get("nvidia.com/gpu", 0))
+                limited = int(limits.get("nvidia.com/gpu", 0))
+                pod_gpu_request += max(requested, limited)
+            if pod_gpu_request:
+                allocated_by_node[pod.spec.node_name] = (
+                    allocated_by_node.get(pod.spec.node_name, 0) + pod_gpu_request
+                )
 
         gpu_info = []
         for node in nodes.items:
@@ -5577,11 +5573,12 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
             gpu_capacity = int(capacity.get("nvidia.com/gpu", 0))
 
             if gpu_capacity > 0:
+                allocated = allocated_by_node.get(node_name, 0)
                 gpu_info.append({
                     "node": node_name,
                     "total": gpu_capacity,
-                    "available": gpu_allocatable,
-                    "allocated": gpu_capacity - gpu_allocatable
+                    "available": max(0, gpu_allocatable - allocated),
+                    "allocated": allocated
                 })
 
         return {
@@ -5603,15 +5600,7 @@ async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
     await require_scope("admin", api_key)
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        apps_v1 = client.AppsV1Api()
-        core_v1 = client.CoreV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get StatefulSet
@@ -5658,15 +5647,7 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
         raise HTTPException(status_code=400, detail="replicas must be between 0 and 10")
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        apps_v1 = client.AppsV1Api()
-        core_v1 = client.CoreV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Check GPU availability
@@ -5732,14 +5713,7 @@ async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_
         raise HTTPException(status_code=400, detail="replicas must be 0 or 1")
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        apps_v1 = client.AppsV1Api()
+        _, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Scale the deployment
@@ -5778,15 +5752,7 @@ async def admin_change_embedding_model(request: Request, api_key: str = Depends(
         raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Update ConfigMap with new model URL
@@ -5822,15 +5788,7 @@ async def admin_update_embedding_config(request: Request, api_key: str = Depends
     body = await request.json()
 
     try:
-        from kubernetes import client, config as k8s_config
-
-        try:
-            k8s_config.load_incluster_config()
-        except ConfigException:
-            k8s_config.load_kube_config()
-
-        core_v1 = client.CoreV1Api()
-        apps_v1 = client.AppsV1Api()
+        core_v1, apps_v1 = get_k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get current ConfigMap

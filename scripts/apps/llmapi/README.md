@@ -265,7 +265,11 @@ curl -H "Authorization: Bearer $ADMIN_KEY" \
 | `Qwen3-14B-Q4` | Chat | llama.cpp (CPU) | Overflow - same model on CPU |
 | `bge-m3` | Embedding | Dedicated | Document indexing |
 
-**Same model on GPU and CPU**: Using the same model family ensures consistent responses regardless of which backend handles the request.
+**Same logical model name on GPU and CPU**: Using the same model family ensures
+consistent responses, but spillover only happens when both backends expose the
+same API model name (for example, both `qwen3-14b`). If llama.cpp exposes
+`qwen3-14b-q4-k-m` while vLLM exposes `qwen3-14b`, the gateway treats them as
+separate models and will not route a `qwen3-14b` request to llama.cpp.
 
 ### Default vLLM Runtime
 
@@ -352,14 +356,14 @@ The gateway enforces three layers of protection per API key, checked in order:
 **All limits return HTTP 429 immediately** with a structured error body and accurate `Retry-After` header — the same pattern used by OpenAI, Anthropic, and Azure OpenAI. There is no server-side queuing (which would be a DDoS vector).
 
 **Concurrency is split by service pool:**
-- vLLM uses the GPU pool, scaled by healthy vLLM GPUs: 2 GPUs -> 2 concurrent Qwen requests per key, with 1 request routed to each GPU backend by default.
-- Embeddings use the embedding pool, scaled by healthy embedding replicas: 1 embedding replica -> 4 concurrent embedding requests per key by default.
+- vLLM uses the GPU pool, scaled by configured vLLM URLs: 2 URLs -> 2 concurrent Qwen requests per key by default, with 1 request routed to each GPU backend.
+- Embeddings use the embedding pool: 1 embedding replica -> 4 concurrent embedding requests per key by default.
 - llama.cpp and Ollama have independent fallback pools, so CPU/Ollama traffic cannot consume vLLM or embedding slots.
 - A full embedding pool does not block Qwen/vLLM, and a full GPU pool does not block embeddings.
 
 RPM/TPM windows are also separated by service pool. A key's `tokens_per_minute` applies independently to vLLM, embedding, llama.cpp, and Ollama unless a service-specific TPM override is present.
 
-**Self-healing concurrency leases:** In-flight slots are tracked as timestamped leases, not permanent counters. If a handler crashes or a client disconnect edge case misses cleanup, the gateway prunes stale per-key leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) and stale backend leases after `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` (default `600`) instead of blocking clients forever. A background maintenance task prunes those leases even when no new requests arrive.
+**Self-healing concurrency leases:** In-flight slots are tracked as `Slot`/`Lease` objects tied to the owning `asyncio.Task`, not as permanent counters or wall-clock TTL lists. If a handler crashes, a client disconnects, or a cancellation interrupts cleanup, the reconciler reaps any lease whose task has ended within `SLOT_RECONCILE_INTERVAL_SECONDS` (default `5`) instead of blocking clients forever.
 
 The default gateway deployment runs one replica so the in-process concurrency leases are authoritative for the backend pool. If you scale the gateway horizontally, each gateway pod maintains its own local leases unless a distributed lease store is added.
 
@@ -406,14 +410,15 @@ Rate limiting defaults are set in the `gateway-config` ConfigMap (managed by the
 | `DEFAULT_LLAMACPP_TOKENS_PER_MINUTE` | `200000` | Separate llama.cpp TPM limit for new keys |
 | `DEFAULT_OLLAMA_REQUESTS_PER_MINUTE` | `60` | Separate Ollama RPM limit for new keys |
 | `DEFAULT_OLLAMA_TOKENS_PER_MINUTE` | `200000` | Separate Ollama TPM limit for new keys |
-| `CONCURRENCY_PER_GPU` | `1` | Concurrency slots per healthy GPU |
-| `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Base concurrency when no GPUs detected |
-| `CONCURRENCY_PER_EMBEDDING_REPLICA` | `4` | Concurrency slots per healthy embedding replica |
-| `CONCURRENCY_PER_LLAMACPP_REPLICA` | `1` | Concurrency slots per healthy llama.cpp replica |
-| `CONCURRENCY_PER_OLLAMA_REPLICA` | `1` | Concurrency slots per healthy Ollama replica |
-| `CONCURRENCY_LEASE_TTL_SECONDS` | `600` | Max age before an in-flight slot is considered stale and pruned |
-| `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` | `600` | Max age before a backend routing slot is considered stale and pruned |
-| `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend |
+| `CONCURRENCY_PER_GPU` | `1` | Legacy name retained for docs/admin messages; vLLM per-key cap uses `CONCURRENCY_PER_KEY_DEFAULT x len(VLLM_URLS)` |
+| `CONCURRENCY_PER_KEY_DEFAULT` | `1` | Per-key vLLM concurrency multiplier per configured vLLM URL |
+| `CONCURRENCY_PER_EMBEDDING_REPLICA` | `4` | Per-key embedding concurrency |
+| `CONCURRENCY_PER_LLAMACPP_REPLICA` | `1` | Per-key llama.cpp concurrency |
+| `CONCURRENCY_PER_OLLAMA_REPLICA` | `1` | Per-key Ollama concurrency |
+| `SLOT_RECONCILE_INTERVAL_SECONDS` | `5` | Reap leases whose owning `asyncio.Task` has ended |
+| `CONCURRENCY_LEASE_TTL_SECONDS` | `600` | Legacy no-op retained for rollback compatibility |
+| `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` | `600` | Legacy no-op retained for rollback compatibility |
+| `HORIZONTAL_SCALING` | `true` | Route to least-loaded backend that serves the requested model |
 | `MAX_INFLIGHT_PER_VLLM_BACKEND` | `1` | Max simultaneous requests routed to each vLLM backend |
 | `MAX_INFLIGHT_PER_EMBEDDING_BACKEND` | `4` | Max simultaneous requests routed to each embedding backend |
 | `MAX_INFLIGHT_PER_LLAMACPP_BACKEND` | `1` | Max simultaneous requests routed to each llama.cpp backend |

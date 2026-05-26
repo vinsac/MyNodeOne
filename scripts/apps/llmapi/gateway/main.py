@@ -593,6 +593,26 @@ class ModelRegistry:
                 name, backend, ", ".join(self._sorted_backends(entry["backends"])),
             )
 
+    def reconcile_backend_models(self, backend: str, current_models: set[str]) -> None:
+        """Make one backend's model list match the latest successful discovery.
+
+        Discovery must be a reconciliation, not append-only. Otherwise a model
+        change on vLLM/llama.cpp leaves a stale registry mapping and the router
+        can send requests to a backend that no longer serves the model.
+
+        Only call this after a successful discovery response from that backend.
+        If the backend is unhealthy or the discovery request fails, keep the
+        previous registry mapping; health filtering already prevents routing to
+        unhealthy slots, and preserving the mapping avoids flapping on transient
+        network errors.
+        """
+        if backend not in self.backends:
+            return
+        current_models = {name for name in current_models if name}
+        previous_models = set(self.backends[backend].get("models", []))
+        for stale_model in sorted(previous_models - current_models):
+            self.unregister_model(stale_model, backend=backend)
+
     def update_backend_status(self, backend: str, status: str):
         if backend in self.backends:
             self.backends[backend]["status"] = status
@@ -2543,18 +2563,24 @@ class BackendManager:
     async def discover_models(self):
         """Query backends to discover loaded models."""
         # Discover vLLM models
+        vllm_discovery_succeeded = False
+        vllm_models: set[str] = set()
         for url in config.VLLM_URLS:
             try:
                 resp = await self.http_client.get(f"{url}/v1/models", timeout=10.0)
                 if resp.status_code == 200:
+                    vllm_discovery_succeeded = True
                     data = resp.json()
                     for model in data.get("data", []):
                         model_id = model.get("id")
                         if model_id:
+                            vllm_models.add(model_id)
                             model_registry.register_model(model_id, "vllm", "ready", model)
                             logger.info(f"Discovered vLLM model: {model_id}")
             except Exception as e:
                 logger.debug(f"Could not discover vLLM models from {url}: {e}")
+        if vllm_discovery_succeeded:
+            model_registry.reconcile_backend_models("vllm", vllm_models)
 
         # Discover llama.cpp model (it serves one model)
         try:
@@ -2563,6 +2589,7 @@ class BackendManager:
                 # llama.cpp doesn't have a models endpoint, use configured name or default
                 model_name = os.getenv("LLAMACPP_MODEL_NAME", "llama-cpu")
                 model_registry.register_model(model_name, "llamacpp", "ready")
+                model_registry.reconcile_backend_models("llamacpp", {model_name})
                 logger.info(f"Discovered llama.cpp model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover llama.cpp models: {e}")
@@ -2579,6 +2606,7 @@ class BackendManager:
                 else:
                     model_name = os.getenv("EMBEDDING_MODEL_NAME", "embedding")
                 model_registry.register_model(model_name, "embedding", "ready")
+                model_registry.reconcile_backend_models("embedding", {model_name})
                 logger.info(f"Discovered embedding model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover embedding models: {e}")
@@ -2597,14 +2625,17 @@ class BackendManager:
             ps_resp = await self.http_client.get(f"{config.OLLAMA_URL}/api/ps", timeout=5.0)
             if ps_resp.status_code == 200:
                 ps_data = ps_resp.json()
+                loaded_ollama_models: set[str] = set()
                 for model in ps_data.get("models", []):
                     model_name = model.get("name", "")
                     # Only strip :latest suffix, keep other tags
                     if model_name.endswith(":latest"):
                         model_name = model_name[:-7]
                     if model_name:
+                        loaded_ollama_models.add(model_name)
                         model_registry.register_model(model_name, "ollama", "ready", model)
                         logger.info(f"Discovered loaded Ollama model: {model_name}")
+                model_registry.reconcile_backend_models("ollama", loaded_ollama_models)
         except Exception as e:
             logger.debug(f"Could not discover Ollama models: {e}")
 

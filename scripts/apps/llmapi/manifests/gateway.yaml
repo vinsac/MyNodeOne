@@ -23,8 +23,9 @@ data:
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
   AUTO_DOWNLOAD: "false"
-  # Horizontal scaling: route to least-loaded backend (GPU1 -> GPU2 -> CPU)
-  # When enabled, all chat backends are treated as equivalent
+  # Horizontal scaling: route to the least-loaded backend that serves the model.
+  # Same model on vLLM + llama.cpp => GPU first, then CPU spillover.
+  # vLLM-only model => never spills to llama.cpp; returns 429 when GPUs are full.
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
   MAX_INFLIGHT_PER_VLLM_BACKEND: "1"

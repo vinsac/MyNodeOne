@@ -451,9 +451,9 @@ The gateway enforces three independent rate limits per API key and per service p
 Retry-After: 5
 ```
 
-**Fix:** Wait ~5s for an in-flight request in the same `limit_bucket` to finish, then retry. vLLM limits scale with healthy GPU count. Embedding, llama.cpp, and Ollama limits scale separately with their healthy service replicas.
+**Fix:** Wait ~5s for an in-flight request in the same `limit_bucket` to finish, then retry. vLLM per-key limits scale with configured GPU capacity (`len(VLLM_URLS)`), not transient health-check results. Embedding, llama.cpp, and Ollama limits use separate service buckets.
 
-If `current_inflight` stays pinned while backends are idle, the gateway prunes stale per-key leases after `CONCURRENCY_LEASE_TTL_SECONDS` (default `600`) and stale backend leases after `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` (default `600`). A background maintenance task runs this pruning even without new traffic. Admins can also clear the current gateway process immediately:
+If `current_inflight` appears pinned while backends are idle, the slot-based limiter reaps any lease whose owning `asyncio.Task` has ended within `SLOT_RECONCILE_INTERVAL_SECONDS` (default `5`). The legacy `CONCURRENCY_LEASE_TTL_SECONDS` and `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` settings are kept only as rollback no-ops. Admins can also clear the current gateway process immediately:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \

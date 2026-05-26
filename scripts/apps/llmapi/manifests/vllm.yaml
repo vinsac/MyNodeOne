@@ -273,6 +273,7 @@ spec:
           GPU_MEMORY_UTILIZATION_VALUE="${GPU_MEMORY_UTILIZATION:-0.90}"
           MAX_NUM_SEQS_VALUE="${MAX_NUM_SEQS:-1}"
           MAX_NUM_BATCHED_TOKENS_VALUE="${MAX_NUM_BATCHED_TOKENS:-32768}"
+          KV_CACHE_MEMORY_VALUE="${KV_CACHE_MEMORY:-7029871820}"
           QUANTIZATION_VALUE="${QUANTIZATION:-awq}"
           ENABLE_CHUNKED_PREFILL_VALUE="${ENABLE_CHUNKED_PREFILL:-true}"
           ENFORCE_EAGER_VALUE="${ENFORCE_EAGER:-false}"
@@ -289,6 +290,7 @@ spec:
                 --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION_VALUE} \
                 --max-num-seqs ${MAX_NUM_SEQS_VALUE} \
                 --max-num-batched-tokens ${MAX_NUM_BATCHED_TOKENS_VALUE} \
+                --kv-cache-memory ${KV_CACHE_MEMORY_VALUE} \
                 --host 0.0.0.0 \
                 --port 8000 \
                 --served-model-name ${SERVED_MODEL_NAME_VALUE} \

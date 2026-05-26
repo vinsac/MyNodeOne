@@ -3189,11 +3189,15 @@ async def chat_completions(
             # single release point.
             leases.detach()
 
-            async def stream_generator(_leases=leases, _upstream=upstream):
+            async def stream_generator(_request=request, _leases=leases, _upstream=upstream):
                 _leases.rebind_to_current_task()
                 total_output_tokens = 0
                 try:
                     async for chunk in _upstream:
+                        # Check if client disconnected - release lease early to free GPU
+                        if _request.is_disconnected():
+                            logger.warning(f"Client disconnected during streaming, releasing lease early")
+                            break
                         yield chunk
                         if b'"content":' in chunk:
                             total_output_tokens += 1

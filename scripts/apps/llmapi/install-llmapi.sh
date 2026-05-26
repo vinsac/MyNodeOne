@@ -1022,7 +1022,8 @@ data:
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
   BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
   # Slot/Lease reconciler: reaps leases whose owning asyncio.Task has ended.
-  SLOT_RECONCILE_INTERVAL_SECONDS: "5"
+  # 1s interval for faster reaping when clients disconnect abnormally.
+  SLOT_RECONCILE_INTERVAL_SECONDS: "1"
   # Optional vLLM /metrics drift audit (log-only; gateway remains source of truth).
   RECONCILE_VLLM_METRICS: "true"
   RECONCILE_VLLM_METRICS_INTERVAL_SECONDS: "15"

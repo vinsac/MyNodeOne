@@ -179,36 +179,73 @@ Embeddings on CPU is fine because:
 
 ### How does horizontal scaling work?
 
-**Automatic load balancing**: The gateway routes chat requests to the least-loaded backend.
+**Model-aware load balancing**: For a given request, the gateway asks the
+model registry "which backends serve this model?", then routes to the
+least-loaded healthy slot among those backends, in priority order.
 
-**Request routing priority**:
-1. **GPU instances first** (vLLM) - fastest response times
-2. **CPU fallback** (llama.cpp) - when all GPUs are busy
-3. **Ollama** - last resort for lazy-loaded models
+**Request routing priority** (within the set of backends that have the model):
+1. **GPU instances first** (vLLM) — fastest response times
+2. **CPU fallback** (llama.cpp) — only if the same model is also loaded here
+3. **Ollama** — last resort, mainly for lazy-loaded models
+
+The routing decision is *per-model*, not "all chat backends are equivalent":
 
 ```
-Request → Gateway → Check vLLM load
+Request "qwen3-14b" → Gateway → registry says: served by {vllm, llamacpp}
                          │
          ┌───────────────┼───────────────┐
          ▼               ▼               ▼
      GPU 1 (vLLM)    GPU 2 (vLLM)    CPU (llama.cpp)
-     [3 inflight]    [5 inflight]    [0 inflight]
+     [1/1 in-flight] [0/1 in-flight] [0/1 in-flight]
          │               │               │
          └───────────────┴───────────────┘
                          │
-              Route to least-loaded
-              (GPU 1 in this example)
+        Pick least-loaded (GPU 2). If both GPUs were full,
+        spill to llama.cpp. If llama.cpp didn't have this
+        model, return 429 instead — never spill to a backend
+        that would 404 the request.
 ```
 
-**Recommended setup**: Run the **same model** on both GPU and CPU for consistent responses:
+**Recommended setup**: Run the **same model** on both GPU and CPU so the gateway can spill
+GPU traffic to CPU when GPUs are saturated:
 - **GPU**: `Qwen3-14B-AWQ` (fast, default)
 - **CPU**: `Qwen3-14B-Q4_K_M` (same model, GGUF format)
 
+Register both backends with the **same logical name** so the gateway treats them as one
+pool. The ConfigMap controls this:
+
+```yaml
+# Same model name on both backends ⇒ load-balanced across GPU + CPU
+LLAMACPP_MODEL_NAME: "qwen3-14b"     # same name vLLM advertises
+```
+
 **Configuration**:
 ```yaml
-HORIZONTAL_SCALING: "true"          # Enable load-based routing (default)
-MAX_INFLIGHT_PER_BACKEND: "32"      # Requests before routing to next backend
+HORIZONTAL_SCALING: "true"            # Enable model-aware spillover (default)
+MAX_INFLIGHT_PER_VLLM_BACKEND: "1"    # Per-GPU concurrency cap (matches vLLM max-num-seqs)
+MAX_INFLIGHT_PER_LLAMACPP_BACKEND: "1"
+MAX_INFLIGHT_PER_OLLAMA_BACKEND: "1"
+MAX_INFLIGHT_PER_EMBEDDING_BACKEND: "4"
 ```
+
+**Adding a GPU**: bump the vLLM StatefulSet `replicas`, add the new pod's URL to
+`VLLM_URLS` in the gateway ConfigMap, restart the gateway. Cluster capacity grows
+automatically (`len(VLLM_URLS) × MAX_INFLIGHT_PER_VLLM_BACKEND`) and the per-API-key
+concurrency cap grows in lockstep.
+
+### Why doesn't the gateway concurrency counter get stuck after a timeout?
+
+Every successful acquire returns a **Lease** that holds a `weakref` to the
+calling `asyncio.Task`. If the task ends without explicitly releasing
+(client timeout, uvicorn force-shutdown, worker crash, `CancelledError`
+during a `finally` block), a background reconciler reaps the lease within
+`SLOT_RECONCILE_INTERVAL_SECONDS` (default 5s). No wall-clock TTL, no
+manual reset, no "I have to restart the gateway to clear stuck counters".
+
+For vLLM specifically, the gateway also (optionally) scrapes
+`vllm:num_requests_running` from each pod's `/metrics` and logs a warning
+on drift — purely as a second-opinion audit; the gateway is always the
+source of truth for "how many slots are in use".
 
 ### Can I download/switch models from the Admin UI?
 
@@ -252,14 +289,36 @@ Models are **cached persistently** on disk:
 
 ### What if an app requests a model not loaded on GPU?
 
-**Lazy loading via Ollama backend:**
-1. App requests "qwen3:14b" (not on vLLM)
-2. Gateway checks: Is it in Ollama cache?
-3. If cached → Ollama loads it (GPU+RAM overflow as needed)
-4. If not cached → Returns 404 with available models list
-5. After 30 min idle → Ollama unloads model, frees VRAM/RAM
+There are now two distinct cases:
 
-**Important:** There is NO automatic fallback between backends. vLLM models and Ollama models are separate. If you request a model, you must specify one that exists in the system.
+**Case 1 — model is loaded on multiple backends with the SAME name** (recommended
+for production):
+
+1. App requests `qwen3-14b`.
+2. Gateway registry knows `qwen3-14b` lives on vLLM (GPU) AND llama.cpp (CPU).
+3. Gateway picks the least-loaded GPU. If all GPUs are at capacity, it spills
+   to llama.cpp automatically. The request succeeds wherever capacity exists.
+4. The response includes `system_fingerprint: "vllm"` or `"llamacpp"` so the
+   app can see which backend served it.
+
+**Case 2 — model is loaded on only one backend type** (e.g. only vLLM, or only Ollama):
+
+1. App requests `qwen3-32b` (only on vLLM).
+2. Gateway routes to a vLLM pod. If all vLLM pods are full, returns a 429
+   `backend_concurrency_limit_exceeded` — it does NOT spill to llama.cpp,
+   because llama.cpp doesn't have that model and would 404 the request.
+3. Client should retry after `Retry-After` seconds.
+
+**Lazy loading (Ollama cached models):**
+
+1. App requests `qwen3:14b-q4_0` (not loaded on anything, but cached in Ollama).
+2. Gateway sees it as `status: "cached"` with `lazy_load: true`.
+3. Gateway triggers Ollama to load it on first request (~10-30s warm-up).
+4. After 30 min idle → Ollama unloads, frees VRAM/RAM.
+
+**404 path:** if the model isn't loaded anywhere AND isn't cached in Ollama,
+the gateway returns 404 with the list of available models in the response body
+(`available_models` field).
 
 ### Does llama.cpp keep the model in memory all the time?
 

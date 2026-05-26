@@ -1,13 +1,116 @@
 """
-LLM API Gateway - OpenAI-compatible API with rate limiting, queuing, and load balancing.
+LLM API Gateway — OpenAI-compatible front door for vLLM, llama.cpp, embeddings, and Ollama.
 
-This gateway provides:
-- OpenAI-compatible /v1/* endpoints
-- Priority-based request queuing
-- Rate limiting per API key
-- Token usage metering
-- Load balancing across backends (vLLM, llama.cpp)
-- Health monitoring
+==============================================================================
+Architecture at a glance
+==============================================================================
+
+::
+
+    client (openai SDK / curl)
+            │
+            ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  FastAPI handlers  (chat_completions, completions, embeddings)      │
+    │  ───────────────────────────────────────────────────────────────────│
+    │  async with await acquire_request_leases(model, api_key, ...):      │
+    │      └─ acquires BACKEND lease + PER-KEY lease atomically           │
+    │  forward(lease) | stream(lease)                                     │
+    │      └─ on streaming, lease ownership transfers to the generator    │
+    └─────────────────────────────────────────────────────────────────────┘
+            │                                  │
+            ▼                                  ▼
+    ┌──────────────────────┐         ┌────────────────────────────────────┐
+    │  RateLimiter         │         │  BackendManager                    │
+    │  ───────────         │         │  ──────────────                    │
+    │  Per-(api_key,bucket)│         │  Per-(backend_type, url)           │
+    │  Slot+Lease pools    │         │  Slot+Lease pools                  │
+    │  RPM + TPM (Redis)   │         │  Health check loop                 │
+    └──────────────────────┘         │  acquire_slot(model) picks the     │
+                                     │  least-loaded healthy slot that    │
+                                     │  serves THIS model (multi-backend) │
+                                     └────────────────────────────────────┘
+                                                │
+                                                ▼
+                                  ┌──────────────────────────────┐
+                                  │  vLLM pods │ llama.cpp │     │
+                                  │  embedding │ Ollama          │
+                                  └──────────────────────────────┘
+
+Three pieces work together:
+
+  1. **Slot + Lease primitive** (single concurrency primitive used everywhere)
+     A bounded counter with atomic acquire/release. Each successful acquire
+     returns a Lease holding ``weakref(asyncio.current_task())``. A 5-second
+     reconciler reaps any lease whose owning Task is ``done()`` — the
+     structural replacement for the old TTL-based pruning. Counter cannot
+     drift from reality because the lease's lifetime is bound to its owning
+     Task, not to a wall clock.
+
+  2. **ModelRegistry** (multi-backend aware)
+     Maps a logical model name (e.g. ``qwen2.5:7b``) to the SET of backend
+     types that can serve it. So if you have ``qwen2.5:7b`` loaded on both a
+     vLLM GPU pod and a llama.cpp CPU pod, the registry records both, and
+     ``register_model`` MERGES (it never overwrites a previous backend).
+
+  3. **BackendManager.acquire_slot(model)** (capacity-aware routing)
+     For a given model, asks the registry which backend types serve it, then
+     iterates those backends in priority order (vllm → llamacpp → ollama),
+     least-loaded first within a type, and returns a Lease on the first slot
+     whose ``try_acquire`` succeeds. Returns 503 if no backend serves the
+     model, 429 if every eligible backend is at capacity.
+
+==============================================================================
+Multi-backend example
+==============================================================================
+
+Suppose the same Qwen-7B model is loaded on both backend pools::
+
+    VLLM_URLS=http://vllm-0.vllm:8000,http://vllm-1.vllm:8000   # 2 GPU pods
+    LLAMACPP_URL=http://llamacpp:8080                            # 1 CPU pod
+    LLAMACPP_MODEL_NAME=qwen2.5:7b                               # same name as vLLM
+
+After discovery the registry holds::
+
+    loaded_models["qwen2.5:7b"] = {
+        "backends": {"vllm": {...}, "llamacpp": {...}},
+        ...
+    }
+
+Routing for ``POST /v1/chat/completions {"model":"qwen2.5:7b"}``:
+
+  * Request 1 → vllm-0 (both GPUs empty, alphabetical tie-break)
+  * Request 2 → vllm-1 (vllm-0 now at 1/1)
+  * Request 3 → llamacpp (both GPUs at 1/1, spill to CPU)
+  * Request 4 → 429 (entire cluster at capacity)
+
+Routing for ``model="qwen2.5:32b"`` (vLLM-only, not on llama.cpp):
+
+  * Request 1 → vllm-0
+  * Request 2 → vllm-1
+  * Request 3 → 429 — does NOT spill to llama.cpp, because llama.cpp
+    doesn't serve that model.
+
+Adding a third GPU just means bumping the vLLM StatefulSet replicas, adding
+the new URL to ``VLLM_URLS``, and restarting the gateway. The new Slot is
+registered automatically; the per-key cap grows from 2 → 3 because it derives
+from ``len(VLLM_URLS)``, not from "currently healthy" GPU count.
+
+==============================================================================
+Concurrency safety
+==============================================================================
+
+Every exit path from a handler releases its leases. There is no flag to forget:
+
+  * Non-streaming: ``RequestLeases.__aexit__`` releases both leases on success,
+    HTTPException, httpx error, or ``CancelledError``.
+  * Streaming: handler calls ``leases.detach()`` before constructing the
+    StreamingResponse, transferring ownership to the generator's ``finally``.
+  * Crash / force-cancel / partial finally: the 5-second reconciler reaps any
+    lease whose owning Task is dead.
+
+A leaked counter is therefore impossible by construction; recovery time is
+bounded by ``SLOT_RECONCILE_INTERVAL_SECONDS`` (default 5s).
 """
 
 import asyncio
@@ -17,6 +120,7 @@ import logging
 import os
 import re
 import time
+import weakref
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Optional
@@ -72,13 +176,26 @@ class Config:
     CONCURRENCY_PER_EMBEDDING_REPLICA = int(os.getenv("CONCURRENCY_PER_EMBEDDING_REPLICA", "4"))
     CONCURRENCY_PER_LLAMACPP_REPLICA = int(os.getenv("CONCURRENCY_PER_LLAMACPP_REPLICA", "1"))
     CONCURRENCY_PER_OLLAMA_REPLICA = int(os.getenv("CONCURRENCY_PER_OLLAMA_REPLICA", "1"))
-    # Safety valve for leaked in-flight slots. This should be comfortably above
-    # the non-streaming backend timeout (300s) so active requests are not pruned.
+    # Legacy TTL knobs (kept for backward-compat with old configs but no longer
+    # used by the slot-based limiter: leaked slots are now reaped by a 5s
+    # asyncio.Task-liveness reconciler rather than a wall-clock TTL).
     CONCURRENCY_LEASE_TTL_SECONDS = int(os.getenv("CONCURRENCY_LEASE_TTL_SECONDS", "600"))
     BACKEND_INFLIGHT_LEASE_TTL_SECONDS = int(os.getenv(
         "BACKEND_INFLIGHT_LEASE_TTL_SECONDS",
         os.getenv("CONCURRENCY_LEASE_TTL_SECONDS", "600")
     ))
+    # How often the reconciler force-releases slots whose owning asyncio.Task
+    # has died (uvicorn shutdown, worker crash, cancellation mid-finally).
+    SLOT_RECONCILE_INTERVAL_SECONDS = int(os.getenv("SLOT_RECONCILE_INTERVAL_SECONDS", "5"))
+    # When enabled, the gateway scrapes each healthy vLLM /metrics endpoint and
+    # logs a warning if its `vllm:num_requests_running` disagrees with the
+    # gateway's slot count. Audit only; never auto-corrects.
+    RECONCILE_VLLM_METRICS = os.getenv("RECONCILE_VLLM_METRICS", "true").lower() == "true"
+    RECONCILE_VLLM_METRICS_INTERVAL_SECONDS = int(os.getenv("RECONCILE_VLLM_METRICS_INTERVAL_SECONDS", "15"))
+    # Per-backend HTTP timeout for forwarded inference requests. Set this above
+    # the slowest expected generation; clients should configure their own read
+    # timeout to be >= this value so they don't give up before vLLM responds.
+    BACKEND_HTTP_TIMEOUT_SECONDS = float(os.getenv("BACKEND_HTTP_TIMEOUT_SECONDS", "300"))
 
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
@@ -188,17 +305,64 @@ def get_k8s_clients():
 # =============================================================================
 
 class ModelRegistry:
+    """Maps each loaded model to the set of backend types that can serve it.
+
+    Multi-backend rationale
+    -----------------------
+    The same logical model (e.g. ``qwen2.5:7b``) can be loaded simultaneously on:
+
+      * **vLLM** for GPU-served inference at high throughput.
+      * **llama.cpp** as a CPU fallback when GPUs are saturated or unhealthy.
+      * **Ollama** as a third pool (also CPU, usually for lazy-loaded models).
+
+    The router (``BackendManager._candidates_for``) needs to know *all* the
+    backends that serve a given model so it can:
+
+      1. Prefer the fastest available pool (GPU first).
+      2. Spill over to slower pools when the preferred pool is full.
+      3. Refuse to route to a backend that *doesn't* serve that model
+         (otherwise the upstream returns a 404 the client sees as confusing).
+
+    Internal shape
+    --------------
+    ``loaded_models`` is keyed by the *logical* model name. Each value records
+    which backend types serve that name and the per-backend metadata returned
+    by discovery::
+
+        {
+          "qwen2.5:7b": {
+            "backends": {
+                "vllm":      {... vLLM /v1/models entry ...},
+                "llamacpp":  {... env-derived stub ...}
+            },
+            "status": "ready",
+            "registered_at": "2026-05-26T17:00:00Z"
+          },
+          "nomic-embed-text-v1.5": {
+            "backends": {
+                "embedding": {...}
+            },
+            ...
+          }
+        }
+
+    ``register_model`` MERGES (a second call adds a backend; it never
+    overwrites a previous registration on a different backend). This is the
+    structural fix for the bug where vLLM discovery ran after llama.cpp
+    discovery and silently erased the vLLM mapping.
     """
-    Tracks which models are actually loaded on each backend.
-    Models are discovered by querying backends, not hardcoded.
-    Supports lazy loading via Ollama.
-    """
+
+    # Priority order used to pick the *primary* backend when a model is on
+    # several, and to order candidates for the router. GPU first, then the
+    # CPU fallbacks in order of expected throughput.
+    _BACKEND_PRIORITY: tuple = ("vllm", "llamacpp", "ollama", "embedding")
+
     def __init__(self):
-        # Loaded models: {model_name: {"backend": "vllm", "status": "ready", "info": {...}}}
+        # See class docstring for shape.
         self.loaded_models: dict[str, dict] = {}
-        # Cached models (downloaded but not loaded): {model_name: {"backend": "ollama", "size": "4.1GB"}}
+        # Models downloaded into Ollama but not yet loaded — lazy-load targets.
         self.cached_models: dict[str, dict] = {}
-        # Backend status
+        # Per-backend health + model list for the admin UI / /v1/models response.
         self.backends: dict[str, dict] = {
             "vllm": {"url": config.VLLM_URLS[0] if config.VLLM_URLS else "", "status": "unknown", "models": []},
             "llamacpp": {"url": config.LLAMACPP_URL, "status": "unknown", "models": []},
@@ -206,75 +370,161 @@ class ModelRegistry:
             "ollama": {"url": config.OLLAMA_URL, "status": "unknown", "models": [], "cached": []},
         }
 
-    def get_model(self, model_name: str) -> Optional[dict]:
-        """Get model info if loaded, or check if lazy-loadable."""
-        # Check aliases first
-        resolved = config.MODEL_ALIASES.get(model_name, model_name)
+    # ------------------------------------------------------------------ helpers
+
+    def _sorted_backends(self, backends_dict: dict) -> list[str]:
+        """Return the backend keys of ``backends_dict`` in routing-priority order.
+
+        ``backends_dict`` is the inner per-model ``{"vllm": info, ...}`` map.
+        Returned order matches ``_BACKEND_PRIORITY`` so callers can iterate from
+        "fastest" to "slowest" without re-sorting."""
+        return [bt for bt in self._BACKEND_PRIORITY if bt in backends_dict]
+
+    def _resolve_alias(self, model_name: str) -> str:
+        return config.MODEL_ALIASES.get(model_name, model_name)
+
+    # ------------------------------------------------------------------ queries
+
+    def get_model_backends(self, model_name: str) -> list[str]:
+        """Return the *list* of backend types that serve ``model_name``,
+        ordered by routing priority (GPU first).
+
+        Used by the router to decide which slots are eligible for a request.
+
+        Returns ``[]`` if the model is unknown (not loaded and not lazy-loadable).
+
+        Examples
+        --------
+        >>> reg.get_model_backends("qwen2.5:7b")
+        ['vllm', 'llamacpp']        # served by both
+        >>> reg.get_model_backends("llama-cpu")
+        ['llamacpp']                # CPU only
+        >>> reg.get_model_backends("nomic-embed-text-v1.5")
+        ['embedding']
+        >>> reg.get_model_backends("nonexistent")
+        []
+        """
+        resolved = self._resolve_alias(model_name)
         if resolved == "default":
-            # Return first available chat model (prefer vLLM for speed)
-            for backend in ["vllm", "ollama", "llamacpp"]:
-                for name, info in self.loaded_models.items():
-                    if info.get("backend") == backend and info.get("status") == "ready":
-                        return {"name": name, **info}
-            return None
+            # "default" → pick the first ready chat model. Its backends become
+            # the candidate set.
+            for name, entry in self.loaded_models.items():
+                if "embedding" in entry["backends"]:
+                    continue
+                if entry.get("status") == "ready":
+                    return self._sorted_backends(entry["backends"])
+            return []
         if resolved == "embedding":
-            # Return embedding model
-            for name, info in self.loaded_models.items():
-                if info.get("backend") == "embedding" and info.get("status") == "ready":
-                    return {"name": name, **info}
-            return None
-
-        # Check loaded models
+            for name, entry in self.loaded_models.items():
+                if "embedding" in entry["backends"] and entry.get("status") == "ready":
+                    return ["embedding"]
+            return []
         if resolved in self.loaded_models:
-            return {"name": resolved, **self.loaded_models[resolved]}
+            return self._sorted_backends(self.loaded_models[resolved]["backends"])
+        if resolved in self.cached_models and config.LAZY_LOAD_ENABLED:
+            return ["ollama"]
+        return []
 
-        # Check if model is cached in Ollama (can be lazy-loaded)
+    def get_model(self, model_name: str) -> Optional[dict]:
+        """Return a single-dict view of the model for handler use.
+
+        Shape (backward-compatible plus new ``backends`` field)::
+
+            {
+              "name": "qwen2.5:7b",
+              "backend": "vllm",          # primary (highest-priority healthy backend)
+              "backends": ["vllm", "llamacpp"],  # NEW: full list, for router
+              "status": "ready",
+              "info": {...}               # per-backend metadata of the primary
+            }
+
+        Returns ``None`` if the model isn't loaded or lazy-loadable.
+        """
+        resolved = self._resolve_alias(model_name)
+        backends = self.get_model_backends(model_name)
+        if not backends:
+            return None
+        # Resolve to the canonical name in the registry (alias targets may
+        # differ from the user-supplied name).
+        if resolved == "default":
+            for name, entry in self.loaded_models.items():
+                if "embedding" in entry["backends"]:
+                    continue
+                if entry.get("status") == "ready":
+                    resolved = name
+                    break
+        elif resolved == "embedding":
+            for name, entry in self.loaded_models.items():
+                if "embedding" in entry["backends"] and entry.get("status") == "ready":
+                    resolved = name
+                    break
+
+        primary = backends[0]
+        if resolved in self.loaded_models:
+            entry = self.loaded_models[resolved]
+            return {
+                "name": resolved,
+                "backend": primary,
+                "backends": backends,
+                "status": entry.get("status", "ready"),
+                "info": entry["backends"].get(primary, {}),
+            }
+        # Lazy-load path (cached in Ollama).
         if resolved in self.cached_models and config.LAZY_LOAD_ENABLED:
             return {
                 "name": resolved,
                 "backend": "ollama",
+                "backends": ["ollama"],
                 "status": "cached",
                 "lazy_load": True,
-                **self.cached_models[resolved]
+                **self.cached_models[resolved],
             }
-
         return None
 
     def get_available_models(self) -> list[dict]:
-        """Get list of available models (loaded + cached)."""
+        """List every available model, one entry per logical name.
+
+        Each entry includes a ``backends`` list so the client can see, e.g.,
+        that ``qwen2.5:7b`` is served by both vllm and llamacpp."""
         models = []
-        # Add loaded models
-        for name, info in self.loaded_models.items():
-            if info.get("status") == "ready":
+        for name, entry in self.loaded_models.items():
+            if entry.get("status") != "ready":
+                continue
+            backends = self._sorted_backends(entry["backends"])
+            if not backends:
+                continue
+            models.append({
+                "id": name,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "mynodeone",
+                "backend": backends[0],   # primary, for legacy clients
+                "backends": backends,     # all backends serving this model
+                "status": "loaded",
+            })
+        if config.LAZY_LOAD_ENABLED:
+            for name, info in self.cached_models.items():
+                if name in self.loaded_models:
+                    continue
                 models.append({
                     "id": name,
                     "object": "model",
                     "created": int(time.time()),
                     "owned_by": "mynodeone",
-                    "backend": info.get("backend"),
-                    "status": "loaded",
+                    "backend": info.get("backend", "ollama"),
+                    "backends": [info.get("backend", "ollama")],
+                    "status": "cached",
+                    "size": info.get("size"),
                 })
-        # Add cached (lazy-loadable) models
-        if config.LAZY_LOAD_ENABLED:
-            for name, info in self.cached_models.items():
-                if name not in self.loaded_models:
-                    models.append({
-                        "id": name,
-                        "object": "model",
-                        "created": int(time.time()),
-                        "owned_by": "mynodeone",
-                        "backend": info.get("backend", "ollama"),
-                        "status": "cached",
-                        "size": info.get("size"),
-                    })
         return models
 
+    # ----------------------------------------------------------------- mutation
+
     def update_cached_models(self, models: list[dict]):
-        """Update list of cached models from Ollama."""
+        """Refresh the Ollama cached-models snapshot."""
         self.cached_models = {}
         for model in models:
             name = model.get("name") or model.get("model", "")
-            # Only remove :latest suffix (keep other tags like :1b, :7b, etc.)
             if name.endswith(":latest"):
                 name = name[:-7]
             self.cached_models[name] = {
@@ -286,28 +536,84 @@ class ModelRegistry:
         self.backends["ollama"]["cached"] = list(self.cached_models.keys())
 
     def register_model(self, name: str, backend: str, status: str = "ready", info: dict = None):
-        """Register a loaded model."""
-        self.loaded_models[name] = {
-            "backend": backend,
-            "status": status,
-            "info": info or {},
-            "registered_at": datetime.utcnow().isoformat(),
-        }
+        """Register a model as being served by ``backend``.
+
+        **Merging semantics**: calling this twice with the same ``name`` and
+        different ``backend`` values records BOTH backends. The most recent
+        ``status`` wins. This is what enables a model to be routed to either
+        vLLM or llama.cpp when both have it loaded."""
+        entry = self.loaded_models.get(name)
+        if entry is None:
+            entry = {
+                "backends": {},
+                "status": status,
+                "registered_at": datetime.utcnow().isoformat(),
+            }
+            self.loaded_models[name] = entry
+        entry["backends"][backend] = info or {}
+        entry["status"] = status
         if name not in self.backends[backend]["models"]:
             self.backends[backend]["models"].append(name)
-        logger.info(f"Registered model: {name} on {backend}")
+        all_backends = self._sorted_backends(entry["backends"])
+        logger.info(
+            "Registered model: %s on %s (now served by: %s)",
+            name, backend, ", ".join(all_backends),
+        )
 
-    def unregister_model(self, name: str):
-        """Remove a model from registry."""
-        if name in self.loaded_models:
-            backend = self.loaded_models[name].get("backend")
+    def unregister_model(self, name: str, backend: Optional[str] = None):
+        """Remove a model from the registry.
+
+        If ``backend`` is given, only that backend's mapping is removed; the
+        model entry remains as long as at least one other backend still serves
+        it. Without ``backend``, the model is fully removed from all backends.
+
+        Used by ``DELETE /admin/models/<name>`` to drop the Ollama mapping
+        without also forgetting that vLLM still serves the same name."""
+        if name not in self.loaded_models:
+            return
+        entry = self.loaded_models[name]
+        if backend is None:
+            # Remove from every backend's list, then drop the entry.
+            for bt in list(entry["backends"]):
+                if name in self.backends.get(bt, {}).get("models", []):
+                    self.backends[bt]["models"].remove(name)
             del self.loaded_models[name]
-            if backend and name in self.backends[backend]["models"]:
+            logger.info(f"Unregistered model from all backends: {name}")
+            return
+        if backend in entry["backends"]:
+            del entry["backends"][backend]
+            if name in self.backends.get(backend, {}).get("models", []):
                 self.backends[backend]["models"].remove(name)
-            logger.info(f"Unregistered model: {name}")
+        if not entry["backends"]:
+            del self.loaded_models[name]
+            logger.info(f"Unregistered model: {name} (no remaining backends)")
+        else:
+            logger.info(
+                "Unregistered model: %s from %s (still served by: %s)",
+                name, backend, ", ".join(self._sorted_backends(entry["backends"])),
+            )
+
+    def reconcile_backend_models(self, backend: str, current_models: set[str]) -> None:
+        """Make one backend's model list match the latest successful discovery.
+
+        Discovery must be a reconciliation, not append-only. Otherwise a model
+        change on vLLM/llama.cpp leaves a stale registry mapping and the router
+        can send requests to a backend that no longer serves the model.
+
+        Only call this after a successful discovery response from that backend.
+        If the backend is unhealthy or the discovery request fails, keep the
+        previous registry mapping; health filtering already prevents routing to
+        unhealthy slots, and preserving the mapping avoids flapping on transient
+        network errors.
+        """
+        if backend not in self.backends:
+            return
+        current_models = {name for name in current_models if name}
+        previous_models = set(self.backends[backend].get("models", []))
+        for stale_model in sorted(previous_models - current_models):
+            self.unregister_model(stale_model, backend=backend)
 
     def update_backend_status(self, backend: str, status: str):
-        """Update backend status."""
         if backend in self.backends:
             self.backends[backend]["status"] = status
 
@@ -1116,23 +1422,341 @@ class RedisClient:
 redis_client = RedisClient()
 
 # =============================================================================
+# Slot + Lease — the single concurrency primitive used everywhere
+# =============================================================================
+#
+# Design intent (first principles):
+#
+#   The gateway is the source of truth for "how many requests are in flight"
+#   because:
+#     * vLLM exposes inflight via /metrics, but Ollama / llama.cpp / embedding
+#       do not, so we need a uniform abstraction across heterogeneous backends.
+#     * Per-API-key concurrency is purely the gateway's concern — no backend
+#       tracks it.
+#
+#   To make the gateway's counter incapable of drifting from reality we use:
+#
+#     1. An atomic try_acquire / release pair guarded by a single asyncio.Lock.
+#     2. Each successful acquire returns a Lease that holds a weakref to the
+#        owning asyncio.Task.
+#     3. A background reconciler walks all leases every SLOT_RECONCILE_INTERVAL
+#        seconds; any lease whose owning Task is done() is force-released.
+#
+#   This covers every leak path that the old TTL-based scheme tried to patch:
+#     - uvicorn force-shutdown mid-request
+#     - worker OOM kill
+#     - asyncio.CancelledError injected at a bad await point
+#     - a release() coroutine that itself gets cancelled before completing
+#
+#   There is no TTL. A long-running request keeps its slot for as long as its
+#   asyncio.Task is alive. The slot is freed the moment the Task ends, by
+#   either the natural async-with exit OR the reconciler (whichever wins).
+#
+#   For vLLM (which publishes its own inflight) the reconciler additionally
+#   audits gateway vs vLLM and logs warnings on drift. This is informational
+#   only — vLLM is never the source of truth; it is a second opinion.
+# =============================================================================
+
+
+class Slot:
+    """Bounded counter for a single resource (a backend pod, or a per-key bucket).
+
+    Acquire returns a Lease that MUST be released exactly once. The Lease is
+    an async context manager, so the recommended idiom is:
+
+        async with await slot.try_acquire_or_raise() as lease:
+            ...  # use the slot
+
+    `try_acquire()` is the lower-level non-raising variant; callers can decide
+    how to surface "at capacity" (e.g. 429, fall through to a different
+    backend, etc.).
+    """
+
+    __slots__ = ("name", "backend_type", "meta", "capacity", "_leases", "_lock")
+
+    def __init__(self, name: str, capacity: int, *, backend_type: Optional[str] = None, **meta):
+        self.name = name
+        self.backend_type = backend_type
+        self.meta = meta
+        self.capacity = max(1, int(capacity))
+        self._leases: list["Lease"] = []
+        self._lock = asyncio.Lock()
+
+    def update_capacity(self, capacity: int) -> None:
+        """Adjust capacity (e.g. when key config changes). Already-held leases
+        are unaffected; the new ceiling applies to future acquires."""
+        self.capacity = max(1, int(capacity))
+
+    @property
+    def inflight(self) -> int:
+        return len(self._leases)
+
+    @property
+    def available(self) -> int:
+        return max(0, self.capacity - len(self._leases))
+
+    @property
+    def full(self) -> bool:
+        return len(self._leases) >= self.capacity
+
+    async def try_acquire(self) -> Optional["Lease"]:
+        """Atomic acquire. Returns a Lease on success, None if at capacity.
+
+        Before checking capacity we reap leases whose owning Task is dead, so
+        a stuck slot self-heals on the next attempt without waiting for the
+        background reconciler."""
+        async with self._lock:
+            self._reap_dead_locked()
+            if len(self._leases) >= self.capacity:
+                return None
+            try:
+                task = asyncio.current_task()
+            except RuntimeError:
+                task = None
+            lease = Lease(self, task, time.time())
+            self._leases.append(lease)
+            return lease
+
+    async def _release(self, lease: "Lease") -> None:
+        async with self._lock:
+            try:
+                self._leases.remove(lease)
+            except ValueError:
+                pass  # already released (e.g. reaped by reconciler)
+
+    def _reap_dead_locked(self) -> int:
+        """Drop leases whose owning Task is gone. Caller holds _lock."""
+        if not self._leases:
+            return 0
+        alive: list[Lease] = []
+        dead: list[Lease] = []
+        for lease in self._leases:
+            (alive if lease.task_alive else dead).append(lease)
+        if dead:
+            for lease in dead:
+                lease.released = True
+            logger.warning(
+                "Reaped %s dead lease(s) on slot=%s (owning asyncio.Task ended without release)",
+                len(dead), self.name,
+            )
+            self._leases = alive
+        return len(dead)
+
+    async def reconcile(self) -> int:
+        """Reap dead leases. Called periodically by the background reconciler."""
+        async with self._lock:
+            return self._reap_dead_locked()
+
+    def oldest_lease_age(self, now: Optional[float] = None) -> Optional[float]:
+        if not self._leases:
+            return None
+        now = now or time.time()
+        return now - min(l.acquired_at for l in self._leases)
+
+    async def force_clear(self) -> int:
+        """Admin-only: drop every lease. Intended for emergency reset."""
+        async with self._lock:
+            cleared = len(self._leases)
+            for lease in self._leases:
+                lease.released = True
+            self._leases = []
+            return cleared
+
+
+class Lease:
+    """An acquired slot. Auto-releases via async-context-manager OR when the
+    owning asyncio.Task dies (whichever happens first)."""
+
+    __slots__ = ("_slot", "_task_ref", "acquired_at", "released")
+
+    def __init__(self, slot: Slot, task: Optional[asyncio.Task], acquired_at: float):
+        self._slot = slot
+        self._task_ref = weakref.ref(task) if task is not None else None
+        self.acquired_at = acquired_at
+        self.released = False
+
+    @property
+    def slot(self) -> Slot:
+        return self._slot
+
+    @property
+    def task_alive(self) -> bool:
+        if self._task_ref is None:
+            return True  # synthesized lease (e.g. tests)
+        task = self._task_ref()
+        if task is None:
+            return False
+        return not task.done()
+
+    def rebind_to_current_task(self) -> None:
+        """Re-anchor this lease's liveness watchdog to the *currently* running
+        asyncio.Task.
+
+        Use this when transferring ownership from a request handler to a
+        streaming-response generator that may continue running after the
+        handler frame returns. Without rebinding, the reconciler could reap a
+        still-streaming lease as soon as the original task ends."""
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
+        self._task_ref = weakref.ref(task) if task is not None else None
+
+    async def release(self) -> None:
+        if self.released:
+            return
+        self.released = True
+        await self._slot._release(self)
+
+    async def __aenter__(self) -> "Lease":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.release()
+
+
+class RequestLeases:
+    """The pair of leases required to serve one inference request:
+
+      * ``backend`` — a slot on a specific vLLM / llamacpp / embedding / ollama
+        instance. Determines the bucket.
+      * ``key``     — a slot in the per-(api_key, bucket) concurrency pool.
+
+    Why a bundle (and not just two leases)?
+
+    The two leases must be acquired *and released as a unit*, but for streaming
+    responses ownership has to be transferred to a generator that outlives the
+    handler frame. The old code used local boolean flags
+    (``leases_owned_by_handler``, ``release_on_exit``, ``backend_owned_by_handler``,
+    ``pre_acquired``) to track who owns release at each branch — a pattern that
+    leaks slots the moment a maintainer adds a new ``return`` or ``raise`` site
+    and forgets to flip a flag.
+
+    ``RequestLeases`` encodes the contract as a type:
+
+      * Used as ``async with``: both leases auto-release on exit (success,
+        ``HTTPException``, cancellation, anything).
+      * Call ``.detach()`` to transfer ownership to a streaming generator;
+        ``__aexit__`` then becomes a no-op and the generator's own ``finally``
+        is solely responsible for release.
+
+    There is no way to forget the flag, because there is no flag — only the
+    object's state, which the only entry point (the context manager protocol)
+    consults automatically.
+    """
+
+    __slots__ = ("backend", "key", "_detached")
+
+    def __init__(self, backend_lease: Lease, key_lease: Lease):
+        self.backend = backend_lease
+        self.key = key_lease
+        self._detached = False
+
+    @property
+    def bucket(self) -> str:
+        """Bucket name (``vllm`` / ``llamacpp`` / ``embedding`` / ``ollama``)."""
+        return self.backend.slot.backend_type or "vllm"
+
+    @property
+    def backend_info(self) -> dict:
+        """Compatibility shape for headers + SSE ``system_fingerprint``."""
+        return {
+            "backend": self.backend.slot.backend_type,
+            "backend_url": self.backend.slot.meta.get("url"),
+        }
+
+    def detach(self) -> None:
+        """Transfer ownership of both leases to the caller (typically a
+        streaming generator). After ``detach()``, ``__aexit__`` is a no-op."""
+        self._detached = True
+
+    def rebind_to_current_task(self) -> None:
+        """Re-anchor both leases' liveness watchdog to the current task. Call
+        this at the top of a streaming generator after ``detach()`` so the
+        reconciler tracks the right task."""
+        self.backend.rebind_to_current_task()
+        self.key.rebind_to_current_task()
+
+    async def release(self) -> None:
+        """Manual release of both leases. Idempotent. Used by streaming
+        generators in their ``finally`` block after ``detach()``."""
+        # Release in reverse-acquisition order. Both are best-effort: a release
+        # failure on one must not block the other.
+        for lease in (self.key, self.backend):
+            try:
+                await lease.release()
+            except Exception as e:
+                logger.error(f"lease release failed during bundle release: {e}")
+
+    async def __aenter__(self) -> "RequestLeases":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        if self._detached:
+            return
+        await self.release()
+
+
+async def acquire_request_leases(
+    model: str,
+    api_key: str,
+    key_config: dict,
+    endpoint: str,
+    priority: str,
+    estimated_prompt_tokens: int,
+) -> RequestLeases:
+    """Acquire the backend Slot first (it determines the bucket), then the
+    per-key Slot in that bucket.
+
+    Atomicity guarantee: if the second acquire raises *for any reason*
+    (HTTPException 429, CancelledError, network glitch, anything that derives
+    from BaseException), the first acquire is rolled back before the exception
+    propagates. After this function returns successfully, the caller holds
+    exactly two leases — both of which will be released by the returned
+    ``RequestLeases`` context manager (unless explicitly detached).
+
+    This eliminates the hand-written ``try/except BaseException: await
+    release(); raise`` boilerplate that appeared in every handler.
+    """
+    backend_lease = await backend_manager.acquire_slot(model)
+    try:
+        key_lease = await rate_limiter.acquire_key_slot(
+            api_key=api_key,
+            key_config=key_config,
+            bucket=backend_lease.slot.backend_type or "vllm",
+            endpoint=endpoint,
+            model=model,
+            priority=priority,
+            estimated_prompt_tokens=estimated_prompt_tokens,
+        )
+    except BaseException:
+        await backend_lease.release()
+        raise
+    return RequestLeases(backend_lease, key_lease)
+
+
+# =============================================================================
 # Rate Limiter  (enterprise pattern: immediate 429, no server-side queuing)
 # =============================================================================
 
 class RateLimiter:
     """
-    Enterprise-grade rate limiting following the pattern used by OpenAI,
-    Anthropic, and Azure OpenAI:
+    Per-(api_key, bucket) concurrency + RPM + TPM enforcement.
 
-      1. RPM  — requests per minute per key (sliding window via Redis INCR/EXPIRE)
-      2. TPM  — tokens per minute per key   (sliding window, charged on completion)
-      3. Concurrency — max simultaneous in-flight requests per key
-                       scales automatically with the number of healthy GPU backends
+    Built on the Slot/Lease primitive so the concurrency counter is structurally
+    incapable of leaking. Each successful acquire returns a Lease bound to the
+    calling asyncio.Task; the background reconciler force-releases any lease
+    whose task ends without explicit release.
 
-    All limits return HTTP 429 immediately with a structured error body and
-    an accurate Retry-After header.  No server-side queuing — the client SDK
-    (openai-python, etc.) handles exponential backoff, which is the universal
-    standard across every major LLM provider.
+    Three checks, in this order:
+
+      1. Per-key concurrency  (in-process Slot, no Redis)
+      2. RPM                  (Redis sliding window, fails open on Redis error)
+      3. TPM                  (Redis sliding window, fails open on Redis error)
+
+    On 429 a structured error body + accurate Retry-After is returned.
+    The handler does not need to track release: it just `async with` the
+    returned Lease.
 
     Why no server-side queue?
       - Each waiting coroutine holds a uvicorn worker slot + Redis connection.
@@ -1144,24 +1768,21 @@ class RateLimiter:
 
     SERVICE_BUCKETS = ("vllm", "embedding", "llamacpp", "ollama")
 
-    # In-process concurrency leases: {"api_key:pool": [acquired_at_epoch_seconds, ...]}
-    # Redis is NOT used here — in-process is sufficient because each gateway
-    # pod tracks its own share; the concurrency cap is per-pod intentionally
-    # (a 2-replica gateway effectively doubles the global cap, matching the
-    # fact that 2 pods can serve 2x as many requests).
-    #
-    # Leases are timestamped so missed releases from handler bugs, cancelled
-    # requests, or worker edge cases self-heal instead of wedging a pod forever.
-    # Pools are separate so embeddings cannot consume chat/GPU capacity.
-    _leases: dict[str, list[float]] = {}
-    _lock = asyncio.Lock()
+    def __init__(self):
+        # pools[(api_key, bucket)] = Slot
+        # A pool is created lazily on first use and kept indefinitely. The Slot
+        # itself holds no per-request memory beyond the in-flight Leases.
+        self.pools: dict[tuple[str, str], Slot] = {}
+        # Guards pools-dict mutations only; per-slot atomicity is on the Slot.
+        self._pools_lock = asyncio.Lock()
+
+    # ----- backend-health helpers (used by snapshot + admin display only) -----
+    # IMPORTANT: these are NO LONGER used to compute per-key concurrency caps.
+    # Capacity caps now derive from CONFIGURED backend count (len of VLLM_URLS,
+    # number of llamacpp/embedding/ollama URLs in config), so a transient
+    # health-check flap cannot halve a user's cap.
 
     def _healthy_gpu_count(self) -> int:
-        """Count healthy GPU (vLLM) backends to scale concurrency cap.
-
-        Defensive: returns 1 (not 0) if backend_manager is not yet initialised
-        or its health dict is empty, so the cap is never accidentally zero.
-        """
         try:
             count = sum(
                 1 for key, healthy in backend_manager.backend_health.items()
@@ -1169,14 +1790,12 @@ class RateLimiter:
             )
             return max(1, count)
         except Exception:
-            return 1  # safe default during startup / health-check races
+            return 1
 
     def _healthy_embedding_count(self) -> int:
-        """Count healthy embedding replicas to scale the embedding concurrency cap."""
         return self._healthy_backend_count("embedding")
 
     def _healthy_backend_count(self, backend_type: str) -> int:
-        """Count healthy backend instances of one type, with a safe minimum of one."""
         try:
             count = sum(
                 1 for key, healthy in backend_manager.backend_health.items()
@@ -1186,6 +1805,8 @@ class RateLimiter:
         except Exception:
             return 1
 
+    # ----- bucket / cap derivation ------------------------------------------
+
     def _limit_bucket(self, endpoint: str, backend_type: Optional[str] = None) -> str:
         """Map a request to an independent service limiter pool."""
         if backend_type in self.SERVICE_BUCKETS:
@@ -1194,40 +1815,39 @@ class RateLimiter:
             return "embedding"
         return "vllm"
 
-    def _lease_key(self, api_key: str, bucket: str) -> str:
-        return f"{api_key}:{bucket}"
+    def _configured_backend_count(self, bucket: str) -> int:
+        """How many backends of this type are CONFIGURED (not necessarily healthy).
 
-    def _split_lease_key(self, lease_key: str) -> tuple[str, str]:
-        if ":" not in lease_key:
-            return lease_key, "vllm"
-        api_key, bucket = lease_key.rsplit(":", 1)
-        return api_key, bucket
+        This is the right denominator for per-key cap calculations: it's stable
+        across health-check blips and grows monotonically when you add capacity
+        (e.g. bump VLLM StatefulSet replicas and add the new pod URL to
+        VLLM_URLS in the configmap)."""
+        if bucket == "vllm":
+            return max(1, len(config.VLLM_URLS))
+        return 1  # llamacpp / embedding / ollama are single-URL today
 
     def _concurrency_cap(self, key_config: dict, bucket: str = "vllm") -> int:
-        """Per-key concurrency cap for a limiter pool.
+        """Per-key concurrency cap for a bucket.
 
-        vLLM is capped by healthy GPU count. Embeddings, llama.cpp, and Ollama
-        use their own caps based on their healthy service instances, so one
-        backend pool cannot consume another pool's request slots.
-
-        Values coming from Redis JSON may be strings; int() coercion is applied.
-        Clamped to [1, 256] to prevent misconfiguration from opening unlimited slots.
-        """
+        Priority:
+          1. Explicit value in key_config (e.g. vllm_concurrency_per_key)
+          2. Default: CONCURRENCY_PER_<bucket> * configured backend count
+        Clamped to [1, 256]."""
         try:
             if bucket == "embedding":
                 raw = key_config.get(
                     "embedding_concurrency_per_key",
-                    config.CONCURRENCY_PER_EMBEDDING_REPLICA * self._healthy_embedding_count()
+                    config.CONCURRENCY_PER_EMBEDDING_REPLICA * self._configured_backend_count("embedding"),
                 )
             elif bucket == "llamacpp":
                 raw = key_config.get(
                     "llamacpp_concurrency_per_key",
-                    config.CONCURRENCY_PER_LLAMACPP_REPLICA * self._healthy_backend_count("llamacpp")
+                    config.CONCURRENCY_PER_LLAMACPP_REPLICA * self._configured_backend_count("llamacpp"),
                 )
             elif bucket == "ollama":
                 raw = key_config.get(
                     "ollama_concurrency_per_key",
-                    config.CONCURRENCY_PER_OLLAMA_REPLICA * self._healthy_backend_count("ollama")
+                    config.CONCURRENCY_PER_OLLAMA_REPLICA * self._configured_backend_count("ollama"),
                 )
             else:
                 raw = key_config.get(
@@ -1236,9 +1856,9 @@ class RateLimiter:
                         "chat_concurrency_per_key",
                         key_config.get(
                             "concurrency_per_key",
-                            config.CONCURRENCY_PER_KEY_DEFAULT * self._healthy_gpu_count()
-                        )
-                    )
+                            config.CONCURRENCY_PER_KEY_DEFAULT * self._configured_backend_count("vllm"),
+                        ),
+                    ),
                 )
             return max(1, min(256, int(raw)))
         except (TypeError, ValueError):
@@ -1330,97 +1950,23 @@ class RateLimiter:
     def _concurrency_limit_description(self, bucket: str) -> str:
         if bucket == "embedding":
             return (
-                f"embedding pool: {self._healthy_embedding_count()} embedding replica(s) "
+                f"embedding pool: {self._configured_backend_count('embedding')} embedding replica(s) "
                 f"\u00d7 {config.CONCURRENCY_PER_EMBEDDING_REPLICA} slots"
             )
         if bucket == "llamacpp":
             return (
-                f"llama.cpp pool: {self._healthy_backend_count('llamacpp')} replica(s) "
+                f"llama.cpp pool: {self._configured_backend_count('llamacpp')} replica(s) "
                 f"\u00d7 {config.CONCURRENCY_PER_LLAMACPP_REPLICA} slots"
             )
         if bucket == "ollama":
             return (
-                f"Ollama pool: {self._healthy_backend_count('ollama')} replica(s) "
+                f"Ollama pool: {self._configured_backend_count('ollama')} replica(s) "
                 f"\u00d7 {config.CONCURRENCY_PER_OLLAMA_REPLICA} slots"
             )
         return (
-            f"vLLM pool: {self._healthy_gpu_count()} GPU(s) "
+            f"vLLM pool: {self._configured_backend_count('vllm')} GPU(s) "
             f"\u00d7 {config.CONCURRENCY_PER_GPU} slots"
         )
-
-    def _lease_ttl_seconds(self) -> int:
-        """Return the max age for an in-flight lease before it is considered stale."""
-        try:
-            return max(60, int(config.CONCURRENCY_LEASE_TTL_SECONDS))
-        except (TypeError, ValueError):
-            return 600
-
-    def _mask_key(self, lease_key: str) -> str:
-        api_key, bucket = self._split_lease_key(lease_key)
-        return f"{api_key[:16]}...:{bucket}" if api_key else f"<unknown>:{bucket}"
-
-    def _prune_expired_locked(
-        self,
-        api_key: Optional[str] = None,
-        bucket: Optional[str] = None,
-        now: Optional[float] = None,
-    ) -> int:
-        """Drop stale leases. Caller must hold _lock."""
-        now = now or time.time()
-        ttl = self._lease_ttl_seconds()
-        if api_key and bucket:
-            keys = [self._lease_key(api_key, bucket)]
-        elif api_key:
-            prefix = f"{api_key}:"
-            keys = [key for key in self._leases.keys() if key.startswith(prefix)]
-        else:
-            keys = list(self._leases.keys())
-        pruned_total = 0
-
-        for key in keys:
-            leases = self._leases.get(key, [])
-            if not leases:
-                self._leases.pop(key, None)
-                continue
-
-            active = [acquired_at for acquired_at in leases if now - acquired_at < ttl]
-            pruned = len(leases) - len(active)
-            if pruned:
-                pruned_total += pruned
-                logger.warning(
-                    "Pruned %s stale rate-limiter in-flight lease(s) for %s after %ss",
-                    pruned,
-                    self._mask_key(key),
-                    ttl,
-                )
-
-            if active:
-                self._leases[key] = active
-            else:
-                self._leases.pop(key, None)
-
-        return pruned_total
-
-    def _inflight_counts_locked(self) -> dict[str, dict[str, int]]:
-        """Return current per-key lease counts. Caller should hold _lock."""
-        counts: dict[str, dict[str, int]] = {}
-        for lease_key, leases in self._leases.items():
-            if not leases:
-                continue
-            api_key, bucket = self._split_lease_key(lease_key)
-            counts.setdefault(api_key, {})[bucket] = len(leases)
-        return counts
-
-    def _oldest_lease_ages_locked(self, now: Optional[float] = None) -> dict[str, dict[str, int]]:
-        """Return oldest active lease age per key in seconds. Caller should hold _lock."""
-        now = now or time.time()
-        ages: dict[str, dict[str, int]] = {}
-        for lease_key, leases in self._leases.items():
-            if not leases:
-                continue
-            api_key, bucket = self._split_lease_key(lease_key)
-            ages.setdefault(api_key, {})[bucket] = int(now - min(leases))
-        return ages
 
     def _safe_int(self, value, default: int, min_val: int = 1, max_val: int = 10_000_000) -> int:
         """Coerce a value from key_config (may be str from Redis JSON) to int,
@@ -1430,211 +1976,234 @@ class RateLimiter:
         except (TypeError, ValueError):
             return default
 
-    async def check_and_acquire(
+    # ----- slot pool management ---------------------------------------------
+
+    async def _get_or_create_pool(self, api_key: str, bucket: str, capacity: int) -> Slot:
+        """Look up the Slot for (api_key, bucket), creating it on first use.
+
+        If the configured cap changed since the pool was created (e.g. key was
+        re-issued with a different limit), we update the Slot's capacity in
+        place — already-held leases are unaffected but new acquires use the
+        new ceiling."""
+        pool_key = (api_key, bucket)
+        existing = self.pools.get(pool_key)
+        if existing is not None:
+            if existing.capacity != capacity:
+                existing.update_capacity(capacity)
+            return existing
+        async with self._pools_lock:
+            existing = self.pools.get(pool_key)
+            if existing is not None:
+                if existing.capacity != capacity:
+                    existing.update_capacity(capacity)
+                return existing
+            slot = Slot(
+                name=f"key:{api_key[:16]}:{bucket}",
+                capacity=capacity,
+                backend_type=bucket,
+                api_key=api_key,
+                bucket=bucket,
+            )
+            self.pools[pool_key] = slot
+            return slot
+
+    async def acquire_key_slot(
         self,
         api_key: str,
         key_config: dict,
-        estimated_prompt_tokens: int,
+        bucket: str,
         endpoint: str,
         model: str,
         priority: str,
-        limit_bucket: Optional[str] = None,
-    ) -> None:
-        """
-        Run all three checks in order.  Raises HTTPException(429) immediately
-        on the first violation with a structured body and Retry-After header.
-        On success, increments the in-flight counter (caller MUST call release()).
+        estimated_prompt_tokens: int,
+    ) -> Lease:
+        """Acquire a per-key concurrency lease + run RPM and TPM checks.
 
-        Defensive guarantees:
-          - If any unexpected exception occurs AFTER the concurrency counter has
-            been incremented, it is decremented before re-raising so the counter
-            never leaks.
-          - All config values are coerced and clamped; bad data in Redis cannot
-            produce a zero limit or an integer overflow.
-          - Redis failures in RPM/TPM checks fail-open (allow the request) so a
-            Redis outage does not block inference.
+        Returns a Lease that the caller must use as an async-context-manager
+        (or explicit release()). Raises HTTPException(429) on any check failure
+        with a structured body and accurate Retry-After header.
+
+        Concurrency check goes FIRST because it's free (no network). If it
+        fails we return immediately without touching Redis.
         """
-        bucket = limit_bucket or self._limit_bucket(endpoint)
         if bucket not in self.SERVICE_BUCKETS:
             bucket = self._limit_bucket(endpoint)
-        # Coerce all limits — key_config values from Redis JSON may be strings
+
         rpm_limit = self._rpm_limit(key_config, bucket)
         tpm_limit = self._tpm_limit(key_config, bucket)
         estimated_prompt_tokens = max(0, int(estimated_prompt_tokens))
         concurrency_cap = self._concurrency_cap(key_config, bucket)
-        lease_key = self._lease_key(api_key, bucket)
-        acquired = False
+
+        # ---- 1. Per-key concurrency ----
+        pool = await self._get_or_create_pool(api_key, bucket, concurrency_cap)
+        lease = await pool.try_acquire()
+        if lease is None:
+            CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
+            REQUEST_COUNT.labels(
+                model=model, priority=priority, status="concurrency_exceeded", endpoint=endpoint,
+            ).inc()
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": {
+                        "type": "concurrency_limit_exceeded",
+                        "message": (
+                            f"You have {pool.inflight} {bucket} request(s) in-flight. "
+                            f"Limit is {concurrency_cap} "
+                            f"({self._concurrency_limit_description(bucket)}). "
+                            f"Retry in ~5s when an in-flight request completes."
+                        ),
+                        "limit_bucket": bucket,
+                        "current_inflight": pool.inflight,
+                        "limit": concurrency_cap,
+                        "retry_after": 5,
+                    },
+                },
+                headers={"Retry-After": "5"},
+            )
 
         try:
-            # --- 1. Concurrency cap (cheapest check, no Redis, no network) ---
-            async with self._lock:
-                now = time.time()
-                self._prune_expired_locked(api_key, bucket, now=now)
-                leases = self._leases.setdefault(lease_key, [])
-                current = len(leases)
-                if current >= concurrency_cap:
-                    CONCURRENCY_REJECTED.labels(endpoint=endpoint).inc()
-                    REQUEST_COUNT.labels(model=model, priority=priority, status="concurrency_exceeded", endpoint=endpoint).inc()
-                    raise HTTPException(
-                        status_code=429,
-                        detail={
-                            "error": {"type": "concurrency_limit_exceeded",
-                                      "message": f"You have {current} {bucket} request(s) in-flight. "
-                                                 f"Limit is {concurrency_cap} ({self._concurrency_limit_description(bucket)}). "
-                                                 f"Retry in ~5s when an in-flight request completes.",
-                                      "limit_bucket": bucket,
-                                      "current_inflight": current,
-                                      "limit": concurrency_cap,
-                                      "retry_after": 5},
-                        },
-                        headers={"Retry-After": "5"},
-                    )
-                leases.append(now)
-                acquired = True
-
-            # --- 2. RPM check (Redis sliding window, fails-open on Redis error) ---
+            # ---- 2. RPM ----
             try:
-                rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(api_key, rpm_limit, bucket=bucket)
+                rpm_ok, retry_after_rpm = await redis_client.check_rate_limit_with_info(
+                    api_key, rpm_limit, bucket=bucket,
+                )
             except Exception as e:
                 logger.warning(f"RPM check failed for {api_key[:16]}…:{bucket} (fail-open): {e}")
                 rpm_ok, retry_after_rpm = True, 0
-
             if not rpm_ok:
-                REQUEST_COUNT.labels(model=model, priority=priority, status="rate_limited", endpoint=endpoint).inc()
+                REQUEST_COUNT.labels(
+                    model=model, priority=priority, status="rate_limited", endpoint=endpoint,
+                ).inc()
                 raise HTTPException(
                     status_code=429,
                     detail={
-                        "error": {"type": "rate_limit_exceeded",
-                                  "message": f"{bucket} rate limit exceeded: {rpm_limit} requests/minute. "
-                                             f"Retry in {retry_after_rpm}s.",
-                                  "limit_bucket": bucket,
-                                  "limit": rpm_limit,
-                                  "retry_after": retry_after_rpm},
+                        "error": {
+                            "type": "rate_limit_exceeded",
+                            "message": (
+                                f"{bucket} rate limit exceeded: {rpm_limit} requests/minute. "
+                                f"Retry in {retry_after_rpm}s."
+                            ),
+                            "limit_bucket": bucket,
+                            "limit": rpm_limit,
+                            "retry_after": retry_after_rpm,
+                        },
                     },
                     headers={"Retry-After": str(retry_after_rpm)},
                 )
 
-            # --- 3. TPM check (Redis sliding window, fails-open on Redis error) ---
+            # ---- 3. TPM ----
             try:
                 tpm_ok, retry_after_tpm = await redis_client.check_tpm_limit(
-                    api_key, estimated_prompt_tokens, tpm_limit, bucket=bucket
+                    api_key, estimated_prompt_tokens, tpm_limit, bucket=bucket,
                 )
             except Exception as e:
                 logger.warning(f"TPM check failed for {api_key[:16]}…:{bucket} (fail-open): {e}")
                 tpm_ok, retry_after_tpm = True, 0
-
             if not tpm_ok:
                 TPM_REJECTED.labels(endpoint=endpoint).inc()
-                REQUEST_COUNT.labels(model=model, priority=priority, status="tpm_exceeded", endpoint=endpoint).inc()
+                REQUEST_COUNT.labels(
+                    model=model, priority=priority, status="tpm_exceeded", endpoint=endpoint,
+                ).inc()
                 raise HTTPException(
                     status_code=429,
                     detail={
-                        "error": {"type": "tokens_per_minute_exceeded",
-                                  "message": f"{bucket} token rate limit exceeded: {tpm_limit} tokens/minute. "
-                                             f"Retry in {retry_after_tpm}s.",
-                                  "limit_bucket": bucket,
-                                  "limit": tpm_limit,
-                                  "estimated_prompt_tokens": estimated_prompt_tokens,
-                                  "retry_after": retry_after_tpm},
+                        "error": {
+                            "type": "tokens_per_minute_exceeded",
+                            "message": (
+                                f"{bucket} token rate limit exceeded: {tpm_limit} tokens/minute. "
+                                f"Retry in {retry_after_tpm}s."
+                            ),
+                            "limit_bucket": bucket,
+                            "limit": tpm_limit,
+                            "estimated_prompt_tokens": estimated_prompt_tokens,
+                            "retry_after": retry_after_tpm,
+                        },
                     },
                     headers={"Retry-After": str(retry_after_tpm)},
                 )
-
-        except HTTPException:
-            # Release counter if we acquired it but a limit check failed
-            if acquired:
-                async with self._lock:
-                    leases = self._leases.get(lease_key, [])
-                    if leases:
-                        leases.pop(0)
-                    if not leases:
-                        self._leases.pop(lease_key, None)
+        except BaseException:
+            await lease.release()
             raise
-        except Exception as e:
-            # Unexpected error: release counter and fail-open (log + allow)
-            if acquired:
-                async with self._lock:
-                    leases = self._leases.get(lease_key, [])
-                    if leases:
-                        leases.pop(0)
-                    if not leases:
-                        self._leases.pop(lease_key, None)
-            logger.error(f"Unexpected error in rate limiter check_and_acquire: {e}", exc_info=True)
-            # Fail-open: do not block inference due to rate-limiter bugs
 
-    async def release(self, api_key: str, endpoint: str, limit_bucket: Optional[str] = None) -> None:
-        """Release one in-flight lease after request completes or errors.
+        return lease
 
-        Safe to call multiple times.
-        Swallows all exceptions so a release failure never crashes a request handler.
-        """
-        try:
-            bucket = limit_bucket or self._limit_bucket(endpoint)
-            if bucket not in self.SERVICE_BUCKETS:
-                bucket = self._limit_bucket(endpoint)
-            lease_key = self._lease_key(api_key, bucket)
-            async with self._lock:
-                leases = self._leases.get(lease_key, [])
-                if leases:
-                    # Remove the oldest lease first. If an older request leaked,
-                    # this keeps newer active leases accurately represented.
-                    leases.pop(0)
-                if not leases:
-                    self._leases.pop(lease_key, None)
-        except Exception as e:
-            logger.error(f"Failed to release rate-limiter counter for {api_key[:16]}…/{endpoint}: {e}")
+    # ----- diagnostics + admin -----------------------------------------------
 
     def get_inflight(self) -> dict[str, dict[str, int]]:
-        """Return current per-key in-flight counts (zero-value keys excluded)."""
-        return self._inflight_counts_locked()
+        """Return current per-key in-flight counts (zero-value pools excluded)."""
+        counts: dict[str, dict[str, int]] = {}
+        for (api_key, bucket), slot in self.pools.items():
+            n = slot.inflight
+            if n > 0:
+                counts.setdefault(api_key, {})[bucket] = n
+        return counts
+
+    async def reconcile(self) -> int:
+        """Periodic reaper called by the maintenance loop."""
+        total = 0
+        for slot in list(self.pools.values()):
+            total += await slot.reconcile()
+        return total
 
     async def snapshot(self) -> dict:
-        """Return and refresh live limiter state for diagnostics."""
-        async with self._lock:
-            now = time.time()
-            pruned = self._prune_expired_locked(now=now)
-            return {
-                "per_key_inflight": self._inflight_counts_locked(),
-                "oldest_lease_age_seconds": self._oldest_lease_ages_locked(now=now),
-                "lease_ttl_seconds": self._lease_ttl_seconds(),
-                "last_snapshot_pruned": pruned,
-                "healthy_gpus": self._healthy_gpu_count(),
-                "healthy_embedding_replicas": self._healthy_embedding_count(),
-                "healthy_backend_instances": {
-                    bucket: self._healthy_backend_count(bucket)
-                    for bucket in self.SERVICE_BUCKETS
-                },
-                # Kept for backward compatibility; this is the vLLM/GPU cap.
-                "concurrency_cap_per_key": self._concurrency_cap({}, "vllm"),
-                "concurrency_caps_per_key": {
-                    bucket: self._concurrency_cap({}, bucket)
-                    for bucket in self.SERVICE_BUCKETS
-                },
-            }
+        """Return live limiter state for diagnostics."""
+        now = time.time()
+        per_key_inflight: dict[str, dict[str, int]] = {}
+        oldest_age: dict[str, dict[str, int]] = {}
+        for (api_key, bucket), slot in self.pools.items():
+            n = slot.inflight
+            if n <= 0:
+                continue
+            per_key_inflight.setdefault(api_key, {})[bucket] = n
+            age = slot.oldest_lease_age(now)
+            if age is not None:
+                oldest_age.setdefault(api_key, {})[bucket] = int(age)
+        return {
+            "per_key_inflight": per_key_inflight,
+            "oldest_lease_age_seconds": oldest_age,
+            # Retained for backward compat with old dashboards; the new scheme
+            # has no TTL — leases are reaped by asyncio.Task liveness instead.
+            "lease_ttl_seconds": None,
+            "last_snapshot_pruned": 0,
+            "healthy_gpus": self._healthy_gpu_count(),
+            "healthy_embedding_replicas": self._healthy_embedding_count(),
+            "healthy_backend_instances": {
+                bucket: self._healthy_backend_count(bucket)
+                for bucket in self.SERVICE_BUCKETS
+            },
+            "configured_backend_instances": {
+                bucket: self._configured_backend_count(bucket)
+                for bucket in self.SERVICE_BUCKETS
+            },
+            "concurrency_cap_per_key": self._concurrency_cap({}, "vllm"),
+            "concurrency_caps_per_key": {
+                bucket: self._concurrency_cap({}, bucket)
+                for bucket in self.SERVICE_BUCKETS
+            },
+            "reconcile_interval_seconds": max(1, int(config.SLOT_RECONCILE_INTERVAL_SECONDS)),
+        }
 
     async def reset(self, api_key: Optional[str] = None, bucket: Optional[str] = None) -> dict:
-        """Clear limiter leases for one API key or for the current gateway process."""
-        async with self._lock:
-            self._prune_expired_locked()
-            before = self._inflight_counts_locked()
-            if api_key and bucket:
-                lease_key = self._lease_key(api_key, bucket)
-                cleared = len(self._leases.get(lease_key, []))
-                self._leases.pop(lease_key, None)
-            elif api_key:
-                prefix = f"{api_key}:"
-                matching_keys = [key for key in self._leases.keys() if key.startswith(prefix)]
-                cleared = sum(len(self._leases.get(key, [])) for key in matching_keys)
-                for key in matching_keys:
-                    self._leases.pop(key, None)
-            else:
-                cleared = sum(len(leases) for leases in self._leases.values())
-                self._leases.clear()
-            return {
-                "cleared": cleared,
-                "before": before,
-                "after": self._inflight_counts_locked(),
-            }
+        """Clear leases for one (api_key, bucket), one api_key, or the whole pod."""
+        before = self.get_inflight()
+        cleared = 0
+        if api_key and bucket:
+            slot = self.pools.get((api_key, bucket))
+            if slot is not None:
+                cleared = await slot.force_clear()
+        elif api_key:
+            for (k, b), slot in list(self.pools.items()):
+                if k == api_key:
+                    cleared += await slot.force_clear()
+        else:
+            for slot in list(self.pools.values()):
+                cleared += await slot.force_clear()
+        return {
+            "cleared": cleared,
+            "before": before,
+            "after": self.get_inflight(),
+        }
 
 
 rate_limiter = RateLimiter()
@@ -1644,341 +2213,383 @@ rate_limiter = RateLimiter()
 # =============================================================================
 
 class BackendManager:
+    """Routing + capacity tracking for vLLM / llama.cpp / embedding / Ollama.
+
+    Public contract (preserved for handlers, admin, lifespan):
+      - start() / stop()
+      - health_check()  - 30s loop populates self.backend_health
+      - backend_health: dict[str, bool]      ("vllm:<url>" -> True/False)
+      - acquire_slot(model) -> Lease         NEW primary entry point
+      - forward(method, endpoint, model, data, lease, stream=False)  NEW
+      - snapshot()                           same shape as before
+      - reset(backend_type=None, backend_key=None)
+      - load_ollama_model(name), pull_ollama_model(name)
+      - discover_models()
+      - get_backend_url(model)               kept for any external caller
+
+    The lease-list-with-TTL bookkeeping has been replaced with one Slot per
+    (backend_type, url). Counter cannot drift: acquire returns a Lease bound
+    to asyncio.current_task() and either the async-with exit or the background
+    reconciler releases it.
+    """
+
     def __init__(self):
         self.http_client: Optional[httpx.AsyncClient] = None
         self.backend_health: dict[str, bool] = {}
-        self.backend_inflight: dict[str, int] = {}
-        self.backend_leases: dict[str, list[float]] = {}
-        # Protects routing + acquisition so two concurrent requests cannot
-        # both observe the same backend as least-loaded before either has
-        # incremented its inflight counter.
-        self._routing_lock = asyncio.Lock()
+        # Per-backend Slot keyed by "<backend_type>:<url>"
+        self.slots: dict[str, Slot] = {}
+        self._reconcile_task: Optional[asyncio.Task] = None
+        self._metrics_audit_task: Optional[asyncio.Task] = None
+
+    # ------------------------------------------------------------------ setup
 
     async def start(self):
-        self.http_client = httpx.AsyncClient(timeout=300.0)
-        # Initialize health status
+        self.http_client = httpx.AsyncClient(timeout=config.BACKEND_HTTP_TIMEOUT_SECONDS)
         for url in config.VLLM_URLS:
-            self.backend_health[f"vllm:{url}"] = False
-            self.backend_inflight[f"vllm:{url}"] = 0
-            self.backend_leases[f"vllm:{url}"] = []
-        self.backend_health[f"llamacpp:{config.LLAMACPP_URL}"] = False
-        self.backend_inflight[f"llamacpp:{config.LLAMACPP_URL}"] = 0
-        self.backend_leases[f"llamacpp:{config.LLAMACPP_URL}"] = []
-        self.backend_health[f"embedding:{config.EMBEDDING_URL}"] = False
-        self.backend_inflight[f"embedding:{config.EMBEDDING_URL}"] = 0
-        self.backend_leases[f"embedding:{config.EMBEDDING_URL}"] = []
-        self.backend_health[f"ollama:{config.OLLAMA_URL}"] = False
-        self.backend_inflight[f"ollama:{config.OLLAMA_URL}"] = 0
-        self.backend_leases[f"ollama:{config.OLLAMA_URL}"] = []
-        # Initial health check and model discovery
-        await self.health_check()
+            self._register_slot("vllm", url, config.MAX_INFLIGHT_PER_VLLM_BACKEND)
+        self._register_slot("llamacpp", config.LLAMACPP_URL, config.MAX_INFLIGHT_PER_LLAMACPP_BACKEND)
+        self._register_slot("embedding", config.EMBEDDING_URL, config.MAX_INFLIGHT_PER_EMBEDDING_BACKEND)
+        self._register_slot("ollama", config.OLLAMA_URL, config.MAX_INFLIGHT_PER_OLLAMA_BACKEND)
+
+        # Spawn the reconciler BEFORE the first health check. The reaper is
+        # the gateway's safety net; if startup health_check raises (network
+        # blip during pod start) we still want the reaper running so that any
+        # lease acquired during the partial-startup window is eventually freed.
+        self._reconcile_task = asyncio.create_task(self._reconcile_loop())
+        if config.RECONCILE_VLLM_METRICS:
+            self._metrics_audit_task = asyncio.create_task(self._metrics_audit_loop())
+
+        try:
+            await self.health_check()
+        except Exception as e:
+            # Don't fail pod startup on a transient health-check error; the
+            # background health_check_loop will retry every 30s.
+            logger.error(f"Initial health_check failed (will retry): {e}")
+
+    def _register_slot(self, backend_type: str, url: str, capacity: int) -> None:
+        key = f"{backend_type}:{url}"
+        self.slots[key] = Slot(name=key, capacity=capacity, backend_type=backend_type, url=url)
+        self.backend_health[key] = False
 
     async def stop(self):
+        for task in (self._reconcile_task, self._metrics_audit_task):
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
         if self.http_client:
             await self.http_client.aclose()
 
-    def _backend_lease_ttl_seconds(self) -> int:
-        try:
-            return max(60, int(config.BACKEND_INFLIGHT_LEASE_TTL_SECONDS))
-        except (TypeError, ValueError):
-            return 600
+    # ----------------------------------------------------------- reconciliation
 
-    def _backend_type_from_key(self, backend_key: str) -> str:
-        return backend_key.split(":", 1)[0] if ":" in backend_key else backend_key
+    async def _reconcile_loop(self):
+        """Periodically reap leases whose owning Task is dead."""
+        interval = max(1, int(config.SLOT_RECONCILE_INTERVAL_SECONDS))
+        while True:
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
+            try:
+                for slot in self.slots.values():
+                    await slot.reconcile()
+                # Per-key (rate_limiter) reconciliation runs here too so the
+                # whole gateway has a single heartbeat rather than two.
+                try:
+                    await rate_limiter.reconcile()
+                except Exception as e:
+                    logger.debug(f"rate-limiter reconcile failed: {e}")
+                self._sync_metrics()
+            except Exception as e:
+                logger.error(f"backend reconcile loop failed: {e}")
 
-    def _backend_capacity(self, backend_type: str) -> int:
-        if backend_type == "vllm":
-            return max(1, config.MAX_INFLIGHT_PER_VLLM_BACKEND)
-        if backend_type == "embedding":
-            return max(1, config.MAX_INFLIGHT_PER_EMBEDDING_BACKEND)
-        if backend_type == "llamacpp":
-            return max(1, config.MAX_INFLIGHT_PER_LLAMACPP_BACKEND)
-        if backend_type == "ollama":
-            return max(1, config.MAX_INFLIGHT_PER_OLLAMA_BACKEND)
-        return max(1, config.MAX_INFLIGHT_PER_BACKEND)
+    async def _metrics_audit_loop(self):
+        """Optional: audit gateway counter against vLLM's own /metrics.
 
-    def _sync_backend_inflight_metrics(self) -> None:
-        totals: dict[str, int] = {"vllm": 0, "llamacpp": 0, "embedding": 0, "ollama": 0}
-        for key, count in self.backend_inflight.items():
-            totals[self._backend_type_from_key(key)] = totals.get(self._backend_type_from_key(key), 0) + count
+        Log-only. Never auto-corrects. Disabled by RECONCILE_VLLM_METRICS=false."""
+        interval = max(5, int(config.RECONCILE_VLLM_METRICS_INTERVAL_SECONDS))
+        while True:
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
+            for key, slot in self.slots.items():
+                if slot.backend_type != "vllm":
+                    continue
+                if not self.backend_health.get(key, False):
+                    continue
+                try:
+                    resp = await self.http_client.get(f"{slot.meta['url']}/metrics", timeout=3.0)
+                    if resp.status_code != 200:
+                        continue
+                    running = self._parse_vllm_running(resp.text)
+                    if running is None:
+                        continue
+                    if running != slot.inflight:
+                        logger.warning(
+                            "vLLM drift on %s: gateway=%s, vllm=%s "
+                            "(audit only — gateway is source of truth)",
+                            key, slot.inflight, running,
+                        )
+                except Exception as e:
+                    logger.debug(f"vllm metrics audit failed for {key}: {e}")
+
+    @staticmethod
+    def _parse_vllm_running(metrics_text: str) -> Optional[int]:
+        """Parse `vllm:num_requests_running` value from a Prometheus exposition.
+
+        Format: `vllm:num_requests_running{model="..."} 1.0`"""
+        for line in metrics_text.splitlines():
+            if line.startswith("vllm:num_requests_running") and not line.startswith("#"):
+                try:
+                    return int(float(line.rsplit(" ", 1)[1]))
+                except (ValueError, IndexError):
+                    return None
+        return None
+
+    def _sync_metrics(self) -> None:
+        totals = {"vllm": 0, "llamacpp": 0, "embedding": 0, "ollama": 0}
+        for slot in self.slots.values():
+            totals[slot.backend_type] = totals.get(slot.backend_type, 0) + slot.inflight
         for backend_type, total in totals.items():
             BACKEND_INFLIGHT.labels(backend=backend_type).set(total)
 
-    def _prune_backend_leases(self, backend_key: Optional[str] = None, now: Optional[float] = None) -> int:
-        """Drop stale backend routing leases and refresh backend_inflight counts."""
-        now = now or time.time()
-        ttl = self._backend_lease_ttl_seconds()
-        keys = [backend_key] if backend_key else list(self.backend_leases.keys())
-        pruned_total = 0
+    # ------------------------------------------------------------- diagnostics
 
-        for key in keys:
-            leases = self.backend_leases.get(key, [])
-            active = [acquired_at for acquired_at in leases if now - acquired_at < ttl]
-            pruned = len(leases) - len(active)
-            if pruned:
-                pruned_total += pruned
-                logger.warning(
-                    "Pruned %s stale backend in-flight lease(s) for %s after %ss",
-                    pruned,
-                    key,
-                    ttl,
-                )
-            self.backend_leases[key] = active
-            self.backend_inflight[key] = len(active)
-
-        self._sync_backend_inflight_metrics()
-        return pruned_total
-
-    def _backend_inflight_for(self, backend_key: str) -> int:
-        self._prune_backend_leases(backend_key)
-        return self.backend_inflight.get(backend_key, 0)
-
-    def _acquire_backend(self, backend_key: str) -> None:
-        self._prune_backend_leases(backend_key)
-        leases = self.backend_leases.setdefault(backend_key, [])
-        leases.append(time.time())
-        self.backend_inflight[backend_key] = len(leases)
-        self._sync_backend_inflight_metrics()
-
-    def _release_backend(self, backend_key: str) -> None:
-        leases = self.backend_leases.get(backend_key, [])
-        if leases:
-            leases.pop(0)
-        self.backend_leases[backend_key] = leases
-        self.backend_inflight[backend_key] = len(leases)
-        self._sync_backend_inflight_metrics()
+    @property
+    def backend_inflight(self) -> dict[str, int]:
+        """Per-backend current inflight count. Snapshot is taken by reading
+        each slot's atomic ``inflight`` counter, no lock needed because we
+        just read an integer."""
+        return {key: slot.inflight for key, slot in self.slots.items()}
 
     def snapshot(self) -> dict:
-        pruned = self._prune_backend_leases()
+        now = time.time()
         return {
-            "inflight": dict(self.backend_inflight),
+            "inflight": {key: slot.inflight for key, slot in self.slots.items()},
+            "capacity": {key: slot.capacity for key, slot in self.slots.items()},
+            "available": {key: slot.available for key, slot in self.slots.items()},
             "oldest_lease_age_seconds": {
-                key: int(time.time() - min(leases))
-                for key, leases in self.backend_leases.items()
-                if leases
+                key: int(age)
+                for key, slot in self.slots.items()
+                for age in [slot.oldest_lease_age(now)] if age is not None
             },
-            "lease_ttl_seconds": self._backend_lease_ttl_seconds(),
-            "last_snapshot_pruned": pruned,
+            # The new design has no TTL; key kept for dashboard compatibility.
+            "lease_ttl_seconds": None,
+            "last_snapshot_pruned": 0,
+            "reconcile_interval_seconds": max(1, int(config.SLOT_RECONCILE_INTERVAL_SECONDS)),
+            "vllm_metrics_audit": config.RECONCILE_VLLM_METRICS,
         }
 
-    def reset(
+    async def reset(
         self,
         backend_type: Optional[str] = None,
         backend_key: Optional[str] = None,
     ) -> dict:
-        """Clear backend routing leases for this gateway process."""
-        self._prune_backend_leases()
-        before = dict(self.backend_inflight)
+        """Admin: force-clear leases. Returns a before/after summary."""
+        before = {key: slot.inflight for key, slot in self.slots.items()}
 
         if backend_key:
-            keys = [backend_key]
+            keys = [backend_key] if backend_key in self.slots else []
         elif backend_type:
-            keys = [
-                key for key in self.backend_leases.keys()
-                if self._backend_type_from_key(key) == backend_type
-            ]
+            keys = [k for k, s in self.slots.items() if s.backend_type == backend_type]
         else:
-            keys = list(self.backend_leases.keys())
+            keys = list(self.slots.keys())
 
-        cleared = sum(len(self.backend_leases.get(key, [])) for key in keys)
+        cleared = 0
         for key in keys:
-            self.backend_leases[key] = []
-            self.backend_inflight[key] = 0
+            slot = self.slots.get(key)
+            if slot is not None:
+                cleared += await slot.force_clear()
 
-        self._sync_backend_inflight_metrics()
+        self._sync_metrics()
         return {
             "cleared": cleared,
             "before": before,
-            "after": dict(self.backend_inflight),
+            "after": {key: slot.inflight for key, slot in self.slots.items()},
         }
 
-    def get_backend_url(self, model: str) -> tuple[str, str]:
+    # --- legacy shim: some code paths may still want this synchronous variant
+    def reset_sync(self, *args, **kwargs):  # pragma: no cover
+        """Legacy compat: synchronous reset() is no longer supported."""
+        raise RuntimeError("BackendManager.reset is now async; await it.")
+
+    # --------------------------------------------------------------- routing
+
+    def _candidates_for(self, model: str) -> list[Slot]:
+        """Return the ordered list of slots eligible to serve ``model``.
+
+        Multi-backend routing
+        ---------------------
+        The list is built from the ModelRegistry's view of which backend types
+        actually serve the requested model, so we never route to a backend
+        that would 404. Order is:
+
+          1. Backends serving the model, in routing-priority order
+             (``vllm`` → ``llamacpp`` → ``ollama``).
+          2. Within a backend type, slots are sorted by current ``inflight``
+             ascending — so a 2-GPU cluster naturally spreads load, and after
+             GPU 1 fills up GPU 2 picks up the next request.
+
+        ``acquire_slot`` walks this list and takes the first slot whose
+        ``try_acquire`` succeeds, giving us the "GPU first, spill to CPU when
+        GPUs are full" overflow behaviour for any model loaded on both.
+
+        Concrete examples
+        -----------------
+        Assume 2 healthy vLLM pods + 1 healthy llama.cpp + 1 healthy ollama,
+        all with ``MAX_INFLIGHT_PER_*_BACKEND=1``:
+
+          * Model ``qwen2.5:7b`` loaded on vllm AND llamacpp:
+              ``[vllm-0(0), vllm-1(0), llamacpp(0)]``
+              → 1st request hits vllm-0, 2nd hits vllm-1, 3rd spills to
+              llama.cpp, 4th raises 429 (cluster at capacity).
+          * Model ``qwen2.5:7b`` loaded only on vllm:
+              ``[vllm-0(0), vllm-1(0)]``
+              → 3rd request raises 429 — does NOT spill to llamacpp, because
+              llama.cpp doesn't have this model.
+          * Embedding model:
+              ``[embedding(0)]``
+              → only ever routed to the embedding backend; can never consume
+              vllm or llamacpp slots.
+          * Unknown model under HORIZONTAL_SCALING:
+              ``[vllm…, llamacpp, ollama]`` (best-effort fallback)
+          * Unknown model with HORIZONTAL_SCALING=false:
+              ``[]`` (caller raises 404-grade 503)
         """
-        Get backend URL for a model using simple load-balanced routing.
+        served_by = model_registry.get_model_backends(model)
 
-        For chat models with HORIZONTAL_SCALING enabled:
-          - Routes to least-loaded backend: GPU1 → GPU2 → ... → CPU
-          - All chat backends are treated as equivalent (same model family)
+        if not served_by:
+            # Model not in registry. Under horizontal scaling we still try the
+            # chat backends in priority order — useful while a freshly-added
+            # model is mid-discovery and the registry hasn't caught up yet.
+            if config.HORIZONTAL_SCALING:
+                served_by = ["vllm", "llamacpp", "ollama"]
+            else:
+                return []
 
-        For embedding models:
-          - Always routes to dedicated embedding service
+        result: list[Slot] = []
+        for bt in served_by:
+            if not bt:
+                continue
+            healthy = [
+                s for s in self.slots.values()
+                if s.backend_type == bt and self.backend_health.get(s.name, False)
+            ]
+            if not healthy:
+                continue
+            # Within a backend type, sort by least-loaded first so a 2-GPU
+            # cluster spreads load (GPU 1 if both empty; GPU 2 once GPU 1 is
+            # busy). Ties broken by URL for deterministic routing.
+            healthy.sort(key=lambda s: (s.inflight, s.meta.get("url", "")))
+            result.extend(healthy)
+        return result
+
+    async def acquire_slot(self, model: str) -> Lease:
+        """Acquire a slot on the best available backend for ``model``.
+
+        Selection algorithm
+        -------------------
+        1. Ask the registry: "which backend types serve this model?"
+        2. Iterate those backend types in routing priority (vllm → llamacpp →
+           ollama), and within a type iterate the healthy slots ordered by
+           least-loaded first.
+        3. Call ``try_acquire`` on each slot until one succeeds. ``try_acquire``
+           is itself atomic under the slot's own lock, so two concurrent
+           requests racing for the last slot on the same backend cannot both
+           win.
+        4. If no slot accepts (every eligible backend is at capacity), raise
+           429 with the first candidate's inflight/capacity in the body.
+        5. If the model has no eligible backends at all (none of vllm,
+           llamacpp, ollama serves this model AND it's not lazy-loadable),
+           raise 503.
+
+        Multi-backend behaviour
+        -----------------------
+        When the same model is loaded on both vLLM and llama.cpp, this method
+        prefers GPU (vLLM) and spills to CPU (llama.cpp) only when all GPU
+        slots are full. When the model is only on vLLM, the method NEVER
+        spills to llama.cpp — instead it raises 429, because routing to a
+        backend that doesn't have the model would just produce an upstream
+        404 the client can't easily distinguish from "no capacity".
+
+        Error contracts (unchanged from old code)
+        -----------------------------------------
+        * 503  ``{"error": "No healthy backend available", "hint": ...}``
+        * 429  ``{"error": {"type": "backend_concurrency_limit_exceeded",
+                           "message": "...", "limit_bucket": "...",
+                           "current_inflight": N, "limit": M, "retry_after": 5}}``
         """
-        self._prune_backend_leases()
-        model_info = model_registry.get_model(model)
+        candidates = self._candidates_for(model)
+        if not candidates:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "No healthy backend available",
+                    "hint": "All inference backends are currently unhealthy. "
+                            "Check /health/backends for status.",
+                },
+            )
 
-        # Handle embedding requests - always go to embedding service
-        if model_info and model_info.get("backend") == "embedding":
-            return "embedding", config.EMBEDDING_URL
+        for slot in candidates:
+            lease = await slot.try_acquire()
+            if lease is not None:
+                self._sync_metrics()
+                return lease
 
-        # For chat models with horizontal scaling, route to least-loaded backend
-        if config.HORIZONTAL_SCALING:
-            return self._get_least_loaded_chat_backend()
+        # Everyone is full — return the most-meaningful 429 (first candidate
+        # was the least-loaded one, so its number is the cluster's best case).
+        snapshot = candidates[0]
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": {
+                    "type": "backend_concurrency_limit_exceeded",
+                    "message": (
+                        f"{snapshot.backend_type} backend is at capacity: "
+                        f"{snapshot.inflight}/{snapshot.capacity} in-flight."
+                    ),
+                    "limit_bucket": snapshot.backend_type,
+                    "current_inflight": snapshot.inflight,
+                    "limit": snapshot.capacity,
+                    "retry_after": 5,
+                },
+            },
+            headers={"Retry-After": "5"},
+        )
 
-        # Fallback: route based on model's registered backend
-        if not model_info:
-            # If model not found but we have healthy backends, try to route anyway
-            return self._get_least_loaded_chat_backend()
-
-        backend_type = model_info.get("backend")
-        if backend_type == "vllm":
-            return self._get_least_loaded_vllm()
-        elif backend_type == "llamacpp":
-            return "llamacpp", config.LLAMACPP_URL
-        elif backend_type == "ollama":
-            return "ollama", config.OLLAMA_URL
-        else:
+    def get_backend_url(self, model: str) -> tuple[Optional[str], Optional[str]]:
+        """Legacy: pick (backend_type, url) for `model`. Not used by the new
+        acquire_slot path; kept for any external caller and for diagnostics."""
+        candidates = self._candidates_for(model)
+        if not candidates:
             return None, None
-
-    async def reserve_backend(self, model: str) -> dict:
-        """Select and atomically reserve a backend slot before awaited work.
-
-        The routing lock ensures that two concurrent requests cannot both
-        observe the same backend as least-loaded before either has incremented
-        its inflight counter, which would cause the second to see 1/1 in-flight
-        on the same backend and get a spurious 429.
-        """
-        async with self._routing_lock:
-            backend_type, url = self.get_backend_url(model)
-
-            if not backend_type or not url:
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "error": "No healthy backend available",
-                        "hint": "All inference backends are currently unhealthy or at capacity. Check /health/backends for status."
-                    }
-                )
-
-            backend_key = f"{backend_type}:{url}"
-            current = self._backend_inflight_for(backend_key)
-            capacity = self._backend_capacity(backend_type)
-            if current >= capacity:
-                raise HTTPException(
-                    status_code=429,
-                    detail={
-                        "error": {
-                            "type": "backend_concurrency_limit_exceeded",
-                            "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
-                            "limit_bucket": backend_type,
-                            "current_inflight": current,
-                            "limit": capacity,
-                            "retry_after": 5,
-                        }
-                    },
-                    headers={"Retry-After": "5"},
-                )
-
-            self._acquire_backend(backend_key)
-            return {
-                "backend": backend_type,
-                "backend_url": url,
-                "backend_key": backend_key,
-                "pre_acquired": True,
-            }
-
-    def release_reserved_backend(self, backend_info: Optional[dict]) -> None:
-        if backend_info and backend_info.get("pre_acquired") and backend_info.get("backend_key"):
-            self._release_backend(backend_info["backend_key"])
-            backend_info["pre_acquired"] = False
-
-    def _get_least_loaded_chat_backend(self) -> tuple[str, str]:
-        """
-        Route to least-loaded chat backend.
-        Priority: vLLM instances (GPU) → llama.cpp (CPU) → Ollama
-        """
-        best_backend = None
-        best_url = None
-        min_inflight = float("inf")
-        full_backend = None
-        full_url = None
-        min_full_inflight = float("inf")
-
-        def remember_full_candidate(backend_type: str, url: str, inflight: int) -> None:
-            nonlocal full_backend, full_url, min_full_inflight
-            if inflight < min_full_inflight:
-                min_full_inflight = inflight
-                full_backend = backend_type
-                full_url = url
-
-        # Check all vLLM instances (GPUs) first
-        for url in config.VLLM_URLS:
-            key = f"vllm:{url}"
-            if self.backend_health.get(key, False):
-                inflight = self._backend_inflight_for(key)
-                if inflight < min_inflight and inflight < self._backend_capacity("vllm"):
-                    min_inflight = inflight
-                    best_backend = "vllm"
-                    best_url = url
-                else:
-                    remember_full_candidate("vllm", url, inflight)
-
-        # If all vLLM instances are busy, try llama.cpp (CPU)
-        if best_backend is None:
-            llamacpp_key = f"llamacpp:{config.LLAMACPP_URL}"
-            if self.backend_health.get(llamacpp_key, False):
-                inflight = self._backend_inflight_for(llamacpp_key)
-                if inflight < self._backend_capacity("llamacpp"):
-                    if best_backend is None or inflight < min_inflight:
-                        min_inflight = inflight
-                        best_backend = "llamacpp"
-                        best_url = config.LLAMACPP_URL
-                else:
-                    remember_full_candidate("llamacpp", config.LLAMACPP_URL, inflight)
-
-        # Last resort: Ollama
-        if best_backend is None:
-            ollama_key = f"ollama:{config.OLLAMA_URL}"
-            if self.backend_health.get(ollama_key, False):
-                inflight = self._backend_inflight_for(ollama_key)
-                if inflight < self._backend_capacity("ollama"):
-                    min_inflight = inflight
-                    best_backend = "ollama"
-                    best_url = config.OLLAMA_URL
-                else:
-                    remember_full_candidate("ollama", config.OLLAMA_URL, inflight)
-
-        if best_backend:
-            logger.debug(f"Routing to {best_backend} ({best_url}), inflight={min_inflight}")
-        elif full_backend:
-            return full_backend, full_url
-
-        return best_backend, best_url
-
-    def _get_least_loaded_vllm(self) -> tuple[str, str]:
-        """Get least-loaded vLLM instance."""
-        best_url = None
-        min_inflight = float("inf")
-        full_url = None
-        min_full_inflight = float("inf")
-
-        for url in config.VLLM_URLS:
-            key = f"vllm:{url}"
-            if self.backend_health.get(key, False):
-                inflight = self._backend_inflight_for(key)
-                if inflight < min_inflight and inflight < self._backend_capacity("vllm"):
-                    min_inflight = inflight
-                    best_url = url
-                elif inflight < min_full_inflight:
-                    min_full_inflight = inflight
-                    full_url = url
-
-        return ("vllm", best_url or full_url) if (best_url or full_url) else (None, None)
+        chosen = candidates[0]
+        return chosen.backend_type, chosen.meta.get("url")
 
     async def discover_models(self):
         """Query backends to discover loaded models."""
         # Discover vLLM models
+        vllm_discovery_succeeded = False
+        vllm_models: set[str] = set()
         for url in config.VLLM_URLS:
             try:
                 resp = await self.http_client.get(f"{url}/v1/models", timeout=10.0)
                 if resp.status_code == 200:
+                    vllm_discovery_succeeded = True
                     data = resp.json()
                     for model in data.get("data", []):
                         model_id = model.get("id")
                         if model_id:
+                            vllm_models.add(model_id)
                             model_registry.register_model(model_id, "vllm", "ready", model)
                             logger.info(f"Discovered vLLM model: {model_id}")
             except Exception as e:
                 logger.debug(f"Could not discover vLLM models from {url}: {e}")
+        if vllm_discovery_succeeded:
+            model_registry.reconcile_backend_models("vllm", vllm_models)
 
         # Discover llama.cpp model (it serves one model)
         try:
@@ -1987,6 +2598,7 @@ class BackendManager:
                 # llama.cpp doesn't have a models endpoint, use configured name or default
                 model_name = os.getenv("LLAMACPP_MODEL_NAME", "llama-cpu")
                 model_registry.register_model(model_name, "llamacpp", "ready")
+                model_registry.reconcile_backend_models("llamacpp", {model_name})
                 logger.info(f"Discovered llama.cpp model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover llama.cpp models: {e}")
@@ -2003,6 +2615,7 @@ class BackendManager:
                 else:
                     model_name = os.getenv("EMBEDDING_MODEL_NAME", "embedding")
                 model_registry.register_model(model_name, "embedding", "ready")
+                model_registry.reconcile_backend_models("embedding", {model_name})
                 logger.info(f"Discovered embedding model: {model_name}")
         except Exception as e:
             logger.debug(f"Could not discover embedding models: {e}")
@@ -2021,14 +2634,17 @@ class BackendManager:
             ps_resp = await self.http_client.get(f"{config.OLLAMA_URL}/api/ps", timeout=5.0)
             if ps_resp.status_code == 200:
                 ps_data = ps_resp.json()
+                loaded_ollama_models: set[str] = set()
                 for model in ps_data.get("models", []):
                     model_name = model.get("name", "")
                     # Only strip :latest suffix, keep other tags
                     if model_name.endswith(":latest"):
                         model_name = model_name[:-7]
                     if model_name:
+                        loaded_ollama_models.add(model_name)
                         model_registry.register_model(model_name, "ollama", "ready", model)
                         logger.info(f"Discovered loaded Ollama model: {model_name}")
+                model_registry.reconcile_backend_models("ollama", loaded_ollama_models)
         except Exception as e:
             logger.debug(f"Could not discover Ollama models: {e}")
 
@@ -2114,6 +2730,74 @@ class BackendManager:
         # Periodically rediscover models
         await self.discover_models()
 
+    # ---------------------------------------------------------------- forward
+
+    @staticmethod
+    def lease_backend_info(lease: Lease) -> dict:
+        """Helper for handlers building response headers and SSE fingerprints."""
+        slot = lease.slot
+        return {
+            "backend": slot.backend_type,
+            "backend_url": slot.meta.get("url"),
+        }
+
+    async def forward(
+        self,
+        lease: Lease,
+        method: str,
+        endpoint: str,
+        data: dict,
+    ) -> httpx.Response:
+        """Non-streaming forward. Lease lifecycle is owned by the caller —
+        we never release here. The caller's `async with lease:` block does that.
+        """
+        slot = lease.slot
+        url = slot.meta.get("url")
+        return await self.http_client.request(
+            method,
+            f"{url}{endpoint}",
+            json=data,
+            timeout=config.BACKEND_HTTP_TIMEOUT_SECONDS,
+        )
+
+    async def stream(
+        self,
+        lease: Lease,
+        endpoint: str,
+        data: dict,
+    ) -> AsyncGenerator[bytes, None]:
+        """Streaming forward. Same ownership contract as `forward`: the caller
+        releases the lease (typically in the stream-generator's finally)."""
+        slot = lease.slot
+        url = slot.meta.get("url")
+        backend_type = slot.backend_type
+        import json as json_module
+        async with self.http_client.stream(
+            "POST",
+            f"{url}{endpoint}",
+            json=data,
+            timeout=config.BACKEND_HTTP_TIMEOUT_SECONDS,
+        ) as response:
+            async for chunk in response.aiter_bytes():
+                chunk_str = chunk.decode("utf-8", errors="ignore")
+                if chunk_str.startswith("data: ") and not chunk_str.startswith("data: [DONE]"):
+                    try:
+                        json_str = chunk_str[6:].strip()
+                        if json_str:
+                            event_data = json_module.loads(json_str)
+                            event_data["system_fingerprint"] = f"{backend_type}"
+                            chunk = f"data: {json_module.dumps(event_data)}\n\n".encode()
+                    except Exception:
+                        pass
+                yield chunk
+
+    # ----------------------------------------------------------- legacy shim
+    #
+    # `forward_request` was the old combined route+acquire+forward+release.
+    # External callers may still reference it; we keep it working by mapping
+    # to the new acquire_slot + forward + Lease pattern. New code should
+    # prefer the explicit lease lifecycle.
+
     async def forward_request(
         self,
         method: str,
@@ -2123,120 +2807,33 @@ class BackendManager:
         stream: bool = False,
         backend_override: Optional[tuple[str, str]] = None,
         pre_acquired_backend: Optional[dict] = None,
-    ) -> tuple[httpx.Response | AsyncGenerator, dict]:
-        """
-        Forward request to appropriate backend.
-        Returns (response, backend_info) tuple.
-        backend_info contains: backend_type, backend_url for response enrichment.
-        """
-        if pre_acquired_backend:
-            backend_type = pre_acquired_backend["backend"]
-            url = pre_acquired_backend["backend_url"]
-        else:
-            backend_type, url = backend_override or self.get_backend_url(model)
+    ) -> tuple:
+        """Legacy entry point preserved for any external caller.
 
-        if not backend_type or not url:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "No healthy backend available",
-                    "hint": "All inference backends are currently unhealthy. Check /health/backends for status."
-                }
-            )
+        IMPORTANT: this acquires a Lease internally and is responsible for
+        releasing it. For non-streaming responses we release before returning;
+        for streaming we attach a finally to the returned generator. The
+        `pre_acquired_backend` and `backend_override` parameters are accepted
+        for signature compatibility but ignored — the new acquire_slot path
+        re-derives the right backend from the model."""
+        lease = await self.acquire_slot(model)
+        backend_info = self.lease_backend_info(lease)
 
-        backend_key = f"{backend_type}:{url}"
-
-        backend_info = {
-            "backend": backend_type,
-            "backend_url": url,
-        }
-
-        # Track in-flight requests with timestamped leases so routing self-heals.
-        # The routing lock keeps route selection + acquisition atomic so two
-        # concurrent requests don't both pick the same backend before either
-        # increments its counter.
-        if not pre_acquired_backend:
-            async with self._routing_lock:
-                # Re-read url under the lock in case another coroutine just
-                # acquired the backend we were originally routed to.
-                backend_type, url = backend_override or self.get_backend_url(model)
-                if not backend_type or not url:
-                    raise HTTPException(
-                        status_code=503,
-                        detail={"error": "No healthy backend available",
-                                "hint": "All inference backends are currently unhealthy. Check /health/backends for status."}
-                    )
-                backend_key = f"{backend_type}:{url}"
-                current = self._backend_inflight_for(backend_key)
-                capacity = self._backend_capacity(backend_type)
-                if current >= capacity:
-                    raise HTTPException(
-                        status_code=429,
-                        detail={
-                            "error": {
-                                "type": "backend_concurrency_limit_exceeded",
-                                "message": f"{backend_type} backend is at capacity: {current}/{capacity} in-flight.",
-                                "limit_bucket": backend_type,
-                                "current_inflight": current,
-                                "limit": capacity,
-                                "retry_after": 5,
-                            }
-                        },
-                        headers={"Retry-After": "5"},
-                    )
-                self._acquire_backend(backend_key)
-
-        try:
-            if stream:
-                return self._stream_request(url, endpoint, data, backend_type, backend_key, backend_info), backend_info
-            else:
-                response = await self.http_client.request(
-                    method,
-                    f"{url}{endpoint}",
-                    json=data,
-                    timeout=300.0
-                )
+        if not stream:
+            try:
+                response = await self.forward(lease, method, endpoint, data)
                 return response, backend_info
-        finally:
-            if not stream:
-                if pre_acquired_backend:
-                    pre_acquired_backend["pre_acquired"] = False
-                self._release_backend(backend_key)
+            finally:
+                await lease.release()
 
-    async def _stream_request(
-        self,
-        url: str,
-        endpoint: str,
-        data: dict,
-        backend_type: str,
-        backend_key: str,
-        backend_info: dict
-    ) -> AsyncGenerator[bytes, None]:
-        """Stream response from backend, injecting backend info into SSE events."""
-        import json as json_module
-        try:
-            async with self.http_client.stream(
-                "POST",
-                f"{url}{endpoint}",
-                json=data,
-                timeout=300.0
-            ) as response:
-                async for chunk in response.aiter_bytes():
-                    # Inject backend info into SSE data events
-                    chunk_str = chunk.decode('utf-8', errors='ignore')
-                    if chunk_str.startswith('data: ') and not chunk_str.startswith('data: [DONE]'):
-                        try:
-                            # Parse the JSON, add backend info, re-serialize
-                            json_str = chunk_str[6:].strip()
-                            if json_str:
-                                event_data = json_module.loads(json_str)
-                                event_data["system_fingerprint"] = f"{backend_type}"
-                                chunk = f"data: {json_module.dumps(event_data)}\n\n".encode()
-                        except Exception:
-                            pass  # If parsing fails, send original chunk
+        async def _gen():
+            try:
+                async for chunk in self.stream(lease, endpoint, data):
                     yield chunk
-        finally:
-            self._release_backend(backend_key)
+            finally:
+                await lease.release()
+
+        return _gen(), backend_info
 
 
 backend_manager = BackendManager()
@@ -2390,12 +2987,16 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(300)
             await warm_redis_from_postgres()
 
-    # Prune stale request/backend leases even if no new traffic reaches the pod.
+    # Periodic snapshot — refreshes per-backend Prometheus gauges and surfaces
+    # any drift the reconciler hasn't observed yet. Note: the BackendManager
+    # now spawns its OWN 5-second reconciler task in start(), so this loop is
+    # no longer responsible for reaping leases — only for metric refresh.
     async def limiter_maintenance_loop():
         while True:
             try:
                 await rate_limiter.snapshot()
                 backend_manager.snapshot()
+                backend_manager._sync_metrics()
             except Exception as e:
                 logger.error(f"Limiter maintenance failed: {e}")
             await asyncio.sleep(30)
@@ -2486,51 +3087,9 @@ async def list_models(api_key: str = Depends(get_api_key)):
     }
 
 
-@app.post("/v1/chat/completions")
-async def chat_completions(
-    request: ChatCompletionRequest,
-    api_key: str = Depends(get_api_key),
-    priority: str = Depends(get_priority),
-):
-    """OpenAI-compatible chat completions endpoint - requires \'inference\' scope."""
-    await require_scope("inference", api_key)
-    start_time = time.time()
-
-    # Resolve model - check if it exists
-    model_info = model_registry.get_model(request.model)
-    if not model_info:
-        available = [m["id"] for m in model_registry.get_available_models()]
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": f"Model '{request.model}' is not currently loaded or cached",
-                "available_models": available,
-                "hint": "Call GET /v1/models to see available models, or POST /admin/models/download to download new ones"
-            }
-        )
-
-    # Handle lazy loading for cached models
-    if model_info.get("lazy_load") and model_info.get("status") == "cached":
-        logger.info(f"Lazy-loading cached model: {request.model}")
-        success = await backend_manager.load_ollama_model(request.model)
-        if not success:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": f"Failed to load model '{request.model}'",
-                    "hint": "The model may be too large or Ollama may be unavailable"
-                }
-            )
-        # Refresh model info after loading
-        model_info = model_registry.get_model(request.model)
-
-    model = model_info.get("name", request.model)
-    backend_reservation = await backend_manager.reserve_backend(model)
-    limit_bucket = backend_reservation["backend"]
-    backend_owned_by_handler = True
-
-    # Get key config - Redis cache first (already warmed by get_api_key auth), Postgres fallback
-    key_config = (
+async def _load_key_config(api_key: str) -> dict:
+    """Resolve key_config via Redis-first / Postgres-fallback with safe defaults."""
+    return (
         await redis_client.get_api_key_config(api_key)
         or await postgres_client.get_api_key_config(api_key)
         or {
@@ -2540,34 +3099,64 @@ async def chat_completions(
         }
     )
 
-    # Estimate prompt tokens (word count × 1.3 is a fast approximation)
-    estimated_prompt_tokens = int(sum(len(m.content.split()) * 1.3 for m in request.messages))
 
-    # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
-    try:
-        await rate_limiter.check_and_acquire(
-            api_key, key_config, estimated_prompt_tokens, "chat", model, priority,
-            limit_bucket=limit_bucket,
+def _estimate_message_tokens(messages) -> int:
+    """Cheap word-count×1.3 estimate. Tolerant of None content (tool calls)."""
+    total = 0.0
+    for m in messages:
+        content = getattr(m, "content", None)
+        if content:
+            total += len(content.split()) * 1.3
+    return int(total)
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(
+    request: ChatCompletionRequest,
+    api_key: str = Depends(get_api_key),
+    priority: str = Depends(get_priority),
+):
+    """OpenAI-compatible chat completions endpoint - requires 'inference' scope.
+
+    Concurrency contract:
+      * ``acquire_request_leases`` returns a ``RequestLeases`` whose ``__aexit__``
+        releases both the backend slot and the per-key slot.
+      * For streaming responses, ``leases.detach()`` hands ownership to the
+        generator's ``finally`` block.
+      * There is no manual flag to keep in sync — the type system enforces
+        the contract.
+    """
+    await require_scope("inference", api_key)
+    start_time = time.time()
+
+    model_info = model_registry.get_model(request.model)
+    if not model_info:
+        available = [m["id"] for m in model_registry.get_available_models()]
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": f"Model '{request.model}' is not currently loaded or cached",
+                "available_models": available,
+                "hint": "Call GET /v1/models to see available models, or POST /admin/models/download to download new ones",
+            },
         )
-    except Exception:
-        backend_manager.release_reserved_backend(backend_reservation)
-        raise
-    release_on_exit = True
+    if model_info.get("lazy_load") and model_info.get("status") == "cached":
+        logger.info(f"Lazy-loading cached model: {request.model}")
+        success = await backend_manager.load_ollama_model(request.model)
+        if not success:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": f"Failed to load model '{request.model}'",
+                    "hint": "The model may be too large or Ollama may be unavailable",
+                },
+            )
+        model_info = model_registry.get_model(request.model)
 
-    # Check token quota
-    try:
-        quota_ok = await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"])
-    except Exception:
-        await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
-        backend_manager.release_reserved_backend(backend_reservation)
-        raise
-    if not quota_ok:
-        await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
-        backend_manager.release_reserved_backend(backend_reservation)
-        REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
-        raise HTTPException(status_code=429, detail="Daily token quota exceeded")
+    model = model_info.get("name", request.model)
+    key_config = await _load_key_config(api_key)
+    estimated_prompt_tokens = _estimate_message_tokens(request.messages)
 
-    # Build request data - exclude None values to avoid backend parse errors
     data = {
         "model": model,
         "messages": [m.model_dump(exclude_none=True) for m in request.messages],
@@ -2579,89 +3168,83 @@ async def chat_completions(
     if request.stop:
         data["stop"] = request.stop
 
-    try:
-        if request.stream:
-            # Streaming response - backend info is injected into SSE events
-            stream_gen, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/chat/completions", model, data, stream=True,
-                pre_acquired_backend=backend_reservation,
-            )
-            backend_owned_by_handler = False
+    async with await acquire_request_leases(
+        model=model,
+        api_key=api_key,
+        key_config=key_config,
+        endpoint="chat",
+        priority=priority,
+        estimated_prompt_tokens=estimated_prompt_tokens,
+    ) as leases:
+        quota_ok = await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"])
+        if not quota_ok:
+            REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
+            raise HTTPException(status_code=429, detail="Daily token quota exceeded")
 
-            async def stream_generator():
+        if request.stream:
+            bucket = leases.bucket
+            backend_info = leases.backend_info
+            upstream = backend_manager.stream(leases.backend, "/v1/chat/completions", data)
+            # Ownership transfers to the generator — its finally is now the
+            # single release point.
+            leases.detach()
+
+            async def stream_generator(_leases=leases, _upstream=upstream):
+                _leases.rebind_to_current_task()
                 total_output_tokens = 0
                 try:
-                    async for chunk in stream_gen:
+                    async for chunk in _upstream:
                         yield chunk
-                        # Rough token counting from SSE data
                         if b'"content":' in chunk:
                             total_output_tokens += 1
-
-                    # Track usage after streaming completes
-                    input_tokens = sum(len(m.content.split()) for m in request.messages) * 2  # Rough estimate
+                    input_tokens = sum(
+                        len(m.content.split()) for m in request.messages if m.content
+                    ) * 2
                     await postgres_client.add_token_usage(api_key, input_tokens, total_output_tokens)
                     TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
                     TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
                 finally:
-                    # Close in its own try so a close-error never blocks rate_limiter.release.
-                    # The backend slot is released inside _stream_request.finally via aclose().
-                    try:
-                        await stream_gen.aclose()
-                    except Exception as _close_err:
-                        logger.warning("Error closing backend stream: %s", _close_err)
-                    await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
+                    await _leases.release()
 
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
-            release_on_exit = False
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
                 headers={
                     "X-Priority": priority,
                     "X-Backend": backend_info.get("backend", "unknown"),
-                }
+                },
             )
-        else:
-            # Non-streaming response
-            response, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/chat/completions", model, data,
-                pre_acquired_backend=backend_reservation,
+
+        # Non-streaming path — RequestLeases.__aexit__ releases on every exit.
+        try:
+            response = await backend_manager.forward(
+                leases.backend, "POST", "/v1/chat/completions", data,
             )
-            backend_owned_by_handler = False
+        except httpx.HTTPError as e:
+            REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
+            logger.error(f"Backend error: {e}")
+            raise HTTPException(status_code=503, detail="Backend service unavailable")
 
-            if response.status_code != 200:
-                REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
-                raise HTTPException(status_code=response.status_code, detail=response.text)
+        if response.status_code != 200:
+            REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
+            raise HTTPException(status_code=response.status_code, detail=response.text)
 
-            result = response.json()
+        result = response.json()
+        result["system_fingerprint"] = leases.bucket
 
-            # Enrich response with backend info (OpenAI-compatible)
-            result["system_fingerprint"] = backend_info.get("backend", "unknown")
+        usage = result.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
+        await redis_client.add_tpm_usage(api_key, output_tokens, bucket=leases.bucket)
+        TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
+        TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
 
-            # Track token usage
-            usage = result.get("usage", {})
-            input_tokens = usage.get("prompt_tokens", 0)
-            output_tokens = usage.get("completion_tokens", 0)
-            await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
-            await redis_client.add_tpm_usage(api_key, output_tokens, bucket=limit_bucket)  # charge actual output tokens to TPM window
-            TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
-            TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
-
-            duration = time.time() - start_time
-            REQUEST_DURATION.labels(model=model, priority=priority, endpoint="chat").observe(duration)
-            REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
-
-            return result
-
-    except httpx.HTTPError as e:
-        REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="chat").inc()
-        logger.error(f"Backend error: {e}")
-        raise HTTPException(status_code=503, detail="Backend service unavailable")
-    finally:
-        if release_on_exit:
-            await rate_limiter.release(api_key, "chat", limit_bucket=limit_bucket)
-        if backend_owned_by_handler:
-            backend_manager.release_reserved_backend(backend_reservation)
+        duration = time.time() - start_time
+        REQUEST_DURATION.labels(model=model, priority=priority, endpoint="chat").observe(duration)
+        REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
+        return result
 
 
 @app.post("/v1/completions")
@@ -2673,34 +3256,8 @@ async def completions(
     """OpenAI-compatible completions endpoint."""
     start_time = time.time()
     model = config.MODEL_ALIASES.get(request.model, request.model)
-    backend_reservation = await backend_manager.reserve_backend(model)
-    limit_bucket = backend_reservation["backend"]
-    backend_owned_by_handler = True
-
-    # Get key config - Redis cache first, Postgres fallback
-    key_config = (
-        await redis_client.get_api_key_config(api_key)
-        or await postgres_client.get_api_key_config(api_key)
-        or {
-            "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
-            "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
-            "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
-        }
-    )
-
-    # Estimate prompt tokens
+    key_config = await _load_key_config(api_key)
     estimated_prompt_tokens = int(len(request.prompt.split()) * 1.3)
-
-    # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
-    try:
-        await rate_limiter.check_and_acquire(
-            api_key, key_config, estimated_prompt_tokens, "completions", model, priority,
-            limit_bucket=limit_bucket,
-        )
-    except Exception:
-        backend_manager.release_reserved_backend(backend_reservation)
-        raise
-    release_on_exit = True
 
     data = {
         "model": model,
@@ -2710,58 +3267,52 @@ async def completions(
         "stream": request.stream,
     }
 
-    try:
+    async with await acquire_request_leases(
+        model=model,
+        api_key=api_key,
+        key_config=key_config,
+        endpoint="completions",
+        priority=priority,
+        estimated_prompt_tokens=estimated_prompt_tokens,
+    ) as leases:
         if request.stream:
-            stream_gen, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/completions", model, data, stream=True,
-                pre_acquired_backend=backend_reservation,
-            )
-            backend_owned_by_handler = False
+            backend_info = leases.backend_info
+            upstream = backend_manager.stream(leases.backend, "/v1/completions", data)
+            leases.detach()
 
-            async def stream_generator():
+            async def stream_generator(_leases=leases, _upstream=upstream):
+                _leases.rebind_to_current_task()
                 try:
-                    async for chunk in stream_gen:
+                    async for chunk in _upstream:
                         yield chunk
                 finally:
-                    try:
-                        await stream_gen.aclose()
-                    except Exception as _close_err:
-                        logger.warning("Error closing backend stream: %s", _close_err)
-                    await rate_limiter.release(api_key, "completions", limit_bucket=limit_bucket)
+                    await _leases.release()
 
-            release_on_exit = False
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
-                headers={"X-Backend": backend_info.get("backend", "unknown")}
+                headers={"X-Backend": backend_info.get("backend", "unknown")},
             )
-        else:
-            response, backend_info = await backend_manager.forward_request(
-                "POST", "/v1/completions", model, data,
-                pre_acquired_backend=backend_reservation,
+
+        try:
+            response = await backend_manager.forward(
+                leases.backend, "POST", "/v1/completions", data,
             )
-            backend_owned_by_handler = False
+        except httpx.HTTPError:
+            REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="completions").inc()
+            raise HTTPException(status_code=503, detail="Backend service unavailable")
 
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail=response.text)
+        if response.status_code != 200:
+            REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="completions").inc()
+            raise HTTPException(status_code=response.status_code, detail=response.text)
 
-            result = response.json()
-            result["system_fingerprint"] = backend_info.get("backend", "unknown")
+        result = response.json()
+        result["system_fingerprint"] = leases.bucket
 
-            duration = time.time() - start_time
-            REQUEST_DURATION.labels(model=model, priority=priority, endpoint="completions").observe(duration)
-            REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="completions").inc()
-
-            return result
-
-    except httpx.HTTPError as e:
-        REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="completions").inc()
-        raise HTTPException(status_code=503, detail="Backend service unavailable")
-    finally:
-        if release_on_exit:
-            await rate_limiter.release(api_key, "completions", limit_bucket=limit_bucket)
-        if backend_owned_by_handler:
-            backend_manager.release_reserved_backend(backend_reservation)
+        duration = time.time() - start_time
+        REQUEST_DURATION.labels(model=model, priority=priority, endpoint="completions").observe(duration)
+        REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="completions").inc()
+        return result
 
 
 @app.post("/v1/embeddings")
@@ -2770,11 +3321,14 @@ async def embeddings(
     api_key: str = Depends(get_api_key),
     priority: str = Depends(get_priority),
 ):
-    """OpenAI-compatible embeddings endpoint - requires \'inference\' scope."""
+    """OpenAI-compatible embeddings endpoint - requires 'inference' scope.
+
+    Embeddings live in their own bucket, so concurrency cannot consume vLLM
+    slots. We acquire the per-key (embedding) slot first; the backend slot
+    is only acquired if there are cache misses that need a real forward."""
     await require_scope("inference", api_key)
     start_time = time.time()
 
-    # Resolve model - check if it exists
     model_info = model_registry.get_model(request.model)
     if not model_info:
         available = [m["id"] for m in model_registry.get_available_models() if m.get("backend") == "embedding"]
@@ -2783,8 +3337,8 @@ async def embeddings(
             detail={
                 "error": f"Embedding model '{request.model}' is not currently loaded",
                 "available_models": available,
-                "hint": "Call GET /v1/models first to see available models"
-            }
+                "hint": "Call GET /v1/models first to see available models",
+            },
         )
     if model_info.get("backend") != "embedding":
         available = [m["id"] for m in model_registry.get_available_models() if m.get("backend") == "embedding"]
@@ -2793,43 +3347,22 @@ async def embeddings(
             detail={
                 "error": f"Model '{request.model}' is not an embedding model",
                 "available_embedding_models": available,
-            }
+            },
         )
 
     model = model_info.get("name", request.model)
-    limit_bucket = "embedding"
+    bucket = "embedding"
+    key_config = await _load_key_config(api_key)
 
-    # Get key config - Redis cache first, Postgres fallback
-    key_config = (
-        await redis_client.get_api_key_config(api_key)
-        or await postgres_client.get_api_key_config(api_key)
-        or {
-            "requests_per_minute": config.DEFAULT_REQUESTS_PER_MINUTE,
-            "tokens_per_day": config.DEFAULT_TOKENS_PER_DAY,
-            "tokens_per_minute": config.DEFAULT_TOKENS_PER_MINUTE,
-        }
-    )
-
-    # Estimate prompt tokens
     input_list = request.input if isinstance(request.input, list) else [request.input]
     estimated_prompt_tokens = int(sum(len(t.split()) * 1.3 for t in input_list))
 
-    # Rate limit checks: concurrency → RPM → TPM (immediate 429, no server-side queuing)
-    await rate_limiter.check_and_acquire(
-        api_key, key_config, estimated_prompt_tokens, "embeddings", model, priority,
-        limit_bucket=limit_bucket,
-    )
-
-    backend_reservation = None
-    backend_owned_by_handler = False
-    try:
-        # Normalize input to list
-        input_texts = request.input if isinstance(request.input, list) else [request.input]
-
-        # Check cache for embeddings
+    async with await rate_limiter.acquire_key_slot(
+        api_key, key_config, bucket, "embeddings", model, priority, estimated_prompt_tokens,
+    ):
         cache_hits = []
         cache_misses = []
-        for i, text in enumerate(input_texts):
+        for i, text in enumerate(input_list):
             cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
             cached = await redis_client.get_cached_response(cache_key)
             if cached:
@@ -2837,46 +3370,31 @@ async def embeddings(
             else:
                 cache_misses.append((i, text))
 
-        # Process cache misses
-        backend_info = {"backend": "embedding"}
         if cache_misses:
-            backend_reservation = await backend_manager.reserve_backend(model)
-            backend_owned_by_handler = True
-            data = {
-                "model": model,
-                "input": [text for _, text in cache_misses],
-            }
-
-            try:
-                response, backend_info = await backend_manager.forward_request(
-                    "POST", "/v1/embeddings", model, data,
-                    pre_acquired_backend=backend_reservation,
-                )
-                backend_owned_by_handler = False
+            data = {"model": model, "input": [text for _, text in cache_misses]}
+            async with await backend_manager.acquire_slot(model) as backend_lease:
+                try:
+                    response = await backend_manager.forward(backend_lease, "POST", "/v1/embeddings", data)
+                except httpx.HTTPError:
+                    REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
+                    raise HTTPException(status_code=503, detail="Backend service unavailable")
 
                 if response.status_code != 200:
+                    REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
                     raise HTTPException(status_code=response.status_code, detail=response.text)
 
                 result = response.json()
-
-                # Cache new embeddings
                 for (orig_idx, text), emb_data in zip(cache_misses, result.get("data", [])):
                     cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
                     await redis_client.cache_response(cache_key, json.dumps(emb_data), ttl=86400)
                     cache_hits.append((orig_idx, emb_data))
 
-            except httpx.HTTPError as e:
-                REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
-                raise HTTPException(status_code=503, detail="Backend service unavailable")
-
-        # Sort by original index
         cache_hits.sort(key=lambda x: x[0])
         embeddings_data = [emb for _, emb in cache_hits]
 
-        # Estimate token usage
-        total_tokens = sum(len(text.split()) * 2 for text in input_texts)
+        total_tokens = sum(len(text.split()) * 2 for text in input_list)
         await postgres_client.add_token_usage(api_key, total_tokens, 0)
-        await redis_client.add_tpm_usage(api_key, total_tokens, bucket=limit_bucket)
+        await redis_client.add_tpm_usage(api_key, total_tokens, bucket=bucket)
         TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
 
         duration = time.time() - start_time
@@ -2887,12 +3405,8 @@ async def embeddings(
             "object": "list",
             "data": embeddings_data,
             "model": model,
-            "usage": {"prompt_tokens": total_tokens, "total_tokens": total_tokens}
+            "usage": {"prompt_tokens": total_tokens, "total_tokens": total_tokens},
         }
-    finally:
-        await rate_limiter.release(api_key, "embeddings", limit_bucket=limit_bucket)
-        if backend_owned_by_handler:
-            backend_manager.release_reserved_backend(backend_reservation)
 
 
 @app.get("/v1/usage")
@@ -5072,7 +5586,7 @@ async def admin_reset_rate_limiter(request: Request, admin_key: str = Depends(ge
     result = await rate_limiter.reset(target_api_key, target_bucket)
     backend_result = None
     if not target_api_key:
-        backend_result = backend_manager.reset(target_backend, target_backend_key)
+        backend_result = await backend_manager.reset(target_backend, target_backend_key)
     return {
         "status": "reset",
         "scope": "api_key" if target_api_key else "gateway_process",
@@ -5109,7 +5623,11 @@ async def admin_download_model(request: Request, api_key: str = Depends(get_api_
 
 @app.delete("/admin/models/{model_name}")
 async def admin_delete_model(model_name: str, api_key: str = Depends(get_api_key)):
-    """Delete a cached model from Ollama."""
+    """Delete a cached model from Ollama.
+
+    Only the Ollama mapping is removed from the registry — if the same model
+    name is also served by vLLM or llama.cpp, those mappings survive so the
+    model remains routable on its other backends."""
     await require_scope("admin", api_key)
     try:
         resp = await backend_manager.http_client.delete(
@@ -5117,7 +5635,7 @@ async def admin_delete_model(model_name: str, api_key: str = Depends(get_api_key
             json={"name": model_name}
         )
         if resp.status_code == 200:
-            model_registry.unregister_model(model_name)
+            model_registry.unregister_model(model_name, backend="ollama")
             if model_name in model_registry.cached_models:
                 del model_registry.cached_models[model_name]
             return {"status": "deleted", "model": model_name}

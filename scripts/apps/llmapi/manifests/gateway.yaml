@@ -23,8 +23,9 @@ data:
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
   AUTO_DOWNLOAD: "false"
-  # Horizontal scaling: route to least-loaded backend (GPU1 -> GPU2 -> CPU)
-  # When enabled, all chat backends are treated as equivalent
+  # Horizontal scaling: route to the least-loaded backend that serves the model.
+  # Same model on vLLM + llama.cpp => GPU first, then CPU spillover.
+  # vLLM-only model => never spills to llama.cpp; returns 429 when GPUs are full.
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
   MAX_INFLIGHT_PER_VLLM_BACKEND: "1"
@@ -37,8 +38,24 @@ data:
   CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
   CONCURRENCY_PER_LLAMACPP_REPLICA: "1"
   CONCURRENCY_PER_OLLAMA_REPLICA: "1"
+  # NOTE: The TTL knobs below are LEGACY. The slot-based limiter introduced in
+  # the gateway redesign no longer prunes leases on a wall-clock timer; leases
+  # are tied to the lifetime of the owning asyncio.Task and reaped by the
+  # SLOT_RECONCILE_INTERVAL_SECONDS loop. Kept here as no-ops for rollback.
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
-  BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "120"
+  BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
+  # New: how often the task-liveness reaper runs (seconds). 5s is the sweet
+  # spot — fast enough that a leaked slot self-heals before retries pile up,
+  # slow enough that the lock-contention overhead is negligible.
+  SLOT_RECONCILE_INTERVAL_SECONDS: "5"
+  # Optional: scrape vLLM's /metrics every N seconds and log a warning if the
+  # gateway's slot count disagrees with vllm:num_requests_running. Audit only;
+  # gateway is still the source of truth. Set to "false" to disable.
+  RECONCILE_VLLM_METRICS: "true"
+  RECONCILE_VLLM_METRICS_INTERVAL_SECONDS: "15"
+  # Upstream HTTP timeout for forwarded inference requests. Clients should set
+  # their own read timeout to >= this value.
+  BACKEND_HTTP_TIMEOUT_SECONDS: "300"
   DEFAULT_TOKENS_PER_MINUTE: "200000"
   MIN_TOKENS_PER_MINUTE: "200000"
   DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE: "60"

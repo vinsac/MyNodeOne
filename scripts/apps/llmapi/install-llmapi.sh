@@ -532,11 +532,29 @@ if [ -n "$LLAMACPP_MODEL_FILE" ]; then
     LLAMACPP_MODEL_NAME=$(echo "$LLAMACPP_MODEL_FILE" | sed 's/\.gguf$//' | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 fi
 
+# If the selected CPU GGUF is the matching quantized build of the selected
+# vLLM model, expose it under the SAME logical API name. The gateway's
+# multi-backend router only spills GPU traffic to llama.cpp when the registry
+# says both backend types serve the exact same model name.
+case "$LLAMACPP_MODEL_FILE:$VLLM_MODEL_NAME" in
+    Qwen3-14B-Q4_K_M.gguf:qwen3-14b|Qwen3-14B-Q8_0.gguf:qwen3-14b)
+        LLAMACPP_MODEL_NAME="$VLLM_MODEL_NAME"
+        ;;
+    Ministral-3-14B-Instruct-2512-Q4_K_M.gguf:ministral3-14b)
+        LLAMACPP_MODEL_NAME="$VLLM_MODEL_NAME"
+        ;;
+    Llama-3.2-3B-Instruct-Q8_0.gguf:llama3.2-3b)
+        LLAMACPP_MODEL_NAME="$VLLM_MODEL_NAME"
+        ;;
+esac
+
 # Horizontal scaling info
 if [ "$DEPLOY_MODE" = "1" ] && [ "$GPU_AVAILABLE" = true ]; then
     echo -e "${GREEN}✓ Horizontal scaling enabled${NC}"
-    echo "   Requests route to: GPU → CPU (least-loaded backend)"
-    echo "   Tip: Use same model family on GPU and CPU for consistent responses"
+    echo "   Requests route to: GPU → CPU only when both backends expose the same model name"
+    echo "   vLLM API model: $VLLM_MODEL_NAME"
+    echo "   llama.cpp API model: ${LLAMACPP_MODEL_NAME:-llama-cpu}"
+    echo "   Tip: matching names enable spillover; different names keep pools isolated"
     echo ""
 fi
 
@@ -983,24 +1001,33 @@ data:
   OLLAMA_URL: "http://ollama:11434"
   LAZY_LOAD_ENABLED: "true"
   LAZY_LOAD_BACKEND: "ollama"
-  # Horizontal scaling: route to least-loaded backend (GPU → CPU)
+  # Horizontal scaling: route to the least-loaded backend that serves the model.
+  # Same model on vLLM + llama.cpp => GPU first, then CPU spillover.
+  # vLLM-only model => never spills to llama.cpp; returns 429 when GPUs are full.
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
   MAX_INFLIGHT_PER_VLLM_BACKEND: "1"
   MAX_INFLIGHT_PER_EMBEDDING_BACKEND: "4"
   MAX_INFLIGHT_PER_LLAMACPP_BACKEND: "1"
   MAX_INFLIGHT_PER_OLLAMA_BACKEND: "1"
-  # Rate limiting: concurrency cap scales automatically with healthy GPU count
-  # CONCURRENCY_PER_GPU × healthy_gpu_count = per-key concurrency cap
+  # Rate limiting: per-key cap scales with configured capacity, not transient health.
+  # CONCURRENCY_PER_KEY_DEFAULT × len(VLLM_URLS) = default vLLM per-key cap
   CONCURRENCY_PER_GPU: "1"
   CONCURRENCY_PER_KEY_DEFAULT: "1"
   # Embeddings have a separate limiter pool and do not consume GPU/chat slots
   CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
   CONCURRENCY_PER_LLAMACPP_REPLICA: "1"
   CONCURRENCY_PER_OLLAMA_REPLICA: "1"
-  # Self-heal leaked in-flight slots after this many seconds
+  # Legacy TTL knobs: no longer used by the slot-based limiter, kept as no-ops for rollback.
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
   BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
+  # Slot/Lease reconciler: reaps leases whose owning asyncio.Task has ended.
+  SLOT_RECONCILE_INTERVAL_SECONDS: "5"
+  # Optional vLLM /metrics drift audit (log-only; gateway remains source of truth).
+  RECONCILE_VLLM_METRICS: "true"
+  RECONCILE_VLLM_METRICS_INTERVAL_SECONDS: "15"
+  # Upstream HTTP timeout for forwarded inference requests.
+  BACKEND_HTTP_TIMEOUT_SECONDS: "300"
   # Token-per-minute limit (TPM) - more accurate than RPM for LLMs
   # A 4096-token request costs ~40x more than a 100-token request
   DEFAULT_TOKENS_PER_MINUTE: "200000"

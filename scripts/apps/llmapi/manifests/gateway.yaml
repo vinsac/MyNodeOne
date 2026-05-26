@@ -1,3 +1,7 @@
+# NOTE: The gateway-code ConfigMap must be created separately from gateway/main.py
+# Run: kubectl create configmap gateway-code -n llmapi --from-file=gateway/main.py
+# This is handled automatically by install-llmapi.sh for fresh installs
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:

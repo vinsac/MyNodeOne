@@ -1006,14 +1006,14 @@ data:
   # vLLM-only model => never spills to llama.cpp; returns 429 when GPUs are full.
   HORIZONTAL_SCALING: "true"
   MAX_INFLIGHT_PER_BACKEND: "32"
-  MAX_INFLIGHT_PER_VLLM_BACKEND: "4"
+  MAX_INFLIGHT_PER_VLLM_BACKEND: "2"
   MAX_INFLIGHT_PER_EMBEDDING_BACKEND: "4"
   MAX_INFLIGHT_PER_LLAMACPP_BACKEND: "1"
   MAX_INFLIGHT_PER_OLLAMA_BACKEND: "1"
   # Rate limiting: per-key cap scales with configured capacity, not transient health.
   # CONCURRENCY_PER_KEY_DEFAULT × len(VLLM_URLS) = default vLLM per-key cap
-  CONCURRENCY_PER_GPU: "4"
-  CONCURRENCY_PER_KEY_DEFAULT: "4"
+  CONCURRENCY_PER_GPU: "2"
+  CONCURRENCY_PER_KEY_DEFAULT: "2"
   # Embeddings have a separate limiter pool and do not consume GPU/chat slots
   CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
   CONCURRENCY_PER_LLAMACPP_REPLICA: "1"

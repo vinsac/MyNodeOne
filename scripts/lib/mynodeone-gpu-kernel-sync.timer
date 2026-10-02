@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily MyNodeOne GPU driver / kernel sync
+
+[Timer]
+# Shortly after boot (heals a kernel/driver mismatch right away)...
+OnBootSec=3min
+# ...and daily (upgrades kernel + driver together once both are available)
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

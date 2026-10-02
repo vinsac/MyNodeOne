@@ -1,3 +1,26 @@
+###############################################################################
+# GPU setup (driver, container toolkit, device plugin) - used by both the
+# control-plane bootstrap and add-worker-node.sh, so every GPU node gets it.
+#
+# KNOWN PITFALL: KERNEL UPDATES BREAK THE GPU (read before changing this file)
+# ----------------------------------------------------------------------------
+# Ubuntu's NVIDIA driver is a prebuilt module tied to ONE kernel build
+# (linux-modules-nvidia-<ver>-<kernel>-generic). unattended-upgrades updates
+# the kernel independently and may leave the matching nvidia module behind.
+# Everything keeps working until the next reboot, then: nvidia-smi fails,
+# node shows nvidia.com/gpu: 0, nvidia-device-plugin CrashLoops, GPU pods
+# (vLLM) can't schedule and the GPU vanishes from the llmapi dashboard.
+# Also: if host userspace NVIDIA libs get upgraded while an older kernel
+# module is loaded you get "Driver/library version mismatch" and containers
+# (which receive the host libs via nvidia-container-toolkit at start) can't
+# see the driver until reboot + pod restart.
+#
+# Mitigation, installed by install_gpu_kernel_sync() below: hold the kernel
+# meta-packages and run lib/gpu-kernel-sync.sh (daily + at boot) which heals
+# a broken driver and upgrades kernel+driver together once both exist.
+# Details: scripts/lib/gpu-kernel-sync.sh
+###############################################################################
+
 # Source shared utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/project-root.sh" 2>/dev/null || source "$SCRIPT_DIR/../lib/project-root.sh"
@@ -175,6 +198,42 @@ install_driver_rhel() {
     
     REBOOT_REQUIRED=true
     log_success "NVIDIA driver installed"
+}
+
+# Protect the node from kernel/driver mismatch (see header comment).
+# Installs the sync script + systemd timer and applies the kernel hold now.
+install_gpu_kernel_sync() {
+    if ! command -v apt-get &>/dev/null; then
+        log_info "Non-apt system - skipping GPU kernel/driver sync setup"
+        return 0
+    fi
+
+    log_step "Protecting GPU driver from kernel-update mismatch..."
+
+    local src="$PROJECT_ROOT/scripts/lib"
+    install -m 0755 "$src/gpu-kernel-sync.sh" /usr/local/sbin/mynodeone-gpu-kernel-sync
+    install -m 0644 "$src/mynodeone-gpu-kernel-sync.service" /etc/systemd/system/mynodeone-gpu-kernel-sync.service
+    install -m 0644 "$src/mynodeone-gpu-kernel-sync.timer" /etc/systemd/system/mynodeone-gpu-kernel-sync.timer
+
+    mkdir -p /etc/mynodeone
+    if [ ! -f /etc/mynodeone/gpu-kernel.conf ]; then
+        cat > /etc/mynodeone/gpu-kernel.conf <<'CONF'
+# MyNodeOne GPU kernel/driver sync settings
+# Reboot automatically after kernel + NVIDIA driver were upgraded together.
+# Default false: a reboot interrupts all workloads on this node.
+GPU_KERNEL_AUTO_REBOOT=false
+CONF
+    fi
+
+    systemctl daemon-reload
+    systemctl enable --now mynodeone-gpu-kernel-sync.timer >/dev/null 2>&1 || \
+        log_warn "Could not enable mynodeone-gpu-kernel-sync.timer"
+
+    # Apply the kernel hold immediately (don't wait for the timer)
+    /usr/local/sbin/mynodeone-gpu-kernel-sync --hold-only || \
+        log_warn "Kernel hold not applied - run: sudo mynodeone-gpu-kernel-sync"
+
+    log_success "Kernel is held until a matching NVIDIA driver is available (auto-upgrade via mynodeone-gpu-kernel-sync.timer)"
 }
 
 # Install NVIDIA Container Toolkit
@@ -515,6 +574,9 @@ setup_gpu() {
     
     # Install driver
     install_nvidia_driver
+
+    # Keep kernel and driver in lockstep (must happen before any reboot)
+    install_gpu_kernel_sync
     
     # Check if reboot is needed before continuing
     if [[ "$REBOOT_REQUIRED" == "true" ]] && ! is_driver_installed; then

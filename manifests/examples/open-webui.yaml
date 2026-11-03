@@ -211,14 +211,14 @@ data:
                     <h3 style="margin-bottom: 10px;">📦 Deploy Ollama + Open WebUI</h3>
                     <p>Run these commands on your control plane:</p>
                     <div class="code">
-# Deploy Ollama (local LLM runtime)<br>
-kubectl apply -f manifests/ai/ollama.yaml<br>
-<br>
-# Deploy Open WebUI (ChatGPT-like interface)<br>
-kubectl apply -f manifests/ai/open-webui.yaml<br>
-<br>
-# Check deployment status<br>
-kubectl get pods -n ai-apps
+                    # Deploy Ollama (local LLM runtime)<br>
+                    kubectl apply -f manifests/ai/ollama.yaml<br>
+                    <br>
+                    # Deploy Open WebUI (ChatGPT-like interface)<br>
+                    kubectl apply -f manifests/ai/open-webui.yaml<br>
+                    <br>
+                    # Check deployment status<br>
+                    kubectl get pods -n ai-apps
                     </div>
                 </div>
 

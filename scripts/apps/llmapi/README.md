@@ -238,17 +238,19 @@ cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope - for Prometheus
 
 ## Public and tailnet access
 
-The public route on the VPS blocks `/admin`, `/docs`, `/redoc` and `/openapi.json`, including anything under them. Reach `/admin` and `/openapi.json` over the tailnet, at the LoadBalancer IP:
+`/admin` and `/openapi.json` are currently reachable on the public address, and over the tailnet at the LoadBalancer IP:
 
 ```bash
 kubectl get svc -n llmapi llmapi    # EXTERNAL-IP
 ```
 
+**To do:** move `/admin` and `/openapi.json` behind the VPN. Use a stable tailnet name for access, not the LoadBalancer or Tailscale IP, which can change when a machine is reinstalled. Then set `public_blocked_paths` on the `llmapi` registry entry to `["/admin", "/openapi.json"]`.
+
 The gateway doesn't serve `/docs` and `/redoc` at all, on any address: they're disabled. `API-REFERENCE.md` takes their place.
 
 ## Admin Interface
 
-**Access:** `http://<loadbalancer-ip>/admin`, over the tailnet. The public address blocks it.
+**Access:** `/admin` on the public address, or `http://<loadbalancer-ip>/admin` over the tailnet.
 
 **Authentication:** API key with `admin` scope
 ```bash

@@ -108,7 +108,7 @@ setup() {
 # Runs a command in the stubbed environment. Output goes to $OUT, status to $RC.
 run() {
     RC=0
-    env -u SUDO_USER -u PROJECT_ROOT -u CLUSTER_DOMAIN -u API_TOKEN -u CONTROL_PLANE_IP \
+    env -u SUDO_USER -u PROJECT_ROOT -u CLUSTER_DOMAIN -u API_TOKEN -u CONTROL_PLANE_IP -u INVOCATION_ID \
         PATH="$T/bin:/usr/local/bin:/usr/bin:/bin" \
         HOME="$T/home" \
         ACTUAL_HOME="$T/home" \
@@ -213,8 +213,8 @@ test_contract_agent_installs_live_route() {
     serve live
     run bash "$REPO/scripts/lib/node-agent.sh" sync
     check "exits 0" equals "$RC" 0
-    check "real rule installed, paths blocked" contains "$T/traefik/mynodeone-routes.yml" \
-        'Host(`llmapi.example.com`) && !PathPrefix(`/admin`) && !PathPrefix(`/docs`) && !PathPrefix(`/redoc`) && !PathPrefix(`/openapi.json`)'
+    check "real rule installed" contains "$T/traefik/mynodeone-routes.yml" 'Host(`llmapi.example.com`)'
+    check "nothing blocked by default" lacks "$T/traefik/mynodeone-routes.yml" '!PathPrefix'
     check "backend installed" contains "$T/traefik/mynodeone-routes.yml" 'http://100.72.41.10:80'
 }
 
@@ -307,7 +307,7 @@ check_old_agent_on_new_server() {
     serve live
     run bash "$agent" sync
     check "vps, live: no error" equals "$RC" 0
-    check "vps, live: blocked paths reach Traefik" contains "$T/traefik/mynodeone-routes.yml" '!PathPrefix(`/admin`)'
+    check "vps, live: rule reaches Traefik" contains "$T/traefik/mynodeone-routes.yml" 'Host(`llmapi.example.com`)'
 
     write_agent_env laptop
     printf '127.0.0.1 localhost\n100.64.1.5 chat.testcluster.local chat\n' >"$T/hosts"
@@ -827,12 +827,13 @@ test_public_ordinary_service_needs_no_flag() {
 # S21 edge: blocked paths in the shell generators
 ###############################################################################
 
-test_export_blocks_llmapi_paths_by_default() {
+test_export_leaves_llmapi_paths_open_by_default() {
     set_cm service-registry services.json '{"llmapi/llmapi":{"namespace":"llmapi","service":"llmapi","ip":"100.64.1.5","port":80,"local_name":"llmapi","legacy_key":"llmapi","public":true}}'
     set_cm domain-registry routing.json "$LIVE_ROUTING"
     run bash "$REPO/scripts/domains/multi-domain-registry.sh" export-vps-routes 100.64.0.2 100.64.0.9
     check "exits 0" equals "$RC" 0
-    check "rule excludes blocked paths" contains "$OUT" 'Host(`api.example.com`) && !PathPrefix(`/admin`) && !PathPrefix(`/docs`) && !PathPrefix(`/redoc`) && !PathPrefix(`/openapi.json`)'
+    check "rule has no blocked paths" contains "$OUT" 'rule: "Host(`api.example.com`)"'
+    check "nothing excluded" lacks "$OUT" '!PathPrefix'
     check "router name has no slash" lacks "$OUT" 'llmapi/llmapi'
     check "keeps the live service name" contains "$OUT" 'llmapi-service:'
     check "backend present" contains "$OUT" 'http://100.64.1.5:80'
@@ -843,7 +844,7 @@ test_export_honours_field_and_drops_malformed() {
     set_cm domain-registry routing.json '{"a/ok":{"expose":["ok.example.com"],"vps_nodes":["100.64.0.2"]},"a/off":{"expose":["off.example.com"],"vps_nodes":["100.64.0.2"]},"a/bad":{"expose":["bad.example.com"],"vps_nodes":["100.64.0.2"]},"a/priv":{"expose":["priv.example.com"],"vps_nodes":["100.64.0.2"]}}'
     run bash "$REPO/scripts/domains/multi-domain-registry.sh" export-vps-routes 100.64.0.2 100.64.0.9
     check "field is used" contains "$OUT" 'Host(`ok.example.com`) && !PathPrefix(`/internal`)'
-    check "explicit [] turns the default off" contains "$OUT" 'rule: "Host(`off.example.com`)"'
+    check "explicit [] blocks nothing" contains "$OUT" 'rule: "Host(`off.example.com`)"'
     check "malformed entry dropped" lacks "$OUT" 'rule: "Host(`bad.example.com`)'
     check "private service not exported" lacks "$OUT" 'rule: "Host(`priv.example.com`)'
 }

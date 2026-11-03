@@ -377,16 +377,13 @@ sr_routing_promote_filter() {
 
 # sr_blocked_rule_suffix <entry-json> <key>
 # Prints the rule text excluding the entry's blocked paths from a public route.
-# Mirrors resolveBlockedPaths in cmd/config-api/main.go: public_blocked_paths wins,
-# [] turns the default off, llmapi blocks its admin and API-doc paths by default.
+# Mirrors resolveBlockedPaths in cmd/config-api/main.go: nothing is blocked unless the
+# entry sets public_blocked_paths.
 # Fails on a malformed field, so the caller can drop the route rather than publish
 # it without the block.
 sr_blocked_rule_suffix() {
-    jq -er --arg key "$2" '
-        ([.legacy_key, ($key | split("/") | last), .service, .namespace] | index("llmapi")) as $llmapi
-        | (if has("public_blocked_paths") then .public_blocked_paths
-           elif $llmapi != null then ["/admin", "/docs", "/redoc", "/openapi.json"]
-           else [] end)
+    jq -er '
+        (if has("public_blocked_paths") then .public_blocked_paths else [] end)
         | if type == "array" then . else error("public_blocked_paths is not an array") end
         | map(if type == "string" and test("\\A/[A-Za-z0-9._~/-]+\\z")
               then " && !PathPrefix(`\(.)`)"

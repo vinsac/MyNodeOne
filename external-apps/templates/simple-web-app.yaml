@@ -103,17 +103,17 @@ data:
         
         <h3>Deployment Pattern</h3>
         <div class="code">
-# 1. Deploy your app<br>
-kubectl apply -f your-app.yaml<br>
-<br>
-# 2. Register with MyNodeOne<br>
-bash register-external-app.sh \<br>
-&nbsp;&nbsp;--name myapp \<br>
-&nbsp;&nbsp;--subdomain myapp \<br>
-&nbsp;&nbsp;--namespace myapp \<br>
-&nbsp;&nbsp;--service myapp<br>
-<br>
-# 3. Access at http://myapp.mynodeone.local
+        # 1. Deploy your app<br>
+        kubectl apply -f your-app.yaml<br>
+        <br>
+        # 2. Register with MyNodeOne<br>
+        bash register-external-app.sh \<br>
+        &nbsp;&nbsp;--name myapp \<br>
+        &nbsp;&nbsp;--subdomain myapp \<br>
+        &nbsp;&nbsp;--namespace myapp \<br>
+        &nbsp;&nbsp;--service myapp<br>
+        <br>
+        # 3. Access at http://myapp.mynodeone.local
         </div>
         
         <h3>Infrastructure Provided by MyNodeOne</h3>

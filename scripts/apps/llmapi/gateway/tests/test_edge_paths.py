@@ -1,6 +1,7 @@
-"""Traefik blocks /admin, /docs, /redoc and /openapi.json by PathPrefix, which is case
-sensitive and doesn't see through an encoded slash. So these paths do reach the gateway,
-and only the router keeps them from the admin handlers, the admin UI and the schema.
+"""A public_blocked_paths entry makes Traefik block these paths by PathPrefix, which is
+case sensitive and doesn't see through an encoded slash. So these paths do reach the
+gateway, and only the router keeps them from the admin handlers, the admin UI and the
+schema.
 
 A real uvicorn on loopback with the h11 parser the lockfile installs, and a raw socket,
 as HTTP clients normalize paths and uvicorn's decoding is part of what's being pinned.

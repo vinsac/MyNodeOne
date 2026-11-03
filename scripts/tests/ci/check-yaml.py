@@ -18,14 +18,8 @@ import yaml
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 
-# Not valid YAML, so they can't be applied as they stand. In each, a ConfigMap holds an HTML
-# page as a block scalar, and the shell commands in its <div class="code"> start at
-# column 0, which ends the scalar early. To fix one, indent those lines with the rest
-# of the page, then remove it from here.
-EXPECTED_PARSE_FAILURES = {
-    "manifests/examples/open-webui.yaml": "unindented HTML in a ConfigMap, from line 214",
-    "external-apps/templates/simple-web-app.yaml": "unindented HTML in a ConfigMap, from line 106",
-}
+# Files expected not to parse, with the reason. None at the moment.
+EXPECTED_PARSE_FAILURES = {}
 
 # Parse fine but aren't Kubernetes objects, so there's nothing to validate.
 NOT_KUBERNETES = {

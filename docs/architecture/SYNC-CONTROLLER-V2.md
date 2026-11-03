@@ -203,10 +203,9 @@ replaces it once it is set. A bare `routing.json` key goes to the one public ser
 no record of its own that goes by that name; two claimants mean no route. Such a shared
 record stays bare through the migration, because only an operator can say whose it is.
 
-A route for `llmapi` excludes `/admin`, `/docs`, `/redoc` and `/openapi.json`, and any
-service can set its own list with a `public_blocked_paths` field in its registry entry
-(an empty list turns the `llmapi` default off). Tailnet clients using the LoadBalancer
-IP are not affected.
+Any service can exclude path prefixes from its public route with a `public_blocked_paths`
+field in its registry entry. Nothing is excluded by default, including for `llmapi`.
+Tailnet clients using the LoadBalancer IP are not affected.
 
 #### POST /api/v1/heartbeat
 

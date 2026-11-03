@@ -904,23 +904,12 @@ func buildDNSEntries(registry []registryEntry) []DNSEntry {
 	return entries
 }
 
-// defaultBlockedPaths applies to a service that has no public_blocked_paths field.
-// The LLM API gateway's admin UI and OpenAPI docs must not be on the public route.
-func defaultBlockedPaths(e registryEntry) []string {
-	for _, id := range []string{e.Name, e.LegacyKey, e.ServiceName, e.Namespace} {
-		if id == "llmapi" {
-			return []string{"/admin", "/docs", "/redoc", "/openapi.json"}
-		}
-	}
-	return nil
-}
-
-// resolveBlockedPaths returns the prefixes to exclude from a public route. An
-// explicit [] turns the default off. A malformed field is an error: the caller
-// drops the route rather than publish it without the block.
+// resolveBlockedPaths returns the prefixes to exclude from a public route. Nothing is
+// blocked unless the entry sets public_blocked_paths. A malformed field is an error:
+// the caller drops the route rather than publish it without the block.
 func resolveBlockedPaths(e registryEntry) ([]string, error) {
 	if !e.blockedSet {
-		return defaultBlockedPaths(e), nil
+		return nil, nil
 	}
 	list, ok := e.blockedRaw.([]interface{})
 	if !ok {

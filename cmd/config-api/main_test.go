@@ -501,7 +501,7 @@ func TestMigrationLeavesRenderedConfigIdentical(t *testing.T) {
 }
 
 func TestRouteRuleWithBlockedPaths(t *testing.T) {
-	llmapiBlock := "Host(`llmapi.example.com`) && !PathPrefix(`/admin`) && !PathPrefix(`/docs`) && !PathPrefix(`/redoc`) && !PathPrefix(`/openapi.json`)"
+	open := "Host(`llmapi.example.com`)"
 	svc := func(key, service, extra string) string {
 		return `{"` + key + `":{"local_name":"x","namespace":"ns","service":"` + service + `","ip":"100.64.0.1","port":80,"public":true` + extra + `}}`
 	}
@@ -513,11 +513,11 @@ func TestRouteRuleWithBlockedPaths(t *testing.T) {
 		routing  string
 		wantRule string // empty means no route at all
 	}{
-		{"llmapi old key gets default block", svc("llmapi", "llmapi", ""), routing("llmapi"), llmapiBlock},
-		{"llmapi namespaced gets default block", svc("ns/llmapi", "llmapi", ""), routing("ns/llmapi"), llmapiBlock},
-		{"explicit empty list turns the block off", svc("ns/llmapi", "llmapi", `,"public_blocked_paths":[]`), routing("ns/llmapi"), "Host(`llmapi.example.com`)"},
-		{"explicit list replaces the default", svc("ns/llmapi", "llmapi", `,"public_blocked_paths":["/internal"]`), routing("ns/llmapi"), "Host(`llmapi.example.com`) && !PathPrefix(`/internal`)"},
-		{"other services have no default block", svc("ns/app", "app", ""), routing("ns/app"), "Host(`llmapi.example.com`)"},
+		{"llmapi old key has no default block", svc("llmapi", "llmapi", ""), routing("llmapi"), open},
+		{"llmapi namespaced has no default block", svc("ns/llmapi", "llmapi", ""), routing("ns/llmapi"), open},
+		{"explicit empty list blocks nothing", svc("ns/llmapi", "llmapi", `,"public_blocked_paths":[]`), routing("ns/llmapi"), open},
+		{"llmapi can block its admin paths", svc("ns/llmapi", "llmapi", `,"public_blocked_paths":["/admin","/openapi.json"]`), routing("ns/llmapi"), "Host(`llmapi.example.com`) && !PathPrefix(`/admin`) && !PathPrefix(`/openapi.json`)"},
+		{"other services have no default block", svc("ns/app", "app", ""), routing("ns/app"), open},
 		{"other services can opt in", svc("ns/app", "app", `,"public_blocked_paths":["/admin"]`), routing("ns/app"), "Host(`llmapi.example.com`) && !PathPrefix(`/admin`)"},
 		{"rule injection in a path fails closed", svc("ns/app", "app", ",\"public_blocked_paths\":[\"/x`) || Host(`evil.com\"]"), routing("ns/app"), ""},
 		{"non-array field fails closed", svc("ns/app", "app", `,"public_blocked_paths":"/admin"`), routing("ns/app"), ""},

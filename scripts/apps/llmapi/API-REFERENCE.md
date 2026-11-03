@@ -4,7 +4,7 @@ OpenAI-compatible API endpoints for MyNodeOne self-hosted LLM inference.
 
 **Base URL:** `http://llmapi.cluster.local/v1`
 
-**Paths not on the public address:** The public route blocks `/admin`, `/docs`, `/redoc` and `/openapi.json`. Use `/admin` and `/openapi.json` over the tailnet, at the LoadBalancer IP from `kubectl get svc -n llmapi llmapi`. `/docs` and `/redoc` are disabled in the gateway itself, so they return 404 everywhere.
+**Admin and schema paths:** `/admin` and `/openapi.json` are currently on the public address as well as the tailnet. `/docs` and `/redoc` are disabled in the gateway itself, so they return 404 everywhere.
 
 **Request size:** Bodies over `MAX_REQUEST_BODY_BYTES` (10 MiB by default) get a 413.
 

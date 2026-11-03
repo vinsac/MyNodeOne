@@ -109,7 +109,7 @@ Responses follow the **OpenAI API format** with an additional `system_fingerprin
 
 ### How do I access the Admin UI?
 
-**URL:** `http://<loadbalancer-ip>/admin`, over the tailnet. Get the IP with `kubectl get svc -n llmapi llmapi`. The public route on the VPS blocks `/admin`, along with `/docs`, `/redoc` and `/openapi.json`.
+**URL:** `/admin` on the public address, or `http://<loadbalancer-ip>/admin` over the tailnet. Get the IP with `kubectl get svc -n llmapi llmapi`.
 
 **Authentication:** API Key with `admin` scope
 - **Header:** `Authorization: Bearer sk-mynodeone-xxxx`
@@ -1003,7 +1003,7 @@ curl -H "Authorization: Bearer sk-mynodeone-xxxx" \
 
 **How keys are stored:** The `api_key` column holds the key id, `sha256:` plus the SHA-256 of the raw key, and `key_prefix` holds up to 20 leading characters for display. Raw keys aren't stored, so they can't be recovered: a key is shown once, when it's created. `install-llmapi.sh`, `manage-keys.sh` and the Admin UI all store this form. The gateway hashes plaintext rows from older versions when it starts, and a row added later when its key is first used.
 
-**Public access:** The VPS route blocks `/admin`, `/docs`, `/redoc` and `/openapi.json`. The tailnet LoadBalancer IP has full access. `/docs` and `/redoc` are disabled in the gateway itself. `/health` stays public, and `/metrics` and `/health/backends` need the `metrics` scope.
+**Public access:** `/admin` and `/openapi.json` are currently public; see "Public and tailnet access" in the README for the plan to move them behind the VPN. `/docs` and `/redoc` are disabled in the gateway itself. `/health` stays public, and `/metrics` and `/health/backends` need the `metrics` scope.
 
 **API Key Scopes:**
 

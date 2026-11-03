@@ -14,10 +14,14 @@
 # - Validation after install
 #
 # Usage:
-#   install-config-sync.sh <node-type> [control-plane-ip] [api-token] [node-name] [ssh-user]
+#   install-config-sync.sh <node-type> [control-plane-ip] [api-token] [node-name] [ssh-user] \
+#       [--api-token-file <path>]
+#
+# Use --api-token-file and leave the api-token argument empty: a token on the command
+# line is visible in `ps`.
 #
 # Token Acquisition (check, install, check, fallback):
-#   1. Check if api-token provided as argument
+#   1. Check if a token was provided (file or argument)
 #   2. Try to fetch token via SSH from control plane (if ssh-user provided)
 #   3. Prompt user interactively
 #   4. Fallback: Install without token and provide manual instructions
@@ -57,31 +61,11 @@ log_debug() {
     fi
 }
 
-# Retry logic for commands
-retry_command() {
-    local max_attempts="$1"
-    shift
-    local cmd="$@"
-    local attempt=1
-    
-    while [ $attempt -le $max_attempts ]; do
-        if eval "$cmd"; then
-            return 0
-        fi
-        
-        if [ $attempt -lt $max_attempts ]; then
-            log_warn "Command failed (attempt $attempt/$max_attempts). Retrying in 3 seconds..."
-            sleep 3
-        fi
-        attempt=$((attempt + 1))
-    done
-    
-    return 1
-}
-
 # Get script directory
 # Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=node-agent-install.sh
+source "$SCRIPT_DIR/node-agent-install.sh"
 
 # Bootstrap with fallback pattern (auto-discovers if path is wrong)
 source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
@@ -128,15 +112,30 @@ check_config_api_installed() {
     return 1
 }
 
+# Go can be on PATH, in the tarball location, or from snap, and sudo often resets
+# PATH, so look in all of them.
+find_go() {
+    local candidate
+    for candidate in "$(command -v go 2>/dev/null || true)" /usr/local/go/bin/go /snap/bin/go; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 install_go_if_needed() {
-    if command -v go &>/dev/null; then
-        log_success "Go already installed: $(go version | awk '{print $3}')"
+    local go_bin
+    if go_bin=$(find_go); then
+        log_success "Go already installed: $("$go_bin" version | awk '{print $3}')"
         return 0
     fi
     
     log_info "Installing Go..."
     
-    local GO_VERSION="1.21.5"
+    # Keep in step with the toolchain line in go.mod
+    local GO_VERSION="1.24.12"
     local ARCH=$(uname -m)
     case $ARCH in
         x86_64) ARCH="amd64" ;;
@@ -190,15 +189,26 @@ build_config_api() {
         return 1
     fi
     
+    local go_bin
+    if ! go_bin=$(find_go); then
+        log_error "Go not found"
+        return 1
+    fi
+
     # Initialize modules
-    /usr/local/go/bin/go mod tidy 2>/dev/null || true
-    
-    # Build
-    if /usr/local/go/bin/go build -o /usr/local/bin/mynodeone-config-api ./cmd/config-api/; then
-        chmod +x /usr/local/bin/mynodeone-config-api
+    "$go_bin" mod tidy 2>/dev/null || true
+
+    # Build beside the target and rename, so a failed build leaves the installed
+    # binary untouched and a running one is replaced in one step.
+    local build_output
+    build_output=$(mktemp /usr/local/bin/.mynodeone-config-api.XXXXXX)
+    if "$go_bin" build -o "$build_output" ./cmd/config-api/; then
+        chmod 755 "$build_output"
+        mv -f "$build_output" /usr/local/bin/mynodeone-config-api
         log_success "Config API Server built successfully"
         return 0
     else
+        rm -f "$build_output"
         log_error "Failed to build Config API Server"
         return 1
     fi
@@ -214,25 +224,16 @@ install_config_api_service() {
     log_debug "Created /etc/mynodeone directory with root:root ownership"
     
     # Generate API token if not exists
-    if [ ! -f /etc/mynodeone/api-token ]; then
+    # The server refuses to start with a missing or empty token file.
+    if [ ! -s /etc/mynodeone/api-token ]; then
         log_info "Generating API token..."
-        openssl rand -hex 32 > /etc/mynodeone/api-token
+        (umask 077 && openssl rand -hex 32 > /etc/mynodeone/api-token)
         chmod 600 /etc/mynodeone/api-token
-        
-        # Set proper ownership if running with sudo
-        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-            ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
-            if [ -n "$ACTUAL_USER_HOME" ]; then
-                chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/api-token
-                log_info "API token ownership set for user: $SUDO_USER"
-            fi
-        fi
-        
         log_success "API token generated"
     else
         log_debug "API token already exists"
     fi
-    
+
     # Copy service file
     cp "$SCRIPT_DIR/mynodeone-config-api.service" /etc/systemd/system/
     
@@ -295,7 +296,8 @@ install_config_api_server() {
     # Check if already installed
     if check_config_api_installed; then
         log_success "Config API Server already installed"
-        
+        log_info "To upgrade it, run: sudo scripts/installation/install-config-api.sh"
+
         # Ensure it's running
         if ! systemctl is-active --quiet mynodeone-config-api; then
             log_info "Starting Config API Server..."
@@ -381,50 +383,10 @@ install_node_agent_dependencies() {
 
 install_node_agent_binary() {
     log_info "Installing Node Agent..."
-    
-    cp "$SCRIPT_DIR/node-agent.sh" /usr/local/bin/mynodeone-node-agent
-    chmod +x /usr/local/bin/mynodeone-node-agent
-    
+
+    node_agent_install_files || return 1
+
     log_success "Node Agent installed"
-}
-
-install_node_agent_support_files() {
-    log_info "Installing Node Agent support files..."
-
-    local src=""
-    local candidates=(
-        "$SCRIPT_DIR/config-paths.sh"
-        "$PROJECT_ROOT/scripts/lib/config-paths.sh"
-    )
-
-    for c in "${candidates[@]}"; do
-        if [[ -f "$c" ]]; then
-            src="$c"
-            break
-        fi
-    done
-
-    if [[ -z "$src" ]]; then
-        log_error "config-paths.sh not found in expected locations"
-        log_error "Checked:"
-        for c in "${candidates[@]}"; do
-            log_error "  - $c"
-        done
-        log_error "Node Agent will NOT be able to start without config-paths.sh"
-        return 1
-    fi
-
-    log_debug "config-paths.sh source: $src"
-    cp "$src" /usr/local/bin/config-paths.sh
-    chmod +x /usr/local/bin/config-paths.sh
-    chown root:root /usr/local/bin/config-paths.sh
-
-    if [[ ! -f "/usr/local/bin/config-paths.sh" ]]; then
-        log_error "Failed to install /usr/local/bin/config-paths.sh"
-        return 1
-    fi
-
-    log_success "Support files installed (config-paths.sh)"
 }
 
 # Try to acquire API token via SSH (with retries)
@@ -489,8 +451,13 @@ configure_node_agent() {
     local control_plane_ip="$2"
     local api_token="${3:-}"
     local node_name="${4:-$(hostname)}"
-    
+
     log_info "Configuring Node Agent..."
+
+    # Reconfiguring must not replace a working token with nothing.
+    if [[ -z "$api_token" ]]; then
+        api_token=$(node_agent_existing_token 2>/dev/null || true)
+    fi
     
     # Create config directory with correct ownership
     mkdir -p /etc/mynodeone
@@ -548,17 +515,30 @@ configure_node_agent() {
     # For VPS nodes, detect Traefik config directory
     local traefik_config_dir=""
     if [ "$node_type" = "vps" ]; then
-        # Check common locations
+        # The existing setting, or else the directory actually holding the routes.
+        # TRAEFIK_CONFIG_DIR in the environment names one outright.
         local vps_user="${SUDO_USER:-root}"
-        if [ -d "/home/$vps_user/traefik/config" ]; then
-            traefik_config_dir="/home/$vps_user/traefik/config"
-        elif [ -d "/root/traefik/config" ]; then
-            traefik_config_dir="/root/traefik/config"
+        if ! traefik_config_dir=$(node_agent_detect_traefik_dir "${TRAEFIK_CONFIG_DIR:-}" "/home/$vps_user/traefik/config"); then
+            log_error "Could not tell which Traefik config directory to manage. Nothing was changed."
+            log_error "Run this again with TRAEFIK_CONFIG_DIR=<dir> set to the one Traefik reads."
+            return 1
         fi
     fi
-    
+
+    # These values go into agent.env, which a root process sources.
+    local value
+    for value in "$control_plane_ip" "$node_name" "$node_type" "$api_token" "$cluster_domain" "$traefik_config_dir"; do
+        if ! node_agent_valid_env_value "$value"; then
+            log_error "A value contains characters that are not allowed in agent.env"
+            return 1
+        fi
+    done
+
     # Create config file
-    cat > /etc/mynodeone/agent.env <<EOF
+    umask 077
+    local agent_env_new
+    agent_env_new=$(mktemp /etc/mynodeone/agent.env.XXXXXX) || return 1
+    cat > "$agent_env_new" <<EOF
 # MyNodeOne Node Agent Configuration
 # Generated: $(date -Iseconds)
 
@@ -583,27 +563,29 @@ EOF
 
     # Add VPS-specific config
     if [ -n "$traefik_config_dir" ]; then
-        echo "" >> /etc/mynodeone/agent.env
-        echo "# VPS-specific config" >> /etc/mynodeone/agent.env
-        echo "TRAEFIK_CONFIG_DIR=$traefik_config_dir" >> /etc/mynodeone/agent.env
+        echo "" >> "$agent_env_new"
+        echo "# VPS-specific config" >> "$agent_env_new"
+        echo "TRAEFIK_CONFIG_DIR=$traefik_config_dir" >> "$agent_env_new"
     fi
-    
+
+    if ! node_agent_keep_unknown_settings "$agent_env_new"; then
+        rm -f "$agent_env_new"
+        log_error "Could not read the current agent.env. Nothing was changed."
+        return 1
+    fi
+    mv -f "$agent_env_new" /etc/mynodeone/agent.env
+
     chmod 600 /etc/mynodeone/agent.env
-    
-    # Set proper ownership if running with sudo
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        # Get the actual user's home directory
-        ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
-        if [ -n "$ACTUAL_USER_HOME" ]; then
-            # Ensure the actual user can read the config
-            chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/agent.env
-            log_info "Config ownership set for user: $SUDO_USER"
-            log_debug "Changed /etc/mynodeone/agent.env ownership to $SUDO_USER:$SUDO_USER"
-        fi
-    else
-        log_debug "No sudo user detected, keeping root ownership for agent.env"
+    # A root process sources this file, so only root may own it. It holds the API
+    # token too. Nothing else needs it: /etc/mynodeone is 700 root anyway.
+    chown root:root /etc/mynodeone/agent.env
+    umask 022
+
+    if ! node_agent_write_sandbox_dropin "$traefik_config_dir"; then
+        log_error "Could not make the Traefik config directory writable for the agent"
+        return 1
     fi
-    
+
     # Defensive verification: Ensure agent.env has correct values
     local saved_domain
     saved_domain=$(grep "^CLUSTER_DOMAIN=" /etc/mynodeone/agent.env 2>/dev/null | cut -d'=' -f2 || echo "")
@@ -625,9 +607,8 @@ EOF
 
 install_node_agent_service() {
     log_info "Installing Node Agent systemd service..."
-    
-    cp "$SCRIPT_DIR/mynodeone-node-agent.service" /etc/systemd/system/
-    
+
+    # node_agent_install_files copied the unit.
     systemctl daemon-reload
     systemctl enable mynodeone-node-agent
     
@@ -636,8 +617,9 @@ install_node_agent_service() {
 
 start_node_agent() {
     log_info "Starting Node Agent..."
-    
-    systemctl start mynodeone-node-agent
+
+    # Restart, not start: on a re-run the old version may be running.
+    systemctl restart mynodeone-node-agent
     
     # Wait for startup
     sleep 2
@@ -678,25 +660,15 @@ verify_node_agent_heartbeat() {
     
     log_info "Verifying heartbeat authentication (with retries)..."
     
-    # Build auth header if token exists
-    local auth_header=""
-    if [[ -n "$api_token" ]]; then
-        auth_header="-H X-API-Token:${api_token}"
-    fi
-    
     # Build heartbeat payload
     local payload
-    payload=$(cat <<EOJSON
-{
-    "node_name": "$node_name",
-    "node_type": "$node_type",
-    "node_ip": "$(tailscale ip -4 2>/dev/null || echo 'unknown')",
-    "config_version": "install-test",
-    "uptime_seconds": 0
-}
-EOJSON
-)
-    
+    payload=$(jq -cn \
+        --arg node_name "$node_name" \
+        --arg node_type "$node_type" \
+        --arg node_ip "$(tailscale ip -4 2>/dev/null | head -n1 || echo 'unknown')" \
+        '{node_name: $node_name, node_type: $node_type, node_ip: $node_ip,
+          config_version: "install-test", uptime_seconds: 0}')
+
     local attempt=1
     local delay=2
     local last_http_code=""
@@ -704,10 +676,11 @@ EOJSON
     while [ $attempt -le $max_attempts ]; do
         # Send test heartbeat
         local http_code
+        # The token goes through a config stream so it stays out of `ps`.
         http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 \
+            -K <(printf 'header = "X-API-Token: %s"\n' "$api_token") \
             -X POST \
             -H "Content-Type: application/json" \
-            $auth_header \
             -d "$payload" \
             "http://${control_plane_ip}:8443/api/v1/heartbeat" 2>/dev/null) || true
         
@@ -797,9 +770,9 @@ install_node_agent() {
     # Token Acquisition: check, install, check, fallback
     ###########################################################################
     
-    # Step 1: Check if token provided as argument
+    # Step 1: Check if a token was provided
     if [[ -n "$api_token" ]]; then
-        log_success "API token provided via argument"
+        log_success "API token provided"
     else
         log_info "API token not provided, attempting to acquire..."
         
@@ -829,18 +802,20 @@ install_node_agent() {
     
     # Check if already installed
     if check_node_agent_installed; then
-        log_success "Node Agent already installed"
+        log_success "Node Agent already installed, updating it"
 
-        # Ensure required support files exist even for older installs
-        install_node_agent_support_files || {
-            log_error "Failed to install Node Agent support files"
+        # Update the script and unit, which on older installs may be the removed
+        # copy with its own sandbox settings.
+        install_node_agent_binary || {
+            log_error "Failed to update Node Agent"
             return 1
         }
-        
+
         # Update config if needed
         configure_node_agent "$node_type" "$control_plane_ip" "$api_token" "$node_name"
         
-        # Restart to pick up new config
+        # Restart to pick up new script, unit and config
+        systemctl daemon-reload
         systemctl restart mynodeone-node-agent
         
         # Verify heartbeat works
@@ -863,12 +838,6 @@ install_node_agent() {
         return 1
     }
 
-    # Install support files required for Node Agent startup
-    install_node_agent_support_files || {
-        log_error "Failed to install Node Agent support files"
-        return 1
-    }
-    
     # Configure
     configure_node_agent "$node_type" "$control_plane_ip" "$api_token" "$node_name" || {
         log_error "Failed to configure Node Agent"
@@ -912,7 +881,8 @@ usage() {
 Install Config Sync Components
 
 Usage:
-  $0 <node-type> [control-plane-ip] [api-token] [node-name]
+  $0 <node-type> [control-plane-ip] [--api-token-file <path>]
+  $0 <node-type> [control-plane-ip] [api-token] [node-name] [ssh-user] [--api-token-file <path>]
 
 Node Types:
   control-plane    Install Config API Server
@@ -925,22 +895,50 @@ Examples:
   $0 control-plane
 
   # On VPS node
-  $0 vps 100.x.x.x <api-token>
+  $0 vps 100.x.x.x --api-token-file <path>
 
   # On worker node
-  $0 worker 100.x.x.x <api-token>
+  $0 worker 100.x.x.x --api-token-file <path>
 
   # On laptop
-  $0 laptop 100.x.x.x <api-token>
+  $0 laptop 100.x.x.x --api-token-file <path>
+
+The file holds the token and should be mode 600. A token given as an argument still
+works, but it is visible in ps.
 EOF
 }
 
 main() {
+    local positional=() api_token_file=""
+    while (($#)); do
+        case "$1" in
+            --api-token-file)
+                if [ $# -lt 2 ] || [ ! -r "$2" ]; then
+                    log_error "Cannot read API token file: ${2:-(none given)}"
+                    exit 1
+                fi
+                api_token_file="$2"
+                shift 2
+                ;;
+            *)
+                positional+=("$1")
+                shift
+                ;;
+        esac
+    done
+    set -- ${positional[@]+"${positional[@]}"}
+
     local node_type="${1:-}"
     local control_plane_ip="${2:-}"
     local api_token="${3:-}"
     local node_name="${4:-$(hostname)}"
     local ssh_user="${5:-}"
+
+    if [ -n "$api_token_file" ]; then
+        api_token="$(tr -d '[:space:]' <"$api_token_file")"
+    elif [ -n "$api_token" ]; then
+        log_warn "A token on the command line is visible in ps; prefer --api-token-file"
+    fi
     
     if [ -z "$node_type" ]; then
         usage

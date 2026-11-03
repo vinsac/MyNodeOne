@@ -219,11 +219,18 @@ success "VPS is reachable"
 # Create route configuration
 ROUTE_FILE="/tmp/${APP_NAME}-route.yml"
 
+# llmapi's admin and API-doc paths stay off the public internet, as in the routes
+# the config API renders. The tailnet LoadBalancer IP keeps full access.
+ROUTE_RULE="Host(\`${SUBDOMAIN}.${DOMAIN}\`)"
+if [[ "$APP_NAME" == "llmapi" ]]; then
+    ROUTE_RULE+=" && !PathPrefix(\`/admin\`) && !PathPrefix(\`/docs\`) && !PathPrefix(\`/redoc\`) && !PathPrefix(\`/openapi.json\`)"
+fi
+
 cat > "$ROUTE_FILE" << EOF
 http:
   routers:
     ${APP_NAME}:
-      rule: "Host(\`${SUBDOMAIN}.${DOMAIN}\`)"
+      rule: "${ROUTE_RULE}"
       service: ${APP_NAME}-service
       entryPoints:
         - websecure
@@ -231,7 +238,7 @@ http:
         certResolver: letsencrypt
     
     ${APP_NAME}-http:
-      rule: "Host(\`${SUBDOMAIN}.${DOMAIN}\`)"
+      rule: "${ROUTE_RULE}"
       service: ${APP_NAME}-service
       entryPoints:
         - web

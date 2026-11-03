@@ -37,10 +37,10 @@ sudo ./scripts/nodes/remove-node.sh --type <type> --name <name>
 ```
 
 ### `remove-vps-edge-node.sh`
-Specialized removal for VPS edge nodes.
+Specialized removal for VPS edge nodes. Removes the node from the VPS list, every route and the sync targets (`multi-domain-registry.sh purge-vps`). If that fails it deletes nothing locally, so it can be run again.
 
 ### `unregister-vps.sh`
-Unregisters a VPS from the node registry.
+Removes a VPS from the domain registry, service routes and sync targets, directly or over SSH to the control plane. Stops with an error if a registry can't be read.
 
 ## Monitoring
 

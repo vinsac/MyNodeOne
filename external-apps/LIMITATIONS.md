@@ -31,11 +31,11 @@ services:
 # Option A: Use pre-built images
 services:
   myapp:
-    image: myregistry.com/myapp:latest    # ✅ Pull from registry
+    image: myregistry.com/myapp:1.0.0    # ✅ Pull from registry
 
 # Option B: Build and push manually
-docker build -t myregistry.com/myapp:latest ./myapp
-docker push myregistry.com/myapp:latest
+docker build -t myregistry.com/myapp:1.0.0 ./myapp
+docker push myregistry.com/myapp:1.0.0
 # Then update docker-compose.yml to reference it
 ```
 
@@ -55,10 +55,10 @@ It contains a lost+found directory
 ```yaml
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata    # ✅ Use subdirectory
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -103,8 +103,9 @@ securityContext:
 **Why:** ClusterIP services are only accessible within the cluster. LoadBalancer type gets an external IP from MetalLB for local network access.
 
 **Detection logic:**
-- Service names matching: `vote`, `result`, `frontend`, `web`, `ui`, `client`, `backend`, `api`, `server`, `admin`, `dashboard`
-- Internal services (database, cache, worker, queue) remain ClusterIP
+- Service names matching: `vote`, `result`, `frontend`, `web`, `ui`, `client`, `backend`, `api`, `server`
+- Datastores and other internal infrastructure are checked first and remain ClusterIP, whatever else the name contains: `mysql-server`, `redis-server` and `web-db` are all internal
+- Admin tools (`admin`, `dashboard`, `pgadmin`, `adminer`) remain ClusterIP unless no other service can be the primary one
 
 **Override:** Manually edit generated manifests before deployment if detection is wrong.
 

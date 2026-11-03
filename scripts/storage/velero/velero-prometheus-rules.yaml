@@ -1,3 +1,8 @@
+# Applied by configure-backup.sh. Metric names are from Velero v1.12.3, the version
+# install.sh pins, in pkg/metrics/metrics.go.
+#
+# The release label is what kube-prometheus-stack's rule and monitor selectors require.
+# Without it the operator ignores these objects, with no error.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -5,85 +10,73 @@ metadata:
   namespace: velero
   labels:
     app: velero
-    prometheus: kube-prometheus
+    release: kube-prometheus-stack
 spec:
   groups:
   - name: velero.backup.rules
     interval: 5m
     rules:
-    # Alert when backup fails
+    # These counters only go up, so increase() is what tells a new failure from an old one.
     - alert: VeleroBackupFailed
       expr: |
-        velero_backup_failure_total > 0
-      for: 5m
+        increase(velero_backup_failure_total[24h]) > 0
       labels:
         severity: critical
         component: velero
       annotations:
         summary: "Velero backup failed"
-        description: "Velero backup {{ $labels.schedule }} has failed. Check velero logs for details."
-        
-    # Alert when backup is taking too long
-    - alert: VeleroBackupTakingTooLong
-      expr: |
-        velero_backup_duration_seconds{status="InProgress"} > 3600
-      for: 10m
-      labels:
-        severity: warning
-        component: velero
-      annotations:
-        summary: "Velero backup taking too long"
-        description: "Velero backup {{ $labels.schedule }} has been running for over 1 hour."
-        
-    # Alert when no successful backup in 48 hours
-    - alert: VeleroNoRecentBackup
-      expr: |
-        time() - velero_backup_last_successful_timestamp > 172800
-      for: 1h
-      labels:
-        severity: warning
-        component: velero
-      annotations:
-        summary: "No recent Velero backup"
-        description: "No successful Velero backup in the last 48 hours for schedule {{ $labels.schedule }}."
-        
-    # Alert when backup storage location is unavailable
-    - alert: VeleroBackupStorageLocationUnavailable
-      expr: |
-        velero_backup_storage_location_available == 0
-      for: 10m
-      labels:
-        severity: critical
-        component: velero
-      annotations:
-        summary: "Velero backup storage location unavailable"
-        description: "Velero backup storage location {{ $labels.location }} is unavailable. Check MinIO connectivity."
-        
-    # Alert when backup partial failure (some resources failed)
+        description: "A backup for schedule '{{ $labels.schedule }}' failed in the last 24 hours (a blank schedule means a manual backup). Check velero backup get, and velero backup logs NAME."
+
     - alert: VeleroBackupPartialFailure
       expr: |
-        velero_backup_partial_failure_total > 0
-      for: 5m
+        increase(velero_backup_partial_failure_total[24h]) > 0
       labels:
         severity: warning
         component: velero
       annotations:
         summary: "Velero backup partial failure"
-        description: "Velero backup {{ $labels.schedule }} completed with partial failures."
+        description: "A backup for schedule '{{ $labels.schedule }}' finished with some items not backed up in the last 24 hours. Check velero backup describe NAME."
+
+    # This gauge appears after a schedule's first success. Until then, failures show up in
+    # VeleroBackupFailed above.
+    - alert: VeleroDailyBackupStale
+      expr: |
+        time() - velero_backup_last_successful_timestamp{schedule="daily-incremental-backup"} > 2 * 86400
+      for: 1h
+      labels:
+        severity: warning
+        component: velero
+      annotations:
+        summary: "No recent daily Velero backup"
+        description: "The daily-incremental-backup schedule has had no successful backup in 2 days."
+
+    - alert: VeleroMonthlyBackupStale
+      expr: |
+        time() - velero_backup_last_successful_timestamp{schedule="monthly-full-backup"} > 35 * 86400
+      for: 1h
+      labels:
+        severity: warning
+        component: velero
+      annotations:
+        summary: "No recent monthly Velero backup"
+        description: "The monthly-full-backup schedule has had no successful backup in 35 days."
 
 ---
+# velero install creates a Deployment but no Service, so a ServiceMonitor has nothing to
+# select. It exposes metrics on the pod, on the container port named metrics (8085).
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: velero
   namespace: velero
   labels:
     app: velero
+    release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:
-      component: velero
-  endpoints:
-  - port: monitoring
+      deploy: velero
+  podMetricsEndpoints:
+  - port: metrics
     interval: 30s
     path: /metrics

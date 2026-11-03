@@ -1,0 +1,269 @@
+{
+  "root_source": "/dev/nvme0n1p2",
+  "devices": [
+    {
+      "name": "/dev/nvme0n1",
+      "type": "disk",
+      "size": "1.8T",
+      "model": "Samsung 990",
+      "serial": "SN-NVME0N1",
+      "tran": "nvme",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/nvme0n1p1",
+          "type": "part",
+          "size": "1G",
+          "fstype": "vfat",
+          "uuid": "AAAA-0001",
+          "mountpoint": "/boot/efi"
+        },
+        {
+          "name": "/dev/nvme0n1p2",
+          "type": "part",
+          "size": "1.8T",
+          "fstype": "ext4",
+          "uuid": "root-uuid",
+          "mountpoint": "/"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sda",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "Seagate Exos",
+      "serial": "ZR50001",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sda1",
+          "type": "part",
+          "size": "16T",
+          "fstype": "ext4",
+          "uuid": "data-uuid",
+          "label": "longhorn",
+          "mountpoint": "/mnt/longhorn-disks/disk-sda"
+        },
+        {
+          "name": "/dev/sda2",
+          "type": "part",
+          "size": "400G"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdb",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "Seagate Exos",
+      "serial": "ZR50002",
+      "tran": "sata",
+      "fstype": "ext4",
+      "uuid": "whole-uuid",
+      "mountpoint": "/mnt/minio"
+    },
+    {
+      "name": "/dev/sdc",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "WD Red",
+      "serial": "WD-BLANK1",
+      "tran": "sata"
+    },
+    {
+      "name": "/dev/sdd",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "WD Red",
+      "serial": "WD-DATA1",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sdd1",
+          "type": "part",
+          "size": "2T",
+          "fstype": "ext4",
+          "uuid": "old-uuid",
+          "label": "old-backup"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sde",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "WD Red",
+      "serial": "WD-GPT1",
+      "tran": "sata",
+      "pttype": "gpt"
+    },
+    {
+      "name": "/dev/sdf",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDF",
+      "tran": "sata",
+      "fstype": "LVM2_member",
+      "uuid": "pv2-uuid"
+    },
+    {
+      "name": "/dev/sdg",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDG",
+      "tran": "sata",
+      "fstype": "linux_raid_member",
+      "uuid": "raid-uuid"
+    },
+    {
+      "name": "/dev/sdh",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDH",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sdh1",
+          "type": "part",
+          "size": "64G",
+          "fstype": "swap",
+          "uuid": "swap-uuid"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdi",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDI",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sdi1",
+          "type": "part",
+          "size": "1T",
+          "fstype": "ext4",
+          "uuid": "fstab-uuid"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdj",
+      "type": "disk",
+      "size": "100G",
+      "model": "VIRTUAL-DISK",
+      "serial": "SN-SDJ",
+      "tran": "iscsi"
+    },
+    {
+      "name": "/dev/sdk",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDK",
+      "tran": "sata",
+      "fstype": "zfs_member"
+    },
+    {
+      "name": "/dev/sdl",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "WD Red",
+      "serial": "WD-IOERR",
+      "tran": "sata"
+    },
+    {
+      "name": "/dev/sdm",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "WD Red",
+      "serial": "WD-AMBIV",
+      "tran": "sata"
+    },
+    {
+      "name": "/dev/sdn",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDN",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sdn1",
+          "type": "part",
+          "size": "1T",
+          "fstype": "LVM2_member",
+          "children": [
+            {
+              "name": "/dev/mapper/data-lv",
+              "type": "lvm",
+              "size": "1T",
+              "fstype": "ext4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdo",
+      "type": "disk",
+      "size": "0B",
+      "model": "Card Reader",
+      "serial": "SN-SDO",
+      "tran": "usb"
+    },
+    {
+      "name": "/dev/sdp",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDP",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sdp1",
+          "type": "part",
+          "size": "1T",
+          "fstype": "ext4",
+          "label": "x\" MOUNTPOINT=\"\" FSTYPE=\""
+        }
+      ]
+    },
+    {
+      "name": "/dev/loop0",
+      "type": "loop",
+      "size": "100M",
+      "fstype": "squashfs",
+      "mountpoint": "/snap/core"
+    }
+  ],
+  "swaps": [
+    "/dev/sdh1"
+  ],
+  "fstab": [
+    "UUID=root-uuid",
+    "UUID=AAAA-0001",
+    "UUID=fstab-uuid"
+  ],
+  "blkid_rc": {
+    "/dev/sdl": [
+      2,
+      "error: /dev/sdl: Input/output error"
+    ],
+    "/dev/sdm": [
+      8,
+      "ambivalent result"
+    ]
+  }
+}

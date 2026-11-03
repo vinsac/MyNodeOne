@@ -44,10 +44,10 @@ fi
 # Show what will be deleted
 log "The following resources will be deleted:"
 echo ""
-kubectl get all -n "$APP_NAME" 2>/dev/null || true
+kubectl get all,pvc -n "$APP_NAME" 2>/dev/null || true
 echo ""
 
-warn "This will permanently delete the app and all its data"
+warn "This will permanently delete the app and all its data, including the storage volumes listed above"
 read -p "Are you sure? [y/N]: " confirm
 
 if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -69,9 +69,7 @@ log "Cleanup tasks:"
 echo "  • Namespace deleted"
 echo "  • All pods stopped"
 echo "  • Services removed"
-echo "  • Storage volumes retained (can be manually deleted)"
-echo ""
-
-log "To delete storage volumes:"
-echo "  kubectl delete pvc -n $APP_NAME --all"
+echo "  • Storage volume claims deleted with the namespace"
+echo "    (the default longhorn storage class also deletes their data; any volume"
+echo "    in a class with reclaimPolicy Retain stays: kubectl get pv)"
 echo ""

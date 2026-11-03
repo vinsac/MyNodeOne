@@ -4,7 +4,11 @@
 # Fetch Cluster Info from Control Plane
 # 
 # This script fetches kubeconfig and cluster information from the control plane
-# Used during management laptop setup to auto-detect cluster configuration
+# Used during node setup to auto-detect cluster configuration
+#
+# The admin kubeconfig gives full control of the cluster, so only a management
+# node keeps one. Workers and VPS nodes do not need it. If this script cannot tell
+# the role (NODE_ROLE or NODE_TYPE), it asks, and the default is no.
 ###############################################################################
 
 set -euo pipefail
@@ -48,9 +52,36 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# Prints yes or no
+want_admin_kubeconfig() {
+    local role="${NODE_ROLE:-${NODE_TYPE:-}}"
+    local answer=""
+
+    case "$role" in
+        *[Mm]anagement*|*[Ll]aptop*)
+            echo "yes"
+            return 0
+            ;;
+        *[Ww]orker*|*[Vv][Pp][Ss]*|*[Ee]dge*)
+            echo "no"
+            return 0
+            ;;
+    esac
+
+    if [ -t 0 ]; then
+        read -r -p "? Keep an admin kubeconfig on this machine? Only a management node needs one [y/N]: " answer
+    fi
+    case "$answer" in
+        [Yy]*) echo "yes" ;;
+        *) echo "no" ;;
+    esac
+}
+
 fetch_cluster_info() {
     local control_plane_ip=""
     local ssh_user=""
+    local want_kubeconfig
+    want_kubeconfig=$(want_admin_kubeconfig)
 
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  📡 Fetching Cluster Configuration"
@@ -89,7 +120,7 @@ fetch_cluster_info() {
     # Run a single SSH command that collects all the data we need
     # This way user only enters SSH password ONCE
     # The remote script checks for passwordless sudo first
-    if ! $SSH_CMD -o ConnectTimeout=15 "$ssh_user@$control_plane_ip" bash << 'REMOTE_EOF' > "$temp_output" 2>&1
+    if ! $SSH_CMD -o ConnectTimeout=15 "$ssh_user@$control_plane_ip" "WANT_KUBECONFIG=$want_kubeconfig bash" << 'REMOTE_EOF' > "$temp_output" 2>&1
 #!/bin/bash
 # This script runs on the CONTROL PLANE
 # It collects all config and outputs in a parseable format
@@ -146,7 +177,9 @@ echo "API_TOKEN=$API_TOKEN"
 
 # Get kubeconfig (base64 encoded to preserve formatting)
 echo "===KUBECONFIG_START==="
-sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null | base64
+if [ "${WANT_KUBECONFIG:-no}" = "yes" ]; then
+    sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null | base64
+fi
 echo "===KUBECONFIG_END==="
 
 echo "===MARKER_END==="
@@ -214,7 +247,9 @@ API_TOKEN=\$(echo "$sudo_pass" | sudo -S cat /etc/mynodeone/api-token 2>/dev/nul
 echo "API_TOKEN=\$API_TOKEN"
 
 echo "===KUBECONFIG_START==="
-echo "$sudo_pass" | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>/dev/null | base64
+if [ "$want_kubeconfig" = "yes" ]; then
+    echo "$sudo_pass" | sudo -S cat /etc/rancher/k3s/k3s.yaml 2>/dev/null | base64
+fi
 echo "===KUBECONFIG_END==="
 
 echo "===MARKER_END==="
@@ -295,8 +330,10 @@ REMOTE_SUDO_EOF
         chmod 600 "$ACTUAL_HOME/.kube/config"
         chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config"
         log_success "Kubeconfig installed to $ACTUAL_HOME/.kube/config"
-    else
+    elif [ "$want_kubeconfig" = "yes" ]; then
         log_warn "Could not retrieve kubeconfig"
+    else
+        log_info "No admin kubeconfig kept on this machine (not a management node)"
     fi
     
     # Save configuration

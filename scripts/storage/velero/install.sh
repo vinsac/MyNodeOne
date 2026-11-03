@@ -3,9 +3,12 @@
 ###############################################################################
 # Velero Installation Script
 # 
-# Installs Velero for Kubernetes cluster backup and disaster recovery
-# Called during control plane bootstrap
-# Backup storage configured when worker node joins (via configure-velero-backup.sh)
+# Installs the Velero CLI and server. No installer calls this script.
+# It sets up no backup destination: run configure-backup.sh afterwards, which
+# needs one chosen by you. Until then Velero runs but takes no backups.
+#
+# Optional environment variable:
+#   VELERO_AWS_PLUGIN_IMAGE  Default: velero/velero-plugin-for-aws:v1.8.2
 ###############################################################################
 
 set -euo pipefail
@@ -46,11 +49,10 @@ log_warn() {
 retry_command() {
     local max_attempts=$1
     shift
-    local cmd="$@"
     local attempt=1
-    
+
     while [ $attempt -le $max_attempts ]; do
-        if eval "$cmd"; then
+        if "$@"; then
             return 0
         fi
         log_warn "Attempt $attempt/$max_attempts failed, retrying..."
@@ -117,7 +119,7 @@ install_velero_cli() {
     local TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
     
-    if retry_command 3 "curl -fsSL https://github.com/vmware-tanzu/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-${ARCH}.tar.gz -o velero.tar.gz"; then
+    if retry_command 3 curl -fsSL "https://github.com/vmware-tanzu/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-${ARCH}.tar.gz" -o velero.tar.gz; then
         tar -xzf velero.tar.gz
         mv velero-${VELERO_VERSION}-linux-${ARCH}/velero /usr/local/bin/
         chmod +x /usr/local/bin/velero
@@ -158,22 +160,18 @@ install_velero_server() {
         fi
     fi
     
-    # Install Velero with basic configuration
-    # Backup storage uses MinIO on control plane
-    log_info "Installing Velero server (will use MinIO for backup storage)..."
-    
-    # Note: Using placeholder bucket name - will be reconfigured when MinIO is available
-    if retry_command 2 "velero install \
-        --provider aws \
-        --plugins velero/velero-plugin-for-aws:v1.8.2 \
-        --bucket velero-backups \
-        --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio:9000 \
+    # Installed with no backup location. configure-backup.sh adds the one you choose.
+    # Velero rejects --provider with --no-default-backup-location and no snapshots.
+    log_info "Installing Velero server..."
+
+    if retry_command 2 velero install \
+        --plugins "${VELERO_AWS_PLUGIN_IMAGE:-velero/velero-plugin-for-aws:v1.8.2}" \
+        --no-default-backup-location \
         --no-secret \
         --use-volume-snapshots=false \
-        --wait"; then
-        
+        --wait; then
+
         log_success "Velero server installed"
-        log_info "Backup location will be configured after MinIO installation"
     else
         log_error "Velero server installation failed"
         return 1
@@ -215,8 +213,9 @@ verify_installation() {
     fi
     
     log_success "Velero installation verified"
-    log_info "Backup storage will be configured after MinIO installation"
-    log_info "Run: sudo ./scripts/storage/velero/configure-backup.sh"
+    log_warn "No backup destination is set yet, so no backups will run."
+    log_info "Choose one, then run: sudo ./scripts/storage/velero/configure-backup.sh --config <file>"
+    log_info "Settings are described in scripts/storage/velero/backup.env.example"
     
     return 0
 }
@@ -246,8 +245,7 @@ main() {
     
     echo
     log_success "===== Velero Installation Complete ====="
-    log_info "Note: Backup storage location will be configured when worker node joins"
-    log_info "      Backups will be stored on MinIO running on worker node"
+    log_warn "Velero has no backup destination until configure-backup.sh is run."
 }
 
 main "$@"

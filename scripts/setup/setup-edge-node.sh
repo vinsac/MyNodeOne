@@ -48,6 +48,7 @@ source "$PROJECT_ROOT/scripts/lib/versions.sh"
 # Source libraries
 source "$PROJECT_ROOT/scripts/lib/preflight-checks.sh"
 source "$PROJECT_ROOT/scripts/lib/ssh-utils.sh"
+source "$PROJECT_ROOT/scripts/setup/edge-install-helpers.sh"
 
 # Load configuration - inherit from parent or set fallback
 CONFIG_FILE="${CONFIG_FILE:-$ACTUAL_HOME/.mynodeone/config.env}"
@@ -146,10 +147,8 @@ install_docker() {
         return
     fi
     
-    # Install Docker
-    curl -fsSL https://get.docker.com | sh
-    systemctl enable --now docker
-    
+    install_docker_from_apt
+
     log_success "Docker installed"
 }
 
@@ -198,7 +197,12 @@ install_traefik() {
     touch /etc/traefik/acme.json
     chmod 600 /etc/traefik/acme.json
     log_success "acme.json created with correct permissions (600)"
-    
+
+    local dashboard_setting="false"
+    if traefik_dashboard_is_enabled; then
+        dashboard_setting="true"
+    fi
+
     # Create Traefik static configuration
     # NOTE: Using direct substitution instead of heredoc to expand variables
     cat > /etc/traefik/traefik.yml <<EOF
@@ -208,7 +212,7 @@ global:
   sendAnonymousUsage: false
 
 api:
-  dashboard: true
+  dashboard: ${dashboard_setting}
   insecure: false
 
 entryPoints:
@@ -246,12 +250,16 @@ accessLog:
   filePath: /var/log/traefik/access.log
 EOF
     
-    # Create initial dynamic configuration
-    cat > /etc/traefik/dynamic/config.yml <<EOF
+    # Create initial dynamic configuration. This replaces any earlier version, which
+    # protected the dashboard with one password shared by every installation.
+    if traefik_dashboard_is_enabled; then
+        local dashboard_credentials="/etc/traefik/dashboard-credentials"
+        local dashboard_user
+        dashboard_user=$(traefik_dashboard_user_entry "$dashboard_credentials")
+        cat > /etc/traefik/dynamic/config.yml <<EOF
 # Traefik Dynamic Configuration
 http:
   routers:
-    # Example router - add your domains here
     dashboard:
       rule: "Host(\`traefik.${CLUSTER_DOMAIN}.local\`)"
       service: api@internal
@@ -260,22 +268,33 @@ http:
       tls:
         certResolver: letsencrypt
       middlewares:
-        - auth
+        - dashboard-auth
 
   middlewares:
-    auth:
+    dashboard-auth:
       basicAuth:
         users:
-          - "admin:\$apr1\$H6uskkkW\$IgXLP6ewTrSuBkTrqE8wj/"  # admin:admin (change this!)
+          - "${dashboard_user}"
 EOF
-    
+        chmod 600 /etc/traefik/dynamic/config.yml
+        log_success "Traefik dashboard enabled. Login is in $dashboard_credentials (readable by root only)"
+    else
+        cat > /etc/traefik/dynamic/config.yml <<EOF
+# Traefik Dynamic Configuration
+#
+# The Traefik dashboard is off. To turn it on with a generated password, set
+# TRAEFIK_DASHBOARD_ENABLED=true in config.env and run this setup again.
+EOF
+        log_info "Traefik dashboard is off (set TRAEFIK_DASHBOARD_ENABLED=true to enable it with a generated password)"
+    fi
+
     # Create Docker Compose file
     cat > /etc/traefik/docker-compose.yml <<EOF
 version: '3.8'
 
 services:
   traefik:
-    image: traefik:v${TRAEFIK_VPS_VERSION}
+    image: traefik:${TRAEFIK_VPS_VERSION}
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -435,13 +454,30 @@ setup_monitoring_agent() {
     
     # Install node_exporter for Prometheus
     ARCH=$(dpkg --print-architecture)
-    NODE_EXPORTER_VERSION="1.7.0"
     
-    wget -q "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH}.tar.gz"
-    tar xzf "node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH}.tar.gz"
-    mv "node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH}/node_exporter" /usr/local/bin/
-    rm -rf "node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH}"*
-    
+    local tarball="node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH}.tar.gz"
+    local release_url="https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}"
+    local work_dir
+    work_dir=$(mktemp -d)
+
+    # The checksum list comes from the same release, so this catches a corrupted or
+    # truncated download, and a binary swapped without also updating the list.
+    # The steps are chained with && because set -e is ignored inside an if condition.
+    # Without that, a failed checksum would carry on and install the binary.
+    if ! (
+        cd "$work_dir" &&
+        curl -fsSL "$release_url/$tarball" -o "$tarball" &&
+        curl -fsSL "$release_url/sha256sums.txt" -o sha256sums.txt &&
+        grep -F "  $tarball" sha256sums.txt | sha256sum -c --quiet - &&
+        tar xzf "$tarball" &&
+        install -m 0755 "node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH}/node_exporter" /usr/local/bin/node_exporter
+    ); then
+        rm -rf "$work_dir"
+        log_error "Could not download and verify node_exporter ${NODE_EXPORTER_VERSION}"
+        exit 1
+    fi
+    rm -rf "$work_dir"
+
     # Create systemd service
     cat > /etc/systemd/system/node_exporter.service <<EOF
 [Unit]
@@ -511,11 +547,15 @@ main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
 
-    log_info "Ensuring correct home directory permissions for user: $ACTUAL_USER..."
-    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"
-    log_success "Home directory permissions verified for user '$ACTUAL_USER'."
+    # Only what MyNodeOne itself creates. The rest of the home directory is not ours
+    # to change: it can hold files that are owned by other users on purpose.
+    log_info "Ensuring correct ownership of MyNodeOne config for user: $ACTUAL_USER..."
+    if [ -d "$ACTUAL_HOME/.mynodeone" ]; then
+        sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.mynodeone"
+    fi
+    log_success "Config ownership verified for user '$ACTUAL_USER'."
     echo
-    
+
     # The main pre-flight checks are now handled in setup-vps-node.sh
     # We just do a basic check here.
     check_requirements

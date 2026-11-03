@@ -1,0 +1,4 @@
+#!/bin/bash
+# helm stub: logs the call and does nothing.
+echo "helm $*" >> "$STUB_LOG"
+exit 0

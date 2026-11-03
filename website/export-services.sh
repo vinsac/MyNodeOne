@@ -33,14 +33,19 @@ export_services() {
     fi
     
     if [ "$services" != "{}" ]; then
-        # Transform to array format for easier JavaScript consumption
+        # Transform to array format for easier JavaScript consumption. The dashboard
+        # compares and displays name, so it stays the bare name in both key formats.
+        # This runs in a pod that only has this script, so it can't source
+        # service-registry-lib.sh.
         local services_array
         if services_array=$(echo "$services" | jq -c '[
-            to_entries[] | 
+            to_entries[] |
+            (.value.legacy_key // (.key | split("/") | last)) as $name |
             {
-                name: .key,
-                local_name: (.value.local_name // .value.subdomain // .key),
-                subdomain: (.value.local_name // .value.subdomain // .key),
+                name: $name,
+                key: .key,
+                local_name: (.value.local_name // .value.subdomain // $name),
+                subdomain: (.value.local_name // .value.subdomain // $name),
                 namespace: .value.namespace,
                 service: .value.service,
                 ip: .value.ip,
@@ -182,7 +187,8 @@ export_cluster() {
     local pods_output
     if pods_output=$(kubectl get pods --all-namespaces --no-headers 2>/dev/null); then
         total_pods=$(echo "$pods_output" | wc -l)
-        running_pods=$(echo "$pods_output" | grep -c "Running" || echo "0")
+        # grep -c prints 0 itself when nothing matches, and exits non-zero
+        running_pods=$(echo "$pods_output" | grep -c "Running" || true)
     else
         echo "[$(date)] ERROR: Failed to get pods from kubectl, using zero counts"
     fi
@@ -191,8 +197,8 @@ export_cluster() {
     local storage_info='{}'
     if kubectl get storageclass longhorn &>/dev/null; then
         storage_info=$(kubectl get pvc --all-namespaces -o json | jq -c '{
-            total_pvc: length,
-            bound_pvc: [.items[] | select(.status.phase=="Bound")] | length
+            total_pvc: (.items | length),
+            bound_pvc: ([.items[] | select(.status.phase=="Bound")] | length)
         }' 2>/dev/null || echo '{}')
     fi
     
@@ -240,7 +246,6 @@ export_cluster_config() {
         "/etc/cluster-config/config.env"
         "/etc/mynodeone/config.env"
         "$HOME/.mynodeone/config.env"
-        "/home/vinaysachdeva1/.mynodeone/config.env"
     )
     
     for config_file in "${config_locations[@]}"; do

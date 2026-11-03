@@ -1,0 +1,69 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mynodeone-longhorn
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: mynodeone.longhorn
+      rules:
+        # Robustness values: 0 unknown, 1 healthy, 2 degraded, 3 faulted.
+        - alert: LonghornVolumeFaulted
+          expr: longhorn_volume_robustness == 3
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Longhorn volume {{ $labels.volume }} is faulted
+            description: >-
+              PVC {{ $labels.pvc_namespace }}/{{ $labels.pvc }} has no usable replica,
+              so its data cannot be read or written until a replica is recovered.
+        - alert: LonghornVolumeDegraded
+          expr: longhorn_volume_robustness == 2
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Longhorn volume {{ $labels.volume }} is degraded
+            description: >-
+              PVC {{ $labels.pvc_namespace }}/{{ $labels.pvc }} has fewer healthy
+              replicas than configured and has stayed that way for 15 minutes.
+        - alert: LonghornNodeNotReady
+          expr: longhorn_node_status{condition="ready"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Longhorn node {{ $labels.node }} is not ready
+            description: Volumes with replicas on {{ $labels.node }} may be degraded or unavailable.
+        - alert: LonghornDiskAlmostFull
+          expr: longhorn_disk_usage_bytes / longhorn_disk_capacity_bytes > 0.85
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Longhorn disk {{ $labels.disk }} on {{ $labels.node }} is over 85% full
+            description: >-
+              Remove unused volumes and snapshots, or add a disk, before writes
+              start to fail. Usage is {{ $value | humanizePercentage }}.
+        - alert: LonghornDiskCriticallyFull
+          expr: longhorn_disk_usage_bytes / longhorn_disk_capacity_bytes > 0.95
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Longhorn disk {{ $labels.disk }} on {{ $labels.node }} is over 95% full
+            description: Volumes on this disk can fail at any moment. Usage is {{ $value | humanizePercentage }}.
+        # Nothing to alert on means Prometheus is blind to everything above.
+        - alert: LonghornMetricsMissing
+          expr: absent(longhorn_volume_robustness) and on() (count(kube_namespace_status_phase{namespace="longhorn-system"} == 1) > 0)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Prometheus has no Longhorn volume metrics
+            description: >-
+              Longhorn is installed but its metrics are missing, so Longhorn alerts cannot
+              fire. Check the longhorn-prometheus-servicemonitor ServiceMonitor.

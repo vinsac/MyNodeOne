@@ -49,6 +49,7 @@ echo "✓ All HTML files updated with domain: ${CLUSTER_DOMAIN}.local"
 # Create ConfigMap with all dashboard HTML files
 kubectl create configmap dashboard-html \
     --from-file=index.html="$TEMP_DASHBOARD" \
+    --from-file=dashboard.html="$TEMP_DASHBOARD" \
     --from-file=app-store.html="$TEMP_APP_STORE" \
     --from-file=scripts.html="$TEMP_SCRIPTS" \
     --from-file=cluster-status.html="$TEMP_CLUSTER_STATUS" \
@@ -118,6 +119,13 @@ rules:
 - apiGroups: [""]
   resources: ["services"]
   verbs: ["get", "list"]
+# Storage overview
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list"]
 # Metrics access (if metrics-server is available)
 - apiGroups: ["metrics.k8s.io"]
   resources: ["nodes", "pods"]
@@ -156,11 +164,24 @@ spec:
         app: dashboard
     spec:
       serviceAccountName: dashboard
+      # The token goes only to the exporter below, not to the web server
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: nginx
-        image: nginx:alpine
+        image: nginxinc/nginx-unprivileged:1.31.7-alpine
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
         - name: html
           mountPath: /usr/share/nginx/html
@@ -175,14 +196,23 @@ spec:
             memory: "128Mi"
             cpu: "200m"
       - name: service-exporter
-        image: bitnami/kubectl:latest
+        image: alpine/k8s:1.31.13
         command: ["/bin/bash", "/scripts/export-services.sh"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         env:
+        - name: HOME
+          value: "/tmp"
         - name: OUTPUT_DIR
           value: "/api"
         - name: REFRESH_INTERVAL
           value: "30"
         volumeMounts:
+        - name: service-account-token
+          mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+          readOnly: true
         - name: api
           mountPath: /api
         - name: exporter-script
@@ -202,6 +232,22 @@ spec:
             memory: "64Mi"
             cpu: "50m"
       volumes:
+      - name: service-account-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 3600
+          - configMap:
+              name: kube-root-ca.crt
+              items:
+              - key: ca.crt
+                path: ca.crt
+          - downwardAPI:
+              items:
+              - path: namespace
+                fieldRef:
+                  fieldPath: metadata.namespace
       - name: html
         configMap:
           name: dashboard-html
@@ -232,14 +278,20 @@ spec:
   type: LoadBalancer
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
   selector:
     app: dashboard
 EOF
 
 # Wait for deployment
 echo "⏳ Waiting for dashboard to start..."
-kubectl wait --for=condition=available --timeout=120s deployment/dashboard -n "$NAMESPACE" 2>/dev/null || true
+if ! kubectl wait --for=condition=available --timeout=120s deployment/dashboard -n "$NAMESPACE"; then
+    echo "" >&2
+    echo "Error: the dashboard did not become available within 120s" >&2
+    kubectl get pods -n "$NAMESPACE" -l app=dashboard >&2 || true
+    echo "Check why: kubectl describe pods -n $NAMESPACE -l app=dashboard" >&2
+    exit 1
+fi
 
 # Get service IP
 sleep 5

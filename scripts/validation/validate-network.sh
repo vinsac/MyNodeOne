@@ -56,6 +56,13 @@ CHECKS_FAILED=0
 CHECKS_WARNED=0
 FIXES_APPLIED=0
 
+# Every k3s config in this repo sets flannel-iface: tailscale0, so VXLAN packets arrive
+# on tailscale0 and the rule allowing that interface lets them through. 8472/udp needs
+# no rule of its own, and must not have one: VXLAN has no authentication, so a host on
+# the LAN could inject packets into the pod network.
+K3S_CONFIG_FILE="${K3S_CONFIG_FILE:-/etc/rancher/k3s/config.yaml}"
+FLANNEL_IFACE_PATTERN='^flannel-iface:[[:space:]]*"?tailscale0"?[[:space:]]*$'
+
 # Options
 AUTO_FIX=false
 if [[ "${1:-}" == "--fix" ]]; then
@@ -121,6 +128,15 @@ apply_fix() {
     fi
 }
 
+# Both read the output of "ufw status" from stdin
+ufw_allows_tailscale() {
+    grep -Eq 'on tailscale0[[:space:]]+ALLOW'
+}
+
+ufw_opens_vxlan_to_anywhere() {
+    grep -Eq '^8472/udp( \(v6\))?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere'
+}
+
 ###############################################################################
 # Section 1: Local Node Checks (run on current node)
 ###############################################################################
@@ -182,22 +198,44 @@ check_local_node() {
         apply_fix "Set UFW routed policy to allow" "ufw default allow routed && ufw reload"
     fi
 
-    # 6. VXLAN port 8472/UDP allowed in UFW
+    # 6. tailscale0 allowed in UFW (this is what carries VXLAN)
+    local ufw_rules
+    ufw_rules=$(ufw status 2>/dev/null || echo "")
     CHECKS_RUN=$((CHECKS_RUN + 1))
-    if ufw status 2>/dev/null | grep -q "8472/udp.*ALLOW"; then
-        log_success "UFW allows VXLAN port 8472/UDP"
+    if ufw_allows_tailscale <<< "$ufw_rules"; then
+        log_success "UFW allows traffic on tailscale0 (carries VXLAN)"
         CHECKS_PASSED=$((CHECKS_PASSED + 1))
     else
-        log_fail "UFW does NOT allow VXLAN port 8472/UDP"
+        log_fail "UFW does NOT allow traffic on tailscale0"
         CHECKS_FAILED=$((CHECKS_FAILED + 1))
-        apply_fix "Allow VXLAN port 8472/UDP in UFW" "ufw allow 8472/udp comment 'Flannel VXLAN' && ufw reload"
+        apply_fix "Allow traffic on tailscale0 in UFW" "ufw allow in on tailscale0 comment 'Tailscale mesh network' && ufw reload"
     fi
 
-    # 7. VXLAN listener active
+    # 7. VXLAN port not open to Anywhere
+    CHECKS_RUN=$((CHECKS_RUN + 1))
+    if ufw_opens_vxlan_to_anywhere <<< "$ufw_rules"; then
+        log_fail "UFW opens VXLAN port 8472/UDP to Anywhere (it is not needed, and VXLAN has no authentication)"
+        CHECKS_FAILED=$((CHECKS_FAILED + 1))
+        # Removing it would cut pod traffic if VXLAN doesn't run over tailscale0 here
+        if grep -Eq "$FLANNEL_IFACE_PATTERN" "$K3S_CONFIG_FILE" 2>/dev/null; then
+            apply_fix "Remove the 8472/UDP rule from UFW" "ufw delete allow 8472/udp && ufw reload"
+        else
+            log_warn "Leaving the rule: $K3S_CONFIG_FILE does not set flannel-iface: tailscale0"
+            CHECKS_WARNED=$((CHECKS_WARNED + 1))
+        fi
+    elif [ -z "$ufw_rules" ]; then
+        log_warn "Could not read UFW rules, so can't tell whether VXLAN port 8472/UDP is open (run with sudo)"
+        CHECKS_WARNED=$((CHECKS_WARNED + 1))
+    else
+        log_success "UFW does not open VXLAN port 8472/UDP to Anywhere"
+        CHECKS_PASSED=$((CHECKS_PASSED + 1))
+    fi
+
+    # 8. VXLAN listener active
     run_check "VXLAN listener on port 8472/UDP" \
         "ss -ulnp | grep -q ':8472 '"
 
-    # 8. Tailscale connected
+    # 9. Tailscale connected
     run_check "Tailscale is connected" "tailscale status" false
 }
 
@@ -234,8 +272,9 @@ check_cross_node_connectivity() {
         return 0
     fi
 
-    # Check Flannel routes for each remote node
-    echo "$nodes" | while IFS=$'\t' read -r node_name node_ip; do
+    # Check Flannel routes for each remote node. Not a pipe: a subshell would lose these
+    # checks' counts. On its own descriptor: ssh would read the rest of the list from stdin.
+    while IFS=$'\t' read -r node_name node_ip <&3; do
         if [ "$node_name" = "$(hostname)" ]; then
             continue
         fi
@@ -295,22 +334,43 @@ check_cross_node_connectivity() {
                     "ssh ${ssh_user}@${node_ip} 'sudo ufw default allow routed && sudo ufw reload'"
             fi
 
-            # Check remote VXLAN port
+            # Check remote UFW rules for VXLAN: tailscale0 allowed, 8472/UDP not open
+            local remote_rules
+            remote_rules=$(ssh -n -o ConnectTimeout=5 -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo ufw status 2>/dev/null" 2>/dev/null || echo "")
             CHECKS_RUN=$((CHECKS_RUN + 1))
-            if ssh -o ConnectTimeout=5 -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo ufw status | grep -q '8472/udp.*ALLOW'" &>/dev/null; then
-                log_success "  Remote VXLAN port 8472/UDP allowed on $node_name"
+            if ufw_allows_tailscale <<< "$remote_rules"; then
+                log_success "  Remote UFW allows tailscale0 on $node_name"
                 CHECKS_PASSED=$((CHECKS_PASSED + 1))
             else
-                log_fail "  Remote VXLAN port 8472/UDP NOT allowed on $node_name"
+                log_fail "  Remote UFW does NOT allow tailscale0 on $node_name"
                 CHECKS_FAILED=$((CHECKS_FAILED + 1))
-                apply_fix "Allow VXLAN port on $node_name" \
-                    "ssh ${ssh_user}@${node_ip} 'sudo ufw allow 8472/udp comment \"Flannel VXLAN\" && sudo ufw reload'"
+                apply_fix "Allow tailscale0 in UFW on $node_name" \
+                    "ssh -n ${ssh_user}@${node_ip} 'sudo ufw allow in on tailscale0 comment \"Tailscale mesh network\" && sudo ufw reload'"
+            fi
+
+            CHECKS_RUN=$((CHECKS_RUN + 1))
+            if ufw_opens_vxlan_to_anywhere <<< "$remote_rules"; then
+                log_fail "  Remote UFW opens VXLAN port 8472/UDP to Anywhere on $node_name"
+                CHECKS_FAILED=$((CHECKS_FAILED + 1))
+                if ssh -n -o ConnectTimeout=5 -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo grep -Eq '$FLANNEL_IFACE_PATTERN' $K3S_CONFIG_FILE" &>/dev/null; then
+                    apply_fix "Remove the 8472/UDP rule on $node_name" \
+                        "ssh -n ${ssh_user}@${node_ip} 'sudo ufw delete allow 8472/udp && sudo ufw reload'"
+                else
+                    log_warn "  Leaving the rule on $node_name: $K3S_CONFIG_FILE does not set flannel-iface: tailscale0"
+                    CHECKS_WARNED=$((CHECKS_WARNED + 1))
+                fi
+            elif [ -z "$remote_rules" ]; then
+                log_warn "  Could not read UFW rules on $node_name"
+                CHECKS_WARNED=$((CHECKS_WARNED + 1))
+            else
+                log_success "  Remote UFW does not open VXLAN port 8472/UDP on $node_name"
+                CHECKS_PASSED=$((CHECKS_PASSED + 1))
             fi
         else
             log_warn "  Cannot SSH to $node_name ($node_ip) - skipping remote checks"
             CHECKS_WARNED=$((CHECKS_WARNED + 1))
         fi
-    done
+    done 3<<< "$nodes"
 }
 
 ###############################################################################
@@ -409,7 +469,7 @@ check_kubernetes_networking() {
                 log_fail "Cross-node pod ping FAILED (target: $remote_pod_ip)"
                 CHECKS_FAILED=$((CHECKS_FAILED + 1))
                 echo "    This indicates Flannel VXLAN overlay is not working between nodes"
-                echo "    Check: UFW routed policy, VXLAN port 8472/UDP, flannel.1 interface"
+                echo "    Check: UFW routed policy, UFW rule for tailscale0, flannel.1 interface"
             fi
         else
             log_warn "No remote pod found to test cross-node connectivity"
@@ -487,10 +547,11 @@ main() {
     fi
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-    check_local_node
-    check_cross_node_connectivity
-    check_kubernetes_networking
-    check_storage_health
+    # A failed check is counted and reported, and must not end the run (set -e)
+    check_local_node || true
+    check_cross_node_connectivity || true
+    check_kubernetes_networking || true
+    check_storage_health || true
 
     # Summary
     echo

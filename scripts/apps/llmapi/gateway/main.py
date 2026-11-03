@@ -114,9 +114,11 @@ bounded by ``SLOT_RECONCILE_INTERVAL_SECONDS`` (default 5s).
 """
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -124,19 +126,26 @@ import weakref
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Optional
+from urllib.parse import urlsplit
 
+import anyio
 import asyncpg
 import httpx
 import redis.asyncio as redis
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
 from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, Form
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
+from kubernetes.client.exceptions import ApiException
 from kubernetes.config import ConfigException
+from urllib3.exceptions import HTTPError as Urllib3Error
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -149,6 +158,9 @@ logger = logging.getLogger(__name__)
 class Config:
     # Redis connection (for rate limiting and caching)
     REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    # Supplied separately from Secret llmapi-redis-auth so REDIS_URL stays
+    # credential-free. Empty means a Redis without auth.
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 
     # PostgreSQL connection (for API keys and usage tracking)
     POSTGRES_HOST = os.getenv("POSTGRES_HOST", "llmapi-postgres")
@@ -156,6 +168,24 @@ class Config:
     POSTGRES_DB = os.getenv("POSTGRES_DB", "llmapi")
     POSTGRES_USER = os.getenv("POSTGRES_USER", "llmapi")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
+
+    # Outage limits. Normal operations take milliseconds, so these can be short.
+    # A request answers within them; see the store outage section below.
+    REDIS_CONNECT_TIMEOUT_SECONDS = float(os.getenv("REDIS_CONNECT_TIMEOUT_SECONDS", "2"))
+    REDIS_OP_TIMEOUT_SECONDS = float(os.getenv("REDIS_OP_TIMEOUT_SECONDS", "2"))
+    REDIS_BULK_OP_TIMEOUT_SECONDS = float(os.getenv("REDIS_BULK_OP_TIMEOUT_SECONDS", "30"))
+    POSTGRES_CONNECT_TIMEOUT_SECONDS = float(os.getenv("POSTGRES_CONNECT_TIMEOUT_SECONDS", "3"))
+    # One whole reconnect: opening the pool and re-checking the schema.
+    POSTGRES_RECONNECT_TIMEOUT_SECONDS = float(os.getenv("POSTGRES_RECONNECT_TIMEOUT_SECONDS", "10"))
+    POSTGRES_OP_TIMEOUT_SECONDS = float(os.getenv("POSTGRES_OP_TIMEOUT_SECONDS", "5"))
+    # Admin statistics, key sync and migrations, which can scan whole tables.
+    POSTGRES_BULK_OP_TIMEOUT_SECONDS = float(os.getenv("POSTGRES_BULK_OP_TIMEOUT_SECONDS", "30"))
+    # Between reconnect attempts: starts at 1s and doubles up to this.
+    STORE_RECONNECT_MAX_BACKOFF_SECONDS = float(os.getenv("STORE_RECONNECT_MAX_BACKOFF_SECONDS", "30"))
+
+    # Read timeout of one Kubernetes API call. The client retries a failed
+    # connection on its own, so the gateway gives up at twice this overall.
+    K8S_REQUEST_TIMEOUT_SECONDS = float(os.getenv("K8S_REQUEST_TIMEOUT_SECONDS", "15"))
 
     # Backend URLs
     VLLM_URLS = os.getenv("VLLM_URLS", "http://vllm:8000").split(",")
@@ -196,6 +226,13 @@ class Config:
     # the slowest expected generation; clients should configure their own read
     # timeout to be >= this value so they don't give up before vLLM responds.
     BACKEND_HTTP_TIMEOUT_SECONDS = float(os.getenv("BACKEND_HTTP_TIMEOUT_SECONDS", "300"))
+    # A stream is ended when one write to the client stays blocked this long,
+    # which means the client has stopped reading. A slow client whose writes
+    # complete is not affected. 0 disables the check.
+    STREAM_CLIENT_STALL_TIMEOUT_SECONDS = float(os.getenv("STREAM_CLIENT_STALL_TIMEOUT_SECONDS", "300"))
+    # Last resort for a stream that keeps its slots however slowly it progresses.
+    # Well above the longest generation expected on CPU. 0 disables the limit.
+    STREAM_MAX_DURATION_SECONDS = float(os.getenv("STREAM_MAX_DURATION_SECONDS", "14400"))
 
     # Tokens-per-minute limit (TPM) — more accurate than RPM for LLMs.
     # A 4096-token request costs ~40x more than a 100-token request.
@@ -230,6 +267,18 @@ class Config:
     ))
     # Higher default TPM for admin-scoped keys when not explicitly provided.
     ADMIN_DEFAULT_TOKENS_PER_MINUTE = int(os.getenv("ADMIN_DEFAULT_TOKENS_PER_MINUTE", "200000"))
+
+    # Largest accepted request body. Larger bodies get a 413, whether they
+    # declare a Content-Length or arrive as a chunked stream.
+    MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(10 * 1024 * 1024)))
+
+    # Hosts that admin-supplied GGUF URLs may point at. The model download sends
+    # the HuggingFace token to this URL, so it must stay a short allowlist.
+    GGUF_MODEL_ALLOWED_HOSTS = {
+        host.strip().lower()
+        for host in os.getenv("GGUF_MODEL_ALLOWED_HOSTS", "huggingface.co,hf.co").split(",")
+        if host.strip()
+    }
 
     # Admin password (set via env var for security)
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
@@ -273,6 +322,42 @@ class Config:
 config = Config()
 
 
+# =============================================================================
+# API key identifiers
+# =============================================================================
+#
+# Raw API keys are never stored. Postgres and Redis hold the key id, which is
+# "sha256:" + the SHA-256 of the raw key, and a short non-secret prefix for
+# display. Keys carry 128 bits of randomness, so a fast hash is sufficient.
+#
+# get_api_key() turns the presented bearer token into the key id, and everything
+# after it (scopes, leases, rate limits, usage) works on the id. A key id is not
+# a credential: the bearer token is always hashed, so presenting an id fails.
+
+API_KEY_ID_PREFIX = "sha256:"
+_API_KEY_ID_RE = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def hash_api_key(raw_key: str) -> str:
+    """Return the key id stored for a raw API key."""
+    return API_KEY_ID_PREFIX + hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
+def is_api_key_id(value: str) -> bool:
+    return bool(_API_KEY_ID_RE.fullmatch(value))
+
+
+def api_key_display_prefix(raw_key: str) -> str:
+    """Non-secret leading part of a key. Standard keys show sk-mynodeone- plus
+    7 hex characters. Never more than half, in case a legacy key is short."""
+    return raw_key[:min(20, len(raw_key) // 2)]
+
+
+def key_ref_to_id(key_ref: str) -> str:
+    """Admin endpoints accept either a key id or a raw key."""
+    return key_ref if is_api_key_id(key_ref) else hash_api_key(key_ref)
+
+
 def get_k8s_clients():
     """Return Kubernetes API clients with an explicit in-cluster auth header.
 
@@ -299,6 +384,38 @@ def get_k8s_clients():
             logger.warning(f"Could not read Kubernetes service-account token: {e}")
 
     return client.CoreV1Api(api_client), client.AppsV1Api(api_client)
+
+
+async def _k8s_off_loop(fn, *args, **kwargs):
+    """Run a blocking Kubernetes client function in a thread, within a time limit.
+
+    The Kubernetes client is synchronous, and on the event loop it would stall
+    every request, including inference, for as long as the API server takes.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            config.K8S_REQUEST_TIMEOUT_SECONDS * 2,
+        )
+    except (asyncio.TimeoutError, Urllib3Error) as e:
+        # Only the type: a urllib3 error's text includes the URL and can run long.
+        logger.error(f"Kubernetes API did not respond: {type(e).__name__}")
+        raise HTTPException(
+            status_code=504,
+            detail="The Kubernetes API did not respond. A change may or may not have been applied.",
+        )
+
+
+async def _k8s_clients():
+    """get_k8s_clients() off the event loop: it reads files and loads the client."""
+    return await _k8s_off_loop(get_k8s_clients)
+
+
+async def _k8s_call(method, *args, **kwargs):
+    """Call a Kubernetes API method off the event loop, with a request timeout."""
+    # (connect, read). The read part applies to each read from the socket.
+    kwargs.setdefault("_request_timeout", (min(5.0, config.K8S_REQUEST_TIMEOUT_SECONDS), config.K8S_REQUEST_TIMEOUT_SECONDS))
+    return await _k8s_off_loop(method, *args, **kwargs)
 
 # =============================================================================
 # Model Registry - Tracks loaded models dynamically
@@ -721,95 +838,214 @@ class UsageResponse(BaseModel):
 
 
 # =============================================================================
+# Store outages
+# =============================================================================
+#
+# A Redis or Postgres outage must cost a request at most a few seconds, and must
+# never make a request wait while it holds a lease. So:
+#
+#   * Every store operation has a hard time limit (_bounded).
+#   * After a failure the store is marked down, and only one caller at a time
+#     tries to reconnect, with one bounded attempt per backoff interval. Everyone
+#     else gets the outage answer at once, without touching the network. No lock
+#     is held while connecting, so there is nothing to queue on.
+#   * Inference checks the daily quota before it takes leases, and gives them back
+#     before it records usage.
+#
+# What each request gets during an outage:
+#
+#   Redis down, Postgres up:
+#     Auth and scopes come from Postgres, so requests work. RPM and TPM aren't
+#     enforced (fail open); per-key concurrency is, as it needs no store.
+#   Postgres down, Redis up:
+#     Keys in the Redis cache keep working. The daily quota isn't enforced (fail
+#     open) and usage for those requests is not recorded. A key not in the cache
+#     gets a 503, not a 401, as it can't be checked. So do /v1/usage and the admin
+#     endpoints that need Postgres, such as creating or revoking a key.
+#   Both down:
+#     Every authenticated endpoint gets a 503 with Retry-After. Nothing is
+#     authorized, because auth fails closed (see get_api_key).
+#
+# /health and / use neither store, so an outage doesn't restart the gateway.
+
+
+class StoreUnavailable(Exception):
+    """Postgres can't answer. The API turns this into a 503 (see the app's handler)."""
+
+
+def _consume_task_result(task: asyncio.Future) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
+async def _bounded(awaitable, timeout: float):
+    """Await with a hard limit, raising asyncio.TimeoutError when it runs out.
+
+    Unlike asyncio.wait_for this doesn't wait for the operation to finish being
+    cancelled. Cancelling a query on a hung server can itself hang (asyncpg opens
+    a new connection to send the cancel), and that is exactly when this must return.
+    """
+    task = asyncio.ensure_future(awaitable)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+    except asyncio.CancelledError:
+        task.cancel()
+        task.add_done_callback(_consume_task_result)
+        raise
+    if not done:
+        task.cancel()
+        task.add_done_callback(_consume_task_result)
+        raise asyncio.TimeoutError()
+    return task.result()
+
+
+class _ReconnectGate:
+    """Lets one caller at a time try to reconnect, with exponential backoff."""
+
+    INITIAL_BACKOFF_SECONDS = 1.0
+
+    def __init__(self):
+        self._backoff = self.INITIAL_BACKOFF_SECONDS
+        self._retry_at = 0.0
+        self._in_progress = False
+
+    def try_begin(self) -> bool:
+        # No await between the check and the set, so this is atomic on the event loop.
+        if self._in_progress or time.monotonic() < self._retry_at:
+            return False
+        self._in_progress = True
+        return True
+
+    def succeeded(self) -> None:
+        self._in_progress = False
+        self._backoff = self.INITIAL_BACKOFF_SECONDS
+        self._retry_at = 0.0
+
+    def failed(self) -> None:
+        self._in_progress = False
+        self._retry_at = time.monotonic() + self._backoff
+        self._backoff = min(self._backoff * 2, max(1.0, config.STORE_RECONNECT_MAX_BACKOFF_SECONDS))
+
+
+# =============================================================================
 # PostgreSQL Client
 # =============================================================================
+
+# Failures that mean the connection or the server is gone, not that a query is wrong.
+_POSTGRES_OUTAGE_ERRORS = (
+    OSError,
+    asyncpg.exceptions.PostgresConnectionError,
+    asyncpg.exceptions.OperatorInterventionError,  # shutting down or still starting
+    asyncpg.exceptions.InterfaceError,
+    asyncpg.exceptions.TooManyConnectionsError,
+)
+
 
 class PostgresClient:
     """PostgreSQL client for API keys, usage logs, and model configs."""
 
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
-        self._reconnect_lock = asyncio.Lock()
+        self._reconnect_gate = _ReconnectGate()
+
+    async def _open_pool(self) -> None:
+        """Open a pool and make sure the schema exists."""
+        pool = await asyncpg.create_pool(
+            host=config.POSTGRES_HOST,
+            port=config.POSTGRES_PORT,
+            database=config.POSTGRES_DB,
+            user=config.POSTGRES_USER,
+            password=config.POSTGRES_PASSWORD,
+            min_size=2,
+            max_size=10,
+            timeout=config.POSTGRES_CONNECT_TIMEOUT_SECONDS,
+            command_timeout=60
+        )
+        self.pool = pool
+        try:
+            await self._init_schema()
+        except BaseException:
+            self._drop_pool(pool)
+            raise
 
     async def connect(self):
         """Connect to PostgreSQL and initialize schema."""
         try:
-            self.pool = await asyncpg.create_pool(
-                host=config.POSTGRES_HOST,
-                port=config.POSTGRES_PORT,
-                database=config.POSTGRES_DB,
-                user=config.POSTGRES_USER,
-                password=config.POSTGRES_PASSWORD,
-                min_size=2,
-                max_size=10,
-                command_timeout=60
-            )
+            await _bounded(self._open_pool(), config.POSTGRES_BULK_OP_TIMEOUT_SECONDS)
             logger.info(f"Connected to PostgreSQL at {config.POSTGRES_HOST}:{config.POSTGRES_PORT}")
-            await self._init_schema()
         except Exception as e:
-            logger.error(f"Failed to connect to PostgreSQL: {e}")
+            logger.error(f"Failed to connect to PostgreSQL: {type(e).__name__}: {e}")
             raise
 
-    async def _reconnect(self):
-        """Recreate the connection pool after a failure (e.g. Postgres pod restart)."""
-        async with self._reconnect_lock:
-            # Another coroutine may have already reconnected while we waited
-            try:
-                if self.pool:
-                    await self.pool.close()
-            except Exception:
-                pass
+    def _drop_pool(self, pool: Optional[asyncpg.Pool]) -> None:
+        """Mark Postgres down, unless a newer pool has replaced this one.
+
+        terminate() rather than close(): close() waits for connections in use,
+        which on a hung server is forever.
+        """
+        if pool is None:
+            return
+        if self.pool is pool:
             self.pool = None
-            for attempt in range(1, 6):
-                try:
-                    self.pool = await asyncpg.create_pool(
-                        host=config.POSTGRES_HOST,
-                        port=config.POSTGRES_PORT,
-                        database=config.POSTGRES_DB,
-                        user=config.POSTGRES_USER,
-                        password=config.POSTGRES_PASSWORD,
-                        min_size=2,
-                        max_size=10,
-                        command_timeout=60
-                    )
-                    logger.info(f"Reconnected to PostgreSQL (attempt {attempt})")
-                    await self._init_schema()
-                    return
-                except Exception as e:
-                    logger.warning(f"PostgreSQL reconnect attempt {attempt}/5 failed: {e}")
-                    await asyncio.sleep(5 * attempt)
-            logger.error("All PostgreSQL reconnect attempts failed")
+        pool.terminate()
 
-    async def _execute_with_retry(self, fn):
-        """Execute an async DB function, reconnecting once if the pool is broken.
+    async def _reconnect(self) -> bool:
+        """Make one bounded reconnect attempt. False if down, or another caller is on it."""
+        if not self._reconnect_gate.try_begin():
+            return False
+        try:
+            await _bounded(self._open_pool(), config.POSTGRES_RECONNECT_TIMEOUT_SECONDS)
+        except BaseException as e:
+            self._reconnect_gate.failed()
+            logger.warning(f"PostgreSQL reconnect failed: {type(e).__name__}")
+            if not isinstance(e, Exception):
+                raise
+            return False
+        self._reconnect_gate.succeeded()
+        logger.info("Reconnected to PostgreSQL")
+        return True
 
-        If the pool has never been established (postgres was down at startup),
-        tries to reconnect first so degraded-mode gateways self-heal.
+    async def _execute_with_retry(self, fn, timeout: Optional[float] = None):
+        """Run an async DB function within a time limit, or raise StoreUnavailable.
+
+        A lost connection is retried once on a new pool, so a Postgres restart
+        doesn't fail requests that could succeed. If the pool has never been
+        established (postgres was down at startup), this also opens it, so
+        degraded-mode gateways self-heal. A timeout isn't retried.
+
+        Passing `timeout` marks a bulk operation. One that runs out of time says
+        nothing about Postgres's health, so it doesn't mark Postgres down, which
+        would also fail everyone else's queries on the pool.
         """
         for attempt in range(2):
+            if self.pool is None and not await self._reconnect():
+                raise StoreUnavailable("PostgreSQL is unavailable")
+            pool = self.pool
             try:
-                if self.pool is None:
-                    await self._reconnect()
-                # Pool may still be None if all reconnect attempts failed.
-                if self.pool is None:
-                    raise asyncpg.exceptions.ConnectionDoesNotExistError(
-                        "PostgreSQL pool is not available"
-                    )
-                return await fn()
-            except (OSError, asyncpg.exceptions.ConnectionDoesNotExistError,
-                    asyncpg.exceptions.InterfaceError,
-                    asyncpg.exceptions.TooManyConnectionsError) as e:
-                if attempt == 0:
-                    logger.warning(f"PostgreSQL connection lost ({e}), reconnecting...")
-                    await self._reconnect()
-                else:
-                    logger.error(f"PostgreSQL operation failed after reconnect: {e}")
-                    raise
+                return await _bounded(fn(), timeout or config.POSTGRES_OP_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError as e:
+                logger.warning("PostgreSQL operation timed out")
+                if timeout is None:
+                    self._drop_pool(pool)
+                raise StoreUnavailable("PostgreSQL timed out") from e
+            except _POSTGRES_OUTAGE_ERRORS as e:
+                self._drop_pool(pool)
+                if attempt:
+                    raise StoreUnavailable("PostgreSQL is unavailable") from e
+                logger.warning(f"PostgreSQL connection lost ({type(e).__name__}), reconnecting...")
+            except Exception as e:
+                # fn uses self.pool, which fails oddly if another request has just dropped it.
+                if self.pool is not pool:
+                    raise StoreUnavailable("PostgreSQL is unavailable") from e
+                raise
 
     async def close(self):
         """Close PostgreSQL connection pool."""
         if self.pool:
-            await self.pool.close()
+            try:
+                await _bounded(self.pool.close(), config.POSTGRES_OP_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                self.pool.terminate()
             logger.info("Closed PostgreSQL connection")
 
     async def _init_schema(self):
@@ -873,21 +1109,124 @@ class PostgresClient:
                 CREATE INDEX IF NOT EXISTS idx_api_keys_created_at
                 ON api_keys(created_at DESC)
             """)
+            await conn.execute("""
+                ALTER TABLE api_keys
+                ADD COLUMN IF NOT EXISTS key_prefix VARCHAR(32)
+            """)
 
             logger.info("PostgreSQL schema initialized")
+            await self._migrate_plaintext_rows(conn)
+
+    async def _migrate_plaintext_rows(self, conn) -> int:
+        """Replace every plaintext key in api_keys and usage_logs with its key id.
+
+        Safe to repeat: rows that are already hashed are not selected. It runs
+        at startup and on each sync, because older copies of install-llmapi.sh and
+        manage-keys.sh inserted plaintext rows.
+        """
+        rows = await conn.fetch("""
+            SELECT api_key FROM api_keys WHERE api_key NOT LIKE 'sha256:%'
+            UNION
+            SELECT api_key FROM usage_logs WHERE api_key NOT LIKE 'sha256:%'
+        """)
+        migrated = 0
+        for row in rows:
+            try:
+                await self._migrate_plaintext_key_row(conn, row["api_key"])
+                migrated += 1
+            except (asyncpg.PostgresError, asyncpg.InterfaceError) as e:
+                # Only the exception type: asyncpg error text can quote row values.
+                logger.error(f"API key hash migration failed for one row: {type(e).__name__}")
+        if migrated:
+            logger.info(f"Migrated {migrated} plaintext API key(s) to hashed storage")
+        return migrated
+
+    async def _migrate_plaintext_key_row(self, conn, raw_key: str) -> None:
+        """Move one plaintext key and its usage to the key id, atomically."""
+        key_id = hash_api_key(raw_key)
+        async with conn.transaction():
+            # Serializes replicas migrating at once, so usage is never merged twice.
+            await conn.execute("SELECT pg_advisory_xact_lock(7236001)")
+            # A key revoked under either identity stays revoked.
+            await conn.execute("""
+                INSERT INTO api_keys (api_key, key_prefix, name, scopes, requests_per_minute,
+                                      tokens_per_day, tokens_per_minute, created_at, updated_at, revoked)
+                SELECT $2, $3, name, scopes, requests_per_minute,
+                       tokens_per_day, tokens_per_minute, created_at, NOW(), revoked
+                FROM api_keys WHERE api_key = $1
+                ON CONFLICT (api_key) DO UPDATE SET
+                    revoked = api_keys.revoked OR EXCLUDED.revoked,
+                    key_prefix = COALESCE(api_keys.key_prefix, EXCLUDED.key_prefix),
+                    updated_at = NOW()
+            """, raw_key, key_id, api_key_display_prefix(raw_key))
+            await conn.execute("""
+                INSERT INTO usage_logs (api_key, date, hour, input_tokens, output_tokens,
+                                        requests, created_at, updated_at)
+                SELECT $2, date, hour, input_tokens, output_tokens, requests, created_at, NOW()
+                FROM usage_logs WHERE api_key = $1
+                ON CONFLICT (api_key, date, hour) DO UPDATE SET
+                    input_tokens = usage_logs.input_tokens + EXCLUDED.input_tokens,
+                    output_tokens = usage_logs.output_tokens + EXCLUDED.output_tokens,
+                    requests = usage_logs.requests + EXCLUDED.requests,
+                    updated_at = NOW()
+            """, raw_key, key_id)
+            await conn.execute("DELETE FROM usage_logs WHERE api_key = $1", raw_key)
+            await conn.execute("DELETE FROM api_keys WHERE api_key = $1", raw_key)
+
+    async def migrate_plaintext_keys(self) -> int:
+        """Migrate any plaintext rows inserted since the last run."""
+        async def _query():
+            async with self.pool.acquire() as conn:
+                return await self._migrate_plaintext_rows(conn)
+        try:
+            return await self._execute_with_retry(_query, timeout=config.POSTGRES_BULK_OP_TIMEOUT_SECONDS)
+        except Exception as e:
+            logger.error(f"API key hash migration failed: {type(e).__name__}")
+            return 0
+
+    async def migrate_plaintext_key(self, raw_key: str) -> Optional[dict]:
+        """At lookup, migrate a plaintext row inserted since the last sync.
+
+        Returns the key's config if the presented token was such a row. A token
+        shaped like a key id is refused here, or presenting a stored id would
+        match its row and be treated as a valid plaintext key.
+        """
+        if raw_key.startswith(API_KEY_ID_PREFIX):
+            return None
+
+        async def _query():
+            async with self.pool.acquire() as conn:
+                exists = await conn.fetchval("SELECT 1 FROM api_keys WHERE api_key = $1", raw_key)
+                if not exists:
+                    return False
+                await self._migrate_plaintext_key_row(conn, raw_key)
+                return True
+        try:
+            migrated = await self._execute_with_retry(_query)
+        except StoreUnavailable:
+            raise
+        except Exception as e:
+            logger.error(f"API key hash migration failed at lookup: {type(e).__name__}")
+            return None
+        return await self.get_api_key_config(hash_api_key(raw_key)) if migrated else None
 
     async def get_api_key_config(self, api_key: str) -> Optional[dict]:
-        """Get API key configuration."""
+        """Get API key configuration. None means the key doesn't exist or is revoked.
+
+        Raises StoreUnavailable if that can't be determined, so an outage is never
+        mistaken for an invalid key.
+        """
         async def _query():
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow("""
-                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day,
+                    SELECT api_key, key_prefix, name, scopes, requests_per_minute, tokens_per_day,
                            tokens_per_minute, created_at, revoked
                     FROM api_keys
                     WHERE api_key = $1 AND revoked = FALSE
                 """, api_key)
                 if row:
                     return {
+                        "key_prefix": row["key_prefix"],
                         "name": row["name"],
                         "scopes": list(row["scopes"]),
                         "requests_per_minute": row["requests_per_minute"],
@@ -899,8 +1238,8 @@ class PostgresClient:
         try:
             return await self._execute_with_retry(_query)
         except Exception as e:
-            logger.error(f"Error fetching API key config: {e}")
-            return None
+            logger.error(f"Error fetching API key config: {type(e).__name__}")
+            raise StoreUnavailable("Could not read the API key") from e
 
     async def set_api_key_config(self, api_key: str, config_data: dict):
         """Create or update API key configuration."""
@@ -908,10 +1247,11 @@ class PostgresClient:
             async with self.pool.acquire() as conn:
                 await conn.execute("""
                     INSERT INTO api_keys (api_key, name, scopes, requests_per_minute,
-                                         tokens_per_day, tokens_per_minute, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                                         tokens_per_day, tokens_per_minute, created_at, updated_at, key_prefix)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
                     ON CONFLICT (api_key)
                     DO UPDATE SET
+                        key_prefix = COALESCE(EXCLUDED.key_prefix, api_keys.key_prefix),
                         name = EXCLUDED.name,
                         scopes = EXCLUDED.scopes,
                         requests_per_minute = EXCLUDED.requests_per_minute,
@@ -928,7 +1268,8 @@ class PostgresClient:
                         config.MIN_TOKENS_PER_MINUTE,
                         int(config_data.get("tokens_per_minute", config.DEFAULT_TOKENS_PER_MINUTE)),
                     ),
-                    datetime.fromisoformat(config_data.get("created_at", datetime.utcnow().isoformat()))
+                    datetime.fromisoformat(config_data.get("created_at", datetime.utcnow().isoformat())),
+                    config_data.get("key_prefix"),
                 )
         try:
             await self._execute_with_retry(_query)
@@ -952,19 +1293,26 @@ class PostgresClient:
             raise
 
     async def list_api_keys(self, prefix: str = "sk-mynodeone-") -> list[dict]:
-        """List all non-revoked API keys with given prefix."""
+        """List all non-revoked API keys whose display prefix matches.
+
+        Only hashed rows are returned, so a row awaiting migration can never
+        expose a raw key. Raises StoreUnavailable in an outage, rather than
+        reporting that there are no keys."""
         async def _query():
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT api_key, name, scopes, requests_per_minute, tokens_per_day,
+                    SELECT api_key, key_prefix, name, scopes, requests_per_minute, tokens_per_day,
                            tokens_per_minute, created_at
                     FROM api_keys
-                    WHERE api_key LIKE $1 AND revoked = FALSE
+                    WHERE api_key LIKE 'sha256:%'
+                      AND (key_prefix IS NULL OR key_prefix LIKE $1)
+                      AND revoked = FALSE
                     ORDER BY created_at DESC
                 """, f"{prefix}%")
                 return [
                     {
-                        "key": row["api_key"],
+                        "key_id": row["api_key"],
+                        "key_prefix": row["key_prefix"],
                         "name": row["name"],
                         "scopes": list(row["scopes"]),
                         "requests_per_minute": row["requests_per_minute"],
@@ -975,10 +1323,21 @@ class PostgresClient:
                     for row in rows
                 ]
         try:
-            return await self._execute_with_retry(_query)
+            return await self._execute_with_retry(_query, timeout=config.POSTGRES_BULK_OP_TIMEOUT_SECONDS)
+        except StoreUnavailable:
+            raise
         except Exception as e:
             logger.error(f"Error listing API keys: {e}")
             return []
+
+    async def get_key_revocation_states(self) -> dict[str, bool]:
+        """Map every key id to its revoked flag. Raises if Postgres is unavailable,
+        so callers can't mistake an outage for an empty key table."""
+        async def _query():
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch("SELECT api_key, revoked FROM api_keys")
+                return {row["api_key"]: row["revoked"] for row in rows}
+        return await self._execute_with_retry(_query, timeout=config.POSTGRES_BULK_OP_TIMEOUT_SECONDS)
 
     async def add_token_usage(self, api_key: str, input_tokens: int, output_tokens: int):
         """Track token usage (hourly aggregation)."""
@@ -1004,7 +1363,8 @@ class PostgresClient:
             # Don't raise - usage tracking failures shouldn't block requests
 
     async def get_token_usage(self, api_key: str) -> tuple[int, int]:
-        """Get today's token usage for an API key."""
+        """Get today's token usage for an API key. Raises StoreUnavailable in an
+        outage, rather than reporting no usage."""
         today = datetime.utcnow().date()
         async def _query():
             async with self.pool.acquire() as conn:
@@ -1021,12 +1381,17 @@ class PostgresClient:
         try:
             return await self._execute_with_retry(_query)
         except Exception as e:
-            logger.error(f"Error getting token usage: {e}")
-            return 0, 0
+            logger.error(f"Error getting token usage: {type(e).__name__}")
+            raise StoreUnavailable("Could not read token usage") from e
 
     async def check_token_quota(self, api_key: str, daily_limit: int) -> bool:
-        """Check if within daily token quota."""
-        input_tokens, output_tokens = await self.get_token_usage(api_key)
+        """Check if within daily token quota. Fails open if Postgres is unavailable,
+        so a Postgres outage doesn't stop inference for keys that can still authenticate."""
+        try:
+            input_tokens, output_tokens = await self.get_token_usage(api_key)
+        except StoreUnavailable:
+            logger.warning("Daily quota not enforced: PostgreSQL is unavailable")
+            return True
         return (input_tokens + output_tokens) < daily_limit
 
     async def get_usage_stats(self, api_key: str, days: int = 7) -> dict:
@@ -1081,6 +1446,7 @@ class PostgresClient:
                 usage_rows = await conn.fetch("""
                     SELECT
                         u.api_key,
+                        k.key_prefix,
                         k.name,
                         u.date,
                         u.hour,
@@ -1092,7 +1458,7 @@ class PostgresClient:
                         k.tokens_per_minute as tpm_limit
                     FROM usage_logs u
                     JOIN api_keys k ON u.api_key = k.api_key
-                    WHERE u.date >= $1 AND k.revoked = FALSE
+                    WHERE u.date >= $1 AND k.revoked = FALSE AND u.api_key LIKE 'sha256:%'
                     ORDER BY u.date ASC, u.hour ASC, k.name ASC
                 """, start_date)
 
@@ -1123,6 +1489,7 @@ class PostgresClient:
                     tokens = int(row["input_tokens"]) + int(row["output_tokens"])
                     requests = int(row["requests"])
                     api_key = row["api_key"]
+                    api_key_preview = (row["key_prefix"] or api_key[:16]) + "..."
 
                     bucket_map[iso]["tokens"] += tokens
                     bucket_map[iso]["requests"] += requests
@@ -1133,7 +1500,7 @@ class PostgresClient:
                         key_totals[api_key] = {
                             "api_key": api_key,
                             "name": row["name"],
-                            "api_key_preview": api_key[:16] + "...",
+                            "api_key_preview": api_key_preview,
                             "tokens_window": 0,
                             "requests_window": 0,
                             "tokens_limit": int(row["tokens_limit"]),
@@ -1147,7 +1514,7 @@ class PostgresClient:
                     key_hourly.append({
                         "api_key": api_key,
                         "name": row["name"],
-                        "api_key_preview": api_key[:16] + "...",
+                        "api_key_preview": api_key_preview,
                         "timestamp_utc": iso,
                         "tokens": tokens,
                         "requests": requests,
@@ -1174,25 +1541,8 @@ class PostgresClient:
                     "by_hour": [bucket_map[iso] for iso in bucket_order],
                     "by_key_hour": key_hourly,
                 }
-        try:
-            return await self._execute_with_retry(_query)
-        except Exception as e:
-            logger.error(f"Error getting all keys stats: {e}")
-            return {
-                "timezone": "UTC",
-                "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-                "window_hours": window_hours,
-                "summary": {
-                    "total_tokens_window": 0,
-                    "total_requests_window": 0,
-                    "total_tokens_today": 0,
-                    "total_requests_today": 0,
-                    "active_keys": 0,
-                },
-                "by_key": [],
-                "by_hour": [],
-                "by_key_hour": [],
-            }
+        # An outage raises StoreUnavailable, a 503. Zeros would read as "no usage".
+        return await self._execute_with_retry(_query, timeout=config.POSTGRES_BULK_OP_TIMEOUT_SECONDS)
 
 
 postgres_client = PostgresClient()
@@ -1204,71 +1554,122 @@ postgres_client = PostgresClient()
 class RedisClient:
     def __init__(self):
         self.client: Optional[redis.Redis] = None
-        self._reconnect_lock = asyncio.Lock()
+        self._reconnect_gate = _ReconnectGate()
+
+    def _new_client(self) -> redis.Redis:
+        kwargs = {
+            "decode_responses": True,
+            "socket_connect_timeout": config.REDIS_CONNECT_TIMEOUT_SECONDS,
+            "socket_timeout": config.REDIS_OP_TIMEOUT_SECONDS,
+            # _safe does the retrying. The client's own retries would use up the time limit.
+            "retry": Retry(NoBackoff(), 0),
+        }
+        if config.REDIS_PASSWORD:
+            kwargs["password"] = config.REDIS_PASSWORD
+        return redis.from_url(config.REDIS_URL, **kwargs)
+
+    @staticmethod
+    def _log_safe_url() -> str:
+        """REDIS_URL without any userinfo, for logs."""
+        parts = urlsplit(config.REDIS_URL)
+        host = parts.netloc.rsplit("@", 1)[-1]
+        return f"{parts.scheme}://{host}{parts.path}"
 
     async def connect(self):
-        self.client = redis.from_url(config.REDIS_URL, decode_responses=True)
-        logger.info(f"Connected to Redis at {config.REDIS_URL}")
+        self.client = self._new_client()
+        logger.info(f"Connected to Redis at {self._log_safe_url()}")
 
     async def close(self):
         if self.client:
             await self.client.close()
 
-    async def _reconnect(self):
-        """Recreate the Redis client after a connection failure."""
-        async with self._reconnect_lock:
-            try:
-                if self.client:
-                    await self.client.close()
-            except Exception:
-                pass
-            for attempt in range(1, 6):
-                try:
-                    self.client = redis.from_url(config.REDIS_URL, decode_responses=True)
-                    # Ping to confirm the connection is live
-                    await self.client.ping()
-                    logger.info(f"Reconnected to Redis (attempt {attempt})")
-                    return
-                except Exception as e:
-                    logger.warning(f"Redis reconnect attempt {attempt}/5 failed: {e}")
-                    await asyncio.sleep(3 * attempt)
-            logger.error("All Redis reconnect attempts failed; running without Redis")
+    def _drop_client(self, client: Optional[redis.Redis]) -> None:
+        """Mark Redis down, unless a newer client has replaced this one."""
+        if self.client is client:
             self.client = None
+        if client is not None:
+            # In the background, as closing may wait on a connection to a hung server.
+            asyncio.ensure_future(_bounded(client.aclose(), config.REDIS_OP_TIMEOUT_SECONDS)).add_done_callback(
+                _consume_task_result
+            )
 
-    async def _safe(self, coro_fn, default=None):
-        """Execute a Redis coroutine, reconnecting once on failure.
+    async def _reconnect(self) -> bool:
+        """Make one bounded reconnect attempt. False if down, or another caller is on it."""
+        if not self._reconnect_gate.try_begin():
+            return False
+        client = None
+        try:
+            client = self._new_client()
+            await _bounded(client.ping(), config.REDIS_CONNECT_TIMEOUT_SECONDS)
+        except BaseException as e:
+            self._reconnect_gate.failed()
+            self._drop_client(client)
+            logger.warning(f"Redis reconnect failed: {type(e).__name__}")
+            if not isinstance(e, Exception):
+                raise
+            return False
+        self.client = client
+        self._reconnect_gate.succeeded()
+        logger.info("Reconnected to Redis")
+        return True
+
+    async def _safe(self, coro_fn, default=None, timeout: Optional[float] = None):
+        """Execute a Redis coroutine within a time limit, reconnecting once on failure.
 
         Returns `default` if Redis is unavailable so callers can fail-open
         (rate limiting skipped, cache miss, etc.) rather than crashing.
+
+        Passing `timeout` marks a bulk operation, whose running out of time doesn't
+        mark Redis down. See PostgresClient._execute_with_retry.
         """
         for attempt in range(2):
-            if self.client is None:
-                # Redis was previously marked down; try to recover.
-                await self._reconnect()
-                if self.client is None:
-                    return default
+            # A client left over from a failure was dropped; try to recover.
+            if self.client is None and not await self._reconnect():
+                return default
+            client = self.client
             try:
-                return await coro_fn()
+                return await _bounded(coro_fn(), timeout or config.REDIS_OP_TIMEOUT_SECONDS)
+            except (asyncio.TimeoutError, RedisTimeoutError):
+                logger.warning("Redis operation timed out")
+                if timeout is None:
+                    self._drop_client(client)
+                return default
             except (RedisConnectionError,
-                    RedisTimeoutError,
                     ConnectionRefusedError,
                     OSError) as e:
-                if attempt == 0:
-                    logger.warning(f"Redis connection lost ({e}), reconnecting...")
-                    await self._reconnect()
-                else:
-                    logger.error(f"Redis operation failed after reconnect: {e}")
+                self._drop_client(client)
+                if attempt:
+                    logger.error(f"Redis operation failed after reconnect: {type(e).__name__}")
                     return default
+                logger.warning(f"Redis connection lost ({type(e).__name__}), reconnecting...")
             except Exception as e:
                 logger.error(f"Redis unexpected error: {e}")
                 return default
         return default
 
-    def _rate_key(self, api_key: str, bucket: Optional[str], metric: str) -> str:
-        """Redis rate-limit key. Bucketed keys isolate chat and embeddings quotas."""
+    # Rate windows are fixed and named by the minute, so a window ends when the
+    # clock moves on, whatever was written to it. The TTL only cleans up, and is
+    # longer than the window to allow for clock differences between replicas.
+    RATE_WINDOW_SECONDS = 60
+    RATE_KEY_TTL_SECONDS = 120
+
+    def _rate_key(self, api_key: str, bucket: Optional[str], metric: str) -> tuple[str, int]:
+        """Return the current window's Redis key and the seconds until the next window.
+
+        Bucketed keys isolate chat and embeddings quotas."""
+        now = time.time()
+        window = int(now // self.RATE_WINDOW_SECONDS)
+        seconds_left = max(1, math.ceil((window + 1) * self.RATE_WINDOW_SECONDS - now))
         if bucket:
-            return f"ratelimit:{api_key}:{bucket}:{metric}"
-        return f"ratelimit:{api_key}:{metric}"
+            return f"ratelimit:{api_key}:{bucket}:{metric}:{window}", seconds_left
+        return f"ratelimit:{api_key}:{metric}:{window}", seconds_left
+
+    async def _charge_rate_window(self, key: str, amount: int) -> None:
+        """Add to a window. MULTI/EXEC, so a key can't exist without its expiry."""
+        pipe = self.client.pipeline(transaction=True)
+        pipe.incrby(key, amount)
+        pipe.expire(key, self.RATE_KEY_TTL_SECONDS)
+        await pipe.execute()
 
     async def check_rate_limit_with_info(
         self,
@@ -1281,19 +1682,12 @@ class RedisClient:
         Fails OPEN (allows request) if Redis is unavailable so a Redis pod
         crash does not block all inference traffic.
         """
-        key = self._rate_key(api_key, bucket, "rpm")
+        key, seconds_left = self._rate_key(api_key, bucket, "rpm")
         async def _fn():
-            pipe = self.client.pipeline()
-            pipe.get(key)
-            pipe.ttl(key)
-            current_str, ttl = await pipe.execute()
-            current = int(current_str) if current_str else 0
+            current = int(await self.client.get(key) or 0)
             if current >= requests_per_minute:
-                return False, max(1, ttl)
-            pipe2 = self.client.pipeline()
-            pipe2.incr(key)
-            pipe2.expire(key, 60)
-            await pipe2.execute()
+                return False, seconds_left
+            await self._charge_rate_window(key, 1)
             return True, 0
         result = await self._safe(_fn, default=(True, 0))  # fail-open
         return result
@@ -1305,45 +1699,34 @@ class RedisClient:
         tokens_per_minute: int,
         bucket: Optional[str] = None,
     ) -> tuple[bool, int]:
-        """Check TPM limit using a sliding 60-second window. Returns (allowed, retry_after_seconds).
+        """Check TPM limit using a fixed one-minute window. Returns (allowed, retry_after_seconds).
 
         Charges estimated_tokens against the window.  Actual output tokens are
         charged separately after completion via add_tpm_usage().
         Fails OPEN if Redis is unavailable.
         """
-        key = self._rate_key(api_key, bucket, "tpm")
+        key, seconds_left = self._rate_key(api_key, bucket, "tpm")
         async def _fn():
-            pipe = self.client.pipeline()
-            pipe.get(key)
-            pipe.ttl(key)
-            current_str, ttl = await pipe.execute()
-            current = int(current_str) if current_str else 0
+            current = int(await self.client.get(key) or 0)
             if current + estimated_tokens > tokens_per_minute:
-                return False, max(1, ttl)
-            pipe2 = self.client.pipeline()
-            pipe2.incrby(key, estimated_tokens)
-            pipe2.expire(key, 60)
-            await pipe2.execute()
+                return False, seconds_left
+            await self._charge_rate_window(key, estimated_tokens)
             return True, 0
         return await self._safe(_fn, default=(True, 0))  # fail-open
 
     async def add_tpm_usage(self, api_key: str, output_tokens: int, bucket: Optional[str] = None) -> None:
         """Charge output tokens to the TPM window after a request completes."""
-        key = self._rate_key(api_key, bucket, "tpm")
+        key, _ = self._rate_key(api_key, bucket, "tpm")
         async def _fn():
-            pipe = self.client.pipeline()
-            pipe.incrby(key, output_tokens)
-            pipe.expire(key, 60)
-            await pipe.execute()
+            await self._charge_rate_window(key, output_tokens)
         await self._safe(_fn)
 
     async def get_rate_limit_info(self, api_key: str, bucket: Optional[str] = None) -> tuple[int, int]:
-        """Get current RPM usage and TTL."""
-        rpm_key = self._rate_key(api_key, bucket, "rpm")
+        """Get current RPM usage and the seconds until the window ends."""
+        rpm_key, seconds_left = self._rate_key(api_key, bucket, "rpm")
         async def _fn():
             current_rpm = await self.client.get(rpm_key) or 0
-            ttl = await self.client.ttl(rpm_key)
-            return int(current_rpm), max(0, ttl)
+            return int(current_rpm), seconds_left
         return await self._safe(_fn, default=(0, 0))
 
     async def enqueue_request(self, priority: str, request_id: str, data: dict):
@@ -1403,6 +1786,39 @@ class RedisClient:
             await self.client.delete(f"apikey:{api_key}")
         await self._safe(_fn)
 
+    async def list_cached_key_ids(self) -> Optional[list[str]]:
+        """Key ids in the auth cache. None if Redis is unavailable."""
+        async def _fn():
+            return [
+                key.removeprefix("apikey:")
+                async for key in self.client.scan_iter(match=f"apikey:{API_KEY_ID_PREFIX}*", count=500)
+            ]
+        return await self._safe(_fn, default=None, timeout=config.REDIS_BULK_OP_TIMEOUT_SECONDS)
+
+    async def migrate_legacy_keys(self, delete_plaintext: bool) -> None:
+        """Move entries an older gateway stored under raw keys to the key id.
+
+        The copy keeps auth working if Postgres is down at startup. Deleting the
+        plaintext entries waits for the first periodic sync, in case an old pod is
+        still running next to this one and reading them. upgrade-llmapi.sh stops the
+        old pods first, because once Redis requires a password they can't reach it.
+        """
+        async def _fn():
+            async for key in self.client.scan_iter(match="apikey:*", count=500):
+                raw_key = key.removeprefix("apikey:")
+                if raw_key.startswith(API_KEY_ID_PREFIX):
+                    continue
+                value = await self.client.get(key)
+                if value is not None:
+                    await self.client.set(f"apikey:{hash_api_key(raw_key)}", value, nx=True)
+                if delete_plaintext:
+                    await self.client.delete(key)
+            if delete_plaintext:
+                async for key in self.client.scan_iter(match="ratelimit:*", count=500):
+                    if not key.startswith(f"ratelimit:{API_KEY_ID_PREFIX}"):
+                        await self.client.delete(key)
+        await self._safe(_fn, timeout=config.REDIS_BULK_OP_TIMEOUT_SECONDS)
+
     async def get_value(self, key: str, default=None):
         """Get a generic Redis key with reconnect/fallback handling."""
         async def _fn():
@@ -1416,6 +1832,12 @@ class RedisClient:
                 await self.client.set(key, value)
             else:
                 await self.client.set(key, value, ex=ex)
+        await self._safe(_fn)
+
+    async def delete_value(self, key: str):
+        """Delete a generic Redis key with reconnect/fallback handling."""
+        async def _fn():
+            await self.client.delete(key)
         await self._safe(_fn)
 
 
@@ -1451,6 +1873,8 @@ redis_client = RedisClient()
 #   There is no TTL. A long-running request keeps its slot for as long as its
 #   asyncio.Task is alive. The slot is freed the moment the Task ends, by
 #   either the natural async-with exit OR the reconciler (whichever wins).
+#   The reconciler can't help while a Task is alive but stuck, as it is when a
+#   client stops reading a stream. LeaseStreamingResponse covers that case.
 #
 #   For vLLM (which publishes its own inflight) the reconciler additionally
 #   audits gateway vs vLLM and logs warnings on drift. This is informational
@@ -1751,8 +2175,8 @@ class RateLimiter:
     Three checks, in this order:
 
       1. Per-key concurrency  (in-process Slot, no Redis)
-      2. RPM                  (Redis sliding window, fails open on Redis error)
-      3. TPM                  (Redis sliding window, fails open on Redis error)
+      2. RPM                  (Redis fixed window, fails open on Redis error)
+      3. TPM                  (Redis fixed window, fails open on Redis error)
 
     On 429 a structured error body + accurate Retry-After is returned.
     The handler does not need to track release: it just `async with` the
@@ -2155,10 +2579,12 @@ class RateLimiter:
             n = slot.inflight
             if n <= 0:
                 continue
-            per_key_inflight.setdefault(api_key, {})[bucket] = n
+            # This reaches metrics-scope callers: a shortened id, never the key.
+            key_label = api_key[:len(API_KEY_ID_PREFIX) + 16]
+            per_key_inflight.setdefault(key_label, {})[bucket] = n
             age = slot.oldest_lease_age(now)
             if age is not None:
-                oldest_age.setdefault(api_key, {})[bucket] = int(age)
+                oldest_age.setdefault(key_label, {})[bucket] = int(age)
         return {
             "per_key_inflight": per_key_inflight,
             "oldest_lease_age_seconds": oldest_age,
@@ -2212,6 +2638,46 @@ rate_limiter = RateLimiter()
 # Backend Manager
 # =============================================================================
 
+# How long a changed embedding model may take to appear before the cache comes back on
+# regardless. It covers a slow download. Past it, the id read from the backend is used.
+EMBEDDING_MODEL_CHANGE_HOLD_SECONDS = 1800
+
+
+class BackendStatusError(Exception):
+    """A backend answered a streaming request with an error status."""
+
+    def __init__(self, status_code: int, body: str):
+        super().__init__(f"Backend answered {status_code}")
+        self.status_code = status_code
+        self.body = body
+
+
+class BackendStream:
+    """A backend's open streaming response. aclose() may be called more than once,
+    and without having read anything."""
+
+    def __init__(self, response: httpx.Response, backend_type: str):
+        self._response = response
+        self._backend_type = backend_type
+
+    async def __aiter__(self):
+        async for chunk in self._response.aiter_bytes():
+            chunk_str = chunk.decode("utf-8", errors="ignore")
+            if chunk_str.startswith("data: ") and not chunk_str.startswith("data: [DONE]"):
+                try:
+                    json_str = chunk_str[6:].strip()
+                    if json_str:
+                        event_data = json.loads(json_str)
+                        event_data["system_fingerprint"] = f"{self._backend_type}"
+                        chunk = f"data: {json.dumps(event_data)}\n\n".encode()
+                except Exception:
+                    pass
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._response.aclose()
+
+
 class BackendManager:
     """Routing + capacity tracking for vLLM / llama.cpp / embedding / Ollama.
 
@@ -2240,6 +2706,8 @@ class BackendManager:
         self.slots: dict[str, Slot] = {}
         self._reconcile_task: Optional[asyncio.Task] = None
         self._metrics_audit_task: Optional[asyncio.Task] = None
+        # Set while an admin's embedding model change is rolling out.
+        self._embedding_change: Optional[dict] = None
 
     # ------------------------------------------------------------------ setup
 
@@ -2614,7 +3082,10 @@ class BackendManager:
                     model_name = model_file.rsplit('.', 2)[0] if '.' in model_file else model_file
                 else:
                     model_name = os.getenv("EMBEDDING_MODEL_NAME", "embedding")
-                model_registry.register_model(model_name, "embedding", "ready")
+                backend_model_id = self._settled_embedding_model_id(await self._embedding_backend_model_id())
+                model_registry.register_model(
+                    model_name, "embedding", "ready", {"backend_model_id": backend_model_id},
+                )
                 model_registry.reconcile_backend_models("embedding", {model_name})
                 logger.info(f"Discovered embedding model: {model_name}")
         except Exception as e:
@@ -2647,6 +3118,70 @@ class BackendManager:
                 model_registry.reconcile_backend_models("ollama", loaded_ollama_models)
         except Exception as e:
             logger.debug(f"Could not discover Ollama models: {e}")
+
+    async def _embedding_backend_model_id(self) -> Optional[str]:
+        """What the embedding backend says it is serving, None if it doesn't say.
+
+        The gateway's model name comes from its own environment, which an admin
+        model change doesn't touch, so it can't tell two models apart. llama.cpp
+        reports the model file as the id, plus metadata that also separates two
+        files with the same name.
+        """
+        try:
+            resp = await self.http_client.get(f"{config.EMBEDDING_URL}/v1/models", timeout=5.0)
+            if resp.status_code != 200:
+                return None
+            model = resp.json()["data"][0]
+            return json.dumps({"id": model["id"], "meta": model.get("meta")}, sort_keys=True)
+        except Exception as e:
+            logger.debug(f"Could not read the embedding backend's model: {type(e).__name__}")
+            return None
+
+    def note_embedding_model_change(self) -> None:
+        """An admin is replacing the embedding model: stop using the cache right away.
+
+        A request's vector must only be cached under the model that computed it, and
+        discovery runs every 30s. Until it has seen the new model, the id stays None,
+        which is how the embeddings handler knows to skip the cache.
+
+        Each gateway pod only knows about changes made through itself. Any other pod
+        catches up at its next discovery, so up to 30s later.
+        """
+        previous = None
+        for entry in model_registry.loaded_models.values():
+            info = entry["backends"].get("embedding")
+            if info:
+                previous = info.get("backend_model_id") or previous
+                info["backend_model_id"] = None
+        self._embedding_change = {
+            "previous": previous,
+            "candidate": None,
+            "deadline": time.monotonic() + EMBEDDING_MODEL_CHANGE_HOLD_SECONDS,
+        }
+
+    def _settled_embedding_model_id(self, read_id: Optional[str]) -> Optional[str]:
+        """The id discovery may publish, given what it just read from the backend.
+
+        During a model change the old pod keeps serving until the new one is Ready, so
+        the old id proves nothing. A new id has to be read twice in a row, as for a
+        moment both pods are behind the Service. Choosing the model already running
+        never shows a new id, so the hold also has a time limit, after which the cache
+        is merely back on.
+        """
+        change = self._embedding_change
+        if change is None:
+            return read_id
+        if time.monotonic() >= change["deadline"]:
+            self._embedding_change = None
+            return read_id
+        if read_id is None or read_id == change["previous"]:
+            change["candidate"] = None
+            return None
+        if read_id != change["candidate"]:
+            change["candidate"] = read_id
+            return None
+        self._embedding_change = None
+        return read_id
 
     async def load_ollama_model(self, model_name: str) -> bool:
         """Lazy-load a model in Ollama. Returns True if successful."""
@@ -2760,36 +3295,44 @@ class BackendManager:
             timeout=config.BACKEND_HTTP_TIMEOUT_SECONDS,
         )
 
+    async def open_stream(self, lease: Lease, endpoint: str, data: dict) -> BackendStream:
+        """Connect to the backend for a streaming request and check its answer.
+
+        Handlers call this before starting their response, so a backend's error can
+        still become that response's status. Raises BackendStatusError for anything
+        but a 200, and httpx errors if the backend can't be reached. Same ownership
+        contract as `forward`: the caller releases the lease.
+        """
+        slot = lease.slot
+        request = self.http_client.build_request(
+            "POST",
+            f"{slot.meta.get('url')}{endpoint}",
+            json=data,
+            timeout=config.BACKEND_HTTP_TIMEOUT_SECONDS,
+        )
+        response = await self.http_client.send(request, stream=True)
+        if response.status_code != 200:
+            try:
+                body = await response.aread()
+            finally:
+                await response.aclose()
+            raise BackendStatusError(response.status_code, body.decode("utf-8", errors="replace"))
+        return BackendStream(response, slot.backend_type)
+
     async def stream(
         self,
         lease: Lease,
         endpoint: str,
         data: dict,
     ) -> AsyncGenerator[bytes, None]:
-        """Streaming forward. Same ownership contract as `forward`: the caller
-        releases the lease (typically in the stream-generator's finally)."""
-        slot = lease.slot
-        url = slot.meta.get("url")
-        backend_type = slot.backend_type
-        import json as json_module
-        async with self.http_client.stream(
-            "POST",
-            f"{url}{endpoint}",
-            json=data,
-            timeout=config.BACKEND_HTTP_TIMEOUT_SECONDS,
-        ) as response:
-            async for chunk in response.aiter_bytes():
-                chunk_str = chunk.decode("utf-8", errors="ignore")
-                if chunk_str.startswith("data: ") and not chunk_str.startswith("data: [DONE]"):
-                    try:
-                        json_str = chunk_str[6:].strip()
-                        if json_str:
-                            event_data = json_module.loads(json_str)
-                            event_data["system_fingerprint"] = f"{backend_type}"
-                            chunk = f"data: {json_module.dumps(event_data)}\n\n".encode()
-                    except Exception:
-                        pass
+        """Streaming forward as a generator, for forward_request. Raises what
+        open_stream raises at the first iteration."""
+        upstream = await self.open_stream(lease, endpoint, data)
+        try:
+            async for chunk in upstream:
                 yield chunk
+        finally:
+            await upstream.aclose()
 
     # ----------------------------------------------------------- legacy shim
     #
@@ -2846,28 +3389,37 @@ backend_manager = BackendManager()
 security = HTTPBearer()
 
 async def get_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Extract and validate API key from Authorization header.
+    """Authenticate the bearer token and return its key id, never the raw key.
 
     Auth path: Redis cache first (fast) → Postgres fallback (authoritative).
     On a Redis cache miss the key is written back so subsequent requests are fast.
     This means auth survives a Postgres pod restart (Redis serves the cached copy)
     and also survives a Redis pod restart (Postgres re-warms the cache on next hit).
+
+    Fails closed: only a key found in one of the stores is authorized. A key in
+    neither gets a 401 if Postgres answered, and otherwise the postgres_client
+    calls raise StoreUnavailable, which is a 503.
     """
-    api_key = credentials.credentials
+    raw_key = credentials.credentials
+    key_id = hash_api_key(raw_key)
 
     # 1. Try Redis cache first
-    key_config = await redis_client.get_api_key_config(api_key)
+    key_config = await redis_client.get_api_key_config(key_id)
     if key_config:
-        return api_key
+        return key_id
 
-    # 2. Cache miss - check Postgres (authoritative source)
-    key_config = await postgres_client.get_api_key_config(api_key)
+    # 2. Cache miss - check Postgres (authoritative source), including a plaintext
+    # row inserted since the last migration (see _migrate_plaintext_rows).
+    key_config = (
+        await postgres_client.get_api_key_config(key_id)
+        or await postgres_client.migrate_plaintext_key(raw_key)
+    )
     if not key_config:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     # 3. Write back to Redis cache for future requests
-    await redis_client.set_api_key_config(api_key, key_config)
-    return api_key
+    await redis_client.set_api_key_config(key_id, key_config)
+    return key_id
 
 
 
@@ -2918,7 +3470,11 @@ async def warm_redis_from_postgres():
     (next request re-warms the cache) and also means the gateway
     keeps working even if Postgres is briefly unreachable (Redis
     serves the cached copy).
+
+    It also removes revoked keys from the cache, including keys revoked while
+    Redis or the revoking CLI could not reach each other.
     """
+    await postgres_client.migrate_plaintext_keys()
     try:
         keys = await postgres_client.list_api_keys()
     except Exception as e:
@@ -2927,12 +3483,12 @@ async def warm_redis_from_postgres():
 
     if not keys:
         logger.warning("warm_redis_from_postgres: no keys found in Postgres")
-        return
 
     success_count = 0
     for k in keys:
         try:
             config_data = {
+                "key_prefix": k["key_prefix"],
                 "name": k["name"],
                 "scopes": k["scopes"],
                 "requests_per_minute": k["requests_per_minute"],
@@ -2940,7 +3496,7 @@ async def warm_redis_from_postgres():
                 "tokens_per_minute": k["tokens_per_minute"],
                 "created_at": k["created_at"],
             }
-            await redis_client.set_api_key_config(k["key"], config_data)
+            await redis_client.set_api_key_config(k["key_id"], config_data)
             success_count += 1
         except Exception as e:
             # Redis failures are expected when Redis is down; fail-open behavior
@@ -2948,8 +3504,37 @@ async def warm_redis_from_postgres():
 
     if success_count > 0:
         logger.info(f"warm_redis_from_postgres: cached {success_count}/{len(keys)} key(s) in Redis")
-    else:
+    elif keys:
         logger.warning(f"warm_redis_from_postgres: Redis unavailable, could not cache {len(keys)} key(s)")
+
+    await _evict_stale_cached_keys()
+
+
+async def _evict_stale_cached_keys() -> None:
+    """Drop cached keys that Postgres says are revoked or no longer exist.
+
+    Runs after the warm writes and reads Postgres afresh, so a key revoked while
+    the warm loop was writing is removed in this same pass. If Postgres is down
+    nothing is evicted, and an empty key table (a restored or replaced database)
+    only evicts revoked keys, so an outage can't lock everyone out.
+    """
+    try:
+        states = await postgres_client.get_key_revocation_states()
+    except Exception as e:
+        logger.warning(f"Skipping revoked key eviction, Postgres unavailable: {type(e).__name__}")
+        return
+
+    cached = await redis_client.list_cached_key_ids()
+    if cached is None:
+        return
+    have_active_keys = any(not revoked for revoked in states.values())
+    evicted = 0
+    for key_id in cached:
+        if states.get(key_id, have_active_keys):
+            await redis_client.delete_api_key_config(key_id)
+            evicted += 1
+    if evicted:
+        logger.info(f"Removed {evicted} revoked or unknown key(s) from the Redis cache")
 
 
 @asynccontextmanager
@@ -2957,6 +3542,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup — Redis first (fast path for auth cache)
     await redis_client.connect()
+    await redis_client.migrate_legacy_keys(delete_plaintext=False)
     await backend_manager.start()
 
     # Postgres — don't crash the gateway if Postgres is unavailable at startup.
@@ -2985,7 +3571,11 @@ async def lifespan(app: FastAPI):
     async def postgres_redis_sync_loop():
         while True:
             await asyncio.sleep(300)
-            await warm_redis_from_postgres()
+            try:
+                await redis_client.migrate_legacy_keys(delete_plaintext=True)
+                await warm_redis_from_postgres()
+            except Exception as e:
+                logger.error(f"Postgres to Redis sync failed: {type(e).__name__}")
 
     # Periodic snapshot — refreshes per-backend Prometheus gauges and surfaces
     # any drift the reconciler hasn't observed yet. Note: the BackendManager
@@ -3016,13 +3606,113 @@ async def lifespan(app: FastAPI):
     await backend_manager.stop()
 
 
+# The Swagger and ReDoc pages load scripts from a third-party CDN into the origin
+# that holds the admin key, so they are off. /openapi.json stays available.
 app = FastAPI(
     title="LLM API Gateway",
     description="OpenAI-compatible LLM API with rate limiting and load balancing",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
 )
 
+
+@app.exception_handler(StoreUnavailable)
+async def store_unavailable_handler(request: Request, exc: StoreUnavailable) -> JSONResponse:
+    return JSONResponse(
+        {"detail": "The gateway's data store is temporarily unavailable. Try again shortly."},
+        status_code=503,
+        headers={"Retry-After": "5"},
+    )
+
+
+def _body_too_large_message(limit: int) -> str:
+    return f"Request body exceeds the {limit} byte limit"
+
+
+class BodySizeLimitMiddleware:
+    """Reject request bodies over MAX_REQUEST_BODY_BYTES with a 413.
+
+    A declared Content-Length is refused before any of the body is read. Bodies
+    that lie about their length or arrive chunked are counted as they are read,
+    so the limit also holds for handlers that read request.json() themselves.
+    Pure ASGI, so streaming responses and is_disconnected() are unaffected.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        limit = config.MAX_REQUEST_BODY_BYTES
+        declared = dict(scope["headers"]).get(b"content-length")
+        if declared is not None:
+            try:
+                too_large = int(declared) > limit
+            except ValueError:
+                response = JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+                await response(scope, receive, send)
+                return
+            if too_large:
+                response = JSONResponse({"detail": _body_too_large_message(limit)}, status_code=413)
+                await response(scope, receive, send)
+                return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    raise HTTPException(status_code=413, detail=_body_too_large_message(limit))
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+
+# Applied to every response. API responses get the locked-down CSP below; the
+# admin pages set their own in _admin_page().
+SECURITY_HEADERS = {
+    b"x-content-type-options": b"nosniff",
+    b"x-frame-options": b"DENY",
+    b"referrer-policy": b"no-referrer",
+    b"strict-transport-security": b"max-age=31536000",
+    b"content-security-policy": b"default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+}
+
+
+class SecurityHeadersMiddleware:
+    """Add SECURITY_HEADERS, keeping any value the response set itself."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                present = {name.lower() for name, _ in headers}
+                headers.extend(
+                    (name, value) for name, value in SECURITY_HEADERS.items() if name not in present
+                )
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+# Last added runs first: headers wrap everything, including a 413.
+app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -3030,6 +3720,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 # =============================================================================
 # Endpoints
@@ -3100,6 +3791,183 @@ async def _load_key_config(api_key: str) -> dict:
     )
 
 
+async def _parse_json_body(http_request: Request, model_cls: type[BaseModel]) -> BaseModel:
+    """Read and validate the body of an inference request.
+
+    Handlers call this after authenticating. Declaring the pydantic model as a
+    handler parameter would make FastAPI read the whole body before running any
+    dependency, including auth. Errors keep FastAPI's usual 422 shape.
+    """
+    body = await http_request.body()
+    try:
+        payload = json.loads(body)
+    except (ValueError, RecursionError):
+        raise RequestValidationError(
+            [{"type": "json_invalid", "loc": ("body",), "msg": "JSON decode error", "input": None}]
+        )
+    try:
+        return model_cls.model_validate(payload)
+    except ValidationError as e:
+        raise RequestValidationError(
+            [{**error, "loc": ("body", *error["loc"])} for error in e.errors(include_url=False)]
+        )
+
+
+def _openapi_json_body(model_cls: type[BaseModel]) -> dict:
+    """Keep a handler's request schema in /openapi.json now that it parses its own body."""
+    schema = model_cls.model_json_schema()
+    definitions = schema.pop("$defs", {})
+
+    def inline(node):
+        if isinstance(node, dict):
+            ref = node.get("$ref", "")
+            if ref.startswith("#/$defs/"):
+                return inline(definitions[ref.removeprefix("#/$defs/")])
+            return {key: inline(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [inline(item) for item in node]
+        return node
+
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": inline(schema)}},
+        }
+    }
+
+
+async def _resolve_inference_model(requested_model: str) -> str:
+    """Resolve a client-supplied model name, loading a cached model if needed.
+
+    Unknown names get a 404 here, so only real model names reach the labels of
+    the Prometheus metrics.
+    """
+    model_info = model_registry.get_model(requested_model)
+    if not model_info:
+        available = [m["id"] for m in model_registry.get_available_models()]
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": f"Model '{requested_model}' is not currently loaded or cached",
+                "available_models": available,
+                "hint": "Call GET /v1/models to see available models, or POST /admin/models/download to download new ones",
+            },
+        )
+    if model_info.get("lazy_load") and model_info.get("status") == "cached":
+        logger.info(f"Lazy-loading cached model: {requested_model}")
+        success = await backend_manager.load_ollama_model(requested_model)
+        if not success:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": f"Failed to load model '{requested_model}'",
+                    "hint": "The model may be too large or Ollama may be unavailable",
+                },
+            )
+        model_info = model_registry.get_model(requested_model)
+    return model_info.get("name", requested_model)
+
+
+async def _relay_stream(
+    http_request: Request,
+    leases: RequestLeases,
+    upstream: BackendStream,
+    *,
+    api_key: str,
+    model: str,
+    bucket: str,
+    input_tokens: int,
+    output_marker: bytes,
+) -> AsyncGenerator[bytes, None]:
+    """Relay a backend stream to the client. Owns the leases after detach().
+
+    Usage is charged for whatever was sent, including when the client leaves
+    early, so disconnecting can't dodge the daily quota. On disconnect the task
+    group running this generator is usually already cancelled, so the cleanup
+    runs in a shielded scope; otherwise its awaits would raise immediately.
+    """
+    leases.rebind_to_current_task()
+    chunks_relayed = 0
+    output_tokens = 0
+    try:
+        async for chunk in upstream:
+            # Client gone: stop reading so the backend stops generating.
+            if await http_request.is_disconnected():
+                logger.warning("Client disconnected during streaming, releasing lease early")
+                break
+            yield chunk
+            chunks_relayed += 1
+            output_tokens += chunk.count(output_marker)
+    finally:
+        with anyio.CancelScope(shield=True):
+            try:
+                await upstream.aclose()
+            except Exception as e:
+                logger.warning(f"Closing backend stream failed: {type(e).__name__}")
+            finally:
+                await leases.release()
+            if chunks_relayed:
+                await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
+                await redis_client.add_tpm_usage(api_key, output_tokens, bucket=bucket)
+                TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
+                TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
+
+
+class LeaseStreamingResponse(StreamingResponse):
+    """Streams a _relay_stream and makes sure its leases and backend connection can't
+    outlive the response.
+
+    While a client isn't reading, send() blocks once uvicorn's write buffer is
+    full, and the generator stays suspended at its yield: it can't notice, its
+    Task is alive so the reconciler leaves its leases alone, and no disconnect
+    arrives as the connection is still open. So the limit is applied here, around
+    send(). Ending the stream closes the connection without the final chunk, so
+    the client can tell the response was cut short.
+    """
+
+    def __init__(self, content, *, leases: RequestLeases, upstream: BackendStream, **kwargs):
+        super().__init__(content, **kwargs)
+        self._leases = leases
+        self._upstream = upstream
+
+    async def __call__(self, scope, receive, send) -> None:
+        stall_limit = config.STREAM_CLIENT_STALL_TIMEOUT_SECONDS
+        max_duration = config.STREAM_MAX_DURATION_SECONDS
+        stalled = False
+
+        try:
+            deadline = anyio.current_time() + max_duration if max_duration > 0 else math.inf
+            with anyio.CancelScope(deadline=deadline) as stream_scope:
+                async def guarded_send(message):
+                    nonlocal stalled
+                    with anyio.move_on_after(stall_limit if stall_limit > 0 else None) as send_scope:
+                        await send(message)
+                    if send_scope.cancelled_caught:
+                        stalled = True
+                        stream_scope.cancel()
+                        await anyio.lowlevel.checkpoint()
+
+                await super().__call__(scope, receive, guarded_send)
+
+            if stalled:
+                logger.warning(f"Ending stream: client read nothing for {stall_limit:g}s")
+            elif stream_scope.cancelled_caught:
+                logger.warning(f"Ending stream: reached the {max_duration:g}s limit")
+        finally:
+            # Starlette leaves a generator suspended at its yield when send() fails
+            # or is cancelled, and then its cleanup would wait for garbage collection.
+            # A generator that never started has no cleanup to run, hence the closing
+            # and the release here.
+            with anyio.CancelScope(shield=True):
+                try:
+                    await self.body_iterator.aclose()
+                finally:
+                    try:
+                        await self._upstream.aclose()
+                    finally:
+                        await self._leases.release()
+
+
 def _estimate_message_tokens(messages) -> int:
     """Cheap word-count×1.3 estimate. Tolerant of None content (tool calls)."""
     total = 0.0
@@ -3110,9 +3978,37 @@ def _estimate_message_tokens(messages) -> int:
     return int(total)
 
 
-@app.post("/v1/chat/completions")
+async def _open_backend_stream(
+    leases: RequestLeases, path: str, data: dict, *, model: str, priority: str, endpoint: str,
+) -> BackendStream:
+    """Connect to the backend before the response starts. A backend error then reaches
+    the client as a status, exactly as on the non-streaming path, and nothing is charged.
+
+    The status line has to wait for the backend's, so a client that leaves meanwhile
+    isn't noticed until then, also as on the non-streaming path.
+    """
+    try:
+        return await backend_manager.open_stream(leases.backend, path, data)
+    except BackendStatusError as e:
+        REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint=endpoint).inc()
+        raise HTTPException(status_code=e.status_code, detail=e.body)
+    except httpx.HTTPError as e:
+        REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint=endpoint).inc()
+        logger.error(f"Backend error: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail="Backend service unavailable")
+
+
+async def _enforce_daily_quota(api_key: str, key_config: dict, model: str, priority: str, endpoint: str) -> None:
+    """Refuse a request over its daily quota. Handlers call this before taking any
+    lease, so a slow Postgres can't keep slots busy."""
+    if not await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"]):
+        REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint=endpoint).inc()
+        raise HTTPException(status_code=429, detail="Daily token quota exceeded")
+
+
+@app.post("/v1/chat/completions", openapi_extra=_openapi_json_body(ChatCompletionRequest))
 async def chat_completions(
-    request: ChatCompletionRequest,
+    http_request: Request,
     api_key: str = Depends(get_api_key),
     priority: str = Depends(get_priority),
 ):
@@ -3127,33 +4023,10 @@ async def chat_completions(
         the contract.
     """
     await require_scope("inference", api_key)
+    request = await _parse_json_body(http_request, ChatCompletionRequest)
     start_time = time.time()
 
-    model_info = model_registry.get_model(request.model)
-    if not model_info:
-        available = [m["id"] for m in model_registry.get_available_models()]
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": f"Model '{request.model}' is not currently loaded or cached",
-                "available_models": available,
-                "hint": "Call GET /v1/models to see available models, or POST /admin/models/download to download new ones",
-            },
-        )
-    if model_info.get("lazy_load") and model_info.get("status") == "cached":
-        logger.info(f"Lazy-loading cached model: {request.model}")
-        success = await backend_manager.load_ollama_model(request.model)
-        if not success:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": f"Failed to load model '{request.model}'",
-                    "hint": "The model may be too large or Ollama may be unavailable",
-                },
-            )
-        model_info = model_registry.get_model(request.model)
-
-    model = model_info.get("name", request.model)
+    model = await _resolve_inference_model(request.model)
     key_config = await _load_key_config(api_key)
     estimated_prompt_tokens = _estimate_message_tokens(request.messages)
 
@@ -3168,6 +4041,8 @@ async def chat_completions(
     if request.stop:
         data["stop"] = request.stop
 
+    await _enforce_daily_quota(api_key, key_config, model, priority, "chat")
+
     async with await acquire_request_leases(
         model=model,
         api_key=api_key,
@@ -3176,43 +4051,27 @@ async def chat_completions(
         priority=priority,
         estimated_prompt_tokens=estimated_prompt_tokens,
     ) as leases:
-        quota_ok = await postgres_client.check_token_quota(api_key, key_config["tokens_per_day"])
-        if not quota_ok:
-            REQUEST_COUNT.labels(model=model, priority=priority, status="quota_exceeded", endpoint="chat").inc()
-            raise HTTPException(status_code=429, detail="Daily token quota exceeded")
-
         if request.stream:
-            bucket = leases.bucket
             backend_info = leases.backend_info
-            upstream = backend_manager.stream(leases.backend, "/v1/chat/completions", data)
+            upstream = await _open_backend_stream(
+                leases, "/v1/chat/completions", data, model=model, priority=priority, endpoint="chat",
+            )
             # Ownership transfers to the generator — its finally is now the
             # single release point.
             leases.detach()
 
-            async def stream_generator(_request=request, _leases=leases, _upstream=upstream):
-                _leases.rebind_to_current_task()
-                total_output_tokens = 0
-                try:
-                    async for chunk in _upstream:
-                        # Check if client disconnected - release lease early to free GPU
-                        if _request.is_disconnected():
-                            logger.warning(f"Client disconnected during streaming, releasing lease early")
-                            break
-                        yield chunk
-                        if b'"content":' in chunk:
-                            total_output_tokens += 1
-                    input_tokens = sum(
-                        len(m.content.split()) for m in request.messages if m.content
-                    ) * 2
-                    await postgres_client.add_token_usage(api_key, input_tokens, total_output_tokens)
-                    TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
-                    TOKENS_COUNT.labels(model=model, direction="output").inc(total_output_tokens)
-                finally:
-                    await _leases.release()
-
+            input_tokens = sum(
+                len(m.content.split()) for m in request.messages if m.content
+            ) * 2
             REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="chat").inc()
-            return StreamingResponse(
-                stream_generator(),
+            return LeaseStreamingResponse(
+                _relay_stream(
+                    http_request, leases, upstream,
+                    api_key=api_key, model=model, bucket=leases.bucket,
+                    input_tokens=input_tokens, output_marker=b'"content":',
+                ),
+                leases=leases,
+                upstream=upstream,
                 media_type="text/event-stream",
                 headers={
                     "X-Priority": priority,
@@ -3240,6 +4099,8 @@ async def chat_completions(
         usage = result.get("usage", {})
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)
+        # The backend is done, so free its slots before waiting on the stores.
+        await leases.release()
         await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
         await redis_client.add_tpm_usage(api_key, output_tokens, bucket=leases.bucket)
         TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
@@ -3251,15 +4112,17 @@ async def chat_completions(
         return result
 
 
-@app.post("/v1/completions")
+@app.post("/v1/completions", openapi_extra=_openapi_json_body(CompletionRequest))
 async def completions(
-    request: CompletionRequest,
+    http_request: Request,
     api_key: str = Depends(get_api_key),
     priority: str = Depends(get_priority),
 ):
-    """OpenAI-compatible completions endpoint."""
+    """OpenAI-compatible completions endpoint - requires 'inference' scope."""
+    await require_scope("inference", api_key)
+    request = await _parse_json_body(http_request, CompletionRequest)
     start_time = time.time()
-    model = config.MODEL_ALIASES.get(request.model, request.model)
+    model = await _resolve_inference_model(request.model)
     key_config = await _load_key_config(api_key)
     estimated_prompt_tokens = int(len(request.prompt.split()) * 1.3)
 
@@ -3271,6 +4134,8 @@ async def completions(
         "stream": request.stream,
     }
 
+    await _enforce_daily_quota(api_key, key_config, model, priority, "completions")
+
     async with await acquire_request_leases(
         model=model,
         api_key=api_key,
@@ -3281,19 +4146,20 @@ async def completions(
     ) as leases:
         if request.stream:
             backend_info = leases.backend_info
-            upstream = backend_manager.stream(leases.backend, "/v1/completions", data)
+            upstream = await _open_backend_stream(
+                leases, "/v1/completions", data, model=model, priority=priority, endpoint="completions",
+            )
             leases.detach()
 
-            async def stream_generator(_leases=leases, _upstream=upstream):
-                _leases.rebind_to_current_task()
-                try:
-                    async for chunk in _upstream:
-                        yield chunk
-                finally:
-                    await _leases.release()
-
-            return StreamingResponse(
-                stream_generator(),
+            REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="completions").inc()
+            return LeaseStreamingResponse(
+                _relay_stream(
+                    http_request, leases, upstream,
+                    api_key=api_key, model=model, bucket=leases.bucket,
+                    input_tokens=len(request.prompt.split()) * 2, output_marker=b'"text":',
+                ),
+                leases=leases,
+                upstream=upstream,
                 media_type="text/event-stream",
                 headers={"X-Backend": backend_info.get("backend", "unknown")},
             )
@@ -3313,15 +4179,35 @@ async def completions(
         result = response.json()
         result["system_fingerprint"] = leases.bucket
 
+        usage = result.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        # The backend is done, so free its slots before waiting on the stores.
+        await leases.release()
+        await postgres_client.add_token_usage(api_key, input_tokens, output_tokens)
+        await redis_client.add_tpm_usage(api_key, output_tokens, bucket=leases.bucket)
+        TOKENS_COUNT.labels(model=model, direction="input").inc(input_tokens)
+        TOKENS_COUNT.labels(model=model, direction="output").inc(output_tokens)
+
         duration = time.time() - start_time
         REQUEST_DURATION.labels(model=model, priority=priority, endpoint="completions").observe(duration)
         REQUEST_COUNT.labels(model=model, priority=priority, status="success", endpoint="completions").inc()
         return result
 
 
-@app.post("/v1/embeddings")
+def _current_embedding_model_id(model: str) -> Optional[str]:
+    return ((model_registry.get_model(model) or {}).get("info") or {}).get("backend_model_id")
+
+
+def _embedding_cache_key(backend_model_id: str, text: str) -> str:
+    """Cache key for one input. It uses what the backend reports it is serving, not
+    the gateway's model name, which stays the same when the model behind it changes."""
+    return hashlib.sha256(f"{backend_model_id}\0{text}".encode()).hexdigest()
+
+
+@app.post("/v1/embeddings", openapi_extra=_openapi_json_body(EmbeddingRequest))
 async def embeddings(
-    request: EmbeddingRequest,
+    http_request: Request,
     api_key: str = Depends(get_api_key),
     priority: str = Depends(get_priority),
 ):
@@ -3331,6 +4217,7 @@ async def embeddings(
     slots. We acquire the per-key (embedding) slot first; the backend slot
     is only acquired if there are cache misses that need a real forward."""
     await require_scope("inference", api_key)
+    request = await _parse_json_body(http_request, EmbeddingRequest)
     start_time = time.time()
 
     model_info = model_registry.get_model(request.model)
@@ -3361,14 +4248,21 @@ async def embeddings(
     input_list = request.input if isinstance(request.input, list) else [request.input]
     estimated_prompt_tokens = int(sum(len(t.split()) * 1.3 for t in input_list))
 
+    await _enforce_daily_quota(api_key, key_config, model, priority, "embeddings")
+
+    # None if the backend hasn't said what it is running. Skip the cache then,
+    # since a vector from a previous model would be silently wrong.
+    backend_model_id = _current_embedding_model_id(model)
+
     async with await rate_limiter.acquire_key_slot(
         api_key, key_config, bucket, "embeddings", model, priority, estimated_prompt_tokens,
-    ):
+    ) as key_lease:
         cache_hits = []
         cache_misses = []
         for i, text in enumerate(input_list):
-            cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
-            cached = await redis_client.get_cached_response(cache_key)
+            cached = None
+            if backend_model_id:
+                cached = await redis_client.get_cached_response(_embedding_cache_key(backend_model_id, text))
             if cached:
                 cache_hits.append((i, json.loads(cached)))
             else:
@@ -3388,15 +4282,27 @@ async def embeddings(
                     raise HTTPException(status_code=response.status_code, detail=response.text)
 
                 result = response.json()
-                for (orig_idx, text), emb_data in zip(cache_misses, result.get("data", [])):
-                    cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
-                    await redis_client.cache_response(cache_key, json.dumps(emb_data), ttl=86400)
+                backend_items = result.get("data", [])
+                if len(backend_items) != len(cache_misses):
+                    # Pairing these with the inputs would attach vectors to the wrong text.
+                    REQUEST_COUNT.labels(model=model, priority=priority, status="error", endpoint="embeddings").inc()
+                    raise HTTPException(status_code=502, detail="Embedding backend returned the wrong number of results")
+                # An admin may have changed the model while this was at the backend.
+                still_current = _current_embedding_model_id(model) == backend_model_id
+                for (orig_idx, text), emb_data in zip(cache_misses, backend_items):
+                    if backend_model_id and still_current:
+                        await redis_client.cache_response(
+                            _embedding_cache_key(backend_model_id, text), json.dumps(emb_data), ttl=86400,
+                        )
                     cache_hits.append((orig_idx, emb_data))
 
         cache_hits.sort(key=lambda x: x[0])
-        embeddings_data = [emb for _, emb in cache_hits]
+        # A cached item holds its position in the request that first computed it,
+        # and a backend's holds its position among this request's cache misses.
+        embeddings_data = [{**emb, "index": position} for position, emb in cache_hits]
 
         total_tokens = sum(len(text.split()) * 2 for text in input_list)
+        await key_lease.release()
         await postgres_client.add_token_usage(api_key, total_tokens, 0)
         await redis_client.add_tpm_usage(api_key, total_tokens, bucket=bucket)
         TOKENS_COUNT.labels(model=model, direction="input").inc(total_tokens)
@@ -3457,8 +4363,8 @@ ADMIN_LOGIN_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM API Admin - Login</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/admin/assets/admin.css">
+    <script src="/admin/assets/icons.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
     <div class="max-w-md w-full mx-4">
@@ -3471,7 +4377,7 @@ ADMIN_LOGIN_HTML = """
                 <p class="text-gray-400">Enter your admin API key to continue</p>
             </div>
 
-            <form onsubmit="handleLogin(event)" class="space-y-4">
+            <form id="login-form" class="space-y-4">
                 <div>
                     <label for="api-key" class="block text-sm font-medium text-gray-300 mb-2">
                         Admin API Key
@@ -3511,10 +4417,6 @@ ADMIN_LOGIN_HTML = """
                 <code class="text-xs text-green-400 block bg-gray-900 p-2 rounded mt-2">
                     cat ~/.mynodeone/llmapi-admin-key
                 </code>
-                <p class="text-xs text-gray-500 mt-2">Or use:</p>
-                <code class="text-xs text-green-400 block bg-gray-900 p-2 rounded mt-1">
-                    ./scripts/apps/llmapi/manage-keys.sh list
-                </code>
             </div>
         </div>
 
@@ -3525,6 +4427,8 @@ ADMIN_LOGIN_HTML = """
 
     <script>
         lucide.createIcons();
+
+        document.getElementById('login-form').addEventListener('submit', handleLogin);
 
         async function handleLogin(event) {
             event.preventDefault();
@@ -3595,8 +4499,8 @@ ADMIN_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM API Admin</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/admin/assets/admin.css">
+    <script src="/admin/assets/icons.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
     <div class="container mx-auto px-4 py-8 max-w-6xl">
@@ -3608,7 +4512,7 @@ ADMIN_HTML = """
                 </h1>
                 <p class="text-gray-400 mt-2">Manage models, API keys, and monitor usage</p>
             </div>
-            <button onclick="logout()" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 transition">
+            <button data-action="logout" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 transition">
                 <i data-lucide="log-out" class="w-4 h-4"></i>
                 Logout
             </button>
@@ -3672,7 +4576,7 @@ ADMIN_HTML = """
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="text" id="model-name" placeholder="Model name (e.g., qwen3:14b, llama3.2:3b, mistral)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 col-span-2">
-                    <button onclick="downloadModel()"
+                    <button data-action="downloadModel"
                             class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="download" class="w-4 h-4"></i>
                         Download
@@ -3714,7 +4618,7 @@ ADMIN_HTML = """
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="text" id="vllm-model" placeholder="HuggingFace model (e.g., Qwen/Qwen3-14B-AWQ)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 col-span-2">
-                    <button onclick="changeVllmModel()"
+                    <button data-action="changeVllmModel"
                             class="bg-green-700 hover:bg-green-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         Change Model
@@ -3737,7 +4641,7 @@ ADMIN_HTML = """
                     </h3>
                     <div class="flex items-center gap-3">
                         <span id="llamacpp-running" class="text-xs px-2 py-1 rounded bg-gray-600">Checking...</span>
-                        <button onclick="toggleLlamacpp()" id="llamacpp-toggle"
+                        <button data-action="toggleLlamacpp" id="llamacpp-toggle"
                                 class="text-xs bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 transition">
                             Start/Stop
                         </button>
@@ -3754,7 +4658,7 @@ ADMIN_HTML = """
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="text" id="llamacpp-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../model.Q4_K_M.gguf)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 col-span-2">
-                    <button onclick="changeLlamacppModel()"
+                    <button data-action="changeLlamacppModel"
                             class="bg-blue-700 hover:bg-blue-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         Change Model
@@ -3787,7 +4691,7 @@ ADMIN_HTML = """
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="text" id="embedding-model" placeholder="GGUF URL (e.g., https://huggingface.co/.../nomic-embed-text.gguf)"
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 col-span-2">
-                    <button onclick="changeEmbeddingModel()"
+                    <button data-action="changeEmbeddingModel"
                             class="bg-yellow-700 hover:bg-yellow-600 rounded px-4 py-2 text-sm font-medium transition flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         Change Model
@@ -3820,7 +4724,7 @@ ADMIN_HTML = """
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="password" id="hf-token" name="llmapi-hf-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" placeholder="hf_xxxxx..."
                            class="bg-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 col-span-2">
-                    <button onclick="setHfToken()"
+                    <button data-action="setHfToken"
                             class="bg-gray-600 hover:bg-gray-500 rounded px-4 py-2 text-sm font-medium transition">
                         Save Token
                     </button>
@@ -3880,7 +4784,7 @@ ADMIN_HTML = """
                                 <p class="text-xs text-gray-500 mt-1">Qwen3 parser</p>
                             </div>
                         </div>
-                        <button onclick="updateVllmConfig()"
+                        <button data-action="updateVllmConfig"
                                 class="mt-3 bg-green-700 hover:bg-green-600 rounded px-3 py-1 text-xs">
                             Apply vLLM Config
                         </button>
@@ -3913,7 +4817,7 @@ ADMIN_HTML = """
                                 <p class="text-xs text-gray-500 mt-1">Concurrent users</p>
                             </div>
                         </div>
-                        <button onclick="updateLlamacppConfig()"
+                        <button data-action="updateLlamacppConfig"
                                 class="mt-3 bg-blue-700 hover:bg-blue-600 rounded px-3 py-1 text-xs">
                             Apply llama.cpp Config
                         </button>
@@ -3939,7 +4843,7 @@ ADMIN_HTML = """
                                        class="w-full bg-gray-600 rounded px-2 py-1 text-sm">
                             </div>
                         </div>
-                        <button onclick="updateEmbeddingConfig()"
+                        <button data-action="updateEmbeddingConfig"
                                 class="mt-3 bg-yellow-700 hover:bg-yellow-600 rounded px-3 py-1 text-xs">
                             Apply Embedding Config
                         </button>
@@ -3976,7 +4880,7 @@ ADMIN_HTML = """
                         <i data-lucide="server" class="w-4 h-4 text-cyan-400"></i>
                         Cluster GPU Status
                     </h3>
-                    <button onclick="refreshGpuStatus()" class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1">
+                    <button data-action="refreshGpuStatus" class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1">
                         <i data-lucide="refresh-cw" class="w-3 h-3"></i>
                         Refresh
                     </button>
@@ -4006,7 +4910,7 @@ ADMIN_HTML = """
                     <span class="text-sm text-gray-400">Replicas:</span>
                     <div id="vllm-replica-buttons" class="flex gap-2 flex-wrap">
                         <!-- Buttons will be dynamically generated -->
-                        <button onclick="scaleVllm(0)" class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
+                        <button data-action="scaleVllm" data-arg="0" class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
                             0 (Off)
                         </button>
                     </div>
@@ -4042,7 +4946,7 @@ ADMIN_HTML = """
                         <span id="llamacpp-status-badge" class="text-xs px-2 py-1 rounded bg-gray-600">
                             Checking...
                         </span>
-                        <button onclick="toggleLlamacppNew()" id="llamacpp-toggle-btn"
+                        <button data-action="toggleLlamacppNew" id="llamacpp-toggle-btn"
                                 class="text-xs bg-blue-700 hover:bg-blue-600 rounded px-3 py-1.5 transition font-medium">
                             Toggle
                         </button>
@@ -4068,22 +4972,22 @@ ADMIN_HTML = """
                     Quick Actions
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <button onclick="quickAction('max-gpu')"
+                    <button data-action="quickAction" data-arg="max-gpu"
                             class="bg-green-700 hover:bg-green-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="zap" class="w-4 h-4"></i>
                         Max GPU Mode (Use All GPUs)
                     </button>
-                    <button onclick="quickAction('save-ram')"
+                    <button data-action="quickAction" data-arg="save-ram"
                             class="bg-blue-700 hover:bg-blue-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="save" class="w-4 h-4"></i>
                         Save RAM (Stop llamacpp)
                     </button>
-                    <button onclick="quickAction('balanced')"
+                    <button data-action="quickAction" data-arg="balanced"
                             class="bg-purple-700 hover:bg-purple-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="scale" class="w-4 h-4"></i>
                         Balanced Mode (1 GPU + CPU)
                     </button>
-                    <button onclick="quickAction('stop-all')"
+                    <button data-action="quickAction" data-arg="stop-all"
                             class="bg-red-700 hover:bg-red-600 rounded px-4 py-2 text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="power" class="w-4 h-4"></i>
                         Stop All (Free Resources)
@@ -4102,11 +5006,6 @@ ADMIN_HTML = """
                     <i data-lucide="key" class="w-5 h-5 text-yellow-400"></i>
                     API Keys
                 </h2>
-                <button onclick="toggleKeyVisibility()" id="toggle-keys-btn"
-                        class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs flex items-center gap-2 transition">
-                    <i data-lucide="eye-off" class="w-4 h-4" id="toggle-icon"></i>
-                    <span id="toggle-text">Show Keys</span>
-                </button>
             </div>
 
             <!-- Create Key Form -->
@@ -4140,7 +5039,7 @@ ADMIN_HTML = """
                     </div>
                     <p class="text-xs text-gray-500 mt-1">Admin scope grants all permissions</p>
                 </div>
-                <button onclick="createKey()"
+                <button data-action="createKey"
                         class="bg-purple-600 hover:bg-purple-700 rounded px-4 py-2 text-sm font-medium transition">
                     Create Key
                 </button>
@@ -4236,35 +5135,13 @@ ADMIN_HTML = """
             window.location.href = '/admin';
         }
 
-        // API Key visibility state
-        let keysVisible = false;
         let statsCache = null;
 
-        function maskKey(key) {
-            if (!key) return '';
-            return key.substring(0, 12) + '...' + key.substring(key.length - 4);
-        }
-
-        function toggleKeyVisibility() {
-            keysVisible = !keysVisible;
-            const toggleIcon = document.getElementById('toggle-icon');
-            const toggleText = document.getElementById('toggle-text');
-            const keyElements = document.querySelectorAll('.api-key-display');
-
-            if (keysVisible) {
-                toggleIcon.setAttribute('data-lucide', 'eye');
-                toggleText.textContent = 'Hide Keys';
-                keyElements.forEach(el => {
-                    el.textContent = el.getAttribute('data-key');
-                });
-            } else {
-                toggleIcon.setAttribute('data-lucide', 'eye-off');
-                toggleText.textContent = 'Show Keys';
-                keyElements.forEach(el => {
-                    el.textContent = maskKey(el.getAttribute('data-key'));
-                });
-            }
-            lucide.createIcons();
+        // Everything placed in innerHTML below that a key creator, model name or
+        // backend can influence goes through this, for text and attributes alike.
+        function escapeHtml(value) {
+            const entities = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+            return String(value ?? '').replace(/[&<>"']/g, ch => entities[ch]);
         }
 
         function getLocalTimezone() {
@@ -4288,7 +5165,7 @@ ADMIN_HTML = """
             const currentValue = filterEl.value;
             const options = ['<option value="">All API keys</option>'].concat(
                 (keys || []).map(k =>
-                    `<option value="${k.api_key}">${k.name} (${k.api_key_preview})</option>`
+                    `<option value="${escapeHtml(k.api_key)}">${escapeHtml(k.name)} (${escapeHtml(k.api_key_preview)})</option>`
                 )
             );
             filterEl.innerHTML = options.join('');
@@ -4461,7 +5338,7 @@ ADMIN_HTML = """
                             <div class="bg-blue-900/30 border border-blue-700 rounded p-3 mb-3">
                                 <div class="flex items-center gap-2">
                                     <div class="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent"></div>
-                                    <span class="text-blue-300 font-medium">Downloading: ${ds.model}</span>
+                                    <span class="text-blue-300 font-medium">Downloading: ${escapeHtml(ds.model)}</span>
                                 </div>
                                 <p class="text-xs text-blue-400 mt-1">This may take several minutes depending on model size...</p>
                             </div>
@@ -4472,11 +5349,17 @@ ADMIN_HTML = """
                                 <div class="flex items-start gap-2">
                                     <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 mt-0.5"></i>
                                     <div class="flex-1">
-                                        <span class="text-red-300 font-medium block">Download Failed: ${ds.model}</span>
-                                        <p class="text-sm text-red-400 mt-1">${ds.error}</p>
-                                        <p class="text-xs text-red-500 mt-2">Check the model name and try again. vLLM pod is crash-looping until a valid model is configured.</p>
+                                        <span class="text-red-300 font-medium block">Download Failed: ${escapeHtml(ds.model)}</span>
+                                        <p class="text-sm text-red-400 mt-1">${escapeHtml(ds.error)}</p>
+                                        <p class="text-xs text-red-500 mt-2">Check the model name and the HuggingFace token. The vLLM pod keeps retrying until the download works.</p>
                                     </div>
                                 </div>
+                            </div>
+                        `;
+                    } else if (ds.status === 'unavailable') {
+                        html += `
+                            <div class="bg-gray-700 rounded p-3 mb-3">
+                                <p class="text-sm text-gray-300">vLLM download status unavailable: the gateway could not read its pods.</p>
                             </div>
                         `;
                     }
@@ -4487,16 +5370,16 @@ ADMIN_HTML = """
                     html += data.models.map(m => `
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
                             <div>
-                                <span class="font-medium">${m.id}</span>
-                                <span class="text-xs text-gray-400 ml-2">${m.backend}</span>
+                                <span class="font-medium">${escapeHtml(m.id)}</span>
+                                <span class="text-xs text-gray-400 ml-2">${escapeHtml(m.backend)}</span>
                                 ${m.size ? `<span class="text-xs text-gray-500 ml-2">${formatSize(m.size)}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2">
                                 <span class="text-xs px-2 py-1 rounded ${m.status === 'loaded' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}">
-                                    ${m.status}
+                                    ${escapeHtml(m.status)}
                                 </span>
                                 ${m.backend === 'ollama' ? `
-                                    <button onclick="deleteModel('${m.id}')"
+                                    <button data-action="deleteModel" data-arg="${escapeHtml(m.id)}"
                                             class="text-red-400 hover:text-red-300 transition p-1" title="Delete model">
                                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                                     </button>
@@ -4865,7 +5748,7 @@ Continue?`;
 
             // Button 0 (Off)
             buttonsHtml += `
-                <button onclick="scaleVllm(0)" id="vllm-btn-0"
+                <button data-action="scaleVllm" data-arg="0" id="vllm-btn-0"
                         class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
                     0 (Off)
                 </button>
@@ -4874,7 +5757,7 @@ Continue?`;
             // Buttons 1 to maxButtons
             for (let i = 1; i <= maxButtons; i++) {
                 buttonsHtml += `
-                    <button onclick="scaleVllm(${i})" id="vllm-btn-${i}"
+                    <button data-action="scaleVllm" data-arg="${i}" id="vllm-btn-${i}"
                             class="px-4 py-2 rounded text-sm font-medium transition bg-gray-600 hover:bg-gray-500">
                         ${i} GPU${i > 1 ? 's' : ''}
                     </button>
@@ -5100,7 +5983,8 @@ Continue?`;
                     alert('HuggingFace token saved! It will be used when vLLM restarts with a gated model.');
                     document.getElementById('hf-token').value = '';
                 } else {
-                    alert('Failed to save token');
+                    const error = await resp.json().catch(() => ({}));
+                    alert(typeof error.detail === 'string' ? error.detail : 'Token NOT saved: HTTP ' + resp.status);
                 }
             } catch (e) {
                 alert('Failed to save token: ' + e.message);
@@ -5203,14 +6087,14 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     list.innerHTML = data.keys.map(k => `
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
                             <div class="flex-1 min-w-0">
-                                <div class="font-medium">${k.name}</div>
-                                <code class="text-xs text-gray-400 break-all api-key-display" data-key="${k.key}">${maskKey(k.key)}</code>
+                                <div class="font-medium">${escapeHtml(k.name)}</div>
+                                <code class="text-xs text-gray-400 break-all" title="${escapeHtml(k.key_id)}">${escapeHtml(k.key_prefix || k.key_id.slice(0, 16))}...</code>
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
                                 <span>${k.requests_per_minute} RPM</span>
                                 <span>${(k.tokens_per_minute || 200000).toLocaleString()} TPM</span>
                                 <span>${k.tokens_per_day.toLocaleString()} tokens/day</span>
-                                <button onclick="revokeKey('${k.key}')"
+                                <button data-action="revokeKey" data-arg="${escapeHtml(k.key_id)}"
                                         class="text-red-400 hover:text-red-300 transition">
                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                 </button>
@@ -5231,6 +6115,12 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                 const hours = parseInt(document.getElementById('stats-window-hours')?.value || '96', 10);
                 const resp = await adminFetch(`${API_BASE}/admin/stats?hours=${hours}`);
                 if (!resp) return; // Auth failure, already redirected
+                if (!resp.ok) {
+                    // Keep what's on screen. Zeros here would read as "no usage".
+                    document.getElementById('stats-timezone').textContent =
+                        `Usage statistics are unavailable right now (HTTP ${resp.status}). What's shown may be out of date.`;
+                    return;
+                }
                 const data = await resp.json();
                 statsCache = data;
 
@@ -5249,8 +6139,8 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
                     byKeyEl.innerHTML = data.by_key.map(k => `
                         <div class="flex items-center justify-between bg-gray-700 rounded p-3">
                             <div class="flex-1">
-                                <div class="font-medium text-sm">${k.name}</div>
-                                <code class="text-xs text-gray-500">${k.api_key_preview}</code>
+                                <div class="font-medium text-sm">${escapeHtml(k.name)}</div>
+                                <code class="text-xs text-gray-500">${escapeHtml(k.api_key_preview)}</code>
                             </div>
                             <div class="flex items-center gap-4 text-sm text-gray-400">
                                 <span>${k.requests_window || 0} requests</span>
@@ -5362,6 +6252,21 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
             }
         }
 
+        // The CSP forbids inline handlers, so clicks are routed from data-action.
+        const CLICK_ACTIONS = {
+            logout, downloadModel, changeVllmModel, toggleLlamacpp, changeLlamacppModel,
+            changeEmbeddingModel, setHfToken, updateVllmConfig, updateLlamacppConfig,
+            updateEmbeddingConfig, refreshGpuStatus, toggleLlamacppNew, createKey,
+            quickAction, deleteModel, revokeKey,
+            scaleVllm: arg => scaleVllm(Number(arg)),
+        };
+        document.addEventListener('click', event => {
+            const el = event.target.closest('[data-action]');
+            if (!el) return;
+            const action = CLICK_ACTIONS[el.dataset.action];
+            if (action) action(el.dataset.arg);
+        });
+
         document.getElementById('stats-window-hours')?.addEventListener('change', () => {
             loadStats();
         });
@@ -5402,16 +6307,460 @@ llama.cpp will be unavailable for ~2-5 minutes. Continue?`;
 # =============================================================================
 
 
+def _admin_page_csp(html: str) -> str:
+    """Page CSP: same-origin assets plus exactly the inline scripts of this page."""
+    script_hashes = " ".join(
+        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii") + "'"
+        for script in re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
+    )
+    return "; ".join([
+        "default-src 'none'",
+        f"script-src 'self' {script_hashes}",
+        # Inline styles: the hourly chart sets bar heights through style attributes.
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self'",
+        "connect-src 'self'",
+        "form-action 'self'",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+    ])
+
+
+_ADMIN_LOGIN_CSP = _admin_page_csp(ADMIN_LOGIN_HTML)
+_ADMIN_DASHBOARD_CSP = _admin_page_csp(ADMIN_HTML)
+
+# Stylesheet for the admin pages, replacing the Tailwind CDN runtime. main.py ships
+# alone in the gateway-code ConfigMap, so assets have to live in this file.
+# Generated by Tailwind CSS 3.4.19 from the two HTML constants above. After using a
+# class not already here, write those constants to admin.html and regenerate:
+#   npx tailwindcss@3.4.19 --content admin.html --minify
+# tests/test_admin_ui.py fails if a class in the HTML is missing from this.
+_ADMIN_CSS = r"""*,::backdrop,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:#3b82f680;--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }
+/*! tailwindcss v3.4.19 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}
+:after,:before{--tw-content:""}
+:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}
+body{margin:0;line-height:inherit}
+hr{height:0;color:inherit;border-top-width:1px}
+abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}
+h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}
+a{color:inherit;text-decoration:inherit}
+b,strong{font-weight:bolder}
+code,kbd,pre,samp{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}
+small{font-size:80%}
+sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:initial}
+sub{bottom:-.25em}
+sup{top:-.5em}
+table{text-indent:0;border-color:inherit;border-collapse:collapse}
+button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}
+button,select{text-transform:none}
+button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:initial;background-image:none}
+:-moz-focusring{outline:auto}
+:-moz-ui-invalid{box-shadow:none}
+progress{vertical-align:initial}
+::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}
+[type=search]{-webkit-appearance:textfield;outline-offset:-2px}
+::-webkit-search-decoration{-webkit-appearance:none}
+::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}
+summary{display:list-item}
+blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}
+fieldset{margin:0}
+fieldset,legend{padding:0}
+menu,ol,ul{list-style:none;margin:0;padding:0}
+dialog{padding:0}
+textarea{resize:vertical}
+input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}
+input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}
+[role=button],button{cursor:pointer}
+:disabled{cursor:default}
+audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}
+img,video{max-width:100%;height:auto}
+[hidden]:where(:not([hidden=until-found])){display:none}
+.\!container{width:100%!important}
+.container{width:100%}
+@media (min-width:640px){.\!container{max-width:640px!important}
+.container{max-width:640px}
+}
+@media (min-width:768px){.\!container{max-width:768px!important}
+.container{max-width:768px}
+}
+@media (min-width:1024px){.\!container{max-width:1024px!important}
+.container{max-width:1024px}
+}
+@media (min-width:1280px){.\!container{max-width:1280px!important}
+.container{max-width:1280px}
+}
+@media (min-width:1536px){.\!container{max-width:1536px!important}
+.container{max-width:1536px}
+}
+.col-span-2{grid-column:span 2/span 2}
+.mx-4{margin-left:1rem;margin-right:1rem}
+.mx-auto{margin-left:auto;margin-right:auto}
+.mb-2{margin-bottom:.5rem}
+.mb-3{margin-bottom:.75rem}
+.mb-4{margin-bottom:1rem}
+.mb-6{margin-bottom:1.5rem}
+.mb-8{margin-bottom:2rem}
+.ml-2{margin-left:.5rem}
+.mt-0\.5{margin-top:.125rem}
+.mt-1{margin-top:.25rem}
+.mt-2{margin-top:.5rem}
+.mt-3{margin-top:.75rem}
+.mt-4{margin-top:1rem}
+.mt-6{margin-top:1.5rem}
+.block{display:block}
+.inline{display:inline}
+.flex{display:flex}
+.grid{display:grid}
+.hidden{display:none}
+.h-16{height:4rem}
+.h-2{height:.5rem}
+.h-24{height:6rem}
+.h-3{height:.75rem}
+.h-4{height:1rem}
+.h-5{height:1.25rem}
+.h-8{height:2rem}
+.h-full{height:100%}
+.min-h-screen{min-height:100vh}
+.w-16{width:4rem}
+.w-3{width:.75rem}
+.w-4{width:1rem}
+.w-5{width:1.25rem}
+.w-8{width:2rem}
+.w-full{width:100%}
+.min-w-0{min-width:0}
+.max-w-6xl{max-width:72rem}
+.max-w-md{max-width:28rem}
+.flex-1{flex:1 1 0%}
+@keyframes spin{to{transform:rotate(1turn)}
+}
+.animate-spin{animation:spin 1s linear infinite}
+.cursor-pointer{cursor:pointer}
+.list-inside{list-style-position:inside}
+.list-disc{list-style-type:disc}
+.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.flex-col{flex-direction:column}
+.flex-wrap{flex-wrap:wrap}
+.items-start{align-items:flex-start}
+.items-end{align-items:flex-end}
+.items-center{align-items:center}
+.justify-center{justify-content:center}
+.justify-between{justify-content:space-between}
+.gap-1{gap:.25rem}
+.gap-2{gap:.5rem}
+.gap-3{gap:.75rem}
+.gap-4{gap:1rem}
+.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}
+.space-y-2>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.5rem*var(--tw-space-y-reverse))}
+.space-y-4>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem*var(--tw-space-y-reverse))}
+.overflow-hidden{overflow:hidden}
+.break-all{word-break:break-all}
+.rounded{border-radius:.25rem}
+.rounded-full{border-radius:9999px}
+.rounded-lg{border-radius:.5rem}
+.rounded-t{border-top-left-radius:.25rem;border-top-right-radius:.25rem}
+.border{border-width:1px}
+.border-2{border-width:2px}
+.border-l-2{border-left-width:2px}
+.border-l-4{border-left-width:4px}
+.border-blue-400{--tw-border-opacity:1;border-color:rgb(96 165 250/var(--tw-border-opacity,1))}
+.border-blue-500{--tw-border-opacity:1;border-color:rgb(59 130 246/var(--tw-border-opacity,1))}
+.border-blue-700{--tw-border-opacity:1;border-color:rgb(29 78 216/var(--tw-border-opacity,1))}
+.border-gray-500{--tw-border-opacity:1;border-color:rgb(107 114 128/var(--tw-border-opacity,1))}
+.border-gray-600{--tw-border-opacity:1;border-color:rgb(75 85 99/var(--tw-border-opacity,1))}
+.border-gray-700{--tw-border-opacity:1;border-color:rgb(55 65 81/var(--tw-border-opacity,1))}
+.border-green-500{--tw-border-opacity:1;border-color:rgb(34 197 94/var(--tw-border-opacity,1))}
+.border-purple-500{--tw-border-opacity:1;border-color:rgb(168 85 247/var(--tw-border-opacity,1))}
+.border-red-700{--tw-border-opacity:1;border-color:rgb(185 28 28/var(--tw-border-opacity,1))}
+.border-yellow-500{--tw-border-opacity:1;border-color:rgb(234 179 8/var(--tw-border-opacity,1))}
+.border-yellow-600{--tw-border-opacity:1;border-color:rgb(202 138 4/var(--tw-border-opacity,1))}
+.border-t-transparent{border-top-color:#0000}
+.bg-blue-700{--tw-bg-opacity:1;background-color:rgb(29 78 216/var(--tw-bg-opacity,1))}
+.bg-blue-900\/30{background-color:#1e3a8a4d}
+.bg-gray-600{--tw-bg-opacity:1;background-color:rgb(75 85 99/var(--tw-bg-opacity,1))}
+.bg-gray-700{--tw-bg-opacity:1;background-color:rgb(55 65 81/var(--tw-bg-opacity,1))}
+.bg-gray-800{--tw-bg-opacity:1;background-color:rgb(31 41 55/var(--tw-bg-opacity,1))}
+.bg-gray-900{--tw-bg-opacity:1;background-color:rgb(17 24 39/var(--tw-bg-opacity,1))}
+.bg-green-500{--tw-bg-opacity:1;background-color:rgb(34 197 94/var(--tw-bg-opacity,1))}
+.bg-green-700{--tw-bg-opacity:1;background-color:rgb(21 128 61/var(--tw-bg-opacity,1))}
+.bg-green-900{--tw-bg-opacity:1;background-color:rgb(20 83 45/var(--tw-bg-opacity,1))}
+.bg-purple-500{--tw-bg-opacity:1;background-color:rgb(168 85 247/var(--tw-bg-opacity,1))}
+.bg-purple-600{--tw-bg-opacity:1;background-color:rgb(147 51 234/var(--tw-bg-opacity,1))}
+.bg-purple-700{--tw-bg-opacity:1;background-color:rgb(126 34 206/var(--tw-bg-opacity,1))}
+.bg-red-700{--tw-bg-opacity:1;background-color:rgb(185 28 28/var(--tw-bg-opacity,1))}
+.bg-red-900{--tw-bg-opacity:1;background-color:rgb(127 29 29/var(--tw-bg-opacity,1))}
+.bg-red-900\/30{background-color:#7f1d1d4d}
+.bg-yellow-700{--tw-bg-opacity:1;background-color:rgb(161 98 7/var(--tw-bg-opacity,1))}
+.bg-yellow-900{--tw-bg-opacity:1;background-color:rgb(113 63 18/var(--tw-bg-opacity,1))}
+.bg-opacity-30{--tw-bg-opacity:0.3}
+.p-1{padding:.25rem}
+.p-2{padding:.5rem}
+.p-3{padding:.75rem}
+.p-4{padding:1rem}
+.p-6{padding:1.5rem}
+.p-8{padding:2rem}
+.px-1{padding-left:.25rem;padding-right:.25rem}
+.px-2{padding-left:.5rem;padding-right:.5rem}
+.px-3{padding-left:.75rem;padding-right:.75rem}
+.px-4{padding-left:1rem;padding-right:1rem}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}
+.py-1{padding-top:.25rem;padding-bottom:.25rem}
+.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}
+.py-2{padding-top:.5rem;padding-bottom:.5rem}
+.py-3{padding-top:.75rem;padding-bottom:.75rem}
+.py-4{padding-top:1rem;padding-bottom:1rem}
+.py-8{padding-top:2rem;padding-bottom:2rem}
+.pl-4{padding-left:1rem}
+.text-center{text-align:center}
+.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace}
+.text-2xl{font-size:1.5rem;line-height:2rem}
+.text-3xl{font-size:1.875rem;line-height:2.25rem}
+.text-sm{font-size:.875rem;line-height:1.25rem}
+.text-xl{font-size:1.25rem;line-height:1.75rem}
+.text-xs{font-size:.75rem;line-height:1rem}
+.font-bold{font-weight:700}
+.font-medium{font-weight:500}
+.font-semibold{font-weight:600}
+.text-blue-300{--tw-text-opacity:1;color:rgb(147 197 253/var(--tw-text-opacity,1))}
+.text-blue-400{--tw-text-opacity:1;color:rgb(96 165 250/var(--tw-text-opacity,1))}
+.text-cyan-300{--tw-text-opacity:1;color:rgb(103 232 249/var(--tw-text-opacity,1))}
+.text-cyan-400{--tw-text-opacity:1;color:rgb(34 211 238/var(--tw-text-opacity,1))}
+.text-gray-100{--tw-text-opacity:1;color:rgb(243 244 246/var(--tw-text-opacity,1))}
+.text-gray-300{--tw-text-opacity:1;color:rgb(209 213 219/var(--tw-text-opacity,1))}
+.text-gray-400{--tw-text-opacity:1;color:rgb(156 163 175/var(--tw-text-opacity,1))}
+.text-gray-500{--tw-text-opacity:1;color:rgb(107 114 128/var(--tw-text-opacity,1))}
+.text-green-300{--tw-text-opacity:1;color:rgb(134 239 172/var(--tw-text-opacity,1))}
+.text-green-400{--tw-text-opacity:1;color:rgb(74 222 128/var(--tw-text-opacity,1))}
+.text-orange-400{--tw-text-opacity:1;color:rgb(251 146 60/var(--tw-text-opacity,1))}
+.text-purple-400{--tw-text-opacity:1;color:rgb(192 132 252/var(--tw-text-opacity,1))}
+.text-red-200{--tw-text-opacity:1;color:rgb(254 202 202/var(--tw-text-opacity,1))}
+.text-red-300{--tw-text-opacity:1;color:rgb(252 165 165/var(--tw-text-opacity,1))}
+.text-red-400{--tw-text-opacity:1;color:rgb(248 113 113/var(--tw-text-opacity,1))}
+.text-red-500{--tw-text-opacity:1;color:rgb(239 68 68/var(--tw-text-opacity,1))}
+.text-white{--tw-text-opacity:1;color:rgb(255 255 255/var(--tw-text-opacity,1))}
+.text-yellow-200{--tw-text-opacity:1;color:rgb(254 240 138/var(--tw-text-opacity,1))}
+.text-yellow-300{--tw-text-opacity:1;color:rgb(253 224 71/var(--tw-text-opacity,1))}
+.text-yellow-400{--tw-text-opacity:1;color:rgb(250 204 21/var(--tw-text-opacity,1))}
+.placeholder-gray-500::-moz-placeholder{--tw-placeholder-opacity:1;color:rgb(107 114 128/var(--tw-placeholder-opacity,1))}
+.placeholder-gray-500::placeholder{--tw-placeholder-opacity:1;color:rgb(107 114 128/var(--tw-placeholder-opacity,1))}
+.opacity-70{opacity:.7}
+.shadow-2xl{--tw-shadow:0 25px 50px -12px #00000040;--tw-shadow-colored:0 25px 50px -12px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}
+.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}
+.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,-webkit-backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter,-webkit-backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}
+.transition-all{transition-property:all;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}
+.duration-200{transition-duration:.2s}
+.hover\:bg-blue-600:hover{--tw-bg-opacity:1;background-color:rgb(37 99 235/var(--tw-bg-opacity,1))}
+.hover\:bg-gray-500:hover{--tw-bg-opacity:1;background-color:rgb(107 114 128/var(--tw-bg-opacity,1))}
+.hover\:bg-gray-600:hover{--tw-bg-opacity:1;background-color:rgb(75 85 99/var(--tw-bg-opacity,1))}
+.hover\:bg-green-600:hover{--tw-bg-opacity:1;background-color:rgb(22 163 74/var(--tw-bg-opacity,1))}
+.hover\:bg-purple-600:hover{--tw-bg-opacity:1;background-color:rgb(147 51 234/var(--tw-bg-opacity,1))}
+.hover\:bg-purple-700:hover{--tw-bg-opacity:1;background-color:rgb(126 34 206/var(--tw-bg-opacity,1))}
+.hover\:bg-red-600:hover{--tw-bg-opacity:1;background-color:rgb(220 38 38/var(--tw-bg-opacity,1))}
+.hover\:bg-yellow-600:hover{--tw-bg-opacity:1;background-color:rgb(202 138 4/var(--tw-bg-opacity,1))}
+.hover\:text-blue-300:hover{--tw-text-opacity:1;color:rgb(147 197 253/var(--tw-text-opacity,1))}
+.hover\:text-cyan-300:hover{--tw-text-opacity:1;color:rgb(103 232 249/var(--tw-text-opacity,1))}
+.hover\:text-gray-300:hover{--tw-text-opacity:1;color:rgb(209 213 219/var(--tw-text-opacity,1))}
+.hover\:text-green-300:hover{--tw-text-opacity:1;color:rgb(134 239 172/var(--tw-text-opacity,1))}
+.hover\:text-purple-300:hover{--tw-text-opacity:1;color:rgb(216 180 254/var(--tw-text-opacity,1))}
+.hover\:text-red-300:hover{--tw-text-opacity:1;color:rgb(252 165 165/var(--tw-text-opacity,1))}
+.hover\:text-yellow-300:hover{--tw-text-opacity:1;color:rgb(253 224 71/var(--tw-text-opacity,1))}
+.hover\:opacity-100:hover{opacity:1}
+.focus\:border-transparent:focus{border-color:#0000}
+.focus\:outline-none:focus{outline:2px solid #0000;outline-offset:2px}
+.focus\:ring-2:focus{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow,0 0 #0000)}
+.focus\:ring-blue-500:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(59 130 246/var(--tw-ring-opacity,1))}
+.focus\:ring-gray-500:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(107 114 128/var(--tw-ring-opacity,1))}
+.focus\:ring-green-500:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(34 197 94/var(--tw-ring-opacity,1))}
+.focus\:ring-purple-500:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(168 85 247/var(--tw-ring-opacity,1))}
+.focus\:ring-yellow-500:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(234 179 8/var(--tw-ring-opacity,1))}
+@media (min-width:768px){.md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.md\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.md\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.md\:flex-row{flex-direction:row}
+.md\:items-end{align-items:flex-end}
+.md\:justify-between{justify-content:space-between}
+}
+"""
+
+# Replaces unpkg.com/lucide@latest with only the icons the pages use, built with DOM
+# calls. Icon data is from lucide-static 1.66.0, under the licenses below.
+# tests/test_admin_ui.py fails if the HTML uses an icon missing from this.
+#
+# ISC License. Copyright (c) 2026 Lucide Icons and Contributors
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+# alert-circle, download, external-link, key, log-in, log-out, power, server and
+# trash-2 derive from the Feather project:
+#
+# The MIT License (MIT). Copyright (c) 2013-present Cole Bemis
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+_ADMIN_ICONS_JS = r"""(function () {
+  'use strict';
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var BASE = {
+    xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+  };
+  var ICONS = {
+  "alert-circle": [["circle",{"cx":"12","cy":"12","r":"10"}],["line",{"x1":"12","x2":"12","y1":"8","y2":"12"}],["line",{"x1":"12","x2":"12.01","y1":"16","y2":"16"}]],
+  "bar-chart-3": [["path",{"d":"M3 3v16a2 2 0 0 0 2 2h16"}],["path",{"d":"M18 17V9"}],["path",{"d":"M13 17V5"}],["path",{"d":"M8 17v-3"}]],
+  "binary": [["rect",{"x":"14","y":"14","width":"4","height":"6","rx":"2"}],["rect",{"x":"6","y":"4","width":"4","height":"6","rx":"2"}],["path",{"d":"M6 20h4"}],["path",{"d":"M14 10h4"}],["path",{"d":"M6 14h2v6"}],["path",{"d":"M14 4h2v6"}]],
+  "boxes": [["path",{"d":"M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"}],["path",{"d":"m7 16.5-4.74-2.85"}],["path",{"d":"m7 16.5 5-3"}],["path",{"d":"M7 16.5v5.17"}],["path",{"d":"M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"}],["path",{"d":"m17 16.5-5-3"}],["path",{"d":"m17 16.5 4.74-2.85"}],["path",{"d":"M17 16.5v5.17"}],["path",{"d":"M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"}],["path",{"d":"M12 8 7.26 5.15"}],["path",{"d":"m12 8 4.74-2.85"}],["path",{"d":"M12 13.5V8"}]],
+  "brain": [["path",{"d":"M12 18V5"}],["path",{"d":"M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4"}],["path",{"d":"M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294"}],["path",{"d":"M17.996 5.125a4 4 0 012.526 5.77"}],["path",{"d":"M18 18a4 4 0 002-7.465"}],["path",{"d":"M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517"}],["path",{"d":"M6 18a4 4 0 01-2-7.465"}],["path",{"d":"M6.004 5.125a4 4 0 00-2.526 5.77"}]],
+  "cpu": [["path",{"d":"M12 20v2"}],["path",{"d":"M12 2v2"}],["path",{"d":"M17 20v2"}],["path",{"d":"M17 2v2"}],["path",{"d":"M2 12h2"}],["path",{"d":"M2 17h2"}],["path",{"d":"M2 7h2"}],["path",{"d":"M20 12h2"}],["path",{"d":"M20 17h2"}],["path",{"d":"M20 7h2"}],["path",{"d":"M7 20v2"}],["path",{"d":"M7 2v2"}],["rect",{"x":"4","y":"4","width":"16","height":"16","rx":"2"}],["rect",{"x":"8","y":"8","width":"8","height":"8","rx":"1"}]],
+  "download": [["path",{"d":"M12 15V3"}],["path",{"d":"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}],["path",{"d":"m7 10 5 5 5-5"}]],
+  "external-link": [["path",{"d":"M15 3h6v6"}],["path",{"d":"M10 14 21 3"}],["path",{"d":"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"}]],
+  "hard-drive": [["path",{"d":"M10 16h.01"}],["path",{"d":"M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"}],["path",{"d":"M21.946 12.013H2.054"}],["path",{"d":"M6 16h.01"}]],
+  "key": [["path",{"d":"m2 21 9.6-9.6"}],["path",{"d":"m7.5 15.5 2.3 2.3a1 1 0 0 1 0 1.4l-2.1 2.1a1 1 0 0 1-1.4 0L4 19"}],["circle",{"cx":"15.5","cy":"7.5","r":"5.5"}]],
+  "key-round": [["path",{"d":"M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"}],["circle",{"cx":"16.5","cy":"7.5","r":".5","fill":"currentColor"}]],
+  "log-in": [["path",{"d":"m10 17 5-5-5-5"}],["path",{"d":"M15 12H3"}],["path",{"d":"M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"}]],
+  "log-out": [["path",{"d":"m16 17 5-5-5-5"}],["path",{"d":"M21 12H9"}],["path",{"d":"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"}]],
+  "play-circle": [["path",{"d":"M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"}],["circle",{"cx":"12","cy":"12","r":"10"}]],
+  "power": [["path",{"d":"M12 2v10"}],["path",{"d":"M18.4 6.6a9 9 0 1 1-12.77.04"}]],
+  "refresh-cw": [["path",{"d":"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}],["path",{"d":"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"}],["path",{"d":"M8 16H3v5"}]],
+  "save": [["path",{"d":"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"}],["path",{"d":"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"}],["path",{"d":"M7 3v4a1 1 0 0 0 1 1h7"}]],
+  "scale": [["path",{"d":"M12 3v18"}],["path",{"d":"m19 8 3 8a5 5 0 0 1-6 0zV7"}],["path",{"d":"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"}],["path",{"d":"m5 8 3 8a5 5 0 0 1-6 0zV7"}],["path",{"d":"M7 21h10"}]],
+  "server": [["rect",{"width":"20","height":"8","x":"2","y":"2","rx":"2","ry":"2"}],["rect",{"width":"20","height":"8","x":"2","y":"14","rx":"2","ry":"2"}],["line",{"x1":"6","x2":"6.01","y1":"6","y2":"6"}],["line",{"x1":"6","x2":"6.01","y1":"18","y2":"18"}]],
+  "settings": [["path",{"d":"M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"}],["circle",{"cx":"12","cy":"12","r":"3"}]],
+  "sparkles": [["path",{"d":"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"}],["path",{"d":"M20 2v4"}],["path",{"d":"M22 4h-4"}],["circle",{"cx":"4","cy":"20","r":"2"}]],
+  "trash-2": [["path",{"d":"M10 11v6"}],["path",{"d":"M14 11v6"}],["path",{"d":"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"}],["path",{"d":"M3 6h18"}],["path",{"d":"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"}]],
+  "zap": [["path",{"d":"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"}]]
+  };
+
+  function create(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs).forEach(function (name) { el.setAttribute(name, attrs[name]); });
+    return el;
+  }
+
+  window.lucide = {
+    createIcons: function () {
+      document.querySelectorAll('[data-lucide]').forEach(function (el) {
+        var name = el.getAttribute('data-lucide');
+        if (!ICONS[name]) return;
+        var svg = create('svg', BASE);
+        Array.prototype.forEach.call(el.attributes, function (attr) {
+          svg.setAttribute(attr.name, attr.value);
+        });
+        svg.classList.add('lucide', 'lucide-' + name);
+        ICONS[name].forEach(function (node) { svg.appendChild(create(node[0], node[1])); });
+        el.replaceWith(svg);
+      });
+    }
+  };
+})();
+"""
+
+
+@app.get("/admin/assets/admin.css", include_in_schema=False)
+async def admin_css():
+    return Response(_ADMIN_CSS, media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/admin/assets/icons.js", include_in_schema=False)
+async def admin_icons_js():
+    return Response(_ADMIN_ICONS_JS, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_ui():
     """Admin UI for managing the LLM API - requires 'admin' scope."""
-    return ADMIN_LOGIN_HTML
+    return HTMLResponse(ADMIN_LOGIN_HTML, headers={"Content-Security-Policy": _ADMIN_LOGIN_CSP})
 
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
 async def admin_dashboard():
     """Admin dashboard - authentication handled by JavaScript with localStorage API key."""
-    return ADMIN_HTML
+    return HTMLResponse(ADMIN_HTML, headers={"Content-Security-Policy": _ADMIN_DASHBOARD_CSP})
+
+
+# Short, because the page loads this list on every visit to the models tab.
+VLLM_DOWNLOAD_STATUS_TIMEOUT_SECONDS = 5
+
+
+def _downloader_state(pod) -> Optional[str]:
+    """'downloading', 'failed' or None for a vLLM pod's model-downloader init container."""
+    for status in pod.status.init_container_statuses or []:
+        if status.name != "model-downloader":
+            continue
+        state = status.state
+        if state and state.running:
+            return "downloading"
+        if state and state.terminated:
+            return "failed" if state.terminated.exit_code else None
+        # Waiting between restarts: the last run says why. Before a first run there is none.
+        last = status.last_state.terminated if status.last_state else None
+        return "failed" if last and last.exit_code else None
+    return None
+
+
+async def _read_vllm_download_status(namespace: str) -> Optional[dict]:
+    core_v1, _ = await _k8s_clients()
+    pods = await _k8s_call(core_v1.list_namespaced_pod, namespace, label_selector="app=vllm")
+
+    by_state = {}
+    for pod in pods.items:
+        state = _downloader_state(pod)
+        if state:
+            by_state.setdefault(state, pod.metadata.name)
+    state = "failed" if "failed" in by_state else "downloading" if "downloading" in by_state else None
+    if not state:
+        return None
+
+    try:
+        configmap = await _k8s_call(core_v1.read_namespaced_config_map, "vllm-config", namespace)
+        model = (configmap.data or {}).get("MODEL_NAME") or "unknown"
+    except (ApiException, HTTPException):
+        model = "unknown"
+    error = None
+    if state == "failed":
+        error = f"See the logs: kubectl logs -n {namespace} {by_state[state]} -c model-downloader"
+    return {"status": state, "model": model, "error": error}
+
+
+async def _vllm_download_status() -> Optional[dict]:
+    """What vLLM's model-downloader init containers are doing, read from their pods.
+
+    They have no Redis access, so the pods are the only source. Returns None if no download
+    is running or failing, and status "unavailable" if the pods can't be read, so the
+    Admin UI doesn't show "don't know" as "nothing is happening".
+    """
+    namespace = os.getenv("NAMESPACE", "llmapi")
+    try:
+        return await asyncio.wait_for(
+            _read_vllm_download_status(namespace), VLLM_DOWNLOAD_STATUS_TIMEOUT_SECONDS
+        )
+    except Exception as e:
+        logger.warning(f"Could not read vLLM download status: {type(e).__name__}")
+        return {"status": "unavailable", "model": "unknown", "error": None}
 
 
 @app.get("/admin/models")
@@ -5419,23 +6768,10 @@ async def admin_list_models(api_key: str = Depends(get_api_key)):
     """List all models (admin endpoint)."""
     await require_scope("admin", api_key)
 
-    # Get vLLM download status from Redis
-    download_status = None
-    status = await redis_client.get_value("vllm:download:status")
-    error = await redis_client.get_value("vllm:download:error")
-    model = await redis_client.get_value("vllm:download:model")
-
-    if status:
-        download_status = {
-            "status": status,
-            "model": model if model else "unknown",
-            "error": error if error else None
-        }
-
     return {
         "models": model_registry.get_available_models(),
         "backends": model_registry.backends,
-        "download_status": download_status,
+        "download_status": await _vllm_download_status(),
     }
 
 
@@ -5445,6 +6781,10 @@ async def admin_list_keys(api_key: str = Depends(get_api_key)):
     await require_scope("admin", api_key)
     keys = await postgres_client.list_api_keys()
     return {"keys": keys}
+
+
+# The limit columns in api_keys are INTEGER.
+MAX_KEY_LIMIT = 2_147_483_647
 
 
 @app.post("/admin/keys")
@@ -5477,7 +6817,7 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
         raw_tpm = body.get("tokens_per_minute", None)
         tokens_per_minute = int(raw_tpm) if raw_tpm is not None else default_tpm
         tokens_per_minute = max(config.MIN_TOKENS_PER_MINUTE, tokens_per_minute)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise HTTPException(
             status_code=400,
             detail="requests_per_minute, tokens_per_day, and tokens_per_minute must be integers",
@@ -5488,11 +6828,17 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
             status_code=400,
             detail="requests_per_minute, tokens_per_day, and tokens_per_minute must be > 0",
         )
+    if max(requests_per_minute, tokens_per_day, tokens_per_minute) > MAX_KEY_LIMIT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"requests_per_minute, tokens_per_day, and tokens_per_minute must be at most {MAX_KEY_LIMIT}",
+        )
 
-    key_id = secrets.token_hex(16)
-    api_key = f"sk-mynodeone-{key_id}"
+    new_key = f"sk-mynodeone-{secrets.token_hex(16)}"
+    key_id = hash_api_key(new_key)
 
     key_config = {
+        "key_prefix": api_key_display_prefix(new_key),
         "name": name,
         "scopes": scopes,
         "requests_per_minute": requests_per_minute,
@@ -5501,26 +6847,32 @@ async def admin_create_key(request: Request, api_key: str = Depends(get_api_key)
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    await postgres_client.set_api_key_config(api_key, key_config)
-    await redis_client.set_api_key_config(api_key, key_config)
+    await postgres_client.set_api_key_config(key_id, key_config)
+    await redis_client.set_api_key_config(key_id, key_config)
 
-    return {"key": api_key, "config": key_config}
+    # The only time the raw key is available.
+    return {"key": new_key, "key_id": key_id, "config": key_config}
 
 
 @app.delete("/admin/keys/{api_key}")
 async def admin_revoke_key(api_key: str, admin_key: str = Depends(get_api_key)):
-    """Revoke an API key (admin endpoint)."""
+    """Revoke an API key by key id or raw key (admin endpoint)."""
     await require_scope("admin", admin_key)
-    await postgres_client.delete_api_key(api_key)
+    key_id = key_ref_to_id(api_key)
+    if key_id != api_key:
+        await postgres_client.migrate_plaintext_key(api_key)
+        await redis_client.delete_api_key_config(api_key)
+    await postgres_client.delete_api_key(key_id)
     # Remove from Redis cache immediately so the key stops working right away
-    await redis_client.delete_api_key_config(api_key)
-    return {"status": "revoked", "api_key": api_key}
+    await redis_client.delete_api_key_config(key_id)
+    return {"status": "revoked", "key_id": key_id}
 
 
 @app.get("/admin/usage/{api_key}")
 async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
-    """Get usage for a specific API key."""
+    """Get usage for a specific API key, by key id or raw key."""
     await require_scope("admin", admin_key)
+    api_key = key_ref_to_id(api_key)
     key_config = await postgres_client.get_api_key_config(api_key)
     if not key_config:
         raise HTTPException(status_code=404, detail="API key not found")
@@ -5539,7 +6891,8 @@ async def admin_get_usage(api_key: str, admin_key: str = Depends(get_api_key)):
     }
 
     return {
-        "api_key": api_key[:20] + "...",
+        "api_key": (key_config.get("key_prefix") or api_key[:16]) + "...",
+        "key_id": api_key,
         "name": key_config.get("name"),
         "tokens_used_today": input_tokens + output_tokens,
         "tokens_limit_daily": key_config.get("tokens_per_day"),
@@ -5567,10 +6920,14 @@ async def admin_reset_rate_limiter(request: Request, admin_key: str = Depends(ge
     await require_scope("admin", admin_key)
     try:
         body = await request.json()
+    except HTTPException:
+        raise  # Over the size limit. An empty body here would mean "reset everything".
     except Exception:
         body = {}
 
     target_api_key = body.get("api_key") if isinstance(body, dict) else None
+    if target_api_key:
+        target_api_key = key_ref_to_id(str(target_api_key))
     target_bucket = body.get("limit_bucket") if isinstance(body, dict) else None
     valid_buckets = set(rate_limiter.SERVICE_BUCKETS)
     if target_bucket is not None and target_bucket not in valid_buckets:
@@ -5666,6 +7023,66 @@ async def admin_load_model(request: Request, api_key: str = Depends(get_api_key)
         raise HTTPException(status_code=500, detail="Failed to load model")
 
 
+async def _save_hf_token(hf_token) -> dict:
+    """Write the HuggingFace token to Secret hf-token, or say why it wasn't saved.
+
+    The Secret is the only copy. Redis just records that a token was saved, so a
+    failed save can't leave the token there, and a working one leaves no plaintext.
+    """
+    if not isinstance(hf_token, str) or not hf_token.strip():
+        raise HTTPException(status_code=400, detail="hf_token must be a non-empty string")
+
+    namespace = os.getenv("NAMESPACE", "llmapi")
+    patch = {"data": {"token": base64.b64encode(hf_token.strip().encode()).decode()}}
+    try:
+        core_v1, _ = await _k8s_clients()
+        await _k8s_call(core_v1.patch_namespaced_secret, "hf-token", namespace, patch)
+    except ApiException as e:
+        # Only the status: the error's text is the API server's whole response.
+        logger.error(f"Failed to save HF token: Kubernetes API status {e.status}")
+        if e.status == 403:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Token NOT saved: the gateway has no permission to write Secret hf-token. "
+                    "Grant it in the gateway Role, or run scripts/apps/llmapi/lib/hf-token.sh set on the control node."
+                ),
+            )
+        if e.status == 404:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Token NOT saved: Secret hf-token does not exist, and the gateway only updates it. "
+                    "Create it with scripts/apps/llmapi/lib/hf-token.sh set on the control node."
+                ),
+            )
+        raise HTTPException(status_code=502, detail=f"Token NOT saved: Kubernetes API returned status {e.status}.")
+    except HTTPException as e:
+        if e.status_code == 504:
+            raise HTTPException(
+                status_code=504,
+                detail="Token may not be saved: the Kubernetes API did not respond. Save it again to be sure.",
+            )
+        raise
+    except ImportError as e:
+        # Kubernetes client required for proper token storage
+        logger.error(f"Kubernetes client not available: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Kubernetes client required for token storage. Cannot save token."
+        )
+    except Exception as e:
+        # Such as no in-cluster config. Only the type: nothing that might quote the request.
+        logger.error(f"Failed to save HF token: {type(e).__name__}")
+        raise HTTPException(status_code=502, detail="Token NOT saved: could not use the Kubernetes API.")
+
+    await redis_client.set_value("config:hf_token_saved", "1")
+    # Older versions kept the token itself here.
+    await redis_client.delete_value("config:hf_token")
+    logger.info("HuggingFace token updated successfully")
+    return {"status": "saved", "message": "HuggingFace token updated. Restart vLLM pods to use new token."}
+
+
 @app.post("/admin/config")
 async def admin_update_config(request: Request, api_key: str = Depends(get_api_key)):
     """Update configuration (e.g., HF token)."""
@@ -5674,35 +7091,7 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
 
     # Update HF token in Kubernetes secret
     if "hf_token" in body:
-        hf_token = body["hf_token"]
-
-        try:
-            import base64
-
-            core_v1, _ = get_k8s_clients()
-            namespace = os.getenv("NAMESPACE", "llmapi")
-
-            # Update hf-token secret
-            secret = core_v1.read_namespaced_secret("hf-token", namespace)
-            secret.data["token"] = base64.b64encode(hf_token.encode()).decode()
-            core_v1.replace_namespaced_secret("hf-token", namespace, secret)
-
-            # Also store in Redis for UI display
-            await redis_client.set_value("config:hf_token", hf_token)
-
-            logger.info("HuggingFace token updated successfully")
-            return {"status": "saved", "message": "HuggingFace token updated. Restart vLLM pods to use new token."}
-
-        except ImportError as e:
-            # Kubernetes client required for proper token storage
-            logger.error(f"Kubernetes client not available: {e}")
-            raise HTTPException(
-                status_code=503,
-                detail="Kubernetes client required for token storage. Cannot save token."
-            )
-        except Exception as e:
-            logger.error(f"Failed to update HF token: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
+        return await _save_hf_token(body["hf_token"])
 
     return {"status": "no changes"}
 
@@ -5711,45 +7100,55 @@ async def admin_update_config(request: Request, api_key: str = Depends(get_api_k
 async def admin_get_config(api_key: str = Depends(get_api_key)):
     """Get current configuration including current models."""
     await require_scope("admin", api_key)
-    token = await redis_client.get_value("config:hf_token")
-    hf_token_set = bool(token)
+    hf_token_set = bool(
+        await redis_client.get_value("config:hf_token_saved")
+        or await redis_client.get_value("config:hf_token")
+    )
     vllm_model = await redis_client.get_value("config:vllm_model")
     llamacpp_model_url = await redis_client.get_value("config:llamacpp_model_url")
     llamacpp_replicas = 0
 
     # Try to get from Kubernetes ConfigMaps if not in Redis
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get vLLM model from ConfigMap
         if not vllm_model:
             try:
-                vllm_config = core_v1.read_namespaced_config_map("vllm-config", namespace)
+                vllm_config = await _k8s_call(core_v1.read_namespaced_config_map, "vllm-config", namespace)
                 vllm_model = vllm_config.data.get("MODEL_NAME", "Not configured")
+            except HTTPException:
+                raise  # The API server isn't answering, so don't wait on it again.
             except Exception as e:
                 logger.debug(f"Could not read vllm-config: {e}")
 
         # Get llamacpp model URL from ConfigMap
         if not llamacpp_model_url:
             try:
-                llamacpp_config = core_v1.read_namespaced_config_map("llamacpp-config", namespace)
+                llamacpp_config = await _k8s_call(core_v1.read_namespaced_config_map, "llamacpp-config", namespace)
                 llamacpp_model_url = llamacpp_config.data.get("MODEL_URL", "Not configured")
+            except HTTPException:
+                raise  # The API server isn't answering, so don't wait on it again.
             except Exception as e:
                 logger.debug(f"Could not read llamacpp-config: {e}")
 
         # Get llama.cpp replica count
         try:
-            deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
+            deploy = await _k8s_call(apps_v1.read_namespaced_deployment, "llamacpp", namespace)
             llamacpp_replicas = deploy.spec.replicas or 0
+        except HTTPException:
+            raise  # The API server isn't answering, so don't wait on it again.
         except Exception as e:
             logger.debug(f"Could not get llama.cpp replicas: {e}")
 
         # Get embedding model URL from ConfigMap
         embedding_model_url = None
         try:
-            embedding_config = core_v1.read_namespaced_config_map("embedding-config", namespace)
+            embedding_config = await _k8s_call(core_v1.read_namespaced_config_map, "embedding-config", namespace)
             embedding_model_url = embedding_config.data.get("MODEL_URL", "Not configured")
+        except HTTPException:
+            raise  # The API server isn't answering, so don't wait on it again.
         except Exception as e:
             logger.debug(f"Could not read embedding-config: {e}")
 
@@ -5785,6 +7184,31 @@ async def admin_get_config(api_key: str = Depends(get_api_key)):
 # =============================================================================
 # Backend Model Change Endpoints (requires RBAC permissions)
 # =============================================================================
+
+_GGUF_URL_RE = re.compile(r"https://[A-Za-z0-9.-]+(:443)?/[A-Za-z0-9._~/-]+\.gguf(\?[A-Za-z0-9=&._-]*)?")
+
+
+def _validate_gguf_model_url(model_url) -> tuple[str, str]:
+    """Validate an admin-supplied GGUF URL. Returns (url, model_file).
+
+    The model download sends the HuggingFace token to this URL and fetches it
+    from inside the cluster, so it must be HTTPS on an allowlisted host. The
+    character set also rules out userinfo tricks and shell metacharacters, and
+    the file name is used as a path on the model volume.
+    """
+    if not isinstance(model_url, str) or not _GGUF_URL_RE.fullmatch(model_url):
+        raise HTTPException(status_code=400, detail="model_url must be an https:// URL of a .gguf file")
+
+    parts = urlsplit(model_url)
+    if (parts.hostname or "").lower() not in config.GGUF_MODEL_ALLOWED_HOSTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"model_url host must be one of: {', '.join(sorted(config.GGUF_MODEL_ALLOWED_HOSTS))}",
+        )
+    if ".." in parts.path.split("/"):
+        raise HTTPException(status_code=400, detail="model_url must not contain '..' path segments")
+    return model_url, parts.path.rsplit("/", 1)[-1]
+
 
 def _validate_hf_model_id(model_id: str) -> str:
     model_id = model_id.strip()
@@ -5894,32 +7318,34 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
 
     try:
         # Try to use Kubernetes API
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Update vllm-config ConfigMap with new MODEL_NAME and SERVED_MODEL_NAME
         # This is what the init container reads to download the model
         try:
-            configmap = core_v1.read_namespaced_config_map("vllm-config", namespace)
+            configmap = await _k8s_call(core_v1.read_namespaced_config_map, "vllm-config", namespace)
             if configmap.data is None:
                 configmap.data = {}
             configmap.data["MODEL_NAME"] = model_id
             configmap.data["SERVED_MODEL_NAME"] = served_model_name
             for key, value in family_config.items():
                 configmap.data[key] = value
-            core_v1.replace_namespaced_config_map("vllm-config", namespace, configmap)
+            await _k8s_call(core_v1.replace_namespaced_config_map, "vllm-config", namespace, configmap)
             logger.info(f"Updated vllm-config ConfigMap: MODEL_NAME={model_id}, SERVED_MODEL_NAME={served_model_name}")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to update ConfigMap: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to update ConfigMap: {str(e)}")
 
         # Trigger rollout restart by updating pod template annotation
         # This will cause StatefulSet to recreate pods with new ConfigMap values
-        sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
+        sts = await _k8s_call(apps_v1.read_namespaced_stateful_set, "vllm", namespace)
         if sts.spec.template.metadata.annotations is None:
             sts.spec.template.metadata.annotations = {}
         sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        apps_v1.patch_namespaced_stateful_set("vllm", namespace, sts)
+        await _k8s_call(apps_v1.patch_namespaced_stateful_set, "vllm", namespace, sts)
 
         # Store in Redis for UI
         await redis_client.set_value("config:vllm_model", model_id)
@@ -5927,6 +7353,8 @@ async def admin_change_vllm_model(request: Request, api_key: str = Depends(get_a
         logger.info(f"vLLM model change initiated: {model_id} (served as {served_model_name})")
         return {"status": "initiated", "model_id": model_id, "served_model_name": served_model_name, "message": "vLLM pod is restarting with new model"}
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
     except Exception as e:
@@ -5944,35 +7372,33 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
     if not model_url:
         raise HTTPException(status_code=400, detail="model_url is required")
 
-    if not model_url.endswith(".gguf"):
-        raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
+    model_url, model_file = _validate_gguf_model_url(model_url)
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
-
-        # Extract model filename from URL
-        model_file = model_url.split("/")[-1]
 
         # Update llamacpp-config ConfigMap with new MODEL_URL and MODEL_FILE
         # This is what the init container reads to download the model
         try:
-            configmap = core_v1.read_namespaced_config_map("llamacpp-config", namespace)
+            configmap = await _k8s_call(core_v1.read_namespaced_config_map, "llamacpp-config", namespace)
             configmap.data["MODEL_URL"] = model_url
             configmap.data["MODEL_FILE"] = model_file
-            core_v1.replace_namespaced_config_map("llamacpp-config", namespace, configmap)
+            await _k8s_call(core_v1.replace_namespaced_config_map, "llamacpp-config", namespace, configmap)
             logger.info(f"Updated llamacpp-config ConfigMap: MODEL_URL={model_url}, MODEL_FILE={model_file}")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to update ConfigMap: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to update ConfigMap: {str(e)}")
 
         # Trigger rollout restart by updating pod template annotation
         # This will cause Deployment to recreate pods with new ConfigMap values
-        deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
+        deploy = await _k8s_call(apps_v1.read_namespaced_deployment, "llamacpp", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        apps_v1.patch_namespaced_deployment("llamacpp", namespace, deploy)
+        await _k8s_call(apps_v1.patch_namespaced_deployment, "llamacpp", namespace, deploy)
 
         # Store in Redis for UI
         await redis_client.set_value("config:llamacpp_model_url", model_url)
@@ -5980,6 +7406,8 @@ async def admin_change_llamacpp_model(request: Request, api_key: str = Depends(g
         logger.info(f"llama.cpp model change initiated: {model_url} (file: {model_file})")
         return {"status": "initiated", "model_url": model_url, "model_file": model_file, "message": "llama.cpp pod is restarting with new model"}
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
     except Exception as e:
@@ -6026,11 +7454,11 @@ async def admin_update_vllm_config(request: Request, api_key: str = Depends(get_
         raise HTTPException(status_code=400, detail="No supported vLLM config fields provided")
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get current ConfigMap
-        cm = core_v1.read_namespaced_config_map("vllm-config", namespace)
+        cm = await _k8s_call(core_v1.read_namespaced_config_map, "vllm-config", namespace)
         if cm.data is None:
             cm.data = {}
 
@@ -6038,18 +7466,20 @@ async def admin_update_vllm_config(request: Request, api_key: str = Depends(get_
         cm.data.update(config_updates)
 
         # Apply ConfigMap update
-        core_v1.patch_namespaced_config_map("vllm-config", namespace, cm)
+        await _k8s_call(core_v1.patch_namespaced_config_map, "vllm-config", namespace, cm)
 
         # Trigger rollout restart
-        sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
+        sts = await _k8s_call(apps_v1.read_namespaced_stateful_set, "vllm", namespace)
         if sts.spec.template.metadata.annotations is None:
             sts.spec.template.metadata.annotations = {}
         sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        apps_v1.patch_namespaced_stateful_set("vllm", namespace, sts)
+        await _k8s_call(apps_v1.patch_namespaced_stateful_set, "vllm", namespace, sts)
 
         logger.info(f"vLLM config updated: {config_updates}")
         return {"status": "updated", "config": config_updates, "message": "vLLM pod is restarting with new config"}
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -6064,11 +7494,11 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
     body = await request.json()
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get current ConfigMap
-        cm = core_v1.read_namespaced_config_map("llamacpp-config", namespace)
+        cm = await _k8s_call(core_v1.read_namespaced_config_map, "llamacpp-config", namespace)
 
         # Update values
         if "context_size" in body:
@@ -6081,18 +7511,20 @@ async def admin_update_llamacpp_config(request: Request, api_key: str = Depends(
             cm.data["PARALLEL"] = str(body["parallel"])
 
         # Apply ConfigMap update
-        core_v1.patch_namespaced_config_map("llamacpp-config", namespace, cm)
+        await _k8s_call(core_v1.patch_namespaced_config_map, "llamacpp-config", namespace, cm)
 
         # Trigger rollout restart
-        deploy = apps_v1.read_namespaced_deployment("llamacpp", namespace)
+        deploy = await _k8s_call(apps_v1.read_namespaced_deployment, "llamacpp", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        apps_v1.patch_namespaced_deployment("llamacpp", namespace, deploy)
+        await _k8s_call(apps_v1.patch_namespaced_deployment, "llamacpp", namespace, deploy)
 
         logger.info(f"llama.cpp config updated: {body}")
         return {"status": "updated", "config": body, "message": "llama.cpp pod is restarting with new config"}
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -6106,13 +7538,13 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
     await require_scope("admin", api_key)
 
     try:
-        core_v1, _ = get_k8s_clients()
+        core_v1, _ = await _k8s_clients()
 
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get all nodes and subtract GPU requests from active pods in this namespace.
-        nodes = core_v1.list_node()
-        pods = core_v1.list_namespaced_pod(namespace)
+        nodes = await _k8s_call(core_v1.list_node)
+        pods = await _k8s_call(core_v1.list_namespaced_pod, namespace)
         allocated_by_node: dict[str, int] = {}
 
         for pod in pods.items:
@@ -6156,6 +7588,8 @@ async def admin_get_cluster_gpus(api_key: str = Depends(get_api_key)):
             "available_gpus": sum(g["available"] for g in gpu_info)
         }
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -6169,16 +7603,17 @@ async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
     await require_scope("admin", api_key)
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get StatefulSet
-        sts = apps_v1.read_namespaced_stateful_set("vllm", namespace)
+        sts = await _k8s_call(apps_v1.read_namespaced_stateful_set, "vllm", namespace)
         desired = sts.spec.replicas or 0
         ready = sts.status.ready_replicas or 0
 
         # Get pod statuses
-        pods = core_v1.list_namespaced_pod(
+        pods = await _k8s_call(
+            core_v1.list_namespaced_pod,
             namespace,
             label_selector="app=vllm"
         )
@@ -6198,6 +7633,8 @@ async def admin_get_vllm_replicas(api_key: str = Depends(get_api_key)):
             "pods": pod_status
         }
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -6216,11 +7653,11 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
         raise HTTPException(status_code=400, detail="replicas must be between 0 and 10")
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Check GPU availability
-        nodes = core_v1.list_node()
+        nodes = await _k8s_call(core_v1.list_node)
         total_gpus = 0
         for node in nodes.items:
             allocatable = node.status.allocatable or {}
@@ -6233,7 +7670,8 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
             )
 
         # Scale the StatefulSet
-        apps_v1.patch_namespaced_stateful_set_scale(
+        await _k8s_call(
+            apps_v1.patch_namespaced_stateful_set_scale,
             "vllm",
             namespace,
             {"spec": {"replicas": replicas}}
@@ -6243,16 +7681,16 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
         if replicas > 0:
             vllm_urls = ",".join([f"http://vllm-{i}.vllm:8000" for i in range(replicas)])
             try:
-                cm = core_v1.read_namespaced_config_map("gateway-config", namespace)
+                cm = await _k8s_call(core_v1.read_namespaced_config_map, "gateway-config", namespace)
                 cm.data["VLLM_URLS"] = vllm_urls
-                core_v1.patch_namespaced_config_map("gateway-config", namespace, cm)
+                await _k8s_call(core_v1.patch_namespaced_config_map, "gateway-config", namespace, cm)
 
                 # Restart gateway to pick up new URLs
-                deploy = apps_v1.read_namespaced_deployment("gateway", namespace)
+                deploy = await _k8s_call(apps_v1.read_namespaced_deployment, "gateway", namespace)
                 if deploy.spec.template.metadata.annotations is None:
                     deploy.spec.template.metadata.annotations = {}
                 deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-                apps_v1.patch_namespaced_deployment("gateway", namespace, deploy)
+                await _k8s_call(apps_v1.patch_namespaced_deployment, "gateway", namespace, deploy)
             except Exception as e:
                 logger.warning(f"Gateway config update failed (non-critical): {e}")
                 # Don't fail the scale operation, but log it
@@ -6264,6 +7702,8 @@ async def admin_scale_vllm(request: Request, api_key: str = Depends(get_api_key)
             "message": f"vLLM {'scaling up - pods will initialize in 5-10 minutes' if replicas > 0 else 'scaling down - GPUs will be freed'}"
         }
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -6282,11 +7722,12 @@ async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_
         raise HTTPException(status_code=400, detail="replicas must be 0 or 1")
 
     try:
-        _, apps_v1 = get_k8s_clients()
+        _, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Scale the deployment
-        apps_v1.patch_namespaced_deployment_scale(
+        await _k8s_call(
+            apps_v1.patch_namespaced_deployment_scale,
             "llamacpp",
             namespace,
             {"spec": {"replicas": replicas}}
@@ -6300,6 +7741,8 @@ async def admin_scale_llamacpp(request: Request, api_key: str = Depends(get_api_
             "message": f"llama.cpp {'starting - model will load in 2-5 minutes' if replicas > 0 else 'stopping - RAM will be freed'}"
         }
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:
@@ -6317,25 +7760,25 @@ async def admin_change_embedding_model(request: Request, api_key: str = Depends(
     if not model_url:
         raise HTTPException(status_code=400, detail="model_url is required")
 
-    if not model_url.endswith(".gguf"):
-        raise HTTPException(status_code=400, detail="model_url must point to a .gguf file")
+    model_url, model_file = _validate_gguf_model_url(model_url)
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Update ConfigMap with new model URL
-        cm = core_v1.read_namespaced_config_map("embedding-config", namespace)
+        cm = await _k8s_call(core_v1.read_namespaced_config_map, "embedding-config", namespace)
         cm.data["MODEL_URL"] = model_url
-        cm.data["MODEL_FILE"] = model_url.split("/")[-1]
-        core_v1.patch_namespaced_config_map("embedding-config", namespace, cm)
+        cm.data["MODEL_FILE"] = model_file
+        await _k8s_call(core_v1.patch_namespaced_config_map, "embedding-config", namespace, cm)
 
         # Trigger rollout restart
-        deploy = apps_v1.read_namespaced_deployment("embedding", namespace)
+        backend_manager.note_embedding_model_change()
+        deploy = await _k8s_call(apps_v1.read_namespaced_deployment, "embedding", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
+        await _k8s_call(apps_v1.patch_namespaced_deployment, "embedding", namespace, deploy)
 
         # Store in Redis for UI
         await redis_client.set_value("config:embedding_model_url", model_url)
@@ -6343,6 +7786,8 @@ async def admin_change_embedding_model(request: Request, api_key: str = Depends(
         logger.info(f"Embedding model change initiated: {model_url}")
         return {"status": "initiated", "model_url": model_url, "message": "Embedding pod is restarting with new model"}
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available. Install 'kubernetes' package.")
     except Exception as e:
@@ -6357,11 +7802,11 @@ async def admin_update_embedding_config(request: Request, api_key: str = Depends
     body = await request.json()
 
     try:
-        core_v1, apps_v1 = get_k8s_clients()
+        core_v1, apps_v1 = await _k8s_clients()
         namespace = os.getenv("NAMESPACE", "llmapi")
 
         # Get current ConfigMap
-        cm = core_v1.read_namespaced_config_map("embedding-config", namespace)
+        cm = await _k8s_call(core_v1.read_namespaced_config_map, "embedding-config", namespace)
 
         # Update values
         if "context_size" in body:
@@ -6372,18 +7817,20 @@ async def admin_update_embedding_config(request: Request, api_key: str = Depends
             cm.data["THREADS"] = str(body["threads"])
 
         # Apply ConfigMap update
-        core_v1.patch_namespaced_config_map("embedding-config", namespace, cm)
+        await _k8s_call(core_v1.patch_namespaced_config_map, "embedding-config", namespace, cm)
 
         # Trigger rollout restart
-        deploy = apps_v1.read_namespaced_deployment("embedding", namespace)
+        deploy = await _k8s_call(apps_v1.read_namespaced_deployment, "embedding", namespace)
         if deploy.spec.template.metadata.annotations is None:
             deploy.spec.template.metadata.annotations = {}
         deploy.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        apps_v1.patch_namespaced_deployment("embedding", namespace, deploy)
+        await _k8s_call(apps_v1.patch_namespaced_deployment, "embedding", namespace, deploy)
 
         logger.info(f"Embedding config updated: {body}")
         return {"status": "updated", "config": body, "message": "Embedding pod is restarting with new config"}
 
+    except HTTPException:
+        raise
     except ImportError:
         raise HTTPException(status_code=501, detail="Kubernetes client not available")
     except Exception as e:

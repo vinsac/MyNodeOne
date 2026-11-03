@@ -99,8 +99,8 @@ sudo ./scripts/setup/setup-admin-dashboard.sh
 
 The script will:
 - Install Kubernetes Dashboard
-- Create admin account
-- Generate access token
+- Create a limited operator login (no access to Secrets, can't change workloads or permissions)
+- Print a short-lived access token (1 hour), which isn't saved anywhere
 - Configure external access
 - Update local DNS
 
@@ -111,7 +111,7 @@ The script will:
 **Login:**
 1. Open the dashboard URL
 2. Select "Token" authentication
-3. Paste the token (saved in `~/.mynodeone/dashboard-token.txt`)
+3. Paste the token the script printed
 4. Click "Sign In"
 
 ### Features
@@ -124,18 +124,15 @@ The script will:
 - Scale applications up/down
 - 🏥 Monitor cluster health
 - View persistent storage
-- Manage secrets and configs
 
-### Retrieve Token Later
+Use `kubectl` for Secrets and permissions.
+
+### Get a New Token
+
+Tokens expire by themselves and aren't saved. To get a new one:
 
 ```bash
-kubectl get secret admin-user-token -n kubernetes-dashboard \
-  -o jsonpath='{.data.token}' | base64 -d
-```
-
-Or check the saved file:
-```bash
-cat ~/.mynodeone/dashboard-token.txt
+kubectl create token dashboard-operator -n kubernetes-dashboard --duration=1h
 ```
 
 ---
@@ -430,17 +427,11 @@ kubectl delete namespace kubernetes-dashboard
 sudo ./scripts/setup/setup-admin-dashboard.sh
 ```
 
-### Lost Admin Token
+### Lost or Expired Token
 
-**Retrieve token:**
+Tokens aren't saved, so create a new one:
 ```bash
-kubectl get secret admin-user-token -n kubernetes-dashboard \
-  -o jsonpath='{.data.token}' | base64 -d
-```
-
-Or check saved file:
-```bash
-cat ~/.mynodeone/dashboard-token.txt
+kubectl create token dashboard-operator -n kubernetes-dashboard --duration=1h
 ```
 
 ---

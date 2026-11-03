@@ -23,6 +23,14 @@ export_k8s_config
 
 set -euo pipefail
 
+# Every disk this script erases goes through these checks
+source "$SCRIPT_DIR/../lib/disk-safety.sh"
+if [ "$EUID" -eq 0 ]; then
+    disk_safety_init ""
+else
+    disk_safety_init "sudo"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -92,6 +100,8 @@ LONGHORN_MOUNT_BASE="/mnt/longhorn-disks"
 
 # Global arrays for disk management
 declare -a MOUNTED_DISKS=()
+# Disks registered with Longhorn during this run. Longhorn hasn't written their config yet.
+declare -a JUST_ADDED_DISKS=()
 declare -a SELECTED_DISKS=()
 
 # Function to safely get K8s node name
@@ -140,46 +150,33 @@ declare -a AVAILABLE_DISKS=()
 # Function to detect available disks
 detect_available_disks() {
     log_info "Detecting available disks..."
-    
-    # Reset available disks array
+
     AVAILABLE_DISKS=()
-    
-    # Get list of block devices that are actual disks (not partitions)
-    # Use lsblk TYPE=disk to correctly identify whole disks including NVMe (nvme0n1)
-    # The old [0-9]$ regex incorrectly skipped NVMe disks since they end in digits
-    local os_disk_parent=""
-    os_disk_parent=$(lsblk -ndo PKNAME $(findmnt -rn -o SOURCE -T / 2>/dev/null | head -1) 2>/dev/null || true)
-    
-    while IFS= read -r disk; do
-        # Skip system/virtual devices
-        if [[ "$disk" =~ ^(loop|fd|ram|sr|md|dm-) ]]; then
-            continue
-        fi
-        
-        # Skip the OS disk (the parent device of the root mount)
-        if [[ -n "$os_disk_parent" && "$disk" == "$os_disk_parent" ]]; then
-            continue
-        fi
-        
-        AVAILABLE_DISKS+=("/dev/$disk")
-    done < <(lsblk -d -n -o NAME,TYPE | awk '$2=="disk" {print $1}' | sort)
-    
-    if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
-        log_warn "No additional disks found. Will use OS disk only."
+
+    # Lists the disks that can be offered, and explains why the others can't
+    if ! disk_safety_scan; then
+        log_warn "Could not inspect disks. Will use OS disk only."
         return 0
     fi
-    
-    echo "Available physical disks:"
-    for i in "${!AVAILABLE_DISKS[@]}"; do
-        local disk_path="${AVAILABLE_DISKS[$i]}"
-        local disk_name=$(basename "$disk_path")
-        local size=$(lsblk -b -d -n -o SIZE "$disk_path" | numfmt --to=iec-i --suffix=B)
-        echo "  $((i+1))) $disk_name ($size)"
-    done
+
+    AVAILABLE_DISKS=("${DISK_SAFETY_ELIGIBLE[@]}")
+
+    if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
+        log_warn "No disks can be safely formatted. Will use OS disk only."
+    fi
+    return 0
 }
 
 # Function to handle disk selection
 handle_disk_selection() {
+    # A run without a terminal can't confirm a wipe, so it never selects a disk
+    if ! disk_safety_is_interactive; then
+        log_warn "No terminal available for disk confirmation: no disk will be formatted."
+        log_info "Using OS disk only - /var/lib/longhorn"
+        SELECTED_DISKS=()
+        return 0
+    fi
+
     echo
     echo "💡 Option 2: Use dedicated physical disk(s)"
     detect_available_disks
@@ -212,7 +209,16 @@ handle_disk_selection() {
                     
                     if [[ $disk_index -ge 0 && $disk_index -lt ${#AVAILABLE_DISKS[@]} ]]; then
                         local disk_path="${AVAILABLE_DISKS[$disk_index]}"
-                        SELECTED_DISKS+=("$disk_path")
+                        local already_selected=false
+                        local chosen
+                        for chosen in "${SELECTED_DISKS[@]}"; do
+                            if [[ "$chosen" == "$disk_path" ]]; then
+                                already_selected=true
+                            fi
+                        done
+                        if [[ "$already_selected" == false ]]; then
+                            SELECTED_DISKS+=("$disk_path")
+                        fi
                     else
                         log_warn "Invalid disk number: $disk_num"
                     fi
@@ -223,18 +229,16 @@ handle_disk_selection() {
     
     if [ ${#SELECTED_DISKS[@]} -gt 0 ]; then
         echo
-        log_info "Selected ${#SELECTED_DISKS[@]} disk(s):"
-        for disk in "${SELECTED_DISKS[@]}"; do
-            local size=$(lsblk -b -d -n -o SIZE "$disk" | numfmt --to=iec-i --suffix=B)
-            echo "  • $disk ($size)"
-        done
-        echo
+        log_info "Selected ${#SELECTED_DISKS[@]} disk(s). Each must be confirmed by name."
         echo -e "[⚠] ${YELLOW}⚠️  WARNING: Selected disks will be FORMATTED (all data will be lost)${NC}"
-        read -p "Continue with formatting? [y/N]: " -r
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Disk formatting cancelled"
-            exit 0
-        fi
+        # Confirm every disk before erasing any, so cancelling leaves all of them intact
+        local disk
+        for disk in "${SELECTED_DISKS[@]}"; do
+            if ! disk_safety_confirm_wipe "$disk"; then
+                log_error "Disk formatting cancelled. No disk was changed."
+                exit 1
+            fi
+        done
     fi
 }
 
@@ -262,10 +266,13 @@ format_and_mount_disks() {
         
         log_info "Processing $disk..."
         
-        # Clean up existing state (restored from original de1af24 implementation)
-        sudo umount "$disk"* 2>/dev/null || true
-        sudo wipefs -a "$disk" &>/dev/null || true
-        
+        # Re-checks the disk and erases its signatures. Mounted disks are refused
+        # rather than unmounted, and any failure stops the install.
+        if ! disk_safety_wipe "$disk"; then
+            log_error "Could not safely erase $disk. Stopping."
+            exit 1
+        fi
+
         # Create partition
         log_info "Creating partition on $disk..."
         sudo parted -s "$disk" mklabel gpt mkpart primary ext4 0% 100%
@@ -288,16 +295,16 @@ format_and_mount_disks() {
         local max_wait=10
         local wait_count=0
         while [ $wait_count -lt $max_wait ]; do
-            if [ -b "$partition" ]; then
+            if [ -n "$partition" ] && sudo test -b "$partition"; then
                 break
             fi
             sleep 1
             wait_count=$((wait_count + 1))
         done
-        
-        if [ ! -b "$partition" ]; then
-            log_error "Partition $partition not found after formatting"
-            continue
+
+        if [ -z "$partition" ] || ! sudo test -b "$partition"; then
+            log_error "Partition '$partition' not found after partitioning $disk. Stopping."
+            exit 1
         fi
         
         # Format with ext4
@@ -311,11 +318,25 @@ format_and_mount_disks() {
         log_info "Mounting $partition to $mount_point..."
         sudo mount "$partition" "$mount_point"
         
-        # Add to fstab for persistence
-        if ! grep -q "$mount_point" /etc/fstab; then
-            local uuid=$(sudo blkid -s UUID -o value "$partition")
-            echo "UUID=$uuid  $mount_point  ext4  defaults,nofail  0  2" | sudo tee -a /etc/fstab
+        # Add to fstab for persistence. The disk was just formatted, so its UUID is new
+        # and any entry already on this mountpoint is stale. Matching the mountpoint
+        # field means disk-sda doesn't match disk-sda1.
+        local uuid=""
+        uuid=$(sudo blkid -s UUID -o value "$partition")
+        if [ -z "$uuid" ]; then
+            log_error "Could not read the UUID of $partition, so /etc/fstab was not updated. Stopping."
+            exit 1
         fi
+        sudo bash -s -- "$uuid" "$mount_point" <<'FSTAB_SCRIPT'
+set -eu
+tmp=$(mktemp /etc/fstab.XXXXXX)
+trap 'rm -f "$tmp"' EXIT
+awk -v mp="$2" '/^[[:space:]]*#/ || $2 != mp' /etc/fstab > "$tmp"
+printf 'UUID=%s  %s  ext4  defaults,nofail  0  2\n' "$1" "$2" >> "$tmp"
+chmod 644 "$tmp"
+mv "$tmp" /etc/fstab
+trap - EXIT
+FSTAB_SCRIPT
         
         # Add to mounted disks array
         MOUNTED_DISKS+=("$mount_point")
@@ -537,208 +558,221 @@ fix_storageclass_replicas() {
 }
 
 # Add disks to Longhorn node configuration
-# Arguments:
-#   $1: true if Longhorn was newly installed/upgraded via Helm, false if skipped
+#
+# defaultDataPath only applies when Longhorn creates a node, so it can't be assumed to
+# have covered a disk. The node resource is the only record of what's registered: a
+# disk is added unless an entry already has its path.
 add_node_disks_to_longhorn() {
-    local newly_installed="${1:-false}"
-    
     if [[ ${#MOUNTED_DISKS[@]} -eq 0 ]]; then
         return 0
     fi
-    
+
     log_info "Configuring disks in Longhorn..."
-    
+
     # Get actual node name
-    local node_name=$(get_k8s_node_name)
+    local node_name
+    node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect Kubernetes node name, skipping Longhorn disk configuration"
         log_info "Configure disks via Longhorn UI manually if needed"
         return 0
     fi
-    
+
     # Check if Longhorn node exists
     if ! kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
         log_info "Longhorn node not yet created, skipping disk configuration"
         return 0
     fi
-    
-    # Get existing disk entries so we don't create duplicates
-    # Longhorn auto-discovers disks and creates default-disk-* entries for paths
-    # set via defaultDataPath. Adding another entry for the same path causes duplicates.
-    local existing_disks_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null | \
-        jq -r '.spec.disks // {} | to_entries[] | "\(.key):\(.value.path)"' 2>/dev/null)
-    
+
+    # An unreadable list must not look like an empty one, or every disk gets a duplicate.
+    local node_json=""
+    if ! node_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null) ||
+       ! jq -e '.spec' <<< "$node_json" >/dev/null 2>&1; then
+        log_warn "Could not read Longhorn node $node_name, so no disks were added. Configure them via the Longhorn UI, or run this again."
+        return 0
+    fi
+
     # Configure each mounted disk
+    local disk_path disk_name existing_entry key_path
     for disk_path in "${MOUNTED_DISKS[@]}"; do
-        local disk_name=$(basename "$disk_path")
-        
-        # Check if any existing Longhorn disk entry already points to this path
-        local existing_entry=""
-        existing_entry=$(echo "$existing_disks_json" | grep ":${disk_path}$" | head -1 | cut -d: -f1)
+        disk_name=$(basename "$disk_path")
+
+        # Longhorn names the entry it makes for defaultDataPath default-disk-*, so
+        # compare paths, not names. Exact match, ignoring a trailing slash.
+        existing_entry=$(jq -r --arg path "${disk_path%/}" \
+            '.spec.disks // {} | to_entries[] | select((.value.path | sub("/+$"; "")) == $path) | .key' \
+            <<< "$node_json" | head -1)
         if [[ -n "$existing_entry" ]]; then
             log_info "Disk at $disk_path already registered as '$existing_entry' — skipping"
             continue
         fi
-        
-        # Skip first disk if it's the default data path (Helm sets defaultDataPath)
-        if [[ "$disk_path" == "${MOUNTED_DISKS[0]}" ]] && [[ "$newly_installed" == "true" ]]; then
-            log_info "Skipping first disk (handled by Helm defaultDataPath)"
+
+        key_path=$(jq -r --arg key "$disk_name" '.spec.disks[$key].path // ""' <<< "$node_json")
+        if [[ -n "$key_path" ]]; then
+            log_warn "Longhorn already has a disk named '$disk_name' at $key_path, so $disk_path was not added. Configure it via the Longhorn UI."
             continue
         fi
-        
+
         log_info "Adding disk $disk_name to Longhorn node $node_name..."
-        
+
         # Add disk via Longhorn node spec (spec.disks is an object/map, not array)
-        if ! kubectl_longhorn_retry 3 "Longhorn syncing, adding disk $disk_name" \
+        if kubectl_longhorn_retry 3 "Longhorn syncing, adding disk $disk_name" \
             kubectl patch nodes.longhorn.io "$node_name" -n longhorn-system --type merge \
             -p "{\"spec\":{\"disks\":{\"$disk_name\":{\"path\":\"$disk_path\",\"allowScheduling\":true}}}}"; then
+            JUST_ADDED_DISKS+=("$disk_path")
+        else
             log_warn "Failed to add disk $disk_name after retries — configure via Longhorn UI"
         fi
     done
-    
+
     log_success "Longhorn disk configuration complete"
 }
 
-# Function to check for disk UUID mismatches
-# When a disk is reformatted, Longhorn's stored UUID no longer matches the actual
-# disk. This makes the disk show as "not ready" and "not schedulable".
+# How to replace one disk's stale Longhorn record by hand. Longhorn's webhook only
+# allows removing a disk with scheduling off and nothing scheduled on it.
+print_disk_recovery_steps() {
+    local node_name="$1" disk_name="$2" disk_path="$3" replicas="$4"
+    local ns="longhorn-system"
+
+    log_warn "Replicas recorded on this disk: $replicas"
+    echo "  This script changes nothing here. To replace this disk's record, once you've"
+    echo "  confirmed that the disk really was replaced or reformatted:"
+    echo
+    echo "  1. Stop new replicas landing on it:"
+    echo "     kubectl patch nodes.longhorn.io $node_name -n $ns --type merge \\"
+    echo "       -p '{\"spec\":{\"disks\":{\"$disk_name\":{\"allowScheduling\":false}}}}'"
+    echo "  2. List its replicas. Check in the Longhorn UI that each of their volumes has a"
+    echo "     healthy replica on another disk, then delete the listed ones:"
+    echo "     kubectl get replicas.longhorn.io -n $ns -o json | jq -r --arg n $node_name --arg p $disk_path \\"
+    echo "       '.items[] | select(.spec.nodeID == \$n and .spec.diskPath == \$p) | .metadata.name'"
+    echo "  3. Remove the record, once step 2 lists nothing:"
+    echo "     kubectl patch nodes.longhorn.io $node_name -n $ns --type merge \\"
+    echo "       -p '{\"spec\":{\"disks\":{\"$disk_name\":null}}}'"
+    echo "  4. When it has gone from status.diskStatus, add the disk back:"
+    echo "     kubectl patch nodes.longhorn.io $node_name -n $ns --type merge \\"
+    echo "       -p '{\"spec\":{\"disks\":{\"$disk_name\":{\"path\":\"$disk_path\",\"allowScheduling\":true}}}}'"
+    echo
+    echo "  Do not delete the nodes.longhorn.io resource. Longhorn recreates it with only the"
+    echo "  default data path, so every other disk leaves spec.disks, and any volume whose"
+    echo "  replicas are on those disks can drop to a single replica."
+    echo
+}
+
+# Reports disks whose Longhorn record no longer matches what's on the machine. It's
+# report-only and always returns 0, whatever it finds.
 #
-# Two-layer detection (defensive programming):
-#   Layer 1 (proactive): Compare longhorn-disk.cfg on each mounted disk against
-#           Longhorn's stored diskUUID — instant, no dependency on Longhorn polling
-#   Layer 2 (fallback):  Check Longhorn's diskStatus conditions for mismatch errors
+# Things that look like a reformat but aren't, which are not reported as mismatches:
+#   - a disk added seconds ago: Longhorn writes longhorn-disk.cfg within about 30s
+#   - a disk with no UUID in status yet: Longhorn hasn't taken it on
+#   - a disk in fstab that isn't mounted: a nofail disk that failed to mount has no
+#     cfg on the empty directory underneath, and Longhorn reports the same condition
 #
-# Recovery: Delete the Longhorn node resource → Longhorn manager recreates it with
-# correct UUIDs. If manager gets stuck, restart the manager pod.
+# A mismatch is a cfg holding a different UUID, or Longhorn's own DiskFilesystemChanged
+# or UUID mismatch condition, on a disk that's mounted.
 check_disk_uuid_mismatches() {
     # Check if kubectl is available
     if ! kubectl get nodes &>/dev/null; then
         log_info "kubectl not available - UUID mismatch check skipped"
         return 0
     fi
-    
-    local node_name=$(get_k8s_node_name)
+
+    local node_name
+    node_name=$(get_k8s_node_name)
     if [[ -z "$node_name" ]]; then
         log_warn "Could not detect node name, skipping UUID mismatch check"
         return 0
     fi
-    
+
     # Check if Longhorn node exists
     if ! kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
         log_info "Longhorn node not yet created, skipping UUID check"
         return 0
     fi
-    
-    local node_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null)
-    local has_mismatch=""
-    
-    # --- Layer 1: Proactive UUID comparison ---
-    # Longhorn writes a longhorn-disk.cfg file to each disk with its UUID.
-    # When a disk is reformatted, this file is destroyed. Compare the UUID
-    # on disk against what Longhorn has stored in its CRD status.
-    # This works immediately — no need to wait for Longhorn's condition polling.
-    while IFS=: read -r disk_name disk_path stored_uuid; do
+
+    local node_json=""
+    if ! node_json=$(kubectl get nodes.longhorn.io "$node_name" -n longhorn-system -o json 2>/dev/null); then
+        log_warn "Could not read Longhorn node $node_name, skipping UUID check"
+        return 0
+    fi
+
+    local replicas_json=""
+    replicas_json=$(kubectl get replicas.longhorn.io -n longhorn-system -o json 2>/dev/null) || replicas_json=""
+
+    local mismatches=0 disk_name disk_path stored_uuid condition added cfg_file disk_uuid replicas reason
+    while IFS='|' read -r disk_name disk_path stored_uuid condition; do
         if [[ -z "$disk_name" || -z "$disk_path" ]]; then
             continue
         fi
-        
-        local cfg_file="$disk_path/longhorn-disk.cfg"
-        if [[ ! -f "$cfg_file" ]]; then
-            # longhorn-disk.cfg missing — disk was reformatted
-            log_info "  $disk_path: longhorn-disk.cfg missing (disk was reformatted)"
-            has_mismatch="$disk_name"
-            break
+
+        for added in "${JUST_ADDED_DISKS[@]}"; do
+            if [[ "$added" == "$disk_path" ]]; then
+                log_info "  $disk_path: added just now, not checked yet"
+                continue 2
+            fi
+        done
+
+        if [[ -z "$stored_uuid" ]]; then
+            log_info "  $disk_path: Longhorn hasn't recorded a UUID for it yet"
+            continue
         fi
-        
-        if [[ -n "$stored_uuid" ]]; then
-            local disk_uuid=$(jq -r '.diskUUID // ""' "$cfg_file" 2>/dev/null)
+
+        if ! mountpoint -q "$disk_path" 2>/dev/null &&
+           awk -v mp="${disk_path%/}" '!/^[[:space:]]*#/ && $2 == mp { found = 1 } END { exit !found }' /etc/fstab 2>/dev/null; then
+            log_warn "  $disk_path is in /etc/fstab but isn't mounted, so Longhorn can't use it. Nothing was changed."
+            log_warn "  Find out why: sudo mount $disk_path; journalctl -b | grep -i '$(basename "$disk_path")'"
+            continue
+        fi
+
+        reason=""
+        cfg_file="$disk_path/longhorn-disk.cfg"
+        if [[ -f "$cfg_file" ]]; then
+            disk_uuid=$(jq -r '.diskUUID // ""' "$cfg_file" 2>/dev/null) || disk_uuid=""
             if [[ -n "$disk_uuid" && "$disk_uuid" != "$stored_uuid" ]]; then
-                log_info "  $disk_path: UUID on disk ($disk_uuid) != Longhorn record ($stored_uuid)"
-                has_mismatch="$disk_name"
-                break
+                reason="UUID on disk ($disk_uuid) != Longhorn record ($stored_uuid)"
             fi
         fi
-    done < <(echo "$node_json" | jq -r '
+        if [[ -z "$reason" && "$condition" == "true" ]]; then
+            reason="Longhorn reports DiskFilesystemChanged or a UUID mismatch"
+        fi
+
+        if [[ -z "$reason" ]]; then
+            if [[ ! -f "$cfg_file" ]]; then
+                log_warn "  $disk_path: no longhorn-disk.cfg, but Longhorn has a UUID on record. That's not proof of a reformat, so nothing was changed."
+                log_warn "  If this disk was just reformatted, Longhorn reports DiskFilesystemChanged within a minute, and re-running this script prints the steps."
+            fi
+            continue
+        fi
+
+        mismatches=$((mismatches + 1))
+        replicas="unknown (could not read replicas)"
+        if [[ -n "$replicas_json" ]]; then
+            replicas=$(jq -r --arg node "$node_name" --arg path "$disk_path" \
+                '[.items[] | select(.spec.nodeID == $node and .spec.diskPath == $path)] | length' \
+                <<< "$replicas_json" 2>/dev/null) || replicas="unknown (could not read replicas)"
+        fi
+        log_warn "Disk UUID mismatch on '$disk_name' ($disk_path): $reason"
+        print_disk_recovery_steps "$node_name" "$disk_name" "$disk_path" "$replicas"
+    done < <(jq -r '
         (.status.diskStatus // {}) as $status |
         .spec.disks // {} | to_entries[] |
-        "\(.key):\(.value.path):\($status[.key].diskUUID // "")"
-    ' 2>/dev/null)
-    
-    # --- Layer 2: Fallback — check Longhorn's own condition reporting ---
-    # Longhorn eventually detects UUID mismatches and reports them in conditions.
-    # This catches cases where the disk file exists but has a different UUID that
-    # Layer 1 might miss (e.g., partial reformat, disk swap).
-    if [[ -z "$has_mismatch" ]]; then
-        has_mismatch=$(echo "$node_json" | \
-            jq -r '.status.diskStatus // {} | to_entries[] | select(
-                (.value.conditions[]?.reason == "DiskFilesystemChanged") or
-                (.value.conditions[]? | select(.type == "Ready" and .status == "False") | .message | test("diskUUID.*match|UUID.*mismatch"; "i"))
-            ) | .key' 2>/dev/null | head -1)
-    fi
-    
-    # --- Recovery ---
-    if [[ -n "$has_mismatch" ]]; then
-        log_warn "Disk UUID mismatch detected on '$has_mismatch' (disk was reformatted)"
-        log_info "Deleting Longhorn node to reset disk UUIDs..."
-        
-        # Delete the Longhorn node to force re-registration with correct UUIDs
-        if ! kubectl_longhorn_retry 3 "Longhorn syncing, deleting node for UUID fix" \
-            kubectl delete nodes.longhorn.io "$node_name" -n longhorn-system; then
-            log_error "Failed to delete Longhorn node for UUID fix after retries"
-            return 1
-        fi
-        
-        # Wait for Longhorn manager to recreate the node resource
-        # Phase 1: Wait up to 30s for auto-recreation
-        local waited=0
-        local recreated=false
-        log_info "Waiting for Longhorn to recreate node resource..."
-        while [ $waited -lt 30 ]; do
-            if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
-                recreated=true
-                break
-            fi
-            sleep 5
-            waited=$((waited + 5))
-        done
-        
-        # Phase 2: If not recreated, restart the longhorn-manager pod on this node
-        # The manager sometimes gets stuck after node deletion and needs a restart
-        if [ "$recreated" = false ]; then
-            log_info "Node not recreated yet — restarting Longhorn manager on this node..."
-            local manager_pod=$(kubectl get pods -n longhorn-system -l app=longhorn-manager \
-                --field-selector spec.nodeName="$node_name" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-            if [[ -n "$manager_pod" ]]; then
-                kubectl delete pod "$manager_pod" -n longhorn-system --grace-period=30 2>/dev/null || true
-                log_info "Waiting for manager pod to restart and recreate node..."
-                sleep 15
-            fi
-            
-            # Phase 3: Wait another 60s after manager restart
-            waited=0
-            while [ $waited -lt 60 ]; do
-                if kubectl get nodes.longhorn.io "$node_name" -n longhorn-system &>/dev/null; then
-                    recreated=true
-                    break
-                fi
-                sleep 5
-                waited=$((waited + 5))
-            done
-        fi
-        
-        if [ "$recreated" = true ]; then
-            log_success "Longhorn node recreated with correct disk UUIDs"
-            sleep 10  # Let disk status sync before returning
-            return 0
-        else
-            log_error "Longhorn node was not recreated after 90s"
-            log_warn "Manual fix: kubectl delete pod -n longhorn-system -l app=longhorn-manager --field-selector spec.nodeName=$node_name"
-            return 1
-        fi
-    else
+        ($status[.key].conditions // []) as $conditions |
+        [
+            .key,
+            .value.path,
+            ($status[.key].diskUUID // ""),
+            (any($conditions[];
+                .reason == "DiskFilesystemChanged" or
+                (.type == "Ready" and .status == "False" and ((.message // "") | test("diskUUID.*match|UUID.*mismatch"; "i"))))
+             | tostring)
+        ] | join("|")
+    ' <<< "$node_json" 2>/dev/null)
+
+    if [[ "$mismatches" -eq 0 ]]; then
         log_success "No disk UUID mismatches detected"
+    else
+        log_warn "$mismatches disk(s) need the manual steps above. Longhorn was not changed."
     fi
-    
+
     return 0
 }
 
@@ -989,15 +1023,9 @@ main() {
     install_longhorn
     
     # Add disks to Longhorn configuration
-    # On control plane: "true" = Helm installed Longhorn with defaultDataPath
-    # On worker: "false" = Helm skipped, need to manually configure all disks
-    if is_control_plane; then
-        add_node_disks_to_longhorn "true"
-    else
-        add_node_disks_to_longhorn "false"
-    fi
-    
-    # Check for disk UUID mismatches
+    add_node_disks_to_longhorn
+
+    # Report any disk UUID mismatches. This never changes anything.
     check_disk_uuid_mismatches
     
     # Wait for Longhorn to finish syncing disk status before patching reservations

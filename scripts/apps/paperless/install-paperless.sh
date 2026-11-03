@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Load shared validation library
 source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/install-helpers.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -99,11 +100,34 @@ echo "  Documents: $DOC_STORAGE"
 echo "  Database: $DB_STORAGE"
 echo ""
 
-echo "🔐 Generating secure credentials..."
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
-REDIS_PASSWORD=$(openssl rand -base64 32)
-ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '/+=' | head -c 16)
-SECRET_KEY=$(openssl rand -base64 32)
+generate_admin_password() {
+    openssl rand -base64 16 | tr -d '/+=' | head -c 16
+}
+
+echo "🔐 Preparing credentials..."
+# Existing values are reused: the database was initialised with this password, and
+# a new secret key would sign every user out.
+app_load_or_create_secret_value POSTGRES_PASSWORD "$NAMESPACE" paperless-db postgres-password \
+    paperless-postgres -- openssl rand -base64 32
+app_load_or_create_secret_value REDIS_PASSWORD "$NAMESPACE" paperless-redis redis-password \
+    "" -- openssl rand -hex 32
+app_load_or_create_secret_value ADMIN_PASSWORD "$NAMESPACE" paperless-secret admin-password \
+    "" -- generate_admin_password
+app_load_or_create_secret_value SECRET_KEY "$NAMESPACE" paperless-secret secret-key \
+    "" -- openssl rand -base64 32
+
+# The password goes into the PAPERLESS_REDIS URL, so it must be URL-safe. Older
+# versions of this script stored base64 here but never turned Redis auth on, so
+# nothing depends on the old value and it is safe to replace.
+if [[ ! "$REDIS_PASSWORD" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+    REDIS_PASSWORD=$(openssl rand -hex 32)
+fi
+
+# Override with PAPERLESS_IMAGE. Re-running keeps the running version.
+app_resolve_image POSTGRES_IMAGE "$NAMESPACE" paperless-postgres postgres "postgres:16.15"
+app_resolve_image REDIS_IMAGE "$NAMESPACE" paperless-redis redis "redis:7.4.12"
+app_resolve_image PAPERLESS_IMAGE "$NAMESPACE" paperless paperless \
+    "ghcr.io/paperless-ngx/paperless-ngx:3.4.1" "${PAPERLESS_IMAGE:-}"
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -202,7 +226,7 @@ spec:
       priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
-        image: postgres:16
+        image: $POSTGRES_IMAGE
         env:
         - name: POSTGRES_DB
           value: paperless
@@ -265,7 +289,14 @@ spec:
       priorityClassName: mynodeone-infrastructure
       containers:
       - name: redis
-        image: redis:7
+        image: $REDIS_IMAGE
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: paperless-redis
+              key: redis-password
+        args: ["redis-server", "--requirepass", "\$(REDIS_PASSWORD)"]
         ports:
         - containerPort: 6379
         volumeMounts:
@@ -321,12 +352,18 @@ spec:
       priorityClassName: mynodeone-app
       containers:
       - name: paperless
-        image: ghcr.io/paperless-ngx/paperless-ngx:latest
+        image: $PAPERLESS_IMAGE
         env:
         - name: PAPERLESS_PORT
           value: "8000"
+        # Must stay above PAPERLESS_REDIS: Kubernetes only expands variables declared earlier.
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: paperless-redis
+              key: redis-password
         - name: PAPERLESS_REDIS
-          value: "redis://paperless-redis:6379"
+          value: "redis://:\$(REDIS_PASSWORD)@paperless-redis:6379"
         - name: PAPERLESS_DBHOST
           value: paperless-postgres
         - name: PAPERLESS_DBNAME

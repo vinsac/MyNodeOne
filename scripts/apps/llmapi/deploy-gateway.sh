@@ -8,6 +8,9 @@ source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
+source "$SCRIPT_DIR/lib/install-helpers.sh"
+source "$SCRIPT_DIR/lib/gateway-code.sh"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
@@ -32,22 +35,21 @@ if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
     exit 1
 fi
 
-GATEWAY_CODE_SHA=$(sha256sum "$MAIN_FILE" | awk '{print $1}')
-ROLLOUT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+GATEWAY_CODE_SHA=$(gateway_code_sha "$SCRIPT_DIR")
+PREVIOUS_GENERATION=$(kubectl get deployment gateway -n "$NAMESPACE" -o 'jsonpath={.metadata.generation}' 2>/dev/null || true)
 
 echo "📄 Updating gateway code ConfigMap..."
-if kubectl get configmap gateway-code -n "$NAMESPACE" &>/dev/null; then
-    kubectl create configmap gateway-code -n "$NAMESPACE" \
-        --from-file=main.py="$MAIN_FILE" \
-        --dry-run=client -o yaml | kubectl replace -f -
-else
-    kubectl create configmap gateway-code -n "$NAMESPACE" \
-        --from-file=main.py="$MAIN_FILE"
-fi
+ship_gateway_code "$SCRIPT_DIR"
+ship_gateway_static "$SCRIPT_DIR"
 
 echo "🚀 Rolling gateway deployment..."
-kubectl patch deployment gateway -n "$NAMESPACE" --type merge \
-    -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"llmapi.mynodeone.io/gateway-code-sha\":\"$GATEWAY_CODE_SHA\",\"kubectl.kubernetes.io/restartedAt\":\"$ROLLOUT_AT\"}}}}}" >/dev/null
+apply_gateway_deployment "$SCRIPT_DIR" "$GATEWAY_CODE_SHA" >/dev/null
+
+# Callers also use this to pick up gateway-config changes, so it has to restart the
+# pods even when the Deployment itself didn't change.
+if [ "$(kubectl get deployment gateway -n "$NAMESPACE" -o 'jsonpath={.metadata.generation}' 2>/dev/null || true)" = "$PREVIOUS_GENERATION" ]; then
+    kubectl rollout restart deployment/gateway -n "$NAMESPACE" >/dev/null
+fi
 
 kubectl rollout status deployment/gateway -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
 

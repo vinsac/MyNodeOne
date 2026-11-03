@@ -44,7 +44,8 @@ After MyNodeOne installation, save these from `/root/`:
 | `mynodeone-minio-credentials.txt` | MinIO admin user and password |
 | `mynodeone-grafana-credentials.txt` | Grafana admin password |
 | `mynodeone-argocd-credentials.txt` | ArgoCD admin password |
-| `mynodeone-join-token.txt` | K3s cluster join token |
+
+The K3s join token isn't in this list because MyNodeOne keeps no copy of it. When you add a worker, read it on the control plane with `sudo cat /var/lib/rancher/k3s/server/agent-token`.
 
 Also save your kubeconfig:
 ```bash
@@ -62,14 +63,12 @@ cat ~/.kube/config
 sudo cat /root/mynodeone-minio-credentials.txt
 sudo cat /root/mynodeone-grafana-credentials.txt
 sudo cat /root/mynodeone-argocd-credentials.txt
-sudo cat /root/mynodeone-join-token.txt
 ```
 
 Create entries in your password manager:
 - MyNodeOne MinIO
 - MyNodeOne Grafana
 - MyNodeOne ArgoCD
-- MyNodeOne Join Token
 - MyNodeOne Kubeconfig
 
 ### Step 2: Delete Credential Files
@@ -79,7 +78,6 @@ Create entries in your password manager:
 sudo shred -u /root/mynodeone-minio-credentials.txt
 sudo shred -u /root/mynodeone-grafana-credentials.txt
 sudo shred -u /root/mynodeone-argocd-credentials.txt
-# Keep join token if adding worker nodes
 ```
 
 ### Step 3: Secure Kubeconfig

@@ -2,11 +2,26 @@
 
 ###############################################################################
 # Velero Backup Configuration Script
-# 
-# Configures Velero to use MinIO on worker node as backup storage
-# Sets up scheduled backups: nightly at 2AM UTC
-# Retention: 6 months
-# Called after worker node joins and MinIO is installed
+#
+# Points Velero at a backup destination you choose and creates its schedules.
+# No installer calls this script, and there's no default destination: it stops
+# with an explanation if none is configured. See backup.env.example.
+#
+# USAGE:
+#   sudo ./scripts/storage/velero/configure-backup.sh --config /path/to/backup.env
+#
+# WHAT THESE BACKUPS COVER:
+#   Kubernetes objects only, including Secrets in readable form, so the
+#   destination has to be trusted and access-controlled. Volume data isn't covered.
+#
+# WHY --snapshot-volumes STAYS FALSE:
+#   install.sh runs with --use-volume-snapshots=false and sets up no snapshot
+#   location or CSI snapshot class, so turning it on here would back up no extra
+#   data. Snapshots of Longhorn volumes would also stay in Longhorn unless it has
+#   its own backup target. Volume data needs a method that fits it instead:
+#   pg_dump for Postgres (scripts/backup/llmapi-postgres-backup.yaml), and Longhorn
+#   recurring backups once a target is chosen. VELERO_SNAPSHOT_VOLUMES=true is there
+#   for clusters that have added a CSI snapshot setup.
 ###############################################################################
 
 set -euo pipefail
@@ -18,22 +33,22 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Script directory
-# Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Bootstrap with fallback pattern (auto-discovers if path is wrong)
-source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../../../scripts/lib/project-root.sh" 2>/dev/null || \
-source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null
-
-# Backup configuration
-FULL_BACKUP_SCHEDULE="0 2 1 * *"     # 2:00 AM UTC on 1st of month (monthly full)
-INCREMENTAL_BACKUP_SCHEDULE="0 2 * * *"  # 2:00 AM UTC daily (incremental)
-FULL_BACKUP_RETENTION_DAYS=180       # 6 months for full backups
-INCREMENTAL_BACKUP_RETENTION_DAYS=30 # 30 days for incremental backups
-BACKUP_BUCKET="velero-backups"
-MIN_FREE_SPACE_PERCENT=20            # Alert and cleanup threshold
+CONFIG_KEYS=(
+    VELERO_BACKUP_TARGET
+    VELERO_S3_URL
+    VELERO_BUCKET
+    VELERO_REGION
+    VELERO_PREFIX
+    VELERO_CREDENTIALS_FILE
+    VELERO_MINIO_NODE
+    VELERO_FULL_SCHEDULE
+    VELERO_DAILY_SCHEDULE
+    VELERO_FULL_RETENTION_DAYS
+    VELERO_DAILY_RETENTION_DAYS
+    VELERO_SNAPSHOT_VOLUMES
+)
 
 # Helper functions
 log_info() {
@@ -45,315 +60,257 @@ log_success() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-retry_command() {
-    local max_attempts=$1
-    shift
-    local cmd="$@"
-    local attempt=1
-    
-    while [ $attempt -le $max_attempts ]; do
-        if eval "$cmd"; then
-            return 0
+# Reads KEY=value lines. The file is parsed rather than sourced, because this
+# script runs as root and a config file shouldn't be able to run commands.
+load_config_file() {
+    local file="$1" line key value known_key known
+    if [[ ! -r "$file" ]]; then
+        log_error "Can't read config file: $file"
+        return 1
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+        if ! [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]]; then
+            log_error "Invalid line in $file: $line"
+            return 1
         fi
-        log_warn "Attempt $attempt/$max_attempts failed, retrying..."
-        attempt=$((attempt + 1))
-        sleep 3
-    done
-    
+        key="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[2]}"
+        known=false
+        for known_key in "${CONFIG_KEYS[@]}"; do
+            [[ "$key" == "$known_key" ]] && known=true
+        done
+        if [[ "$known" == false ]]; then
+            log_error "Unknown setting in $file: $key"
+            return 1
+        fi
+        value="${value#\"}"; value="${value%\"}"
+        value="${value#\'}"; value="${value%\'}"
+        # The environment takes precedence over the file
+        if [[ -z "${!key:-}" ]]; then
+            printf -v "$key" '%s' "$value"
+        fi
+    done < "$file"
+}
+
+fail_no_destination() {
+    log_error "No backup destination is configured, so nothing was changed."
+    log_error "$1"
+    log_error "Set VELERO_BACKUP_TARGET and the settings it needs. See $SCRIPT_DIR/backup.env.example"
     return 1
+}
+
+# Checks settings and applies defaults. Runs before anything touches the cluster.
+validate_config() {
+    VELERO_BACKUP_TARGET="${VELERO_BACKUP_TARGET:-}"
+    VELERO_BUCKET="${VELERO_BUCKET:-}"
+    VELERO_PREFIX="${VELERO_PREFIX:-}"
+    VELERO_CREDENTIALS_FILE="${VELERO_CREDENTIALS_FILE:-}"
+    VELERO_MINIO_NODE="${VELERO_MINIO_NODE:-}"
+    VELERO_S3_URL="${VELERO_S3_URL:-}"
+    VELERO_REGION="${VELERO_REGION:-}"
+    VELERO_FULL_SCHEDULE="${VELERO_FULL_SCHEDULE:-0 2 1 * *}"
+    VELERO_DAILY_SCHEDULE="${VELERO_DAILY_SCHEDULE:-0 2 * * *}"
+    VELERO_FULL_RETENTION_DAYS="${VELERO_FULL_RETENTION_DAYS:-180}"
+    VELERO_DAILY_RETENTION_DAYS="${VELERO_DAILY_RETENTION_DAYS:-30}"
+    VELERO_SNAPSHOT_VOLUMES="${VELERO_SNAPSHOT_VOLUMES:-false}"
+
+    case "$VELERO_BACKUP_TARGET" in
+        s3)
+            [[ -n "$VELERO_S3_URL" ]] || { fail_no_destination "VELERO_BACKUP_TARGET=s3 needs VELERO_S3_URL."; return 1; }
+            [[ -n "$VELERO_BUCKET" ]] || { fail_no_destination "VELERO_BACKUP_TARGET=s3 needs VELERO_BUCKET."; return 1; }
+            [[ -n "$VELERO_REGION" ]] || { fail_no_destination "VELERO_BACKUP_TARGET=s3 needs VELERO_REGION."; return 1; }
+            [[ -n "$VELERO_CREDENTIALS_FILE" ]] || { fail_no_destination "VELERO_BACKUP_TARGET=s3 needs VELERO_CREDENTIALS_FILE."; return 1; }
+            if ! [[ "$VELERO_S3_URL" =~ ^https?://[A-Za-z0-9._:-]+(/[A-Za-z0-9._/-]*)?$ ]]; then
+                log_error "VELERO_S3_URL is not a valid URL: $VELERO_S3_URL"
+                return 1
+            fi
+            ;;
+        minio)
+            [[ -n "$VELERO_BUCKET" ]] || { fail_no_destination "VELERO_BACKUP_TARGET=minio needs VELERO_BUCKET."; return 1; }
+            VELERO_REGION="${VELERO_REGION:-us-east-1}"
+            if [[ -n "$VELERO_MINIO_NODE" ]] && ! [[ "$VELERO_MINIO_NODE" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+                log_error "VELERO_MINIO_NODE is not a valid node name: $VELERO_MINIO_NODE"
+                return 1
+            fi
+            ;;
+        "")
+            fail_no_destination "VELERO_BACKUP_TARGET is not set."
+            return 1
+            ;;
+        *)
+            log_error "VELERO_BACKUP_TARGET must be 's3' or 'minio', not '$VELERO_BACKUP_TARGET'."
+            return 1
+            ;;
+    esac
+
+    if ! [[ "$VELERO_BUCKET" =~ ^[a-z0-9][a-z0-9.-]+$ ]]; then
+        log_error "VELERO_BUCKET is not a valid bucket name: $VELERO_BUCKET"
+        return 1
+    fi
+    if [[ -n "$VELERO_PREFIX" ]] && ! [[ "$VELERO_PREFIX" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+        log_error "VELERO_PREFIX contains invalid characters: $VELERO_PREFIX"
+        return 1
+    fi
+    if ! [[ "$VELERO_REGION" =~ ^[A-Za-z0-9-]+$ ]]; then
+        log_error "VELERO_REGION is not valid: $VELERO_REGION"
+        return 1
+    fi
+    if [[ -n "$VELERO_CREDENTIALS_FILE" && ! -r "$VELERO_CREDENTIALS_FILE" ]]; then
+        log_error "Can't read VELERO_CREDENTIALS_FILE: $VELERO_CREDENTIALS_FILE"
+        return 1
+    fi
+    case "$VELERO_SNAPSHOT_VOLUMES" in
+        true|false) ;;
+        *)
+            log_error "VELERO_SNAPSHOT_VOLUMES must be true or false."
+            return 1
+            ;;
+    esac
+    retention_days_to_ttl "$VELERO_FULL_RETENTION_DAYS" > /dev/null || return 1
+    retention_days_to_ttl "$VELERO_DAILY_RETENTION_DAYS" > /dev/null || return 1
+}
+
+# Velero's --ttl is a Go duration with no day unit, so 180 days is 4320h.
+retention_days_to_ttl() {
+    local days="$1"
+    if ! [[ "$days" =~ ^[1-9][0-9]*$ ]]; then
+        log_error "Retention must be a whole number of days, not '$days'."
+        return 1
+    fi
+    echo "$((days * 24))h0m0s"
 }
 
 check_requirements() {
     log_info "Checking prerequisites..."
-    
-    # Check if running as root
+
     if [ "$EUID" -ne 0 ]; then
         log_error "Please run as root (use sudo)"
         return 1
     fi
-    
-    # Check if velero CLI is available
+
     if ! command -v velero &> /dev/null; then
-        log_error "Velero CLI not found. Please install Velero first."
+        log_error "Velero CLI not found. Run $SCRIPT_DIR/install.sh first."
         return 1
     fi
-    
-    # Check if Velero server is running
+
     if ! kubectl get deployment velero -n velero &> /dev/null; then
-        log_error "Velero server not found. Please install Velero first."
+        log_error "Velero server not found. Run $SCRIPT_DIR/install.sh first."
         return 1
     fi
-    
-    # Check if MinIO is running
-    if ! kubectl get svc minio -n minio &> /dev/null; then
-        log_error "MinIO service not found. Please install MinIO first."
-        return 1
-    fi
-    
+
     log_success "Prerequisites check passed"
-    return 0
 }
 
-check_minio_disk_space() {
-    log_info "Checking MinIO disk space..."
-    
-    # Get MinIO pod name
-    local MINIO_POD=$(kubectl get pods -n minio -l app=minio -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    
-    if [ -z "$MINIO_POD" ]; then
-        log_warn "Could not find MinIO pod, skipping disk space check"
+# install-minio.sh creates one namespace per node, labelled app=minio.
+# Sets MINIO_NAMESPACE.
+resolve_minio_namespace() {
+    if [[ -n "$VELERO_MINIO_NODE" ]]; then
+        MINIO_NAMESPACE="minio-$VELERO_MINIO_NODE"
         return 0
     fi
-    
-    # Check disk space for each mount point
-    local LOW_SPACE=false
-    while IFS= read -r line; do
-        local MOUNT=$(echo "$line" | awk '{print $6}')
-        local USED_PERCENT=$(echo "$line" | awk '{print $5}' | tr -d '%')
-        local FREE_PERCENT=$((100 - USED_PERCENT))
-        
-        if [ "$FREE_PERCENT" -lt "$MIN_FREE_SPACE_PERCENT" ]; then
-            log_warn "MinIO disk space low: $MOUNT is ${USED_PERCENT}% full (${FREE_PERCENT}% free)"
-            LOW_SPACE=true
-        else
-            log_info "MinIO disk space OK: $MOUNT is ${USED_PERCENT}% full (${FREE_PERCENT}% free)"
-        fi
-    done < <(kubectl exec -n minio "$MINIO_POD" -- df -h 2>/dev/null | grep -E '/minio-data|/var/lib/minio' || true)
-    
-    if [ "$LOW_SPACE" = "true" ]; then
-        log_warn "MinIO disk space below ${MIN_FREE_SPACE_PERCENT}% threshold"
-        log_info "Will attempt automatic cleanup of old backups..."
-        cleanup_old_backups
-    fi
-    
-    return 0
-}
 
-cleanup_old_backups() {
-    log_info "Cleaning up old incremental backups to free space..."
-    
-    # Delete incremental backups older than 7 days (keep recent ones)
-    local CUTOFF_DATE=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-7d '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
-    
-    if [ -z "$CUTOFF_DATE" ]; then
-        log_warn "Could not calculate cutoff date for cleanup"
+    local found=""
+    if ! found=$(kubectl get namespaces -l app=minio -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); then
+        log_error "Could not list MinIO namespaces."
         return 1
     fi
-    
-    log_info "Deleting incremental backups older than $CUTOFF_DATE..."
-    
-    # Get list of incremental backups older than cutoff
-    local OLD_BACKUPS=$(velero backup get -o json 2>/dev/null | \
-        jq -r ".items[] | select(.metadata.labels.\"backup-type\" == \"incremental\" and .status.completionTimestamp < \"$CUTOFF_DATE\") | .metadata.name" 2>/dev/null || true)
-    
-    if [ -z "$OLD_BACKUPS" ]; then
-        log_info "No old incremental backups to clean up"
-        return 0
-    fi
-    
-    local DELETED_COUNT=0
-    while IFS= read -r backup_name; do
-        if [ -n "$backup_name" ]; then
-            log_info "Deleting old backup: $backup_name"
-            if velero backup delete "$backup_name" --confirm &>/dev/null; then
-                DELETED_COUNT=$((DELETED_COUNT + 1))
-            fi
-        fi
-    done <<< "$OLD_BACKUPS"
-    
-    if [ $DELETED_COUNT -gt 0 ]; then
-        log_success "Cleaned up $DELETED_COUNT old incremental backup(s)"
-    else
-        log_info "No backups were deleted"
-    fi
-    
-    return 0
-}
+    found=$(printf '%s\n' "$found" | grep -E '^minio-' || true)
 
-send_alert_to_monitoring() {
-    local ALERT_TITLE="$1"
-    local ALERT_MESSAGE="$2"
-    local SEVERITY="${3:-warning}"  # warning, error, info
-    
-    log_info "Sending alert to monitoring: $ALERT_TITLE"
-    
-    # Create Kubernetes event for monitoring systems to pick up
-    kubectl create event "velero-backup-alert-$(date +%s)" \
-        --namespace=velero \
-        --type="$SEVERITY" \
-        --reason="BackupAlert" \
-        --message="$ALERT_TITLE: $ALERT_MESSAGE" \
-        --reporting-controller="velero-backup-config" \
-        --reporting-instance="configure-backup-script" 2>/dev/null || true
-    
-    # Also create annotation on Velero deployment for visibility
-    kubectl annotate deployment velero -n velero \
-        "mynodeone.io/last-alert"="$(date -u '+%Y-%m-%dT%H:%M:%SZ'): $ALERT_TITLE" \
-        --overwrite 2>/dev/null || true
-    
-    return 0
-}
-
-deploy_prometheus_monitoring() {
-    log_info "Deploying Prometheus monitoring for Velero..."
-    
-    # Check if Prometheus is installed
-    if ! kubectl get crd prometheusrules.monitoring.coreos.com &> /dev/null; then
-        log_warn "Prometheus Operator not found, skipping monitoring setup"
-        log_info "Install Prometheus to get automated backup failure alerts"
-        return 0
+    local count=0
+    if [[ -n "$found" ]]; then
+        count=$(printf '%s\n' "$found" | wc -l)
     fi
-    
-    # Deploy PrometheusRule and ServiceMonitor
-    local RULES_FILE="$SCRIPT_DIR/velero-prometheus-rules.yaml"
-    
-    if [ -f "$RULES_FILE" ]; then
-        if kubectl apply -f "$RULES_FILE" 2>&1; then
-            log_success "Prometheus monitoring rules deployed"
-            log_info "Backup failure alerts will appear in Grafana automatically"
-        else
-            log_warn "Could not deploy Prometheus rules (continuing)"
-        fi
-    else
-        log_warn "Prometheus rules file not found: $RULES_FILE"
-        log_info "Backup monitoring will use Kubernetes events only"
-    fi
-    
-    return 0
-}
-
-configure_minio_quota() {
-    log_info "Configuring MinIO storage quota..."
-    
-    # Get MinIO credentials
-    local MINIO_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' 2>/dev/null | base64 -d)
-    local MINIO_PASS=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' 2>/dev/null | base64 -d)
-    local MINIO_ENDPOINT=$(kubectl get svc -n minio minio -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-    
-    if [ -z "$MINIO_ENDPOINT" ] || [ "$MINIO_ENDPOINT" = "null" ]; then
-        log_warn "MinIO endpoint not available yet, skipping quota configuration"
-        return 0
-    fi
-    
-    # Install mc (MinIO client) if not present
-    if ! command -v mc &> /dev/null; then
-        log_info "Installing MinIO client (mc)..."
-        curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
-        chmod +x /usr/local/bin/mc
-    fi
-    
-    # Configure mc alias
-    mc alias set mynodeone-minio "http://${MINIO_ENDPOINT}:9000" "$MINIO_USER" "$MINIO_PASS" &>/dev/null || true
-    
-    # Set bucket quota (80% of available disk space)
-    # This prevents MinIO from filling disk completely
-    log_info "Setting bucket quota to prevent disk exhaustion..."
-    
-    # Get available disk space from MinIO pod
-    local MINIO_POD=$(kubectl get pods -n minio -l app=minio -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [ -n "$MINIO_POD" ]; then
-        local TOTAL_SIZE=$(kubectl exec -n minio "$MINIO_POD" -- df -B1 /minio-data 2>/dev/null | tail -1 | awk '{print $2}' || echo "0")
-        if [ "$TOTAL_SIZE" -gt 0 ]; then
-            # Set quota to 80% of total size
-            local QUOTA_SIZE=$((TOTAL_SIZE * 80 / 100))
-            log_info "Setting bucket quota to $((QUOTA_SIZE / 1024 / 1024 / 1024))GB (80% of available space)"
-            mc quota set mynodeone-minio/$BACKUP_BUCKET --size ${QUOTA_SIZE} &>/dev/null || log_warn "Could not set bucket quota"
-        fi
-    fi
-    
-    log_success "MinIO quota configuration complete"
-    return 0
-}
-
-get_minio_credentials() {
-    log_info "Retrieving MinIO credentials..."
-    
-    # Get credentials from Kubernetes secret
-    export MINIO_ROOT_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootUser}' 2>/dev/null | base64 -d)
-    export MINIO_ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.rootPassword}' 2>/dev/null | base64 -d)
-    
-    if [ -z "$MINIO_ROOT_USER" ] || [ -z "$MINIO_ROOT_PASSWORD" ]; then
-        log_error "Failed to retrieve MinIO credentials from secret"
+    if (( count == 0 )); then
+        log_error "No MinIO instance found (no namespace named minio-<node>). Install MinIO or set VELERO_BACKUP_TARGET=s3."
         return 1
     fi
-    
-    # Get MinIO service endpoint (internal cluster service)
-    export MINIO_ENDPOINT="minio.minio.svc.cluster.local:9000"
-    
-    log_success "MinIO credentials retrieved"
-    log_info "MinIO endpoint: $MINIO_ENDPOINT"
-    
-    return 0
+    if (( count > 1 )); then
+        log_error "Found $count MinIO instances. Set VELERO_MINIO_NODE to choose one:"
+        printf '%s\n' "$found" | sed 's/^minio-/  /' >&2
+        return 1
+    fi
+    MINIO_NAMESPACE="$found"
 }
 
-create_minio_bucket() {
-    log_info "Creating Velero backup bucket in MinIO..."
-    
-    # Check if bucket already exists
-    local POD_NAME=$(kubectl get pod -n minio -l app=minio -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    
-    if [ -z "$POD_NAME" ]; then
-        log_error "MinIO pod not found"
+# Sets VELERO_S3_URL to the in-cluster address of the chosen instance, after making
+# sure it's running. A pod stuck in ImagePullBackOff can't hold backups.
+check_minio_target() {
+    resolve_minio_namespace || return 1
+
+    if ! kubectl get svc minio -n "$MINIO_NAMESPACE" &> /dev/null; then
+        log_error "MinIO service not found in namespace $MINIO_NAMESPACE."
         return 1
     fi
-    
-    log_info "Using MinIO pod: $POD_NAME"
-    
-    # Create bucket using mc (MinIO client) inside the pod
-    log_info "Creating bucket: $BACKUP_BUCKET"
-    
-    if kubectl exec -n minio "$POD_NAME" -- sh -c "
-        mc alias set myminio http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD && \
-        mc mb myminio/$BACKUP_BUCKET --ignore-existing
-    " 2>&1; then
-        log_success "Bucket '$BACKUP_BUCKET' created/verified"
-    else
-        log_error "Failed to create bucket in MinIO"
+    local ready=""
+    ready=$(kubectl get pods -n "$MINIO_NAMESPACE" -l app=minio \
+        -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || true)
+    if [[ "$ready" != "true" ]]; then
+        log_error "MinIO in namespace $MINIO_NAMESPACE is not running. Check: kubectl get pods -n $MINIO_NAMESPACE"
         return 1
     fi
-    
-    return 0
+
+    VELERO_S3_URL="http://minio.${MINIO_NAMESPACE}.svc.cluster.local:9000"
+    log_warn "The backup destination is MinIO inside this cluster ($MINIO_NAMESPACE)."
+    log_warn "This does not protect against losing the machine it runs on."
 }
 
 create_velero_credentials() {
-    log_info "Creating Velero credentials for MinIO..."
-    
-    # Create temporary credentials file
-    local CREDS_FILE=$(mktemp)
-    cat > "$CREDS_FILE" <<EOF
+    log_info "Creating Velero credentials..."
+
+    local secret_source="$VELERO_CREDENTIALS_FILE" temp_file=""
+    if [[ -z "$secret_source" ]]; then
+        # Only reachable for target=minio: target=s3 requires a credentials file
+        log_warn "Using MinIO's root credentials. A dedicated user with access to one bucket is safer."
+        local minio_user="" minio_password=""
+        minio_user=$(kubectl get secret minio-credentials -n "$MINIO_NAMESPACE" -o jsonpath='{.data.rootUser}' | base64 -d)
+        minio_password=$(kubectl get secret minio-credentials -n "$MINIO_NAMESPACE" -o jsonpath='{.data.rootPassword}' | base64 -d)
+        if [[ -z "$minio_user" || -z "$minio_password" ]]; then
+            log_error "Could not read MinIO credentials from namespace $MINIO_NAMESPACE."
+            return 1
+        fi
+        temp_file=$(mktemp)     # mktemp creates the file with mode 600
+        cat > "$temp_file" <<EOF
 [default]
-aws_access_key_id = $MINIO_ROOT_USER
-aws_secret_access_key = $MINIO_ROOT_PASSWORD
+aws_access_key_id = $minio_user
+aws_secret_access_key = $minio_password
 EOF
-    
-    # Create Kubernetes secret for Velero
-    if kubectl create secret generic cloud-credentials \
+        secret_source="$temp_file"
+    fi
+
+    local rc=0
+    kubectl create secret generic cloud-credentials \
         --namespace velero \
-        --from-file=cloud="$CREDS_FILE" \
-        --dry-run=client -o yaml | kubectl apply -f -; then
-        log_success "Velero credentials secret created"
-    else
-        rm -f "$CREDS_FILE"
+        --from-file=cloud="$secret_source" \
+        --dry-run=client -o yaml | kubectl apply -f - || rc=$?
+
+    if [[ -n "$temp_file" ]]; then
+        rm -f "$temp_file"
+    fi
+
+    if (( rc != 0 )); then
         log_error "Failed to create Velero credentials secret"
         return 1
     fi
-    
-    rm -f "$CREDS_FILE"
-    return 0
+    log_success "Velero credentials secret created"
 }
 
 configure_backup_location() {
     log_info "Configuring Velero backup storage location..."
-    
-    # Create BackupStorageLocation
-    cat <<EOF | kubectl apply -f -
+
+    local prefix_line=""
+    if [[ -n "$VELERO_PREFIX" ]]; then
+        prefix_line="    prefix: $VELERO_PREFIX"
+    fi
+
+    if ! kubectl apply -f - <<EOF
 apiVersion: velero.io/v1
 kind: BackupStorageLocation
 metadata:
@@ -361,242 +318,189 @@ metadata:
   namespace: velero
 spec:
   provider: aws
+  default: true
   objectStorage:
-    bucket: $BACKUP_BUCKET
+    bucket: $VELERO_BUCKET
+$prefix_line
   config:
-    region: us-east-1
+    region: $VELERO_REGION
     s3ForcePathStyle: "true"
-    s3Url: http://$MINIO_ENDPOINT
+    s3Url: $VELERO_S3_URL
   credential:
     name: cloud-credentials
     key: cloud
 EOF
-    
-    if [ $? -eq 0 ]; then
-        log_success "Backup storage location configured"
-    else
+    then
         log_error "Failed to configure backup storage location"
         return 1
     fi
-    
-    # Verify backup location
-    log_info "Verifying backup storage location..."
-    sleep 3
-    
-    local BSL_STATUS=$(kubectl get backupstoragelocation default -n velero -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-    log_info "Backup storage location status: $BSL_STATUS"
-    
-    if [ "$BSL_STATUS" = "Available" ]; then
-        log_success "Backup storage location is available"
-    else
-        log_warn "Backup storage location status: $BSL_STATUS (may need time to initialize)"
+
+    # Velero validates the location on a timer, so give it time to report
+    log_info "Waiting for Velero to validate the backup storage location..."
+    local status="Unknown"
+    for _ in {1..24}; do
+        status=$(kubectl get backupstoragelocation default -n velero -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+        if [[ "$status" == "Available" ]]; then
+            log_success "Backup storage location is available"
+            return 0
+        fi
+        sleep 5
+    done
+
+    log_error "Backup storage location is '$status', not Available."
+    log_error "Check that bucket '$VELERO_BUCKET' exists at $VELERO_S3_URL and the credentials can reach it."
+    log_error "Details: kubectl describe backupstoragelocation default -n velero"
+    return 1
+}
+
+# Creates a schedule. An existing one keeps running, but its retention is corrected
+# so a schedule made with the old days-as-hours bug doesn't keep expiring backups.
+ensure_schedule() {
+    local name="$1" cron="$2" ttl="$3" backup_type="$4" current=""
+
+    if velero schedule get "$name" &> /dev/null; then
+        current=$(kubectl get schedule "$name" -n velero -o jsonpath='{.spec.template.ttl}' 2>/dev/null || true)
+        if [[ "$current" != "$ttl" ]]; then
+            log_warn "Schedule $name has retention '$current'. Changing it to $ttl."
+            if ! kubectl patch schedule "$name" -n velero --type merge \
+                -p "{\"spec\":{\"template\":{\"ttl\":\"$ttl\"}}}"; then
+                log_error "Could not change the retention of schedule $name."
+                return 1
+            fi
+        fi
+        log_info "Schedule $name already exists"
+        return 0
     fi
-    
-    return 0
+
+    if ! velero schedule create "$name" \
+        --schedule="$cron" \
+        --ttl="$ttl" \
+        --include-namespaces='*' \
+        --exclude-namespaces='kube-system,kube-public,kube-node-lease' \
+        --snapshot-volumes="$VELERO_SNAPSHOT_VOLUMES" \
+        --labels "backup-type=$backup_type"; then
+        log_error "Could not create schedule $name."
+        return 1
+    fi
+    log_success "Schedule $name created (retention $ttl)"
 }
 
 create_backup_schedules() {
     log_info "Creating backup schedules..."
-    
-    # Schedule 1: Monthly FULL cluster backup (1st of each month)
-    log_info "Creating monthly FULL cluster backup schedule..."
-    
-    if velero schedule create monthly-full-backup \
-        --schedule="$FULL_BACKUP_SCHEDULE" \
-        --ttl="${FULL_BACKUP_RETENTION_DAYS}h" \
-        --include-namespaces='*' \
-        --exclude-namespaces='kube-system,kube-public,kube-node-lease' \
-        --snapshot-volumes=false \
-        --labels backup-type=full 2>&1; then
-        log_success "Monthly full backup schedule created"
-    else
-        if velero schedule get monthly-full-backup &> /dev/null; then
-            log_info "Monthly full backup schedule already exists"
-        else
-            log_error "Failed to create monthly full backup schedule"
-            return 1
+
+    if [[ "$VELERO_SNAPSHOT_VOLUMES" == "true" ]]; then
+        log_warn "VELERO_SNAPSHOT_VOLUMES=true needs a working CSI snapshot setup. See the top of this script."
+    fi
+
+    local full_ttl daily_ttl
+    full_ttl=$(retention_days_to_ttl "$VELERO_FULL_RETENTION_DAYS")
+    daily_ttl=$(retention_days_to_ttl "$VELERO_DAILY_RETENTION_DAYS")
+
+    ensure_schedule monthly-full-backup "$VELERO_FULL_SCHEDULE" "$full_ttl" full || return 1
+    ensure_schedule daily-incremental-backup "$VELERO_DAILY_SCHEDULE" "$daily_ttl" incremental || return 1
+
+    # Remove schedules from older versions of this script
+    local old_schedule
+    for old_schedule in nightly-backup longhorn-pvc-backup monthly-pvc-backup; do
+        if velero schedule get "$old_schedule" &> /dev/null; then
+            log_info "Removing old schedule: $old_schedule"
+            velero schedule delete "$old_schedule" --confirm || log_warn "Could not remove schedule $old_schedule"
         fi
-    fi
-    
-    # Schedule 2: Daily INCREMENTAL cluster backup
-    log_info "Creating daily INCREMENTAL cluster backup schedule..."
-    
-    if velero schedule create daily-incremental-backup \
-        --schedule="$INCREMENTAL_BACKUP_SCHEDULE" \
-        --ttl="${INCREMENTAL_BACKUP_RETENTION_DAYS}h" \
-        --include-namespaces='*' \
-        --exclude-namespaces='kube-system,kube-public,kube-node-lease' \
-        --snapshot-volumes=false \
-        --labels backup-type=incremental 2>&1; then
-        log_success "Daily incremental backup schedule created"
-    else
-        if velero schedule get daily-incremental-backup &> /dev/null; then
-            log_info "Daily incremental backup schedule already exists"
-        else
-            log_error "Failed to create daily incremental backup schedule"
-            return 1
-        fi
-    fi
-    
-    # NOTE: We do NOT backup PVC data (only Kubernetes manifests)
-    # Backing up 40TB+ of Longhorn volume data over Tailscale is impossible
-    # Users should use:
-    #   1. Longhorn snapshots (local, for quick rollback)
-    #   2. Application-level backups (pg_dump, mysqldump, etc.)
-    #   3. Optional external replication to cloud storage
-    
-    # Delete old backup schedules if they exist
-    if velero schedule get nightly-backup &> /dev/null; then
-        log_info "Removing old nightly-backup schedule (replaced by monthly+incremental)..."
-        velero schedule delete nightly-backup --confirm &>/dev/null || true
-    fi
-    
-    if velero schedule get longhorn-pvc-backup &> /dev/null; then
-        log_info "Removing old longhorn-pvc-backup schedule (misleading - only backed up YAML)..."
-        velero schedule delete longhorn-pvc-backup --confirm &>/dev/null || true
-    fi
-    
-    if velero schedule get monthly-pvc-backup &> /dev/null; then
-        log_info "Removing old monthly-pvc-backup schedule (misleading - only backed up YAML)..."
-        velero schedule delete monthly-pvc-backup --confirm &>/dev/null || true
-    fi
-    
-    return 0
+    done
 }
 
+deploy_prometheus_monitoring() {
+    log_info "Deploying Prometheus monitoring for Velero..."
+
+    if ! kubectl get crd prometheusrules.monitoring.coreos.com &> /dev/null; then
+        log_warn "Prometheus Operator not found, skipping monitoring setup"
+        return 0
+    fi
+
+    if ! kubectl apply -f "$SCRIPT_DIR/velero-prometheus-rules.yaml"; then
+        log_warn "Could not deploy Prometheus rules (continuing)"
+    fi
+}
+
+# Takes a real backup, since a schedule can look fine while every run fails.
 verify_configuration() {
-    log_info "Verifying Velero configuration..."
-    
-    # Check backup storage location
-    if ! kubectl get backupstoragelocation default -n velero &> /dev/null; then
-        log_error "Backup storage location not found"
+    log_info "Testing with a backup of the default namespace..."
+    local test_backup phase=""
+    test_backup="test-connectivity-$(date +%s)"
+
+    if ! velero backup create "$test_backup" --include-namespaces=default --wait; then
+        log_error "Test backup could not be created"
         return 1
     fi
-    
-    # Check schedules
-    log_info "Checking backup schedules..."
-    velero schedule get || true
-    
-    # Test backup location connectivity
-    log_info "Testing backup location connectivity..."
-    local TEST_BACKUP_NAME="test-connectivity-$(date +%s)"
-    
-    if velero backup create "$TEST_BACKUP_NAME" \
-        --include-namespaces=default \
-        --wait 2>&1; then
-        log_success "Test backup successful"
-        
-        # Clean up test backup
-        velero backup delete "$TEST_BACKUP_NAME" --confirm &> /dev/null || true
-    else
-        log_warn "Test backup failed, but configuration may still be valid"
+    phase=$(kubectl get backup "$test_backup" -n velero -o jsonpath='{.status.phase}' 2>/dev/null || true)
+    if [[ "$phase" != "Completed" ]]; then
+        log_error "Test backup finished as '$phase', not Completed. Details: velero backup describe $test_backup"
+        return 1
     fi
-    
-    log_success "Velero backup configuration verified"
-    return 0
+
+    velero backup delete "$test_backup" --confirm > /dev/null || log_warn "Could not delete test backup $test_backup"
+    log_success "Test backup completed"
 }
 
 display_summary() {
     echo
     log_success "===== Velero Backup Configuration Complete ====="
     echo
-    log_info "Backup Strategy:"
-    log_info "  FULL Backups: Monthly on 1st at 2:00 AM UTC (retention: 6 months)"
-    log_info "  INCREMENTAL Backups: Daily at 2:00 AM UTC (retention: 30 days)"
-    log_info "  Storage: MinIO at $MINIO_ENDPOINT"
-    log_info "  Bucket: $BACKUP_BUCKET"
+    log_info "Destination: $VELERO_S3_URL, bucket $VELERO_BUCKET"
+    log_info "Monthly full: $VELERO_FULL_SCHEDULE, kept $VELERO_FULL_RETENTION_DAYS days"
+    log_info "Daily:        $VELERO_DAILY_SCHEDULE, kept $VELERO_DAILY_RETENTION_DAYS days"
     echo
-    log_info "What Gets Backed Up:"
-    log_info "  ✓ Kubernetes manifests (Deployments, Services, ConfigMaps, Secrets)"
-    log_info "  ✓ PVC/PV definitions (YAML only, NOT the data inside volumes)"
-    log_info "  ✓ Namespace configurations"
-    log_info "  ✓ RBAC policies"
+    log_warn "These backups hold Kubernetes objects, including Secrets, and not volume data."
+    log_info "Not covered: databases, files in PVCs, Longhorn volume data, etcd snapshots."
+    log_info "Postgres dumps: scripts/backup/llmapi-postgres-backup.yaml"
     echo
-    log_warn "⚠️  IMPORTANT: Velero backs up Kubernetes YAML, NOT your data"
-    echo
-    log_info "What is NOT Backed Up:"
-    log_info "  ✗ Database contents (PostgreSQL, MySQL, etc.)"
-    log_info "  ✗ Files inside PVCs/volumes"
-    log_info "  ✗ Application data"
-    log_info "  ✗ Longhorn volume data (40TB+ cannot transfer over Tailscale)"
-    echo
-    log_info "For Data Backup, Use:"
-    log_info "  1. Longhorn snapshots (local, for quick rollback)"
-    log_info "  2. Application-level backups (pg_dump, mysqldump, rsync)"
-    log_info "  3. External replication (optional, to cloud storage)"
-    echo
-    log_info "Backup Schedules:"
-    log_info "  - monthly-full-backup: Full Kubernetes manifests (1st of month)"
-    log_info "  - daily-incremental-backup: Changed Kubernetes resources (daily)"
-    echo
-    log_info "Monitoring & Maintenance:"
-    log_info "  - Disk space monitoring: Enabled (alert at <${MIN_FREE_SPACE_PERCENT}% free)"
-    log_info "  - Automatic cleanup: Enabled (removes old incrementals when space low)"
-    log_info "  - MinIO quota: Configured (80% of disk capacity)"
-    log_info "  - Prometheus alerts: Enabled (backup failures → Grafana)"
-    log_info "  - Kubernetes events: Enabled (for manual monitoring)"
-    echo
-    log_info "Useful Commands:"
+    log_info "Useful commands:"
     log_info "  velero backup get"
     log_info "  velero schedule get"
-    log_info "  velero backup create <name> --from-schedule monthly-full-backup"
     log_info "  velero restore create --from-backup <backup-name>"
-    echo
-    log_info "Documentation:"
-    log_info "  See: scripts/storage/BACKUP-STRATEGY-ANALYSIS.md"
-    log_info "  See: scripts/storage/BACKUP-RESTORE-GUIDE.md"
     echo
 }
 
 main() {
+    local config_file="${VELERO_BACKUP_CONFIG:-}"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --config)
+                if [[ $# -lt 2 ]]; then
+                    log_error "--config needs a file path"
+                    exit 2
+                fi
+                config_file="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                exit 2
+                ;;
+        esac
+    done
+
     log_info "===== Velero Backup Configuration ====="
-    
-    if ! check_requirements; then
-        log_error "Prerequisites check failed"
-        exit 1
+
+    if [[ -n "$config_file" ]]; then
+        load_config_file "$config_file" || exit 1
     fi
-    
-    if ! get_minio_credentials; then
-        log_error "Failed to get MinIO credentials"
-        exit 1
+    validate_config || exit 1
+    check_requirements || exit 1
+
+    if [[ "$VELERO_BACKUP_TARGET" == "minio" ]]; then
+        check_minio_target || exit 1
     fi
-    
-    if ! create_minio_bucket; then
-        log_error "Failed to create MinIO bucket"
-        exit 1
-    fi
-    
-    if ! create_velero_credentials; then
-        log_error "Failed to create Velero credentials"
-        exit 1
-    fi
-    
-    if ! configure_backup_location; then
-        log_error "Failed to configure backup storage location"
-        exit 1
-    fi
-    
-    if ! create_backup_schedules; then
-        log_error "Failed to create backup schedules"
-        send_alert_to_monitoring "Backup Schedule Creation Failed" "Could not create Velero backup schedules" "error"
-        exit 1
-    fi
-    
-    # Check disk space and configure quota
-    check_minio_disk_space
-    configure_minio_quota
-    
-    # Deploy Prometheus monitoring rules
+
+    create_velero_credentials || exit 1
+    configure_backup_location || exit 1
+    create_backup_schedules || exit 1
     deploy_prometheus_monitoring
-    
-    if ! verify_configuration; then
-        log_warn "Verification had warnings, but configuration may still work"
-        send_alert_to_monitoring "Backup Configuration Warning" "Velero backup verification had warnings" "warning"
-    else
-        send_alert_to_monitoring "Backup Configuration Success" "Velero backups configured successfully" "info"
-    fi
-    
+    verify_configuration || exit 1
+
     display_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

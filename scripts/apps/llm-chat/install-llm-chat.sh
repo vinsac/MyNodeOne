@@ -15,6 +15,7 @@ source "$SCRIPT_DIR/../../lib/project-root.sh"
 
 # Load shared validation library
 source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/install-helpers.sh"
 
 # Load cluster resource detection utilities
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
@@ -227,8 +228,51 @@ if [ "$ALREADY_INSTALLED" = false ] || [ "${INSTALL_OPTION:-}" = "1" ]; then
     fi
 fi
 
+# Older versions of this script stored the key inline in the Deployment. Keep that
+# value when moving it to a Secret, because changing it would sign every user out.
+WEBUI_INLINE_KEY=""
+generate_webui_secret_key() {
+    if [ -n "$WEBUI_INLINE_KEY" ]; then
+        printf '%s' "$WEBUI_INLINE_KEY"
+    else
+        openssl rand -base64 32
+    fi
+}
+
+# Create the Open WebUI key Secret if needed, and move an inline key into it.
+ensure_webui_secret() {
+    if ! WEBUI_INLINE_KEY=$(kubectl get deployment open-webui -n "$NAMESPACE" --ignore-not-found \
+        -o 'jsonpath={.spec.template.spec.containers[?(@.name=="open-webui")].env[?(@.name=="WEBUI_SECRET_KEY")].value}' 2>/dev/null); then
+        app_fail "Could not read Deployment 'open-webui' in namespace '$NAMESPACE'. Nothing was changed."
+    fi
+
+    local webui_secret_key
+    app_load_or_create_secret_value webui_secret_key "$NAMESPACE" open-webui-secret WEBUI_SECRET_KEY \
+        "" -- generate_webui_secret_key
+    kubectl create secret generic open-webui-secret \
+        --from-literal=WEBUI_SECRET_KEY="$webui_secret_key" \
+        --namespace="$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f - > /dev/null
+
+    if [ -n "$WEBUI_INLINE_KEY" ]; then
+        echo "🔐 Moving the Open WebUI secret key out of the Deployment into a Secret..."
+        kubectl set env deployment/open-webui -n "$NAMESPACE" \
+            --from=secret/open-webui-secret --keys=WEBUI_SECRET_KEY
+    fi
+}
+
+if [ "$ALREADY_INSTALLED" = true ]; then
+    ensure_webui_secret
+fi
+
 # Fresh installation
 if [ "$ALREADY_INSTALLED" = false ]; then
+    # Override with OLLAMA_IMAGE / OPEN_WEBUI_IMAGE.
+    app_resolve_image OLLAMA_IMAGE "$NAMESPACE" ollama ollama \
+        "ollama/ollama:0.40.13" "${OLLAMA_IMAGE:-}"
+    app_resolve_image OPEN_WEBUI_IMAGE "$NAMESPACE" open-webui open-webui \
+        "ghcr.io/open-webui/open-webui:v0.12.5" "${OPEN_WEBUI_IMAGE:-}"
+
     echo "📦 Creating namespace..."
     kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -238,6 +282,8 @@ if [ "$ALREADY_INSTALLED" = false ]; then
         pod-security.kubernetes.io/audit=restricted \
         pod-security.kubernetes.io/warn=restricted \
         --overwrite > /dev/null 2>&1
+
+    ensure_webui_secret
 
     echo "💾 Configuring storage..."
     kubectl apply -f - <<EOF
@@ -346,7 +392,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: ollama
-        image: ollama/ollama:latest
+        image: $OLLAMA_IMAGE
         ports:
         - containerPort: 11434
           name: http
@@ -412,7 +458,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: open-webui
-        image: ghcr.io/open-webui/open-webui:main
+        image: $OPEN_WEBUI_IMAGE
         ports:
         - containerPort: 8080
           name: http
@@ -423,7 +469,10 @@ spec:
         - name: OLLAMA_BASE_URL
           value: "http://ollama:11434"
         - name: WEBUI_SECRET_KEY
-          value: "$(openssl rand -base64 32)"
+          valueFrom:
+            secretKeyRef:
+              name: open-webui-secret
+              key: WEBUI_SECRET_KEY
         - name: ENABLE_RAG_WEB_SEARCH
           value: "true"
         - name: ENABLE_IMAGE_GENERATION
@@ -483,6 +532,7 @@ EOF
     echo ""
     echo "📍 Access LLM Chat at: http://$SERVICE_IP"
     echo ""
+    app_warn_first_user_admin "LLM Chat (Open WebUI)" "http://$SERVICE_IP"
     echo "🎯 First Time Setup:"
     echo "   1. Open the URL above in your browser"
     echo "   2. Click 'Sign Up' and create your account"

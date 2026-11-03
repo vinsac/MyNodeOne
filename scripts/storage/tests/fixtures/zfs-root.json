@@ -1,0 +1,13 @@
+{
+  "root_source": "rpool/ROOT/ubuntu",
+  "devices": [
+    {
+      "name": "/dev/sdz",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDZ",
+      "tran": "sata"
+    }
+  ]
+}

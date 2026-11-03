@@ -1,0 +1,124 @@
+#!/bin/bash
+# Fake kubectl. State lives in $FAKE_K8S: cm/<name>.json holds whole ConfigMaps with
+# a resourceVersion, svcs.json is the Service list. Touching fail-<verb>-<resource>
+# or fail-all makes those calls fail. race-<configmap> holds a JSON data object that
+# another writer applies just before the next patch, which then conflicts.
+set -u
+state="${FAKE_K8S:?}"
+printf '%s\n' "$*" >>"$state/calls.log"
+
+words=()
+namespace="" output="" patch="" ignore_not_found=false
+literals=()
+while (($#)); do
+    case "$1" in
+        -n | --namespace) namespace="$2"; shift 2 ;;
+        -o | --output) output="$2"; shift 2 ;;
+        -p | --patch) patch="$2"; shift 2 ;;
+        --type) shift 2 ;;
+        --ignore-not-found) ignore_not_found=true; shift ;;
+        --all-namespaces | -A) shift ;;
+        --from-literal=*) literals+=("${1#--from-literal=}"); shift ;;
+        *) words+=("$1"); shift ;;
+    esac
+done
+
+verb="${words[0]:-}"
+resource="${words[1]:-}"
+name="${words[2]:-}"
+[[ "$resource" == "cm" ]] && resource="configmap"
+[[ "$resource" == "service" || "$resource" == "services" ]] && resource="svc"
+
+if [[ -e "$state/fail-all" || -e "$state/fail-$verb-$resource" ]]; then
+    echo "The connection to the server localhost:6443 was refused" >&2
+    exit 1
+fi
+
+jsonpath() {
+    local expr="${output#jsonpath=}"
+    expr="${expr#\{}"
+    expr="${expr%\}}"
+    if [[ "$expr" == .data.* ]]; then
+        local key="${expr#.data.}"
+        key="${key//\\/}"
+        jq -r --arg k "$key" '.data[$k] // ""'
+    else
+        jq -r "($expr) // \"\""
+    fi
+}
+
+cm_file="$state/cm/$name.json"
+
+bump() {
+    local file="$1" filter="$2"
+    shift 2
+    jq "$@" "$filter | .metadata.resourceVersion = ((.metadata.resourceVersion | tonumber) + 1 | tostring)" \
+        "$file" >"$file.new" && mv "$file.new" "$file"
+}
+
+case "$verb:$resource" in
+    get:nodes)
+        echo "node1 Ready"
+        ;;
+    version:*)
+        echo "Client Version: fake"
+        ;;
+    set:env)
+        ;;
+    get:configmap)
+        if [[ ! -f "$cm_file" ]]; then
+            $ignore_not_found && exit 0
+            echo "Error from server (NotFound): configmaps \"$name\" not found" >&2
+            exit 1
+        fi
+        case "$output" in
+            json) cat "$cm_file" ;;
+            jsonpath=*) jsonpath <"$cm_file" ;;
+            *) echo "$name" ;;
+        esac
+        ;;
+    get:svc)
+        if [[ "$output" == "json" ]]; then
+            cat "$state/svcs.json"
+        else
+            jq --arg ns "$namespace" --arg n "$name" \
+                '.items[] | select(.metadata.namespace == $ns and .metadata.name == $n)' \
+                "$state/svcs.json" | jsonpath
+        fi
+        ;;
+    patch:configmap)
+        if [[ ! -f "$cm_file" ]]; then
+            echo "Error from server (NotFound): configmaps \"$name\" not found" >&2
+            exit 1
+        fi
+        if [[ -f "$state/race-$name" ]]; then
+            bump "$cm_file" '.data += $other' --slurpfile other_list "$state/race-$name" --argjson other "$(cat "$state/race-$name")"
+            rm -f "$state/race-$name"
+        fi
+        wanted=$(jq -r '.metadata.resourceVersion // ""' <<<"$patch")
+        current=$(jq -r '.metadata.resourceVersion' "$cm_file")
+        if [[ -n "$wanted" && "$wanted" != "$current" ]]; then
+            echo "Error from server (Conflict): Operation cannot be fulfilled on configmaps \"$name\": the object has been modified" >&2
+            exit 1
+        fi
+        echo "$patch" >>"$state/patches.log"
+        bump "$cm_file" '.data += $p.data' --argjson p "$patch"
+        echo "configmap/$name patched"
+        ;;
+    create:configmap)
+        if [[ -f "$cm_file" ]]; then
+            echo "Error from server (AlreadyExists): configmaps \"$name\" already exists" >&2
+            exit 1
+        fi
+        mkdir -p "$state/cm"
+        jq -n --arg n "$name" '{metadata: {name: $n, resourceVersion: "1"}, data: {}}' >"$cm_file"
+        for literal in ${literals[@]+"${literals[@]}"}; do
+            jq --arg k "${literal%%=*}" --arg v "${literal#*=}" '.data[$k] = $v' "$cm_file" >"$cm_file.new" &&
+                mv "$cm_file.new" "$cm_file"
+        done
+        ;;
+    *)
+        echo "fake kubectl: unsupported: $verb $resource" >&2
+        exit 1
+        ;;
+esac

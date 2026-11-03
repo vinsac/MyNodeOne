@@ -534,6 +534,13 @@
             }
         }
         
+        // Node names, roles and versions come from the cluster, so they must never be
+        // treated as markup when building HTML strings.
+        function escapeHtml(value) {
+            const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return String(value ?? '').replace(/[&<>"']/g, ch => entities[ch]);
+        }
+
         function updateClusterOverview(clusterData) {
             // Update cluster overview card
             const clusterOverviewElement = document.getElementById('cluster-overview-content');
@@ -546,7 +553,7 @@
                 
                 clusterOverviewElement.innerHTML = `
                     <div style="font-size: 3em; color: ${statusColor}; margin-bottom: 15px;">${statusIcon}</div>
-                    <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">${statusText}</div>
+                    <div style="font-size: 1.4em; font-weight: 600; color: #333; margin-bottom: 20px;">${escapeHtml(statusText)}</div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Control Plane</div>
@@ -554,15 +561,15 @@
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Worker Nodes</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">${clusterData.nodes.ready - 1} Ready</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #007bff;">${escapeHtml(clusterData.nodes.ready - 1)} Ready</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Total Pods</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.pods.running} Running</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">${escapeHtml(clusterData.pods.running)} Running</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Storage</div>
-                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">${clusterData.storage.bound_pvc || 0} PVCs</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #333;">${escapeHtml(clusterData.storage.bound_pvc || 0)} PVCs</div>
                         </div>
                     </div>
                 `;
@@ -586,14 +593,14 @@
                         nodesHtml += `
                             <div class="node-item" style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
                                 <div class="node-header">
-                                    <div class="node-name">${node.name}</div>
-                                    <div class="node-status ${isOnline ? 'status-ready' : node.status === 'stale' ? 'status-stale' : 'status-notready'}">${statusText}</div>
+                                    <div class="node-name">${escapeHtml(node.name)}</div>
+                                    <div class="node-status ${isOnline ? 'status-ready' : node.status === 'stale' ? 'status-stale' : 'status-notready'}">${escapeHtml(statusText)}</div>
                                 </div>
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${nodeType.toUpperCase()} • ${node.ip || 'N/A'}</div>
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${escapeHtml(nodeType.toUpperCase())} • ${escapeHtml(node.ip || 'N/A')}</div>
                                 <div class="node-details">
-                                    <div>Type: <span style="color: #333; font-weight: 600;">${nodeType}</span></div>
-                                    <div>Last Seen: <span style="color: #666; font-weight: 600;">${formatLastSeen(node.last_heartbeat)}</span></div>
-                                    <div>Config: <span style="color: #333; font-weight: 600;">v${node.config_version || 'N/A'}</span></div>
+                                    <div>Type: <span style="color: #333; font-weight: 600;">${escapeHtml(nodeType)}</span></div>
+                                    <div>Last Seen: <span style="color: #666; font-weight: 600;">${escapeHtml(formatLastSeen(node.last_heartbeat))}</span></div>
+                                    <div>Config: <span style="color: #333; font-weight: 600;">v${escapeHtml(node.config_version || 'N/A')}</span></div>
                                 </div>
                             </div>
                         `;
@@ -614,15 +621,15 @@
                         nodesHtml += `
                             <div class="node-item" style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
                                 <div class="node-header">
-                                    <div class="node-name">${node.name}</div>
-                                    <div class="node-status ${isReady ? 'status-ready' : 'status-notready'}">${statusText}</div>
+                                    <div class="node-name">${escapeHtml(node.name)}</div>
+                                    <div class="node-status ${isReady ? 'status-ready' : 'status-notready'}">${escapeHtml(statusText)}</div>
                                 </div>
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${roles} • ${node.os}</div>
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">${escapeHtml(roles)} • ${escapeHtml(node.os)}</div>
                                 <div class="node-details">
-                                    <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${cpuUsage}%</span></div>
-                                    <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${ramUsage}%</span></div>
+                                    <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${escapeHtml(cpuUsage)}%</span></div>
+                                    <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${escapeHtml(ramUsage)}%</span></div>
                                     <div>Storage: <span style="color: ${storageUsage > 70 ? '#dc3545' : storageUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${storageUsage}%</span></div>
-                                    <div>K8s: <span style="color: #333; font-weight: 600;">${node.kubernetes}</span></div>
+                                    <div>K8s: <span style="color: #333; font-weight: 600;">${escapeHtml(node.kubernetes)}</span></div>
                                 </div>
                             </div>
                         `;

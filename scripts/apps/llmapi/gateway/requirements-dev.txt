@@ -1,0 +1,21 @@
+# What the gateway's tests need on top of requirements.lock. None of this reaches the
+# image: the Dockerfile and the gateway-code ConfigMap carry only main.py and
+# requirements.lock.
+#
+# requirements-dev.lock is generated from this file and holds every transitive
+# dependency, with hashes, at the versions requirements.lock already chose. After
+# changing a pin, regenerate it from scripts/apps/llmapi/:
+#   uv pip compile gateway/requirements-dev.txt -c gateway/requirements.lock \
+#     --python-version 3.11 --python-platform x86_64-unknown-linux-gnu \
+#     --generate-hashes --no-header --no-annotate -o gateway/requirements-dev.lock
+pytest==9.2.0
+# Per-test limit, set in pytest.ini. Without it a regression in a timeout hangs the
+# run rather than failing.
+pytest-timeout==2.4.0
+httpx==0.28.1
+# Optional at runtime for the tests, which skip without them: the suite only proves
+# what these cover when they are installed. CI requires them.
+# A real PostgreSQL, for test_postgres_migration.py and test_manage_keys.py.
+pgserver==0.1.4
+# Drives installed Chrome for test_admin_browser.py. Needs google-chrome on PATH.
+playwright==1.64.1

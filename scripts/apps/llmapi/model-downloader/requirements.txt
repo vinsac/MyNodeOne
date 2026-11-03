@@ -1,0 +1,10 @@
+# Packages used by the vLLM model-downloader init container (manifests/vllm.yaml).
+# Held below 1.0 because the init script relies on hf_transfer and on the
+# resume_download argument of snapshot_download.
+#
+# After changing a pin, regenerate the lock from scripts/apps/llmapi/:
+#   uv pip compile model-downloader/requirements.txt --python-version 3.11 \
+#     --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header \
+#     --no-annotate -o model-downloader/requirements.lock
+huggingface_hub==0.36.2
+hf_transfer==0.1.9

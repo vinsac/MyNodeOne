@@ -31,7 +31,7 @@ When `install-minio.sh` runs on a node, it:
 
 1. Generates a unique password: `openssl rand -base64 32 | tr -d "=+/" | cut -c1-25`
 2. Creates a Kubernetes secret in the per-node namespace
-3. Saves credentials to a local file
+3. Saves credentials to a local file, readable only by you (mode 600)
 
 ```bash
 # Install MinIO on a node
@@ -68,7 +68,7 @@ Console Domain: minio-console-canada-pc-0001.mynodeone.local
 
 Credentials:
   Username: admin
-  Password: AhLhJJzrMlNqTdZ0ArR9kysgg
+  Password: <generated at install time, see the credentials file>
 
 Installed: Sun Feb  9 11:19:00 UTC 2026
 ```

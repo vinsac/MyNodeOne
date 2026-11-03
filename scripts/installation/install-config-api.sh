@@ -58,19 +58,40 @@ echo ""
 # Check prerequisites
 log_info "Checking prerequisites..."
 
-if ! command -v go &>/dev/null; then
+# Go can be on PATH, in the tarball location, or from snap, and sudo often
+# resets PATH, so look in all of them.
+find_go() {
+    local candidate
+    for candidate in "$(command -v go 2>/dev/null || true)" /usr/local/go/bin/go /snap/bin/go; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! GO_BIN=$(find_go); then
     log_info "Installing Go..."
-    
-    # Download and install Go
-    GO_VERSION="1.21.5"
-    wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz
+
+    # Keep in step with the toolchain line in go.mod
+    GO_VERSION="1.24.12"
+    case "$(uname -m)" in
+        x86_64) GO_ARCH="amd64" ;;
+        aarch64) GO_ARCH="arm64" ;;
+        armv7l) GO_ARCH="armv6l" ;;
+        *)
+            log_error "Unsupported architecture: $(uname -m)"
+            exit 1
+            ;;
+    esac
+    GO_TARBALL=$(mktemp)
+    wget -q "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -O "$GO_TARBALL"
     rm -rf /usr/local/go
-    tar -C /usr/local -xzf /tmp/go.tar.gz
-    rm /tmp/go.tar.gz
-    
-    # Add to PATH for this session
-    export PATH=$PATH:/usr/local/go/bin
-    
+    tar -C /usr/local -xzf "$GO_TARBALL"
+    rm -f "$GO_TARBALL"
+
+    GO_BIN=/usr/local/go/bin/go
     log_success "Go $GO_VERSION installed"
 fi
 
@@ -86,9 +107,10 @@ chmod 700 /etc/mynodeone
 
 # Generate API token if not exists
 TOKEN_FILE="/etc/mynodeone/api-token"
-if [[ ! -f "$TOKEN_FILE" ]]; then
+# The server refuses to start with a missing or empty token file.
+if [[ ! -s "$TOKEN_FILE" ]]; then
     log_info "Generating API token..."
-    openssl rand -hex 32 > "$TOKEN_FILE"
+    (umask 077 && openssl rand -hex 32 > "$TOKEN_FILE")
     chmod 600 "$TOKEN_FILE"
     log_success "API token generated: $TOKEN_FILE"
 else
@@ -101,13 +123,19 @@ cd "$PROJECT_ROOT"
 
 # Initialize go modules if needed
 if [[ ! -f "go.sum" ]]; then
-    /usr/local/go/bin/go mod tidy 2>/dev/null || true
+    "$GO_BIN" mod tidy 2>/dev/null || true
 fi
 
-# Build
-/usr/local/go/bin/go build -o /usr/local/bin/mynodeone-config-api ./cmd/config-api/
-
-chmod +x /usr/local/bin/mynodeone-config-api
+# Build beside the target and rename, so the running server's binary is replaced
+# in one step and a failed build leaves it untouched.
+BUILD_OUTPUT=$(mktemp /usr/local/bin/.mynodeone-config-api.XXXXXX)
+if ! "$GO_BIN" build -o "$BUILD_OUTPUT" ./cmd/config-api/; then
+    rm -f "$BUILD_OUTPUT"
+    log_error "Build failed; the installed Config API was not changed"
+    exit 1
+fi
+chmod 755 "$BUILD_OUTPUT"
+mv -f "$BUILD_OUTPUT" /usr/local/bin/mynodeone-config-api
 log_success "Binary installed: /usr/local/bin/mynodeone-config-api"
 
 # Install systemd service
@@ -149,7 +177,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  Installation Complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Config API Server is running on port 8443"
+echo "Config API Server is running on port 8443 (loopback and Tailscale IP only)."
+echo "It speaks plain HTTP; Tailscale's WireGuard tunnel provides the encryption."
 echo ""
 echo "API Endpoints:"
 echo "  GET  http://${TAILSCALE_IP}:8443/api/v1/health"
@@ -157,7 +186,7 @@ echo "  GET  http://${TAILSCALE_IP}:8443/api/v1/config/{type}"
 echo "  POST http://${TAILSCALE_IP}:8443/api/v1/heartbeat"
 echo "  GET  http://${TAILSCALE_IP}:8443/api/v1/nodes"
 echo ""
-echo "API Token: $(cat $TOKEN_FILE)"
+echo "API Token: stored in $TOKEN_FILE (root only)"
 echo ""
 echo "Next Steps:"
 echo "  1. Install node agent on other machines:"
@@ -167,5 +196,5 @@ echo "  2. View logs:"
 echo "     journalctl -u mynodeone-config-api -f"
 echo ""
 echo "  3. Check node status:"
-echo "     curl -H 'X-API-Token: $(cat $TOKEN_FILE)' http://${TAILSCALE_IP}:8443/api/v1/nodes"
+echo "     sudo curl -H @<(sudo sed 's/^/X-API-Token: /' $TOKEN_FILE) http://${TAILSCALE_IP}:8443/api/v1/nodes"
 echo ""

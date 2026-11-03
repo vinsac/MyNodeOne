@@ -40,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: ollama
-        image: ollama/ollama:latest
+        image: ollama/ollama:0.40.13@sha256:b2f0122c476bc9fe7ce679d8bb4bd555351e25e2554eefb156f61cb0a89cf429
         ports:
         - containerPort: 11434
           name: http
@@ -53,7 +53,8 @@ spec:
         # Allow models to use all available VRAM + overflow to RAM
         - name: OLLAMA_NUM_PARALLEL
           value: "4"
-        # HuggingFace token for gated models (set via admin UI)
+        # HuggingFace token for gated models. Optional: nothing creates this Secret by
+        # default any more, and an existing one is left as it is.
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
@@ -101,14 +102,3 @@ spec:
     targetPort: 11434
     name: http
   type: ClusterIP
----
-# Secret for HuggingFace token (created empty, updated via admin UI)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: llmapi-secrets
-  namespace: llmapi
-type: Opaque
-stringData:
-  hf-token: ""
-  admin-password: "admin"

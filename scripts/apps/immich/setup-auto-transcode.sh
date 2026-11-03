@@ -140,7 +140,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: transcode-trigger
-            image: curlimages/curl:latest
+            image: curlimages/curl:8.23.0
             env:
             - name: API_KEY
               valueFrom:
@@ -206,7 +206,7 @@ fi
 echo "Triggering video transcoding job..."
 
 kubectl run immich-transcode-manual --rm -i --restart=Never \
-  --image=curlimages/curl:latest \
+  --image=curlimages/curl:8.23.0 \
   --namespace="$NAMESPACE" \
   --env="API_KEY=$API_KEY" \
   --env="IMMICH_URL=http://immich-server.${NAMESPACE}.svc.cluster.local" \

@@ -34,6 +34,8 @@ log_error() {
 # Get script directory and project root using standardized utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/project-root.sh"
+# shellcheck source=service-registry-lib.sh
+source "$SCRIPT_DIR/service-registry-lib.sh"
 REGISTRY_MANAGER="$SCRIPT_DIR/node-registry-manager.sh"
 
 # Detect actual user's home directory (for sudo compatibility)
@@ -77,6 +79,25 @@ register_node() {
     fi
 }
 
+# Rewrite one node's fields in the local registry file. Uses a temp file and a
+# rename, so a jq failure or a crash can't leave the file empty or half-written.
+# Usage: update_node_record <file> <node_type> <node_ip> <jq-update-for-the-node>
+update_node_record() {
+    local file="$1" node_type="$2" node_ip="$3" update="$4" tmp
+    [[ -f "$file" ]] || return 0
+    tmp=$(mktemp "${file}.XXXXXX") || return 1
+    if jq --arg type "$node_type" --arg ip "$node_ip" \
+        ".[\$type] |= map(if .ip == \$ip then $update else . end)" "$file" >"$tmp" &&
+        [[ -s "$tmp" ]] && chmod --reference="$file" "$tmp" 2>/dev/null; then
+        chown --reference="$file" "$tmp" 2>/dev/null || true
+        mv -f "$tmp" "$file"
+        return
+    fi
+    rm -f "$tmp"
+    log_warn "Could not update $file for $node_ip"
+    return 1
+}
+
 # Push sync to a single node
 push_sync_to_node() {
     local node_type="$1"
@@ -92,18 +113,21 @@ push_sync_to_node() {
     if [[ "${SKIP_V2_CHECK:-}" != "true" ]]; then
         # Query Config API to check if this node has recent heartbeat
         local api_port="${API_PORT:-8443}"
-        local control_plane_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
-        
+        local control_plane_ip
+        control_plane_ip=$(tailscale ip -4 2>/dev/null | head -n1) || control_plane_ip=""
+        control_plane_ip="${control_plane_ip:-127.0.0.1}"
+
         # Get API token for authentication
         local api_token=""
         if [[ -f /etc/mynodeone/api-token ]]; then
             api_token=$(cat /etc/mynodeone/api-token 2>/dev/null)
         fi
-        
+
+        # The token goes through a config stream so it stays out of `ps`.
         if [[ -n "$api_token" ]] && \
-            curl -s --connect-timeout 2 -H "X-API-Token: $api_token" \
+            curl -s --connect-timeout 2 -K <(printf 'header = "X-API-Token: %s"\n' "$api_token") \
                 "http://${control_plane_ip}:${api_port}/api/v1/nodes" 2>/dev/null | \
-            jq -e ".nodes[]? | select(.ip == \"$node_ip\" and .status == \"online\")" &>/dev/null; then
+            jq -e --arg ip "$node_ip" '.nodes[]? | select(.ip == $ip and .status == "online")' &>/dev/null; then
             log_info "Node $node_ip is using V2 sync (Node Agent active) - skipping SSH push"
             return 0
         fi
@@ -175,19 +199,8 @@ push_sync_to_node() {
             log_info "Will retry on next reconciliation cycle"
             
             # Mark node as pending_sync for retry later
-            if [[ -f "$registry_file" ]]; then
-                local registry=$(cat "$registry_file")
-                registry=$(echo "$registry" | jq \
-                    --arg type "$node_type" \
-                    --arg ip "$node_ip" \
-                    '.[$type] |= map(
-                        if .ip == $ip then
-                            .status = "pending_sync" |
-                            .last_attempt = (now | todate)
-                        else . end
-                    )')
-                echo "$registry" > "$registry_file"
-            fi
+            update_node_record "$registry_file" "$node_type" "$node_ip" \
+                '(.status = "pending_sync" | .last_attempt = (now | todate))' || true
             return 1
         fi
     fi
@@ -197,35 +210,39 @@ push_sync_to_node() {
         log_info "Attempt $attempt/$max_retries: Syncing to $node_ip..."
         
         # Capture output for information
-        local sync_output
-        local sync_exit_code
-        
+        local sync_output=""
+        local sync_exit_code=0
+
         # For VPS nodes, pass service registry data via stdin
         if [[ "$node_type" == "vps_nodes" ]]; then
-            # Fetch service registry from ConfigMap
-            local service_registry=$(kubectl get configmap -n kube-system service-registry \
-                -o jsonpath='{.data.services\.json}' 2>/dev/null || echo "{}")
-            
-            # VPS nodes have scripts in ~/mynodeone/scripts/ (transferred by orchestrator)
-            # Pass service registry via stdin
-            sync_output=$(echo "$service_registry" | $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1)
-            sync_exit_code=$?
+            # Fetch service registry from ConfigMap. Failing here counts as a failed
+            # attempt: sending {} to a node would look like "no services".
+            local service_registry=""
+            if sr_vps_push_loses_routes; then
+                sync_output="Refusing to push: the config API renders no routes"
+                sync_exit_code=1
+            elif service_registry=$(sr_get_services); then
+                # VPS nodes have scripts in ~/mynodeone/scripts/ (transferred by orchestrator)
+                # Pass service registry via stdin
+                sync_output=$(printf '%s\n' "$service_registry" | $ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
+                    "cd ~/mynodeone && sudo ./scripts/$sync_script" 2>&1) || sync_exit_code=$?
+            else
+                sync_output="Could not read service-registry"
+                sync_exit_code=1
+            fi
         elif [[ "$is_localhost" == "true" ]]; then
             # For localhost, run directly without SSH
             log_info "Detected localhost - running sync directly (no SSH)"
             # Note: sync-controller runs as root (systemd service), so no sudo needed
             if [ "$(id -u)" -eq 0 ]; then
-                sync_output=$(cd "$repo_path" && ./scripts/$sync_script 2>&1)
+                sync_output=$(cd "$repo_path" && ./scripts/$sync_script 2>&1) || sync_exit_code=$?
             else
-                sync_output=$(cd "$repo_path" && sudo ./scripts/$sync_script 2>&1)
+                sync_output=$(cd "$repo_path" && sudo ./scripts/$sync_script 2>&1) || sync_exit_code=$?
             fi
-            sync_exit_code=$?
         else
             # For other node types (laptops, workers), use repo path
             sync_output=$($ssh_cmd $ssh_opts "$ssh_user@$node_ip" \
-                "cd '$repo_path' && sudo ./scripts/$sync_script" 2>&1 </dev/null)
-            sync_exit_code=$?
+                "cd '$repo_path' && sudo ./scripts/$sync_script" 2>&1 </dev/null) || sync_exit_code=$?
         fi
         
         if [[ $sync_exit_code -eq 0 ]]; then
@@ -293,17 +310,8 @@ push_sync_to_node() {
                 
                 # Update last_sync time in ConfigMap
                 if [[ -f "$registry_file" ]]; then
-                    local registry=$(cat "$registry_file")
-                    registry=$(echo "$registry" | jq \
-                        --arg type "$node_type" \
-                        --arg ip "$node_ip" \
-                        '.[$type] |= map(
-                            if .ip == $ip then
-                                .last_sync = (now | todate) |
-                                .status = "active"
-                            else . end
-                        )')
-                    echo "$registry" > "$registry_file"
+                    update_node_record "$registry_file" "$node_type" "$node_ip" \
+                        '(.last_sync = (now | todate) | .status = "active")' || true
                     # Sync back to ConfigMap
                     "$REGISTRY_MANAGER" sync-to &>/dev/null || true
                 fi
@@ -334,17 +342,8 @@ push_sync_to_node() {
     
     # Mark as failed in ConfigMap
     if [[ -f "$registry_file" ]]; then
-        local registry=$(cat "$registry_file")
-        registry=$(echo "$registry" | jq \
-            --arg type "$node_type" \
-            --arg ip "$node_ip" \
-            '.[$type] |= map(
-                if .ip == $ip then
-                    .status = "failed" |
-                    .last_error = (now | todate)
-                else . end
-            )')
-        echo "$registry" > "$registry_file"
+        update_node_record "$registry_file" "$node_type" "$node_ip" \
+            '(.status = "failed" | .last_error = (now | todate))' || true
         # Sync back to ConfigMap
         "$REGISTRY_MANAGER" sync-to &>/dev/null || true
     fi
@@ -435,35 +434,66 @@ push_sync_all() {
     return 0
 }
 
+# State for watch_tick. WATCH_LAST_VERSION is the last version every node received.
+WATCH_LAST_VERSION=""
+WATCH_FAILED_VERSION=""
+WATCH_RETRY_DELAY=0
+WATCH_NEXT_RETRY=0
+WATCH_MIN_BACKOFF=60
+WATCH_MAX_BACKOFF=900
+
+# One pass of the watch loop. A version only counts as delivered once the push
+# succeeds, otherwise a node that missed it would wait for the next change or the
+# hourly reconcile. A failed version is retried with backoff, because every retry
+# means SSH to every node; a newer version doesn't wait for that backoff.
+watch_tick() {
+    local current_version now
+    current_version=$(kubectl get configmap -n kube-system service-registry \
+        -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || echo "")
+
+    [[ -n "$current_version" && "$current_version" != "$WATCH_LAST_VERSION" ]] || return 0
+
+    now=$(date +%s)
+    if [[ "$current_version" == "$WATCH_FAILED_VERSION" ]] && ((now < WATCH_NEXT_RETRY)); then
+        return 0
+    fi
+
+    log_info "ConfigMap changed (version: $current_version)"
+    log_info "Triggering sync to all nodes..."
+    echo ""
+
+    if push_sync_all; then
+        WATCH_LAST_VERSION="$current_version"
+        WATCH_FAILED_VERSION=""
+        WATCH_RETRY_DELAY=0
+        WATCH_NEXT_RETRY=0
+        echo ""
+        log_info "Waiting for next change..."
+    else
+        if ((WATCH_RETRY_DELAY == 0)); then
+            WATCH_RETRY_DELAY=$WATCH_MIN_BACKOFF
+        else
+            WATCH_RETRY_DELAY=$((WATCH_RETRY_DELAY * 2))
+            ((WATCH_RETRY_DELAY > WATCH_MAX_BACKOFF)) && WATCH_RETRY_DELAY=$WATCH_MAX_BACKOFF
+        fi
+        WATCH_FAILED_VERSION="$current_version"
+        WATCH_NEXT_RETRY=$(($(date +%s) + WATCH_RETRY_DELAY))
+        log_error "Sync cycle completed with one or more failures. Retrying in ${WATCH_RETRY_DELAY}s."
+    fi
+    echo ""
+    return 0
+}
+
 # Watch for ConfigMap changes and auto-push
 watch_and_push() {
     log_info "Starting sync controller in watch mode..."
     log_info "Watching for service registry changes..."
     echo ""
-    
-    local last_version=""
-    
+
     while true; do
-        # Get current ConfigMap version
-        local current_version=$(kubectl get configmap -n kube-system service-registry \
-            -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || echo "")
-        
-        if [[ -n "$current_version" ]] && [[ "$current_version" != "$last_version" ]]; then
-            log_info "ConfigMap changed (version: $current_version)"
-            log_info "Triggering sync to all nodes..."
-            echo ""
-            
-            if ! push_sync_all; then
-                log_error "Sync cycle completed with one or more failures."
-            fi
-            
-            last_version="$current_version"
-            echo ""
-            log_info "Waiting for next change..."
-            echo ""
-        fi
-        
-        sleep 10  # Check every 10 seconds
+        supervise_reconciliation
+        watch_tick
+        sleep 10 # Check every 10 seconds
     done
 }
 
@@ -487,8 +517,12 @@ periodic_reconciliation() {
         log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Show nodes pending sync
-        init_node_registry
+        # Show nodes pending sync. A failure must not take the loop down with it:
+        # this runs in the background and nothing else would notice set -e exiting.
+        if ! init_node_registry; then
+            log_warn "Could not load node registry; trying again next cycle"
+            continue
+        fi
         local registry_file="$ACTUAL_HOME/.mynodeone/node-registry.json"
         local registry=$(cat "$registry_file")
         
@@ -562,10 +596,36 @@ health_check() {
     echo ""
 }
 
+# Set while daemon_mode is running the reconcile loop in the background.
+RECONCILE_HOURS=""
+RECONCILE_PID=""
+
+start_reconciliation() {
+    periodic_reconciliation "$RECONCILE_HOURS" &
+    RECONCILE_PID=$!
+}
+
+# Restart the background reconcile loop if it has died. Without this the daemon
+# keeps looking healthy and offline nodes silently stop being retried.
+supervise_reconciliation() {
+    [[ -n "$RECONCILE_HOURS" ]] || return 0
+    if ! kill -0 "$RECONCILE_PID" 2>/dev/null; then
+        log_warn "Reconciliation loop stopped; restarting it"
+        start_reconciliation
+    fi
+}
+
+stop_daemon() {
+    if [[ -n "$RECONCILE_PID" ]]; then
+        kill "$RECONCILE_PID" 2>/dev/null || true
+    fi
+    exit 0
+}
+
 # Combined watch + reconcile mode (recommended)
 daemon_mode() {
     local reconcile_hours="${1:-1}"
-    
+
     log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_info "  Starting Sync Controller Daemon"
     log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -575,15 +635,19 @@ daemon_mode() {
     echo ""
     
     # Start periodic reconciliation in background
-    periodic_reconciliation "$reconcile_hours" &
-    local reconcile_pid=$!
-    
-    # Trap signals to cleanup background process
-    trap "kill $reconcile_pid 2>/dev/null; exit" SIGINT SIGTERM
-    
+    RECONCILE_HOURS="$reconcile_hours"
+    # Trap signals to cleanup background process. A requested stop is a clean exit.
+    trap stop_daemon SIGINT SIGTERM
+    start_reconciliation
+
     # Run watch in foreground
     watch_and_push
 }
+
+# Tests source this file to reach the functions.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
 
 # Main command dispatcher
 case "${1:-}" in

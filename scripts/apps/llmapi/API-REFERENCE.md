@@ -4,6 +4,10 @@ OpenAI-compatible API endpoints for MyNodeOne self-hosted LLM inference.
 
 **Base URL:** `http://llmapi.cluster.local/v1`
 
+**Paths not on the public address:** The public route blocks `/admin`, `/docs`, `/redoc` and `/openapi.json`. Use `/admin` and `/openapi.json` over the tailnet, at the LoadBalancer IP from `kubectl get svc -n llmapi llmapi`. `/docs` and `/redoc` are disabled in the gateway itself, so they return 404 everywhere.
+
+**Request size:** Bodies over `MAX_REQUEST_BODY_BYTES` (10 MiB by default) get a 413.
+
 ---
 
 ## Authentication
@@ -219,6 +223,8 @@ data: [DONE]
 X-Backend: vllm
 Content-Type: text/event-stream
 ```
+
+If the backend rejects a streaming request before it starts, you get the backend's status and error body, as with a non-streaming request, and nothing is charged. A backend that can't be reached gives a 503.
 
 ---
 
@@ -453,7 +459,7 @@ Retry-After: 5
 
 **Fix:** Wait ~5s for an in-flight request in the same `limit_bucket` to finish, then retry. vLLM per-key limits scale with configured GPU capacity (`len(VLLM_URLS)`), not transient health-check results. Embedding, llama.cpp, and Ollama limits use separate service buckets.
 
-If `current_inflight` appears pinned while backends are idle, the slot-based limiter reaps any lease whose owning `asyncio.Task` has ended within `SLOT_RECONCILE_INTERVAL_SECONDS` (default `5`). The legacy `CONCURRENCY_LEASE_TTL_SECONDS` and `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` settings are kept only as rollback no-ops. Admins can also clear the current gateway process immediately:
+If `current_inflight` appears pinned while backends are idle, the slot-based limiter reaps any lease whose owning `asyncio.Task` has ended within `SLOT_RECONCILE_INTERVAL_SECONDS` (default `5`). The legacy `CONCURRENCY_LEASE_TTL_SECONDS` and `BACKEND_INFLIGHT_LEASE_TTL_SECONDS` settings have no effect. Admins can also clear the current gateway process immediately:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
@@ -665,6 +671,10 @@ curl -X POST http://llmapi.cluster.local/v1/chat/completions \
 | **400** | `missing_messages` | Empty messages array | — | Provide at least one message |
 | **503** | `backends_busy` | All backends at capacity | ~5s | Retry or use lower priority |
 | **500** | `backend_error` | Inference backend failed | — | Check backend health, contact admin |
+| **413** | — | Request body over `MAX_REQUEST_BODY_BYTES` | — | Send a smaller request |
+| **503** | — | The key couldn't be checked because the data store is unavailable. This isn't an invalid key | 5s | Retry |
+
+The last two have only a `detail` message, with no error type.
 
 ---
 
@@ -846,20 +856,24 @@ story = client.chat.completions.create(
 
 ## Health Check
 
+`GET /health` needs no key. It says the gateway process is up and uses neither data store:
+
 ```bash
-# Check all backends
-curl http://llmapi.cluster.local/health/backends
+curl http://llmapi.cluster.local/health
 ```
 
-**Response:**
 ```json
-{
-  "vllm": "healthy",
-  "llamacpp": "healthy",
-  "embedding": "healthy",
-  "ollama": "not_running"
-}
+{"status": "healthy", "timestamp": "2026-01-01T00:00:00.000000"}
 ```
+
+`GET /health/backends` needs a key with the `metrics` scope:
+
+```bash
+curl -H "Authorization: Bearer $(cat ~/.mynodeone/llmapi-prometheus-key)" \
+     http://llmapi.cluster.local/health/backends
+```
+
+It returns four objects: `backends` (health of each backend), `inflight`, `backend_inflight` and `rate_limiter`.
 
 ---
 
@@ -935,6 +949,8 @@ cat ~/.mynodeone/llmapi-admin-key        # admin scope
 cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope
 ```
 
+These files are the only copies. The database stores a hash (`sha256:` plus the SHA-256 of the key) and a short prefix, so a key is shown once, when it's created, and can't be recovered. If you lose one, create a new key and revoke the old one.
+
 **Create additional keys:**
 ```bash
 # Inference key (for applications)
@@ -959,9 +975,14 @@ cat ~/.mynodeone/llmapi-prometheus-key   # metrics scope
   --name "power-user" \
   --scopes "inference,metrics"
 
-# List all keys
+# List all keys, by prefix. --full shows key ids.
 ./scripts/apps/llmapi/manage-keys.sh list
+
+# Revoke a key, by raw key, key id, or the prefix from list
+./scripts/apps/llmapi/manage-keys.sh revoke sk-mynodeone-xxxx
 ```
+
+The admin API lists keys by key id, and accepts a key id or a raw key where it takes a key.
 
 ---
 

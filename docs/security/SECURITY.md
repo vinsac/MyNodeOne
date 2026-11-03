@@ -29,7 +29,7 @@ MyNodeOne enables security best practices during installation. These features ar
 | ArgoCD password | `/root/mynodeone-argocd-credentials.txt` | 600 (root only) |
 | MinIO password | `/root/mynodeone-minio-credentials.txt` | 600 (root only) |
 | Grafana password | `$HOME/mynodeone-grafana-credentials.txt` | 600 (user only) |
-| Join token | `/root/mynodeone-join-token.txt` | 600 (root only) |
+| Join token | `/var/lib/rancher/k3s/server/agent-token` (K3s's own file) | Root only |
 
 ### Why Plain Text Files?
 
@@ -40,7 +40,7 @@ Credential files exist for initial access only. They are protected by:
 3. Tailscale VPN - machine not accessible from internet
 4. Firewall - only SSH and Tailscale ports open
 
-**After installation:** Save credentials to a password manager and delete the files.
+**After installation:** Save credentials to a password manager and delete the files. Leave the join token alone: it belongs to K3s, and MyNodeOne keeps no copy of it. Without a separate agent token, it's the same as the K3s server token, so treat it as cluster admin access.
 
 ---
 
@@ -65,7 +65,6 @@ The installation script prompts you to confirm credentials are saved, then secur
 ```bash
 sudo shred -u /root/mynodeone-argocd-credentials.txt
 sudo shred -u /root/mynodeone-minio-credentials.txt
-# Keep join token if adding worker nodes later
 ```
 
 ### 3. Change Default Passwords

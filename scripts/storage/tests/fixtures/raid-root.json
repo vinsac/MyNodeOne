@@ -1,0 +1,65 @@
+{
+  "root_source": "/dev/md0",
+  "devices": [
+    {
+      "name": "/dev/sda",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDA",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sda1",
+          "type": "part",
+          "size": "1T",
+          "fstype": "linux_raid_member",
+          "children": [
+            {
+              "name": "/dev/md0",
+              "type": "raid1",
+              "size": "1T",
+              "fstype": "ext4",
+              "mountpoint": "/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdb",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDB",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sdb1",
+          "type": "part",
+          "size": "1T",
+          "fstype": "linux_raid_member",
+          "children": [
+            {
+              "name": "/dev/md0",
+              "type": "raid1",
+              "size": "1T",
+              "fstype": "ext4",
+              "mountpoint": "/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdz",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDZ",
+      "tran": "sata"
+    }
+  ]
+}

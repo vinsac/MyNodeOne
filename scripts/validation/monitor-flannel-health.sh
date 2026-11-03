@@ -13,17 +13,31 @@
 #   sudo bash monitor-flannel-health.sh --status      # Show timer status
 #
 # When installed as a systemd timer, runs every 2 minutes.
-# If flannel.1 is missing, restarts K3s/K3s-agent to recover it.
+#
+# If flannel.1 stays missing, restarts K3s/K3s-agent to recover it. A restart interrupts
+# this node's pods, so it's the last resort. It doesn't restart when:
+#   - the interface comes back during a few checks over the next minute
+#   - k3s started within the last few minutes
+#   - the interface Flannel runs over (flannel-iface) is down: restarting can't help
+#   - the configured Flannel backend doesn't use flannel.1
+#   - it restarted recently: 15 minutes after the first restart, doubling each time
+#   - it has already restarted 4 times in 24 hours: then it needs a person
 ###############################################################################
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_TAG="flannel-health"
+INSTALL_PATH="/usr/local/sbin/mynodeone-flannel-health"
 FLANNEL_IFACE="flannel.1"
-STATE_DIR="/var/lib/mynodeone/flannel-health"
+STATE_DIR="${FLANNEL_HEALTH_STATE_DIR:-/var/lib/mynodeone/flannel-health}"
 RECOVERY_LOG="$STATE_DIR/recovery.log"
-MAX_RECOVERIES_PER_HOUR=3
+K3S_CONFIG_FILE="${K3S_CONFIG_FILE:-/etc/rancher/k3s/config.yaml}"
+MAX_RECOVERIES_PER_DAY="${MAX_RECOVERIES_PER_DAY:-4}"
+RECOVERY_BACKOFF_SECONDS="${RECOVERY_BACKOFF_SECONDS:-900}"
+RECOVERY_WAIT_SECONDS="${RECOVERY_WAIT_SECONDS:-60}"
+RECHECK_ATTEMPTS="${RECHECK_ATTEMPTS:-3}"
+RECHECK_DELAY_SECONDS="${RECHECK_DELAY_SECONDS:-20}"
+K3S_STARTUP_GRACE_SECONDS="${K3S_STARTUP_GRACE_SECONDS:-300}"
 ALERT_HOOK="${ALERT_HOOK:-/etc/mynodeone/hooks/flannel-health.sh}"
 
 # Colors (only for interactive use)
@@ -65,23 +79,23 @@ detect_k3s_service() {
     fi
 }
 
+# Counts recoveries in the last N seconds.
 count_recent_recoveries() {
+    local window="$1"
     if [ ! -f "$RECOVERY_LOG" ]; then
         echo "0"
         return
     fi
 
-    local one_hour_ago=$(date -d '1 hour ago' +%s 2>/dev/null || date -v-1H +%s 2>/dev/null || echo "0")
-    local count=0
+    awk -v since="$(( $(date +%s) - window ))" '$1 ~ /^[0-9]+$/ && $1 >= since { n++ } END { print n + 0 }' "$RECOVERY_LOG"
+}
 
-    while IFS= read -r line; do
-        local ts=$(echo "$line" | awk '{print $1}')
-        if [ "$ts" -ge "$one_hour_ago" ] 2>/dev/null; then
-            count=$((count + 1))
-        fi
-    done < "$RECOVERY_LOG"
-
-    echo "$count"
+last_recovery_epoch() {
+    if [ -f "$RECOVERY_LOG" ]; then
+        awk '$1 ~ /^[0-9]+$/ { last = $1 } END { print last + 0 }' "$RECOVERY_LOG"
+    else
+        echo "0"
+    fi
 }
 
 record_recovery() {
@@ -95,6 +109,26 @@ record_recovery() {
     fi
 }
 
+flannel_is_healthy() {
+    ip link show "$FLANNEL_IFACE" &>/dev/null || return 1
+    [ -n "$(ip -4 addr show "$FLANNEL_IFACE" 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)" ]
+}
+
+# Reads one key from the k3s config. Prints nothing if it isn't set.
+k3s_config_value() {
+    [ -r "$K3S_CONFIG_FILE" ] || return 0
+    awk -v key="$1" '$1 == key ":" { v = $2; gsub(/["\047]/, "", v); print v; exit }' "$K3S_CONFIG_FILE"
+}
+
+# True while k3s has only just started, when flannel.1 isn't expected to be up yet.
+k3s_recently_started() {
+    local entered epoch
+    entered=$(systemctl show -p ActiveEnterTimestamp --value "$1" 2>/dev/null || true)
+    [ -n "$entered" ] || return 1
+    epoch=$(date -d "$entered" +%s 2>/dev/null) || return 1
+    [ $(( $(date +%s) - epoch )) -lt "$K3S_STARTUP_GRACE_SECONDS" ]
+}
+
 check_flannel_health() {
     local k3s_service=$(detect_k3s_service)
 
@@ -103,50 +137,85 @@ check_flannel_health() {
         return 0
     fi
 
-    # Check 1: Does flannel.1 interface exist?
-    if ip link show "$FLANNEL_IFACE" &>/dev/null; then
-        # Check 2: Does it have an IP?
-        local flannel_ip=$(ip -4 addr show "$FLANNEL_IFACE" 2>/dev/null | grep -oP 'inet \K[\d.]+' || echo "")
-        if [ -n "$flannel_ip" ]; then
-            log_success "Flannel interface healthy: $FLANNEL_IFACE ($flannel_ip)"
-            return 0
-        else
-            log_warn "Flannel interface exists but has no IP address"
-        fi
+    if flannel_is_healthy; then
+        log_success "Flannel interface healthy: $FLANNEL_IFACE"
+        return 0
     fi
 
-    # Flannel interface is missing or unhealthy
-    log_error "Flannel interface $FLANNEL_IFACE is MISSING on $(hostname)"
-    notify_hook "flannel-missing" "Flannel interface $FLANNEL_IFACE missing on $(hostname)"
+    # flannel.1 only exists with the vxlan backend. Any other backend isn't a failure.
+    local backend
+    backend=$(k3s_config_value flannel-backend)
+    if [ -n "$backend" ] && [ "$backend" != "vxlan" ]; then
+        log_info "flannel-backend is $backend, which doesn't use $FLANNEL_IFACE - skipping"
+        return 0
+    fi
 
-    # Check recovery throttle
-    local recent=$(count_recent_recoveries)
-    if [ "$recent" -ge "$MAX_RECOVERIES_PER_HOUR" ]; then
-        log_error "Too many recoveries in the last hour ($recent/$MAX_RECOVERIES_PER_HOUR) - NOT restarting"
-        log_error "Manual intervention required. Check K3s logs: journalctl -u $k3s_service -n 50"
-        notify_hook "recovery-throttled" "Flannel recovery throttled on $(hostname) (last hour: $recent). Check K3s logs."
+    if k3s_recently_started "$k3s_service"; then
+        log_info "$k3s_service started under ${K3S_STARTUP_GRACE_SECONDS}s ago, so $FLANNEL_IFACE may still be coming up - not restarting"
+        return 0
+    fi
+
+    # Flannel can't create its interface without the one it runs over, and restarting k3s
+    # doesn't bring that back. This is the usual case when Tailscale drops.
+    local underlay
+    underlay=$(k3s_config_value flannel-iface)
+    if [ -n "$underlay" ] && ! ip -o link show "$underlay" 2>/dev/null | grep -qE '<([^>]*,)?UP(,[^>]*)?>'; then
+        log_error "$underlay, which Flannel runs over, is missing or down on $(hostname) - not restarting $k3s_service, because that can't fix it"
+        notify_hook "flannel-underlay-down" "$underlay is down on $(hostname). Flannel can't run until it's back."
         return 1
     fi
 
+    # One failed look isn't a failure. Look again before doing anything disruptive.
+    local attempt
+    for ((attempt = 1; attempt <= RECHECK_ATTEMPTS; attempt++)); do
+        log_warn "$FLANNEL_IFACE not healthy, checking again in ${RECHECK_DELAY_SECONDS}s ($attempt/$RECHECK_ATTEMPTS)"
+        sleep "$RECHECK_DELAY_SECONDS"
+        if flannel_is_healthy; then
+            log_success "$FLANNEL_IFACE came back without a restart"
+            return 0
+        fi
+    done
+
+    log_error "Flannel interface $FLANNEL_IFACE is MISSING or has no IP on $(hostname)"
+    notify_hook "flannel-missing" "Flannel interface $FLANNEL_IFACE missing on $(hostname)"
+
+    # Each restart interrupts every pod's networking on this node, and if the first few
+    # didn't fix it, more won't. So: wait longer after each one, and stop at a daily cap.
+    local recent last wait_needed since_last
+    recent=$(count_recent_recoveries 86400)
+    if [ "$recent" -ge "$MAX_RECOVERIES_PER_DAY" ]; then
+        log_error "$recent restarts in the last 24 hours (limit: $MAX_RECOVERIES_PER_DAY) - NOT restarting"
+        log_error "Manual intervention required. Check K3s logs: journalctl -u $k3s_service -n 50"
+        notify_hook "recovery-throttled" "Flannel recovery stopped on $(hostname) after $recent restarts in 24 hours. Check K3s logs."
+        return 1
+    fi
+    if [ "$recent" -gt 0 ]; then
+        last=$(last_recovery_epoch)
+        wait_needed=$(( RECOVERY_BACKOFF_SECONDS * (1 << (recent - 1)) ))
+        since_last=$(( $(date +%s) - last ))
+        if [ "$since_last" -lt "$wait_needed" ]; then
+            log_warn "Backing off: restarted $k3s_service ${since_last}s ago, next attempt no sooner than ${wait_needed}s after that ($recent in the last 24 hours)"
+            return 1
+        fi
+    fi
+
     # Attempt recovery by restarting K3s
-    log_warn "Attempting recovery: restarting $k3s_service (recovery $((recent + 1))/$MAX_RECOVERIES_PER_HOUR in last hour)"
+    log_warn "Attempting recovery: restarting $k3s_service (recovery $((recent + 1))/$MAX_RECOVERIES_PER_DAY in 24 hours)"
     record_recovery
 
     if systemctl restart "$k3s_service"; then
         # Wait for Flannel to come up
-        local max_wait=30
         local waited=0
-        while [ $waited -lt $max_wait ]; do
-            if ip link show "$FLANNEL_IFACE" &>/dev/null; then
-                local new_ip=$(ip -4 addr show "$FLANNEL_IFACE" 2>/dev/null | grep -oP 'inet \K[\d.]+' || echo "")
-                log_success "Recovery successful: $FLANNEL_IFACE restored ($new_ip) after ${waited}s"
+        while [ "$waited" -lt "$RECOVERY_WAIT_SECONDS" ]; do
+            if flannel_is_healthy; then
+                log_success "Recovery successful: $FLANNEL_IFACE restored after ${waited}s"
                 return 0
             fi
             sleep 2
             waited=$((waited + 2))
         done
 
-        log_error "Recovery FAILED: $FLANNEL_IFACE did not appear after ${max_wait}s"
+        log_error "Recovery FAILED: $FLANNEL_IFACE not healthy after ${RECOVERY_WAIT_SECONDS}s"
         log_error "Manual intervention required"
         notify_hook "recovery-failed" "Flannel recovery failed on $(hostname); $FLANNEL_IFACE missing after restart."
         return 1
@@ -175,16 +244,21 @@ check_ufw_health() {
         issues=$((issues + 1))
     fi
 
-    # Check VXLAN port
-    if ! ufw status 2>/dev/null | grep -q "8472/udp.*ALLOW"; then
-        log_warn "UFW does NOT allow VXLAN port 8472/UDP - Flannel overlay may be broken"
+    # VXLAN runs over tailscale0 (flannel-iface), so the tailscale0 rule is what it needs
+    if ! ufw status 2>/dev/null | grep -E 'on tailscale0[[:space:]]+ALLOW' >/dev/null; then
+        log_warn "UFW does NOT allow traffic on tailscale0 - Flannel overlay may be broken"
         issues=$((issues + 1))
+    fi
+
+    # Older installs opened this to Anywhere. It is not needed and exposes VXLAN to the LAN.
+    if ufw status 2>/dev/null | grep -E '^8472/udp( \(v6\))?[[:space:]]+ALLOW' >/dev/null; then
+        log_warn "UFW allows 8472/udp from Anywhere and it is not needed - remove it: sudo ufw delete allow 8472/udp"
     fi
 
     if [ "$issues" -eq 0 ]; then
         log_success "UFW configuration correct for Kubernetes networking"
     else
-        log_error "$issues UFW issue(s) detected - run: sudo bash $(dirname "$0")/validate-network.sh --fix"
+        log_error "$issues UFW issue(s) detected - expected: 'ufw default allow routed' and 'ufw allow in on tailscale0'"
     fi
 
     return $issues
@@ -195,9 +269,14 @@ check_ufw_health() {
 ###############################################################################
 
 install_systemd() {
-    local script_path="$(realpath "$0")"
+    local script_path
+    script_path="$(realpath "$0")"
 
     log_info "Installing Flannel health monitor as systemd timer..."
+
+    # This runs as root, so it runs from a root-owned copy. Running it from the repo
+    # would let anyone who can write to the checkout run code as root.
+    install -o root -g root -m 755 "$script_path" "$INSTALL_PATH"
 
     # Create service unit
     cat > /etc/systemd/system/flannel-health-monitor.service <<EOF
@@ -207,7 +286,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash $script_path
+ExecStart=$INSTALL_PATH
 StandardOutput=journal
 StandardError=journal
 EOF
@@ -243,6 +322,7 @@ uninstall_systemd() {
     systemctl disable flannel-health-monitor.timer 2>/dev/null || true
     rm -f /etc/systemd/system/flannel-health-monitor.service
     rm -f /etc/systemd/system/flannel-health-monitor.timer
+    rm -f "$INSTALL_PATH"
     systemctl daemon-reload
 
     log_success "Flannel health monitor removed"
@@ -274,8 +354,8 @@ show_status() {
     # Recovery history
     if [ -f "$RECOVERY_LOG" ]; then
         local total=$(wc -l < "$RECOVERY_LOG")
-        local recent=$(count_recent_recoveries)
-        echo "Recoveries: $total total, $recent in last hour"
+        local recent=$(count_recent_recoveries 86400)
+        echo "Recoveries: $total total, $recent in last 24 hours (limit: $MAX_RECOVERIES_PER_DAY)"
         echo
         echo "Last 5 recoveries:"
         tail -5 "$RECOVERY_LOG" | while IFS= read -r line; do

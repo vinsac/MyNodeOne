@@ -57,7 +57,7 @@ bash /path/to/MyNodeOne/external-apps/scripts/register-app.sh \
 ```yaml
 services:
   web:                        # Name indicates public service
-    image: nginx:latest       # Registry image (not build:)
+    image: nginx:1.31.8-alpine       # Registry image (not build:)
     ports:
       - "80:80"
 ```
@@ -66,17 +66,17 @@ services:
 ```yaml
 services:
   frontend:                  # Public - gets app.domain.com
-    image: your-registry/frontend:latest
+    image: your-registry/frontend:1.0.0
     ports:
       - "80:80"
   
   backend:                   # Public - gets api.domain.com
-    image: your-registry/backend:latest
+    image: your-registry/backend:1.0.0
     environment:
       - DATABASE_URL=postgresql://postgres:pass@database:5432
   
   database:                  # Internal - no public domain
-    image: postgres:15
+    image: postgres:15.19-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

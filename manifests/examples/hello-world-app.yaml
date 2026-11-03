@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: hello-world
-        image: nginxdemos/hello:latest
+        image: nginxdemos/hello:0.4
         ports:
         - containerPort: 80
           name: http

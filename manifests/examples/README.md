@@ -2,6 +2,12 @@
 
 This directory contains ready-to-deploy example applications that demonstrate MyNodeOne capabilities and Kubernetes best practices.
 
+## 🔑 Credentials
+
+Examples that need a password ship without one: `postgres-database.yaml`, `fullstack-app.yaml`, `cronjob-backup.yaml` and `llm-cpu-inference.yaml`. Their pods wait in `CreateContainerConfigError` (or, for the LLM API, the route stays unavailable) until you create the Secret, and then start on their own. The command to run is at the top of each file, or next to the auth middleware in `llm-cpu-inference.yaml`.
+
+Images are pinned to specific versions. Change the tags deliberately when you upgrade.
+
 ## 🚀 Available Examples
 
 ### 🌐 Basic Applications

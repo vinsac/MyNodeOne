@@ -1,0 +1,6 @@
+# Accepted ruff findings. New ones fail CI; do not add to this by hand.
+# Regenerate after paying debt down: scripts/tests/ci/ratchet.py ruff update
+# version: ruff 0.15.15
+# file	severity	rule	count
+scripts/apps/llmapi/gateway/main.py	error	E741	1
+scripts/apps/llmapi/gateway/main.py	error	F401	4

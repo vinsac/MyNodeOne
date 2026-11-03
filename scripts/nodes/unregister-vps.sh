@@ -4,9 +4,12 @@
 # Unregister VPS Node from MyNodeOne Cluster
 #
 # This script removes a VPS edge node from all cluster registries:
-# - domain-registry (routing configuration)
+# - domain-registry domains.json (VPS node list)
+# - domain-registry routing.json (each route's vps_nodes)
 # - sync-controller-registry (sync targets)
-# - service-registry (service mappings)
+#
+# The writes are in multi-domain-registry.sh purge-vps, on this machine or over SSH on
+# the control plane. A failed read changes nothing and exits non-zero.
 #
 # Usage: ./scripts/nodes/unregister-vps.sh [vps-tailscale-ip]
 #
@@ -106,78 +109,11 @@ echo ""
 if kubectl version --client &>/dev/null && kubectl cluster-info &>/dev/null; then
     # We have direct kubectl access
     log_info "Using direct kubectl access..."
-    
-    # Remove from domain-registry
-    log_info "Removing from domain-registry..."
-    if kubectl get configmap -n kube-system domain-registry &>/dev/null; then
-        CURRENT_DATA=$(kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo "{}")
-        
-        if [ "$CURRENT_DATA" != "{}" ]; then
-            UPDATED_DATA=$(echo "$CURRENT_DATA" | jq --arg ip "$VPS_IP" '
-                .vps_nodes = [.vps_nodes[]? | select(.tailscale_ip != $ip)]
-            ')
-            
-            kubectl create configmap domain-registry \
-                --from-literal=domains.json="$UPDATED_DATA" \
-                --dry-run=client -o yaml | \
-                kubectl apply -n kube-system -f - &>/dev/null
-            
-            log_success "Removed from domain-registry"
-        else
-            log_info "domain-registry is empty"
-        fi
-    else
-        log_info "domain-registry not found"
+
+    if ! bash "$SCRIPT_DIR/../domains/multi-domain-registry.sh" purge-vps "$VPS_IP"; then
+        log_error "VPS $VPS_IP was not fully removed. It is safe to run this again"
+        exit 1
     fi
-    
-    # Remove from sync-controller-registry
-    log_info "Removing from sync-controller-registry..."
-    if kubectl get configmap -n kube-system sync-controller-registry &>/dev/null; then
-        CURRENT_DATA=$(kubectl get configmap -n kube-system sync-controller-registry -o jsonpath='{.data.registry\.json}' 2>/dev/null || echo "{}")
-        
-        if [ "$CURRENT_DATA" != "{}" ]; then
-            UPDATED_DATA=$(echo "$CURRENT_DATA" | jq --arg ip "$VPS_IP" '
-                .vps_nodes = [.vps_nodes[]? | select(.ip != $ip)]
-            ')
-            
-            kubectl create configmap sync-controller-registry \
-                --from-literal=registry.json="$UPDATED_DATA" \
-                --dry-run=client -o yaml | \
-                kubectl apply -n kube-system -f - &>/dev/null
-            
-            log_success "Removed from sync-controller-registry"
-        else
-            log_info "sync-controller-registry is empty"
-        fi
-    else
-        log_info "sync-controller-registry not found"
-    fi
-    
-    # Remove from routing configurations
-    log_info "Cleaning up routing configurations..."
-    if kubectl get configmap -n kube-system domain-registry &>/dev/null; then
-        ROUTING_DATA=$(kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo "{}")
-        
-        if [ "$ROUTING_DATA" != "{}" ]; then
-            UPDATED_ROUTING=$(echo "$ROUTING_DATA" | jq --arg ip "$VPS_IP" '
-                to_entries | map(
-                    .value.vps_nodes = [.value.vps_nodes[]? | select(. != $ip)]
-                ) | from_entries
-            ')
-            
-            # Update domain-registry with cleaned routing
-            DOMAINS_DATA=$(kubectl get configmap -n kube-system domain-registry -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo "{}")
-            
-            kubectl create configmap domain-registry \
-                --from-literal=domains.json="$DOMAINS_DATA" \
-                --from-literal=routing.json="$UPDATED_ROUTING" \
-                --dry-run=client -o yaml | \
-                kubectl apply -n kube-system -f - &>/dev/null
-            
-            log_success "Cleaned up routing configurations"
-        fi
-    fi
-    
 else
     # Need to use remote kubectl via SSH
     if [ -z "${CONTROL_PLANE_IP:-}" ]; then
@@ -188,23 +124,25 @@ else
         echo "  2. Set CONTROL_PLANE_IP in ~/.mynodeone/config.env"
         exit 1
     fi
-    
+
     CONTROL_PLANE_SSH_USER="${CONTROL_PLANE_SSH_USER:-$(whoami)}"
-    
+
     log_info "Using remote kubectl via SSH to $CONTROL_PLANE_IP..."
-    
-    # Run unregister script on control plane
-    if ssh "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
-        "cd ~/MyNodeOne && sudo ./scripts/domains/multi-domain-registry.sh unregister-vps $VPS_IP" 2>/dev/null; then
-        log_success "Removed from registries via control plane"
-    else
-        log_warn "Could not auto-unregister via SSH"
+
+    # -t because the control plane's sudoers rule only covers kubectl, so sudo may ask
+    # for a password here. VPS_IP was checked above, so it is safe in a remote command.
+    # A checkout from before purge-vps prints its usage and exits 1, which lands below.
+    if ! ssh -t "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" \
+        "cd ~/MyNodeOne && sudo ./scripts/domains/multi-domain-registry.sh purge-vps $VPS_IP"; then
+        log_error "Could not unregister VPS $VPS_IP via SSH"
         echo ""
-        echo "Manual cleanup required on control plane:"
+        echo "Update the control plane's checkout if it is older than this one, then run:"
         echo "  ssh $CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP"
         echo "  cd ~/MyNodeOne"
-        echo "  sudo ./scripts/domains/multi-domain-registry.sh unregister-vps $VPS_IP"
+        echo "  sudo ./scripts/domains/multi-domain-registry.sh purge-vps $VPS_IP"
+        exit 1
     fi
+    log_success "Removed from registries via control plane"
 fi
 
 # Delete local cache if exists

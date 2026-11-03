@@ -12,6 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
+# shellcheck source=../lib/hosts-block.sh
+source "$PROJECT_ROOT/scripts/lib/hosts-block.sh"
 
 # Detect actual user and home directory
 if [ -z "${ACTUAL_USER:-}" ]; then
@@ -222,15 +224,20 @@ EOF
 update_hosts_file() {
     log_info "Updating /etc/hosts for local DNS..."
     
-    # Backup hosts file
-    cp /etc/hosts /etc/hosts.bak.$(date +%Y%m%d_%H%M%S)
+    # Backup hosts file, unless the newest backup already holds these contents
+    local newest_backup
+    # shellcheck disable=SC2012  # these names have no whitespace
+    newest_backup=$(ls -t /etc/hosts.bak.* 2>/dev/null | head -n 1 || true)
+    if [ -z "$newest_backup" ] || ! cmp -s /etc/hosts "$newest_backup"; then
+        cp /etc/hosts "/etc/hosts.bak.$(date +%Y%m%d_%H%M%S)"
+    fi
     
     # Remove old mynodeone entries
-    sed -i '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
+    hosts_remove_block /etc/hosts '# MyNodeOne services' '# End MyNodeOne services'
     
-    # Add new entries
+    # Add new entries. The blank line from the last run is still there, so don't add another.
+    [ -z "$(tail -n 1 /etc/hosts)" ] || echo "" >> /etc/hosts
     cat >> /etc/hosts <<EOF
-
 # MyNodeOne services
 ${DASHBOARD_IP}      ${CLUSTER_DOMAIN}.local
 ${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local
@@ -289,14 +296,51 @@ else
     HOSTS_FILE="/etc/hosts"
 fi
 
-# Backup hosts file
-sudo cp "$HOSTS_FILE" "${HOSTS_FILE}.bak.$(date +%Y%m%d_%H%M%S)"
+# Backup hosts file, unless the newest backup already holds these contents
+newest_backup=$(ls -t "$HOSTS_FILE".bak.* 2>/dev/null | head -n 1 || true)
+if [ -z "$newest_backup" ] || ! cmp -s "$HOSTS_FILE" "$newest_backup"; then
+    sudo cp "$HOSTS_FILE" "${HOSTS_FILE}.bak.$(date +%Y%m%d_%H%M%S)"
+fi
 
-# Remove old mynodeone entries
-sudo sed -i.tmp '/# MyNodeOne services/,/# End MyNodeOne services/d' "$HOSTS_FILE"
+# Remove old mynodeone entries, in place: /etc/hosts can be a bind mount, where sed -i
+# or a rename fails or takes the mount away from whatever is using it. Markers are whole
+# lines, and a start marker with no end takes only the entries directly below it.
+NEW_HOSTS=$(mktemp)
+LC_ALL=C awk '
+    function trimmed(text) { gsub(/^[ \t]+|[ \t\r]+$/, "", text); return text }
+    function block_entry(text,    f, n, k) {
+        n = split(text, f)
+        if (n < 2 || f[1] !~ /^[0-9A-Fa-f:.]+$/) return 0
+        for (k = 2; k <= n; k++) if (f[k] !~ /\.local$/) return 0
+        return 1
+    }
+    { line[NR] = $0 }
+    END {
+        for (i = 1; i <= NR; i++) {
+            text = trimmed(line[i])
+            if (text == "# End MyNodeOne services") continue
+            if (text == "# MyNodeOne services") {
+                stop = 0
+                for (j = i + 1; j <= NR; j++) {
+                    text = trimmed(line[j])
+                    if (text == "# End MyNodeOne services") { stop = j; break }
+                    if (text == "# MyNodeOne services") break
+                }
+                if (stop) i = stop
+                else while (i < NR && block_entry(line[i + 1])) i++
+                continue
+            }
+            print line[i]
+        }
+    }
+' "$HOSTS_FILE" >"$NEW_HOSTS"
+if ! cmp -s "$NEW_HOSTS" "$HOSTS_FILE"; then
+    sudo tee "$HOSTS_FILE" <"$NEW_HOSTS" >/dev/null
+fi
+rm -f "$NEW_HOSTS"
 
-# Add new entries
-echo "" | sudo tee -a "$HOSTS_FILE" > /dev/null
+# Add new entries. The blank line from the last run is still there, so don't add another.
+[ -z "$(tail -n 1 "$HOSTS_FILE")" ] || echo "" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "# MyNodeOne services" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "${DASHBOARD_IP}      ${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null
 echo "${GRAFANA_IP}        grafana.${CLUSTER_DOMAIN}.local" | sudo tee -a "$HOSTS_FILE" > /dev/null

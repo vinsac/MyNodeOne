@@ -72,6 +72,14 @@ source "$PROJECT_ROOT/scripts/lib/versions.sh"
 # Set kubeconfig for K3s (so kubectl and helm work)
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
+# K3s locations. Overridable so the key-retention logic can be tested against a
+# temp directory; nothing sets them in a normal install.
+: "${K3S_CONFIG_DIR:=/etc/rancher/k3s}"
+: "${K3S_DATA_DIR:=/var/lib/rancher/k3s}"
+: "${K3S_BINARY:=/usr/local/bin/k3s}"
+: "${K3S_SERVICE_UNIT:=/etc/systemd/system/k3s.service}"
+: "${SECRETS_BACKUP_DIR:=/var/lib/mynodeone/secrets-backup}"
+
 # Helper functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -112,119 +120,56 @@ retry_command() {
     return 1
 }
 
-# Helm wrapper with timeout and error handling
-# Runs helm in background and polls for pod readiness - exits early on success
+# Components that failed but didn't stop the install. main exits non-zero at the end
+# if any are listed, so the rest of the cluster still gets set up on the way there.
+declare -a FAILED_COMPONENTS=()
+
+component_failed() {
+    local name="$1" item
+    for item in "${FAILED_COMPONENTS[@]}"; do
+        [ "$item" = "$name" ] && return 0
+    done
+    FAILED_COMPONENTS+=("$name")
+}
+
+# Installs or upgrades a chart and returns helm's exit code. --timeout is what keeps a
+# stuck rollout (the reason this wrapper exists: an install used to hang for good on
+# slow DNS or a Pending PVC) from blocking forever, and a timeout comes back as a failure.
+#
+# Running pods prove nothing on a re-run, because the old version's pods are still up.
+# This wrapper used to treat them as success and kill helm, which left the release
+# stuck in pending-upgrade. A rollout that's slow is reported, and helm is left to finish.
 helm_install_safe() {
     local release_name="$1"
     local chart="$2"
     local namespace="$3"
     shift 3
-    local extra_args="$@"
-    
-    log_info "Installing $release_name (timeout: 10m)..."
-    
-    # Start helm in background (without --wait, we'll monitor ourselves)
-    # This allows us to detect success early instead of waiting for full timeout
-    local helm_pid
-    local helm_log="/tmp/helm-${release_name}-$$.log"
-    
+
+    log_info "Installing $release_name (waits for it to be ready, up to 10m)..."
+
+    local rc=0
     helm upgrade --install "$release_name" "$chart" \
         --namespace "$namespace" \
+        --wait \
         --timeout 10m \
-        $extra_args > "$helm_log" 2>&1 &
-    helm_pid=$!
-    
-    # Poll for success while helm is running
-    local max_wait=600  # 10 minutes
-    local elapsed=0
-    local poll_interval=15
-    local min_ready_pods=1  # Minimum pods that should be running
-    
-    while [ $elapsed -lt $max_wait ]; do
-        # Check if helm finished
-        if ! kill -0 $helm_pid 2>/dev/null; then
-            # Helm process finished, check exit code
-            wait $helm_pid
-            local exit_code=$?
-            
-            if [ $exit_code -eq 0 ]; then
-                log_success "$release_name installed successfully"
-                rm -f "$helm_log"
-                return 0
-            else
-                # Helm failed, but pods might still be running
-                log_warn "$release_name helm exited with code $exit_code"
-                cat "$helm_log" | tail -5
-                break
-            fi
-        fi
-        
-        # Check if pods are already running (early success detection)
-        if [ $elapsed -ge 30 ]; then  # Give helm 30s to start creating resources
-            local running_pods
-            running_pods=$(kubectl get pods -n "$namespace" \
-                -l "app.kubernetes.io/instance=$release_name" \
-                --no-headers 2>/dev/null | grep -c "Running" 2>/dev/null) || running_pods=0
-            
-            # Also check without label for charts that use different labeling
-            if [ "$running_pods" -eq 0 ]; then
-                running_pods=$(kubectl get pods -n "$namespace" \
-                    --no-headers 2>/dev/null | grep -c "Running" 2>/dev/null) || running_pods=0
-            fi
-            
-            # For complex charts like prometheus-stack, wait for more pods
-            local expected_pods=$min_ready_pods
-            case "$release_name" in
-                kube-prometheus-stack) expected_pods=3 ;;  # operator, grafana, prometheus
-                loki) expected_pods=2 ;;  # loki, promtail
-            esac
-            
-            if [ "$running_pods" -ge "$expected_pods" ]; then
-                log_success "$release_name has $running_pods running pod(s) - success"
-                # Kill the helm process since we're done
-                kill $helm_pid 2>/dev/null || true
-                wait $helm_pid 2>/dev/null || true
-                rm -f "$helm_log"
-                return 0
-            fi
-            
-            # Show progress
-            local pending
-            pending=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | \
-                grep -cE "ContainerCreating|PodInitializing|Pending|Init:" 2>/dev/null) || pending=0
-            if [ "$running_pods" -gt 0 ] || [ "$pending" -gt 0 ]; then
-                echo -ne "\r  → $running_pods running, $pending pending (${elapsed}s)...    "
-            fi
-        fi
-        
-        sleep $poll_interval
-        elapsed=$((elapsed + poll_interval))
-    done
-    echo ""  # New line after progress
-    
-    # Timeout reached or helm failed - final check
-    # Kill helm if still running
-    if kill -0 $helm_pid 2>/dev/null; then
-        log_warn "$release_name timed out, killing helm process..."
-        kill $helm_pid 2>/dev/null || true
-        wait $helm_pid 2>/dev/null || true
+        "$@" || rc=$?
+
+    if [ "$rc" -eq 0 ]; then
+        log_success "$release_name installed successfully"
+        return 0
     fi
-    
-    # Final pod check - maybe it succeeded despite timeout
-    sleep 5
-    if helm status "$release_name" -n "$namespace" &>/dev/null; then
-        local final_running=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | grep -c "Running" || echo "0")
-        if [ "$final_running" -gt 0 ]; then
-            log_success "$release_name has $final_running running pod(s) - considering successful"
-            rm -f "$helm_log"
-            return 0
-        fi
+
+    log_error "$release_name: helm exited with code $rc. It was not installed or upgraded cleanly."
+    log_info "Pods in $namespace that aren't Running or Completed:"
+    kubectl get pods -n "$namespace" --no-headers 2>/dev/null | grep -vE '[[:space:]](Running|Completed)[[:space:]]' || true
+
+    local status=""
+    status=$(helm status "$release_name" -n "$namespace" 2>/dev/null | awk '/^STATUS:/ { print $2; exit }') || true
+    if [[ "$status" == pending-* ]]; then
+        log_warn "The $release_name release is stuck in $status, which blocks every later upgrade."
+        log_warn "Check it, then roll back: helm history $release_name -n $namespace; helm rollback $release_name -n $namespace"
     fi
-    
-    log_error "$release_name installation failed"
-    [ -f "$helm_log" ] && cat "$helm_log" | tail -10
-    rm -f "$helm_log"
-    return 1
+    return "$rc"
 }
 
 # Check DNS connectivity before operations
@@ -556,10 +501,11 @@ configure_firewall() {
     # Allow full access on Tailscale interface
     ufw allow in on tailscale0 comment 'Tailscale mesh network'
     
-    # Allow Flannel VXLAN for Kubernetes pod-to-pod networking
-    # Required for multi-node clusters (even if starting with single node)
-    ufw allow 8472/udp comment 'Flannel VXLAN'
-    
+    # Flannel VXLAN needs no rule of its own: every k3s config in this repo sets
+    # flannel-iface: tailscale0, so VXLAN packets arrive on tailscale0 and the
+    # rule above covers them. Clean up the Anywhere rule older installs added.
+    remove_public_vxlan_rule
+
     # Allow K3s API server (only from Tailscale)
     # Note: K3s already binds to Tailscale IP
     
@@ -573,7 +519,25 @@ configure_firewall() {
     
     log_success "Firewall configured (UFW enabled, Kubernetes networking allowed)"
     log_warn "SSH and Tailscale traffic allowed. All other incoming traffic blocked."
-    log_info "Kubernetes pod routing enabled (VXLAN port 8472/UDP, routed policy allow)"
+    log_info "Kubernetes pod routing enabled (VXLAN over tailscale0, routed policy allow)"
+}
+
+# Older installs opened 8472/udp to Anywhere. Only remove it when VXLAN is known
+# to run over tailscale0: a fresh install (no config yet) or a config that says so.
+remove_public_vxlan_rule() {
+    local config_file="$K3S_CONFIG_DIR/config.yaml"
+
+    if ! ufw status 2>/dev/null | grep -E '^8472/udp( \(v6\))?[[:space:]]+ALLOW' >/dev/null; then
+        return 0
+    fi
+
+    if [ -f "$config_file" ] && ! grep -Eq '^flannel-iface:[[:space:]]*"?tailscale0"?[[:space:]]*$' "$config_file"; then
+        log_warn "Leaving the 8472/udp UFW rule: $config_file does not set flannel-iface: tailscale0"
+        return 0
+    fi
+
+    ufw delete allow 8472/udp || log_warn "Could not remove the 8472/udp UFW rule"
+    log_success "Removed the 8472/udp rule that was open to Anywhere (VXLAN stays on tailscale0)"
 }
 
 optimize_system_for_containers() {
@@ -598,14 +562,78 @@ EOF
     log_success "System optimizations applied"
 }
 
+# True if this file holds at least one encryption key.
+encryption_config_is_valid() {
+    [ -s "$1" ] && grep -Eq '^[[:space:]]*secret:[[:space:]]*[^[:space:]]+' "$1"
+}
+
+# True if K3s has already stored cluster data on this machine.
+k3s_datastore_exists() {
+    [ -d "$K3S_DATA_DIR/server/db" ] && [ -n "$(ls -A "$K3S_DATA_DIR/server/db" 2>/dev/null)" ]
+}
+
+k3s_is_installed() {
+    [ -x "$K3S_BINARY" ] && [ -f "$K3S_SERVICE_UNIT" ]
+}
+
+# Copy the encryption key to a root-only directory. Timestamped and never
+# overwritten, so an older key stays recoverable. Identical copies are skipped.
+backup_encryption_key() {
+    local src="$K3S_CONFIG_DIR/encryption-config.yaml"
+    local existing dest
+
+    (umask 077 && mkdir -p "$SECRETS_BACKUP_DIR") || return 1
+    chmod 700 "$SECRETS_BACKUP_DIR" || return 1
+
+    for existing in "$SECRETS_BACKUP_DIR"/encryption-config-*.yaml; do
+        if [ -f "$existing" ] && cmp -s "$src" "$existing"; then
+            chmod 600 "$existing" || return 1
+            log_info "Encryption key already backed up: $existing"
+            return 0
+        fi
+    done
+
+    dest="$SECRETS_BACKUP_DIR/encryption-config-$(date -u +%Y%m%dT%H%M%SZ)-$$.yaml"
+    install -m 600 "$src" "$dest" || return 1
+    log_success "Encryption key backed up to $dest"
+}
+
 prepare_encryption_config() {
     log_info "Configuring secrets encryption at rest..."
-    
-    # Generate encryption key
-    ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
-    
-    # Create encryption provider config
-    cat > /etc/rancher/k3s/encryption-config.yaml <<EOF
+
+    local cfg="$K3S_CONFIG_DIR/encryption-config.yaml"
+
+    # An existing key decrypts every Secret in the datastore. Replacing it makes
+    # them all unreadable, so it is backed up and kept.
+    if encryption_config_is_valid "$cfg"; then
+        if ! backup_encryption_key; then
+            log_error "Could not back up $cfg to $SECRETS_BACKUP_DIR. Stopping before any change."
+            return 1
+        fi
+        chmod 600 "$cfg"
+        log_success "Keeping the existing encryption key: $cfg"
+        return 0
+    fi
+
+    # A datastore without its key must never get a new one.
+    if k3s_datastore_exists; then
+        log_error "$K3S_DATA_DIR/server/db exists but $cfg is missing or holds no key."
+        log_error "A new key would leave the existing Secrets unreadable, so nothing was changed."
+        log_error "Restore the key from $SECRETS_BACKUP_DIR or your off-machine backup, then re-run."
+        log_error "To really start over, run /usr/local/bin/k3s-uninstall.sh first (this deletes the cluster)."
+        return 1
+    fi
+
+    if [ -e "$cfg" ]; then
+        log_warn "Moving aside unusable $cfg (no cluster data exists yet)"
+        mv "$cfg" "$cfg.invalid-$(date -u +%Y%m%dT%H%M%SZ)"
+    fi
+
+    local encryption_key tmp
+    encryption_key=$(head -c 32 /dev/urandom | base64)
+    tmp=$(mktemp "$K3S_CONFIG_DIR/.encryption-config.XXXXXX")
+
+    cat > "$tmp" <<EOF
 apiVersion: apiserver.config.k8s.io/v1
 kind: EncryptionConfiguration
 resources:
@@ -615,51 +643,58 @@ resources:
       - aescbc:
           keys:
             - name: key1
-              secret: ${ENCRYPTION_KEY}
+              secret: ${encryption_key}
       - identity: {}  # Fallback for reading old unencrypted data
 EOF
-    
-    chmod 600 /etc/rancher/k3s/encryption-config.yaml
+
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$cfg"
     log_success "Encryption configuration created"
+
+    if ! backup_encryption_key; then
+        log_error "Could not back up $cfg to $SECRETS_BACKUP_DIR. Stopping before K3s starts."
+        return 1
+    fi
 }
 
 prepare_audit_config() {
     log_info "Configuring audit logging..."
-    
-    # Create audit policy
-    cat > /etc/rancher/k3s/audit-policy.yaml <<'EOF'
-apiVersion: audit.k8s.io/v1
-kind: Policy
-rules:
-  # Log admin actions
-  - level: RequestResponse
-    users: ["system:admin", "admin"]
-    
-  # Log secret access
-  - level: Metadata
-    resources:
-      - group: ""
-        resources: ["secrets"]
-    
-  # Log pod creation/deletion
-  - level: Request
-    verbs: ["create", "update", "patch", "delete"]
-    resources:
-      - group: ""
-        resources: ["pods"]
-    
-  # Log everything else at metadata level
-  - level: Metadata
-EOF
-    
-    chmod 644 /etc/rancher/k3s/audit-policy.yaml
+
+    local policy="$K3S_CONFIG_DIR/audit-policy.yaml"
+    local source_policy="$PROJECT_ROOT/manifests/security/audit-policy.yaml"
+
+    if [ -s "$policy" ]; then
+        log_success "Keeping the existing audit policy: $policy"
+        # Never replaced here: a new policy needs an API server restart, which a re-run
+        # must not cause unprompted. The check prints the steps if there's a problem.
+        bash "$PROJECT_ROOT/scripts/setup/check-audit-policy.sh" "$policy" \
+            || log_warn "The audit policy needs attention, see above. Continuing without changing it."
+        if ! cmp -s "$policy" "$source_policy"; then
+            log_info "It differs from $source_policy. To adopt that one, copy it over and restart k3s."
+        fi
+        return 0
+    fi
+
+    if [ ! -s "$source_policy" ]; then
+        log_error "Audit policy not found: $source_policy"
+        return 1
+    fi
+
+    install -m 644 "$source_policy" "$policy"
     log_success "Audit policy configured"
 }
 
 prepare_pod_security_config() {
     log_info "Configuring Pod Security Standards..."
-    
-    cat > /etc/rancher/k3s/pod-security-config.yaml <<'EOF'
+
+    local cfg="$K3S_CONFIG_DIR/pod-security-config.yaml"
+
+    if [ -s "$cfg" ]; then
+        log_success "Keeping the existing Pod Security configuration: $cfg"
+        return 0
+    fi
+
+    cat > "$cfg" <<'EOF'
 apiVersion: apiserver.config.k8s.io/v1
 kind: AdmissionConfiguration
 plugins:
@@ -679,28 +714,51 @@ plugins:
         runtimeClasses: []
         namespaces: [kube-system, kube-public, kube-node-lease, longhorn-system, metallb-system, cert-manager]
 EOF
-    
-    chmod 644 /etc/rancher/k3s/pod-security-config.yaml
+
+    chmod 644 "$cfg"
     log_success "Pod Security Standards configured"
 }
 
-install_k3s() {
-    log_info "Installing K3s server..."
-    
-    # Prepare K3s configuration
-    mkdir -p /etc/rancher/k3s
-    
-    # Setup security configs BEFORE K3s starts
-    prepare_encryption_config
-    prepare_audit_config
-    prepare_pod_security_config
-    
-    cat > /etc/rancher/k3s/config.yaml <<EOF
+# Workers join with this token, not the server token, so a leaked worker token
+# cannot join a new control-plane node. New clusters only: setting it later
+# changes the password that K3s holds for already-joined agents.
+prepare_agent_token() {
+    local token_file="$K3S_CONFIG_DIR/agent-token"
+
+    if [ -s "$token_file" ]; then
+        chmod 600 "$token_file"
+        return 0
+    fi
+
+    if k3s_datastore_exists; then
+        return 1
+    fi
+
+    local tmp
+    tmp=$(mktemp "$K3S_CONFIG_DIR/.agent-token.XXXXXX")
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$tmp"
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$token_file"
+    log_success "Separate agent join token created"
+}
+
+write_k3s_server_config() {
+    local config_file="$1"
+    local agent_token_line="# agent-token-file not set: this datastore already exists"
+
+    if prepare_agent_token; then
+        agent_token_line="agent-token-file: \"$K3S_CONFIG_DIR/agent-token\""
+    else
+        log_warn "Existing datastore without an agent token: workers keep using the server token"
+    fi
+
+    cat > "$config_file" <<EOF
 cluster-init: true
 write-kubeconfig-mode: "0600"
 node-name: "$NODE_NAME"
 node-ip: "$TAILSCALE_IP"
 flannel-iface: tailscale0
+${agent_token_line}
 tls-san:
   - "$TAILSCALE_IP"
   - "$NODE_NAME"
@@ -713,19 +771,51 @@ etcd-snapshot-schedule-cron: "0 */6 * * *"
 etcd-snapshot-retention: 5
 kubelet-arg:
   - "max-pods=250"
+kube-proxy-arg:
+  - "nodeport-addresses=100.64.0.0/10"  # Tailscale range: NodePorts stay off the LAN
 kube-apiserver-arg:
-  - "encryption-provider-config=/etc/rancher/k3s/encryption-config.yaml"
+  - "encryption-provider-config=$K3S_CONFIG_DIR/encryption-config.yaml"
   - "audit-log-path=/var/log/k3s-audit.log"
-  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+  - "audit-policy-file=$K3S_CONFIG_DIR/audit-policy.yaml"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
-  - "admission-control-config-file=/etc/rancher/k3s/pod-security-config.yaml"
+  - "audit-log-compress=true"
+  - "admission-control-config-file=$K3S_CONFIG_DIR/pod-security-config.yaml"
 EOF
-    
-    # Install K3s
-    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server
-    
+}
+
+install_k3s() {
+    log_info "Installing K3s server..."
+
+    # Prepare K3s configuration
+    mkdir -p "$K3S_CONFIG_DIR"
+
+    # Setup security configs BEFORE K3s starts
+    prepare_encryption_config || exit 1
+    prepare_audit_config || exit 1
+    prepare_pod_security_config
+
+    local config_file="$K3S_CONFIG_DIR/config.yaml"
+
+    # config.yaml of a live cluster holds its settings, so a re-run leaves it alone.
+    if [ -s "$config_file" ] && { k3s_is_installed || k3s_datastore_exists; }; then
+        log_success "Keeping the existing K3s configuration: $config_file"
+    else
+        write_k3s_server_config "$config_file"
+    fi
+
+    if k3s_is_installed; then
+        log_success "K3s is already installed, keeping it (not reinstalled, upgraded or restarted)"
+        if ! systemctl is-active --quiet k3s; then
+            log_warn "K3s service is not running, starting it..."
+            systemctl start k3s
+        fi
+    else
+        # Install K3s
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server
+    fi
+
     # Wait for K3s to be ready
     log_info "Waiting for K3s to be ready..."
     until kubectl get nodes &> /dev/null; do
@@ -983,7 +1073,7 @@ deploy_nvidia_device_plugin() {
     if [ "$PLUGIN_DEPLOYED" = false ]; then
         # Fallback: use remote manifest but it lacks runtimeClassName
         log_warn "Local manifest not found, using remote (may not work without runtimeClassName)"
-        local REMOTE_MANIFEST="https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml"
+        local REMOTE_MANIFEST="https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/${NVIDIA_DEVICE_PLUGIN_VERSION}/nvidia-device-plugin.yml"
         if kubectl apply -f "$REMOTE_MANIFEST" 2>/dev/null; then
             log_success "NVIDIA Device Plugin deployed (remote manifest)"
             PLUGIN_DEPLOYED=true
@@ -1032,58 +1122,47 @@ deploy_nvidia_device_plugin() {
 }
 
 install_helm() {
-    # Helm installation with multiple failsafe methods
-    # 1. Snap (if available)
-    # 2. Official get-helm-3 script (RECOMMENDED)
-    # 3. Direct binary download (ultimate fallback)
-    
+    # Helm installation with multiple failsafe methods. The first two install
+    # exactly $HELM_VERSION from versions.sh; snap cannot pin it, so it is last.
+    # 1. get-helm-3 script taken from the same tag (verifies the checksum)
+    # 2. Direct binary download
+    # 3. Snap (if available)
+
     log_info "Installing Helm with failsafe methods..."
-    
+
     # Check if already installed
     if command -v helm &> /dev/null; then
-        HELM_VERSION=$(helm version --short 2>/dev/null || echo "unknown")
-        log_warn "Helm already installed ($HELM_VERSION), skipping..."
+        local EXISTING_VERSION
+        EXISTING_VERSION=$(helm version --short 2>/dev/null || echo "unknown")
+        log_warn "Helm already installed ($EXISTING_VERSION), skipping..."
         return 0
     fi
-    
+
     local success=false
-    
-    # Method 1: Try snap (if available)
-    if command -v snap &> /dev/null; then
-        log_info "Method 1: Trying snap installation..."
-        if snap install helm --classic 2>/dev/null; then
-            log_success "Helm installed via snap"
-            success=true
-        else
-            log_warn "Snap installation failed, trying next method..."
-        fi
+
+    # Method 1: get-helm-3 from the pinned tag, not from main
+    log_info "Method 1: Trying official Helm installation script ($HELM_VERSION)..."
+    if curl -fsSL "https://raw.githubusercontent.com/helm/helm/${HELM_VERSION}/scripts/get-helm-3" | DESIRED_VERSION="$HELM_VERSION" bash 2>/dev/null; then
+        log_success "Helm installed via official script"
+        success=true
+    else
+        log_warn "Official script failed, trying next method..."
     fi
-    
-    # Method 2: Official get-helm-3 script (RECOMMENDED)
+
+    # Method 2: Direct binary download
     if [ "$success" = false ]; then
-        log_info "Method 2: Trying official Helm installation script..."
-        if curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash 2>/dev/null; then
-            log_success "Helm installed via official script"
-            success=true
-        else
-            log_warn "Official script failed, trying next method..."
-        fi
-    fi
-    
-    # Method 3: Direct binary download (ultimate fallback)
-    if [ "$success" = false ]; then
-        log_info "Method 3: Trying direct binary download..."
-        
+        log_info "Method 2: Trying direct binary download..."
+
         local ARCH=$(uname -m)
-        
+
         case $ARCH in
             x86_64) ARCH="amd64" ;;
             aarch64) ARCH="arm64" ;;
             armv7l) ARCH="arm" ;;
         esac
-        
+
         local HELM_URL="https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz"
-        
+
         if curl -fsSL "$HELM_URL" -o /tmp/helm.tar.gz 2>/dev/null; then
             tar -zxf /tmp/helm.tar.gz -C /tmp 2>/dev/null
             mv /tmp/linux-${ARCH}/helm /usr/local/bin/helm
@@ -1092,24 +1171,35 @@ install_helm() {
             log_success "Helm installed via direct binary download"
             success=true
         else
-            log_error "Direct binary download failed"
+            log_warn "Direct binary download failed, trying next method..."
         fi
     fi
-    
+
+    # Method 3: Snap, which installs whatever the channel currently serves
+    if [ "$success" = false ] && command -v snap &> /dev/null; then
+        log_info "Method 3: Trying snap installation (version not pinned)..."
+        if snap install helm --classic 2>/dev/null; then
+            log_warn "Helm installed via snap, which may not be $HELM_VERSION"
+            success=true
+        else
+            log_warn "Snap installation failed"
+        fi
+    fi
+
     # Check final result
     if [ "$success" = false ]; then
         log_error "CRITICAL: All Helm installation methods failed"
         log_error "Attempted methods:"
-        log_error "  1. Snap (if available)"
-        log_error "  2. Official get-helm-3 script"
-        log_error "  3. Direct binary download"
+        log_error "  1. Official get-helm-3 script ($HELM_VERSION)"
+        log_error "  2. Direct binary download ($HELM_VERSION)"
+        log_error "  3. Snap (if available)"
         echo
         log_error "Please install Helm manually:"
-        log_error "  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+        log_error "  https://github.com/helm/helm/releases/tag/${HELM_VERSION}"
         echo
         return 1
     fi
-    
+
     # Verify installation
     if command -v helm &> /dev/null; then
         local INSTALLED_VERSION=$(helm version --short 2>/dev/null || echo "unknown")
@@ -1156,7 +1246,7 @@ install_cert_manager() {
     
     helm upgrade --install cert-manager jetstack/cert-manager \
         --namespace cert-manager \
-        --version v1.16.2 \
+        --version "$CERT_MANAGER_VERSION" \
         --set installCRDs=true \
         --wait
     
@@ -1198,7 +1288,7 @@ install_longhorn() {
         
         helm upgrade --install longhorn longhorn/longhorn \
             --namespace longhorn-system \
-            --version 1.7.2 \
+            --version "$LONGHORN_VERSION" \
             --set defaultSettings.defaultReplicaCount=$replica_count \
             --set persistence.defaultClassParameter.numberOfReplicas=$replica_count \
             --set defaultSettings.replicaReplenishmentWaitInterval=432000 \
@@ -1224,7 +1314,7 @@ install_longhorn() {
                     log_warn "StorageClass has wrong replica count ($current_replicas), fixing..."
                     # Delete and recreate with correct parameters
                     kubectl delete storageclass longhorn --ignore-not-found=true
-                    kubectl apply -f - <<'EOF'
+                    kubectl apply -f - <<EOF
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -1277,8 +1367,20 @@ install_metallb() {
     helm repo add metallb https://metallb.github.io/metallb
     helm repo update
     
+    # Pinned from versions.sh. Earlier installs were unpinned and may be on a newer
+    # chart, and a re-run must not downgrade a working load balancer by surprise.
+    local metallb_chart_version="$METALLB_VERSION"
+    local installed_metallb
+    installed_metallb=$(helm list -n metallb-system -f '^metallb$' -o json 2>/dev/null | jq -r '.[0].chart // empty' 2>/dev/null | sed 's/^metallb-//') || true
+    if [ -n "$installed_metallb" ] && [ "$installed_metallb" != "$METALLB_VERSION" ]; then
+        log_warn "MetalLB chart $installed_metallb is installed, versions.sh pins $METALLB_VERSION. Keeping $installed_metallb."
+        log_warn "To settle this, update METALLB_VERSION in scripts/lib/versions.sh or run a deliberate helm upgrade."
+        metallb_chart_version="$installed_metallb"
+    fi
+
     helm upgrade --install metallb metallb/metallb \
         --namespace metallb-system \
+        --version "$metallb_chart_version" \
         --wait
     
     # Configure IP address pool (using Tailscale subnet)
@@ -1404,7 +1506,7 @@ install_traefik() {
     
     helm upgrade --install traefik traefik/traefik \
         --namespace traefik \
-        --version 33.2.0 \
+        --version "$TRAEFIK_VERSION" \
         --set ports.web.port=80 \
         --set ports.websecure.port=443 \
         --set ports.websecure.tls.enabled=true \
@@ -1420,7 +1522,14 @@ install_monitoring() {
     log_info "Installing monitoring stack (Prometheus, Grafana, Loki)..."
     
     kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
-    
+
+    # node-exporter and promtail need hostPath/hostNetwork/hostPID, which the
+    # cluster-wide baseline default rejects. Relax enforcement for this namespace
+    # only; the restricted audit and warn defaults stay as they are.
+    kubectl label --overwrite namespace monitoring \
+        pod-security.kubernetes.io/enforce=privileged \
+        pod-security.kubernetes.io/enforce-version=latest
+
     # Check DNS before adding repos
     check_dns || log_warn "DNS may be slow, continuing anyway..."
     
@@ -1433,12 +1542,30 @@ install_monitoring() {
     log_info "Updating helm repositories (may take a moment)..."
     timeout 120 helm repo update 2>&1 || log_warn "Helm repo update slow/timed out, but continuing..."
     
-    # Generate Grafana password
-    GRAFANA_PASSWORD="$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)"
+    # Keep the Grafana password on a re-run. Grafana's database keeps the old one
+    # anyway, so a new value would only make the Secret and saved credentials wrong.
+    GRAFANA_PASSWORD=$(kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 --decode 2>/dev/null) || true
+    if [ -z "$GRAFANA_PASSWORD" ]; then
+        GRAFANA_PASSWORD="$(openssl rand -base64 32 | tr -d '=/+' | cut -c1-32)"
+    fi
+
+    # Optional alert destination: only used if the user created this file.
+    # Without it Alertmanager keeps its default 'null' receiver.
+    local alertmanager_values_file="${ALERTMANAGER_VALUES_FILE:-/etc/mynodeone/alertmanager-values.yaml}"
+    local alertmanager_args=""
+    if [ -s "$alertmanager_values_file" ]; then
+        alertmanager_args="-f $alertmanager_values_file"
+        log_info "Using Alertmanager destination from $alertmanager_values_file"
+    else
+        log_warn "No alert destination set: alerts stay visible in Prometheus and Alertmanager but are not sent anywhere"
+        log_info "To set one, see $PROJECT_ROOT/scripts/monitoring/README.md"
+    fi
     
     # Install kube-prometheus-stack with safe wrapper and optimized resources for homelab
     helm_install_safe "kube-prometheus-stack" "prometheus-community/kube-prometheus-stack" "monitoring" \
-        --version 65.8.0 \
+        --version "$PROMETHEUS_STACK_VERSION" \
+        -f "$PROJECT_ROOT/scripts/monitoring/kube-prometheus-stack-values.yaml" \
+        $alertmanager_args \
         --set prometheus.prometheusSpec.retention=30d \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
         --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
@@ -1469,26 +1596,28 @@ install_monitoring() {
         --set kube-state-metrics.resources.limits.memory=256Mi \
         --set kube-state-metrics.priorityClassName=mynodeone-infrastructure \
     || {
-        log_error "Failed to install kube-prometheus-stack"
-        log_info "Checking if pods started anyway..."
-        sleep 15
-        if kubectl get pods -n monitoring | grep -q "Running"; then
-            log_warn "Some monitoring pods are running, continuing..."
-        else
-            log_error "Monitoring installation failed completely"
-            return 1
-        fi
+        log_error "kube-prometheus-stack failed. Its pods may still be running an older version, and that doesn't count as installed."
+        log_warn "Continuing with the other components. The install reports this at the end and exits non-zero."
+        component_failed "kube-prometheus-stack"
     }
     
+    # Alert rules and the Longhorn scrape config (non-critical, allow failure)
+    kubectl apply -f "$PROJECT_ROOT/scripts/monitoring/longhorn-servicemonitor.yaml" \
+        -f "$PROJECT_ROOT/scripts/monitoring/prometheus-alerts/" \
+        || log_warn "Could not apply MyNodeOne alert rules. Retry with: sudo $PROJECT_ROOT/scripts/monitoring/apply-monitoring-config.sh"
+
     # Install Loki for logs (non-critical, allow failure)
     log_info "Installing Loki (log aggregation)..."
     helm_install_safe "loki" "grafana/loki-stack" "monitoring" \
-        --version 2.10.2 \
+        --version "$LOKI_VERSION" \
         --set loki.persistence.enabled=true \
         --set loki.persistence.storageClassName=longhorn \
         --set loki.persistence.size=100Gi \
         --set promtail.enabled=true \
-    || log_warn "Loki installation failed, but continuing (non-critical)"
+    || {
+        log_warn "Loki failed. Continuing, and the install reports this at the end."
+        component_failed "loki"
+    }
     
     # Get generated Grafana password from secret (with retry)
     sleep 5
@@ -1516,7 +1645,11 @@ EOF
     chmod 600 $ACTUAL_HOME/mynodeone-grafana-credentials.txt
     chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-grafana-credentials.txt
     
-    log_success "Monitoring stack installed"
+    if [[ " ${FAILED_COMPONENTS[*]} " == *" kube-prometheus-stack "* || " ${FAILED_COMPONENTS[*]} " == *" loki "* ]]; then
+        log_warn "Monitoring stack is not fully installed: see the errors above"
+    else
+        log_success "Monitoring stack installed"
+    fi
     log_warn "Grafana credentials saved to $ACTUAL_HOME/mynodeone-grafana-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file"
 }
@@ -1546,7 +1679,7 @@ install_argocd() {
     
     # Install ArgoCD using helm with optimized resources for homelab
     helm_install_safe "argocd" "argo/argo-cd" "argocd" \
-        --version 7.7.5 \
+        --version "$ARGOCD_VERSION" \
         --set server.service.type=LoadBalancer \
         --set global.priorityClassName=mynodeone-infrastructure \
         --set controller.resources.requests.memory=256Mi \
@@ -1571,19 +1704,27 @@ install_argocd() {
         --set notifications.resources.requests.cpu=25m \
         --set notifications.resources.limits.memory=256Mi \
     || {
-        log_error "ArgoCD helm install failed, trying kubectl method..."
-        # Fallback to kubectl method
-        retry_command 2 "timeout 120 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.9.3/manifests/install.yaml" || {
-            log_error "ArgoCD installation failed"
-            return 1
-        }
-        
-        # Wait for ArgoCD to be ready (with timeout)
-        log_info "Waiting for ArgoCD to be ready..."
-        timeout 300 kubectl wait --for=condition=available deployment/argocd-server -n argocd 2>&1 || log_warn "ArgoCD wait timed out"
-        
-        # Expose ArgoCD with LoadBalancer
-        kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}' || log_warn "Failed to patch ArgoCD service"
+        # The plain manifest would overwrite what helm manages, so it's only a fallback
+        # for when helm never created a release, such as the chart failing to download.
+        if helm status argocd -n argocd &>/dev/null; then
+            log_error "ArgoCD helm release exists but its install or upgrade failed. Not applying the fallback manifest over it."
+            log_warn "Continuing with the other components. The install reports this at the end and exits non-zero."
+            component_failed "argocd"
+        else
+            log_error "ArgoCD helm install failed, trying kubectl method..."
+            # Fallback to kubectl method
+            retry_command 2 "timeout 120 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_FALLBACK_MANIFEST_VERSION}/manifests/install.yaml" || {
+                log_error "ArgoCD installation failed"
+                return 1
+            }
+
+            # Wait for ArgoCD to be ready (with timeout)
+            log_info "Waiting for ArgoCD to be ready..."
+            timeout 300 kubectl wait --for=condition=available deployment/argocd-server -n argocd 2>&1 || log_warn "ArgoCD wait timed out"
+
+            # Expose ArgoCD with LoadBalancer
+            kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}' || log_warn "Failed to patch ArgoCD service"
+        fi
     }
     
     # Get initial admin password (with retry and timeout)
@@ -1617,7 +1758,11 @@ EOF
     chmod 600 $ACTUAL_HOME/mynodeone-argocd-credentials.txt
     chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-argocd-credentials.txt
     
-    log_success "ArgoCD installed"
+    if [[ " ${FAILED_COMPONENTS[*]} " == *" argocd "* ]]; then
+        log_warn "ArgoCD is not fully installed: see the errors above"
+    else
+        log_success "ArgoCD installed"
+    fi
     log_warn "ArgoCD credentials saved to $ACTUAL_HOME/mynodeone-argocd-credentials.txt (chmod 600)"
     log_warn "IMPORTANT: Save these credentials securely and delete the file"
 }
@@ -1665,29 +1810,26 @@ create_cluster_info() {
 }
 
 create_cluster_token() {
-    log_info "Generating node join token..."
-    
-    # K3s token for joining worker nodes
-    TOKEN=$(cat /var/lib/rancher/k3s/server/node-token)
-    
-    cat > $ACTUAL_HOME/mynodeone-join-token.txt <<EOF
-MyNodeOne Cluster Join Configuration
-====================================
-Server URL: https://$TAILSCALE_IP:6443
-Token: $TOKEN
+    log_info "Checking the node join token..."
 
-To join a worker node, run:
-curl -sfL https://get.k3s.io | K3S_URL=https://$TAILSCALE_IP:6443 K3S_TOKEN=$TOKEN sh -
+    # The token already lives in a root-only file, so no copy is kept in the home
+    # directory. Remove the one that older installs wrote.
+    local old_token_file="$ACTUAL_HOME/mynodeone-join-token.txt"
+    if [ -f "$old_token_file" ]; then
+        shred -fz -n 3 "$old_token_file" 2>/dev/null || true
+        rm -f "$old_token_file"
+        log_success "Removed the old join token copy: $old_token_file"
+    fi
 
-Or use the add-worker-node.sh script (recommended)
+    # Without agent-token-file, K3s makes server/agent-token a link to the server token.
+    local agent_token_path="$K3S_DATA_DIR/server/agent-token"
+    if [ -L "$agent_token_path" ]; then
+        log_warn "This cluster has no separate agent token: workers join with the server token"
+    fi
 
-WARNING: This token grants access to join nodes to your cluster. Store securely!
-EOF
-    chmod 600 $ACTUAL_HOME/mynodeone-join-token.txt
-    chown $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/mynodeone-join-token.txt
-    
-    log_success "Join token saved to $ACTUAL_HOME/mynodeone-join-token.txt (chmod 600)"
-    log_warn "IMPORTANT: This token grants cluster access. Store securely"
+    log_success "To add a worker, run scripts/nodes/add-worker-node.sh on it and give it:"
+    log_info "  Server URL: https://$TAILSCALE_IP:6443"
+    log_info "  Token:      sudo cat $agent_token_path"
 }
 
 initialize_service_registries() {
@@ -1865,10 +2007,10 @@ initialize_service_registries() {
         if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" control-plane; then
             log_success "Config API Server installed"
             
-            # Display API token for use on other nodes
+            # Installers log to files and terminals, so name the file, not the token
             if [ -f /etc/mynodeone/api-token ]; then
-                log_info "API Token (for node agents): $(cat /etc/mynodeone/api-token)"
-                log_info "Save this token - needed when adding VPS/worker nodes"
+                log_info "API token for node agents is stored in /etc/mynodeone/api-token (root only)"
+                log_info "Needed when adding VPS/worker nodes: sudo cat /etc/mynodeone/api-token"
             fi
         else
             log_warn "Config API Server installation had issues"
@@ -1991,8 +2133,8 @@ display_credentials() {
             delete_credential_files
         else
             echo
-            log_error "Installation cannot proceed without confirming credential storage"
-            log_error "For security, credential files MUST be deleted."
+            log_warn "Credential files are still on disk until you confirm they are saved."
+            log_warn "For security, delete them once they are in your password manager."
             echo
             echo "Options:"
             echo "  1. Save credentials now and re-run this confirmation"
@@ -2006,8 +2148,9 @@ display_credentials() {
                 log_error "Please save credentials and manually delete files:"
                 echo "  sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt"
                 echo
+                # Only a warning, so the steps after this one still run. Stopping here
+                # would leave this node with no backup timer, not a safer credentials file.
                 log_warn "WARNING: Leaving credential files on disk is a security risk"
-                return 1
             fi
         fi
     fi
@@ -2037,20 +2180,31 @@ delete_credential_files() {
         files_deleted=$((files_deleted + 1))
     fi
     
-    # Keep join token as it's needed for adding nodes
-    # Keep join token as it's needed for adding nodes
-    
+    # The join token is not a file here: read it from the k3s data directory when needed
+
     if [ $files_deleted -gt 0 ]; then
         log_success "✅ Credential files securely deleted ($files_deleted files)"
-        log_info "Join token kept at: $ACTUAL_HOME/mynodeone-join-token.txt (needed for adding nodes)"
+        log_info "To add a node, read the join token with: sudo cat $K3S_DATA_DIR/server/agent-token"
     else
         log_warn "No credential files found to delete"
     fi
 }
 
 print_summary() {
+    local monitoring_mark="✓" argocd_mark="✓"
+    if [[ " ${FAILED_COMPONENTS[*]} " == *" kube-prometheus-stack "* || " ${FAILED_COMPONENTS[*]} " == *" loki "* ]]; then
+        monitoring_mark="✗"
+    fi
+    if [[ " ${FAILED_COMPONENTS[*]} " == *" argocd "* ]]; then
+        argocd_mark="✗"
+    fi
+
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  🎉 MyNodeOne Control Plane Installed Successfully"
+    if [ "${#FAILED_COMPONENTS[@]}" -gt 0 ]; then
+        echo "  MyNodeOne Control Plane Installed, But These Failed: ${FAILED_COMPONENTS[*]}"
+    else
+        echo "  🎉 MyNodeOne Control Plane Installed Successfully"
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     echo "Installed Components:"
@@ -2060,8 +2214,8 @@ print_summary() {
     echo "  ✓ MetalLB (Load Balancer)"
     echo "  ✓ Traefik (Ingress Controller)"
     echo "  ✓ Longhorn (Distributed Storage)"
-    echo "  ✓ Prometheus + Grafana + Loki (Monitoring)"
-    echo "  ✓ ArgoCD (GitOps)"
+    echo "  $monitoring_mark Prometheus + Grafana + Loki (Monitoring)"
+    echo "  $argocd_mark ArgoCD (GitOps)"
     echo "  ✓ Tailscale Subnet Routes (Network Access)"
     
     # Show GPU status if NVIDIA GPU is present
@@ -2224,7 +2378,7 @@ offer_security_hardening() {
     echo "  🔒 Core Security: Already Enabled"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    log_success "Your cluster has production-grade security built-in:"
+    log_success "These security features are enabled on your cluster:"
     echo "  ✅ Secrets encryption at rest (AES-256)"
     echo "  ✅ Kubernetes audit logging"
     echo "  ✅ Pod Security Standards (baseline enforcement)"
@@ -2497,6 +2651,42 @@ offer_llm_chat() {
     fi
 }
 
+install_control_plane_node_agent() {
+    # Use the local installation script
+    if [ -f "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" ]; then
+        # The installer reads the token we just generated/verified from this root-only
+        # file, so it never appears in `ps`. If the file is missing, the installer keeps
+        # the token in an existing agent.env, or fails and we warn below.
+        local token_args=()
+        if [ -f /etc/mynodeone/api-token ]; then
+            token_args=(--api-token-file /etc/mynodeone/api-token)
+        fi
+
+        # Determine the best IP for the agent to reach the API
+        # On the control plane, 127.0.0.1 is always safer as a fallback
+        local agent_target_ip="${TAILSCALE_IP:-}"
+        if [ -z "$agent_target_ip" ]; then
+            agent_target_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
+        fi
+        
+        # Run agent installer
+        # Using node-type=laptop for control plane to ensure local DNS syncing behavior
+        if bash "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
+            --control-plane-ip "$agent_target_ip" \
+            --node-type "laptop" \
+            --node-name "$NODE_NAME" \
+            ${token_args[@]+"${token_args[@]}"}; then
+            log_success "Node Agent installed on Control Plane"
+        else
+            log_warn "Node Agent installation failed"
+            log_warn "You can install it manually later with:"
+            log_warn "  sudo ./scripts/installation/install-node-agent.sh --control-plane-ip 127.0.0.1 --node-type laptop --node-name $NODE_NAME"
+        fi
+    else
+        log_warn "Node Agent installer not found ($PROJECT_ROOT/scripts/installation/install-node-agent.sh)"
+    fi
+}
+
 display_final_credentials_unattended() {
     echo
     echo
@@ -2532,42 +2722,6 @@ display_final_credentials_unattended() {
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-}
-
-configure_passwordless_sudo() {
-    log_info "Configuring passwordless sudo for automation..."
-    
-    # Use ACTUAL_USER which correctly detects the real user even when running with sudo
-    local current_user="$ACTUAL_USER"
-    
-    # Check if already configured
-    if sudo -n true 2>/dev/null; then
-        log_success "Passwordless sudo already configured for $current_user"
-        return 0
-    fi
-    
-    log_info "Setting up passwordless sudo for user: $current_user"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Passwordless Sudo Configuration"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "This allows MyNodeOne scripts to run without password prompts."
-    echo "You'll be prompted for your sudo password ONE LAST TIME."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    # Create sudoers rule
-    echo "$current_user ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/${current_user}-nopasswd" > /dev/null
-    sudo chmod 0440 "/etc/sudoers.d/${current_user}-nopasswd"
-    
-    # Verify it works
-    if sudo -n true 2>/dev/null; then
-        log_success "Passwordless sudo configured successfully"
-    else
-        log_warn "Could not verify passwordless sudo, continuing anyway..."
-    fi
-    echo ""
 }
 
 main() {
@@ -2638,37 +2792,7 @@ main() {
     echo
     log_info "Installing Node Agent on control plane..."
     
-    # Use the local installation script
-    if [ -f "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" ]; then
-        # Fetch the token we just generated/verified
-        local api_token=""
-        if [ -f /etc/mynodeone/api-token ]; then
-            api_token=$(cat /etc/mynodeone/api-token)
-        fi
-        
-        # Determine the best IP for the agent to reach the API
-        # On the control plane, 127.0.0.1 is always safer as a fallback
-        local agent_target_ip="${TAILSCALE_IP:-}"
-        if [ -z "$agent_target_ip" ]; then
-            agent_target_ip=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
-        fi
-        
-        # Run agent installer
-        # Using node-type=laptop for control plane to ensure local DNS syncing behavior
-        if bash "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
-            --control-plane-ip "$agent_target_ip" \
-            --node-type "laptop" \
-            --node-name "$NODE_NAME" \
-            --api-token "$api_token"; then
-            log_success "Node Agent installed on Control Plane"
-        else
-            log_warn "Node Agent installation failed"
-            log_warn "You can install it manually later with:"
-            log_warn "  sudo ./scripts/installation/install-node-agent.sh --control-plane-ip 127.0.0.1 --node-type laptop --node-name $NODE_NAME"
-        fi
-    else
-        log_warn "Node Agent installer not found ($PROJECT_ROOT/scripts/installation/install-node-agent.sh)"
-    fi
+    install_control_plane_node_agent
     echo
     
     # Final sync: Ensure all services are registered and DNS is updated
@@ -2689,44 +2813,44 @@ main() {
             log_warn "Flannel health monitor installation failed (non-critical)"
     fi
     
-    # Configure passwordless sudo for automation
+    # Local backup of the encryption key, tokens and etcd snapshots
+    if [ -f "$PROJECT_ROOT/scripts/backup/backup-control-plane-state.sh" ]; then
+        log_info "Installing control plane state backup..."
+        bash "$PROJECT_ROOT/scripts/backup/backup-control-plane-state.sh" --install || \
+            log_warn "Control plane backup: the timer install or its first backup failed, so this node has no good backup yet. Check the messages above."
+        log_warn "These backups stay on this machine until you set BACKUP_REMOTE in /etc/mynodeone/backup.env"
+    fi
+
+    # Passwordless sudo for kubectl gives this user full control of the cluster, so
+    # the script only adds it with the user's consent. Without it, VPS setup and
+    # management scripts ask for a password or tell you to run this script.
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Final Step: Configuring Passwordless Sudo"
+    echo "  Final Step: Optional Passwordless Sudo for kubectl"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
-    log_info "Setting up passwordless sudo for cluster management..."
-    
+
     if [ -f "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh" ]; then
-        # Run with error handling (don't fail installation if this fails)
-        if bash "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh" 2>&1; then
-            log_success "✓ Passwordless sudo configured successfully"
-        else
-            local exit_code=$?
-            if [ $exit_code -eq 0 ]; then
-                # Exit code 0 means it was already configured
-                log_success "✓ Passwordless sudo already configured"
-            else
-                log_warn "⚠ Passwordless sudo configuration had issues (non-critical)"
-                log_info "This won't affect cluster operation, but VPS sync may require passwords"
-            fi
-        fi
-        
-        # Final verification
-        if sudo -n kubectl version --client &>/dev/null 2>&1; then
-            log_success "✓ Verified: kubectl works without password"
-        else
-            log_warn "⚠ kubectl still requires password"
-            log_info "To fix manually: sudo $SCRIPT_DIR/../setup/setup-control-plane-sudo.sh"
-        fi
+        # Don't fail the installation if this fails
+        bash "$PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh" 2>&1 || {
+            log_warn "Passwordless sudo configuration had issues (non-critical)"
+            log_info "To retry: $PROJECT_ROOT/scripts/setup/setup-control-plane-sudo.sh"
+        }
     else
         log_warn "setup-control-plane-sudo.sh not found, skipping"
     fi
     echo
-    
+
     # In unattended mode, display credentials at the end
     if [ "${UNATTENDED:-0}" = "1" ]; then
         display_final_credentials_unattended
+    fi
+
+    if [ "${#FAILED_COMPONENTS[@]}" -gt 0 ]; then
+        echo
+        log_error "These components did not install cleanly: ${FAILED_COMPONENTS[*]}"
+        log_error "The rest of the install finished. Fix the cause shown above, then run this script again."
+        exit 1
     fi
 }
 

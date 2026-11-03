@@ -130,7 +130,7 @@ if [[ "$APP_TYPE" == "fullstack" ]]; then
     INCLUDE_DATABASE="true"
 fi
 
-clear
+clear 2>/dev/null || true
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🚀 External App Template Generator"
@@ -181,14 +181,14 @@ kubectl get all -n $APP_NAME
 
 \`\`\`bash
 # Build Docker image
-docker build -t your-registry/$APP_NAME:latest .
+docker build -t your-registry/$APP_NAME:1.0.0 .
 
 # Push to registry
-docker push your-registry/$APP_NAME:latest
+docker push your-registry/$APP_NAME:1.0.0
 
 # Update deployment
 kubectl set image deployment/$APP_NAME \\
-  $APP_NAME=your-registry/$APP_NAME:latest \\
+  $APP_NAME=your-registry/$APP_NAME:1.0.0 \\
   -n $APP_NAME
 \`\`\`
 
@@ -278,6 +278,10 @@ log_success "Created kubernetes/00-namespace.yaml"
 
 # Create database if requested
 if [[ "$INCLUDE_DATABASE" == "true" ]]; then
+    # A real generated password, used by both the database and the app's URL.
+    # Hex needs no escaping in a URL. This file is private and git-ignored.
+    DB_PASSWORD=$(openssl rand -hex 24)
+    (umask 077; : > "$OUTPUT_DIR/kubernetes/10-database.yaml")
     cat > "$OUTPUT_DIR/kubernetes/10-database.yaml" << EOF
 ---
 apiVersion: v1
@@ -288,9 +292,9 @@ metadata:
 type: Opaque
 stringData:
   POSTGRES_USER: "$APP_NAME"
-  POSTGRES_PASSWORD: "CHANGE-ME-$(openssl rand -hex 16)"
+  POSTGRES_PASSWORD: "$DB_PASSWORD"
   POSTGRES_DB: "${APP_NAME}_production"
-  DATABASE_URL: "postgresql://$APP_NAME:CHANGE-ME@postgres:5432/${APP_NAME}_production"
+  DATABASE_URL: "postgresql://$APP_NAME:$DB_PASSWORD@postgres:5432/${APP_NAME}_production"
 
 ---
 apiVersion: v1
@@ -325,7 +329,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: postgres:16-alpine
+        image: postgres:16.15-alpine
         ports:
         - containerPort: 5432
         envFrom:
@@ -387,7 +391,7 @@ spec:
     spec:
       containers:
       - name: redis
-        image: redis:7-alpine
+        image: redis:7.4.12-alpine
         ports:
         - containerPort: 6379
         resources:
@@ -436,9 +440,9 @@ spec:
     spec:
       containers:
       - name: web
-        image: nginxinc/nginx-unprivileged:alpine
-        # TODO: Replace with your Docker image
-        # image: your-registry/$APP_NAME:latest
+        image: nginxinc/nginx-unprivileged:1.31.7-alpine
+        # TODO: Replace with your Docker image, using a specific version
+        # image: your-registry/$APP_NAME:1.0.0
         ports:
         - containerPort: 8080
           name: http
@@ -511,7 +515,7 @@ spec:
       containers:
       - name: api
         # TODO: Replace with your API image
-        image: your-registry/${APP_NAME}-api:latest
+        image: your-registry/${APP_NAME}-api:1.0.0
         ports:
         - containerPort: 8000
           name: http
@@ -519,7 +523,7 @@ spec:
         - configMapRef:
             name: ${APP_NAME}-config
 $(if [[ "$INCLUDE_DATABASE" == "true" ]]; then
-cat << 'DBENV'
+cat << DBENV
         - secretRef:
             name: ${APP_NAME}-db-credentials
 DBENV
@@ -598,7 +602,7 @@ spec:
       containers:
       - name: backend
         # TODO: Replace with your backend image
-        image: your-registry/${APP_NAME}-backend:latest
+        image: your-registry/${APP_NAME}-backend:1.0.0
         ports:
         - containerPort: 3000
         envFrom:
@@ -659,7 +663,7 @@ spec:
       containers:
       - name: frontend
         # TODO: Replace with your frontend image
-        image: your-registry/${APP_NAME}-frontend:latest
+        image: your-registry/${APP_NAME}-frontend:1.0.0
         ports:
         - containerPort: 80
         env:
@@ -733,10 +737,15 @@ kubectl apply -f "$APP_DIR/kubernetes/"
 
 echo ""
 echo "⏳ Waiting for deployment..."
-kubectl wait --for=condition=available --timeout=180s \
-    deployment -n "$APP_NAMESPACE" -l app.kubernetes.io/name="$APP_NAME" 2>/dev/null || \
-    kubectl wait --for=condition=available --timeout=180s \
-    deployment -n "$APP_NAMESPACE" --all 2>/dev/null || true
+if ! kubectl wait --for=condition=available --timeout=180s \
+    deployment -n "$APP_NAMESPACE" --all; then
+    echo ""
+    kubectl get pods -n "$APP_NAMESPACE" || true
+    echo ""
+    echo "Error: the app did not become available within 180s"
+    echo "Check why: kubectl describe pods -n $APP_NAMESPACE"
+    exit 1
+fi
 
 echo ""
 echo "📝 Registering with MyNodeOne..."
@@ -780,7 +789,7 @@ log_success "Created scripts/deploy.sh"
 # Create example Dockerfile
 cat > "$OUTPUT_DIR/Dockerfile" << 'DOCKERFILE'
 # Example Dockerfile - customize for your app
-FROM node:20-alpine AS builder
+FROM node:20.20.2-alpine AS builder
 
 WORKDIR /app
 
@@ -791,7 +800,7 @@ COPY . .
 RUN npm run build
 
 # Production image
-FROM node:20-alpine
+FROM node:20.20.2-alpine
 
 WORKDIR /app
 
@@ -818,6 +827,8 @@ build/
 .DS_Store
 .vscode/
 .idea/
+# Holds the generated database password
+kubernetes/10-database.yaml
 GITIGNORE
 
 log_success "Created .gitignore"

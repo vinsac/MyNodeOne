@@ -1,0 +1,4 @@
+#!/bin/bash
+# Fake getent: host lookups find nothing, so tests never reach a resolver.
+[[ "${1:-}" == "hosts" ]] && exit 2
+exec /usr/bin/getent "$@"

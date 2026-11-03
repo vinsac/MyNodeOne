@@ -154,7 +154,7 @@ regardless of which physical node they run on.
 │      │               │         │              │       │
 │  ┌───▼──────┐        │         │        ┌─────▼────┐  │
 │  │flannel.1 │ VXLAN encap      │        │flannel.1 │  │
-│  │ (VXLAN)  ├────────────UDP 8472──────►│ (VXLAN)  │  │
+│  │ (VXLAN)  ├─UDP 8472 inside tunnel───►│ (VXLAN)  │  │
 │  └───┬──────┘        │         │        └─────┬────┘  │
 │      │               │         │              │       │
 │  ┌───▼──────┐        │         │        ┌─────▼────┐  │
@@ -166,6 +166,9 @@ regardless of which physical node they run on.
 
 **Traffic flow**: Pod A (10.42.0.5) → cni0 bridge → flannel.1 → VXLAN encapsulation over
 UDP port 8472 → Tailscale tunnel → flannel.1 on Node 2 → cni0 bridge → Pod B (10.42.2.3)
+
+K3s runs Flannel with `flannel-iface: tailscale0`, so those UDP 8472 packets only travel inside
+the tunnel and never reach a node's public interface.
 
 ### Why Cross-Node Pod Networking Matters
 
@@ -186,15 +189,17 @@ For Flannel VXLAN to work across nodes, UFW must be configured correctly:
 ```bash
 # Required on ALL nodes (control plane AND workers):
 
-# 1. Allow VXLAN encapsulated traffic between nodes
-ufw allow 8472/udp comment 'Flannel VXLAN'
-
-# 2. Allow forwarded/routed packets (critical for pod overlay networking)
+# 1. Allow forwarded/routed packets (critical for pod overlay networking)
 ufw default allow routed
 
-# 3. Allow Tailscale traffic (for node-to-node communication)
+# 2. Allow Tailscale traffic (node-to-node communication, including Flannel VXLAN)
 ufw allow in on tailscale0 comment 'Tailscale mesh network'
 ```
+
+**Why UDP port 8472 has no rule**: VXLAN reaches the node through `tailscale0`, which the second
+rule already allows. Don't open the port. VXLAN has no authentication, so on the public
+interface it would let anyone inject packets into the pod network. The bootstrap and
+`validate-network.sh --fix` remove a rule for it if an older install left one.
 
 **Why `ufw default allow routed` is critical**: Flannel VXLAN packets arrive at a node's
 network interface and must be *forwarded* to the pod's network namespace via the `cni0` bridge.
@@ -306,12 +311,15 @@ ip link show flannel.1
 sudo ufw status verbose | grep "Default:"
 # Must show: "allow (routed)"
 
-# 3. VXLAN port must be open
+# 3. UFW must allow the Tailscale interface, which carries VXLAN
+sudo ufw status | grep tailscale0
+
+# 4. VXLAN's port must NOT be open. This should print nothing.
 sudo ufw status | grep 8472
 
 # Fix if needed (on EVERY node):
 sudo ufw default allow routed
-sudo ufw allow 8472/udp comment 'Flannel VXLAN'
+sudo ufw allow in on tailscale0 comment 'Tailscale mesh network'
 sudo ufw reload
 
 # If flannel.1 is missing, restart K3s:

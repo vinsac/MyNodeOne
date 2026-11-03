@@ -1,0 +1,88 @@
+# Kubernetes audit policy for MyNodeOne (installed to /etc/rancher/k3s/audit-policy.yaml).
+#
+# The API server uses the FIRST rule that matches a request, so order matters:
+#   1. Objects that hold credentials never get logged with their bodies. This
+#      rule stays first so no later rule, for any user, can capture them.
+#   2. High-volume noise is dropped.
+#   3. Writes to cluster configuration keep the request body, on an allow-list.
+#   4. Everything else is Metadata (who, what, when), with no bodies.
+#
+# Pods and workloads (apps, batch) deliberately stay at Metadata, because their
+# specs can contain inline secrets in environment variables.
+#
+# Do not add a RequestResponse rule. Before adding a resource to rule 3, check
+# that its body cannot contain a credential.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+rules:
+  # 1. Credentials: Metadata only, for every user.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources:
+          - secrets
+          - configmaps
+          - serviceaccounts/token
+      - group: "authentication.k8s.io"
+        resources:
+          - tokenreviews
+
+  # 2. Noise: leader election, events, health checks and routine system reads.
+  - level: None
+    resources:
+      - group: "coordination.k8s.io"
+        resources: ["leases"]
+      - group: ""
+        resources: ["events"]
+      - group: "events.k8s.io"
+        resources: ["events"]
+  - level: None
+    nonResourceURLs:
+      - "/healthz*"
+      - "/readyz*"
+      - "/livez*"
+      - "/metrics"
+      - "/version"
+  - level: None
+    verbs: ["get", "list", "watch"]
+    users:
+      - "system:apiserver"
+      - "system:k3s-controller"
+      - "system:kube-controller-manager"
+      - "system:kube-proxy"
+      - "system:kube-scheduler"
+  - level: None
+    verbs: ["get", "list", "watch"]
+    userGroups:
+      - "system:nodes"
+      - "system:serviceaccounts:kube-system"
+      - "system:serviceaccounts:longhorn-system"
+      - "system:serviceaccounts:metallb-system"
+      - "system:serviceaccounts:monitoring"
+  # Longhorn updates its own objects constantly.
+  - level: None
+    userGroups:
+      - "system:serviceaccounts:longhorn-system"
+    resources:
+      - group: "longhorn.io"
+
+  # 3. Writes to cluster configuration keep the request body.
+  - level: Request
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+    resources:
+      - group: ""
+        resources:
+          - namespaces
+          - nodes
+          - services
+          - serviceaccounts
+          - persistentvolumes
+          - persistentvolumeclaims
+      - group: "rbac.authorization.k8s.io"
+      - group: "networking.k8s.io"
+      - group: "admissionregistration.k8s.io"
+
+  # 4. Everything else.
+  - level: Metadata

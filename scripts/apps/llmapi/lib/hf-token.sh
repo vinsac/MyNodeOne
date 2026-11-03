@@ -59,7 +59,7 @@ get_hf_token() {
     
     # 4. Prompt user if requested
     if [[ "$prompt_if_missing" == "true" ]]; then
-        prompt_for_token
+        prompt_for_token || true
         token=$(get_hf_token false)  # Recursively check after prompting
         if [[ -n "$token" ]]; then
             echo "$token"
@@ -87,13 +87,14 @@ prompt_for_token() {
     echo "(Create a 'Read' token - no special permissions needed)"
     echo ""
     
-    local user_token
-    read -p "Enter HuggingFace token (or press Enter to skip): " user_token
+    local user_token status=0
+    read -rsp "Enter HuggingFace token (or press Enter to skip): " user_token
+    echo ""
     
     if [[ -n "$user_token" ]]; then
         # Validate token format
         if [[ "$user_token" == hf_* ]]; then
-            save_token "$user_token"
+            save_token "$user_token" || status=$?
         else
             log_warn "Token doesn't look like a HuggingFace token (should start with 'hf_')"
             log_warn "Continuing without token - downloads may be slower"
@@ -103,11 +104,39 @@ prompt_for_token() {
         log_info "Downloads will work but may be slower for large models"
     fi
     echo ""
+    return "$status"
 }
 
+# Creates or updates Secret hf-token. Call it only with a real token: without one the
+# Secret stays absent, because the pods' optional refs then leave HF_TOKEN unset, where an
+# empty Secret would set it to the empty string.
+#
+# The token goes over stdin, so it isn't in any process's arguments. There's no apply, so
+# no last-applied annotation holds a copy, and replace removes the one an older version
+# left behind. kubectl's output is dropped, so check the status.
+write_hf_secret() {
+    local token="$1" ns="${2:-llmapi}" encoded manifest verb=create
+    [[ -n "$token" ]] || return 1
+    encoded=$(printf '%s' "$token" | base64 -w0)
+    manifest="apiVersion: v1
+kind: Secret
+metadata:
+  name: hf-token
+  namespace: $ns
+type: Opaque
+data:
+  token: $encoded"
+    if kubectl get secret hf-token -n "$ns" &>/dev/null; then
+        verb=replace
+    fi
+    kubectl "$verb" -f - <<<"$manifest" &>/dev/null
+}
+
+# Returns non-zero if the cluster is there but the Secret couldn't be written.
 save_token() {
     local token="$1"
     local saved_locations=()
+    local status=0
     
     if [[ -z "$token" ]]; then
         log_error "No token provided to save"
@@ -124,12 +153,12 @@ save_token() {
     if command -v kubectl &>/dev/null; then
         # Check if namespace exists
         if kubectl get namespace llmapi &>/dev/null 2>&1; then
-            if kubectl create secret generic hf-token -n llmapi \
-                --from-literal=token="$token" \
-                --dry-run=client -o yaml | kubectl apply -f - &>/dev/null; then
+            if write_hf_secret "$token" llmapi; then
                 saved_locations+=("Kubernetes secret (llmapi/hf-token)")
+                log_info "Pods read the token when they start. To use it now: kubectl rollout restart statefulset/vllm -n llmapi"
             else
-                log_warn "Could not save to Kubernetes secret"
+                log_error "Could not save to Kubernetes secret llmapi/hf-token"
+                status=1
             fi
         else
             log_warn "Kubernetes namespace 'llmapi' not found - skipping K8s save"
@@ -138,6 +167,7 @@ save_token() {
     
     log_success "Token saved to: ${saved_locations[*]}"
     export HF_TOKEN="$token"  # Set for current session
+    return "$status"
 }
 
 delete_token() {
@@ -223,9 +253,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             ;;
         "set"|"save")
             if [[ -n "${2:-}" ]]; then
-                save_token "$2"
+                save_token "$2" || exit 1
             else
-                prompt_for_token
+                prompt_for_token || exit 1
             fi
             ;;
         "delete"|"remove"|"unset")
@@ -239,7 +269,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             echo ""
             echo "Usage:"
             echo "  $0 get              Get current token (quiet)"
-            echo "  $0 set [token]      Set token (prompt if not provided)"
+            echo "  $0 set [token]      Set token. Without an argument it prompts, which keeps the"
+            echo "                      token out of your shell history and the process list."
+            echo "                      Also creates Secret llmapi/hf-token, which the Admin UI"
+            echo "                      can update but not create."
             echo "  $0 delete           Delete all stored tokens"
             echo "  $0 status           Show token status from all sources"
             echo "  $0 help             Show this help"

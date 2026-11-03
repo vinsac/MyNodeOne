@@ -13,7 +13,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: minio-local
   hostPath:
-    path: /mnt/minio
+    path: HOST_PATH_PLACEHOLDER
     type: Directory
   nodeAffinity:
     required:

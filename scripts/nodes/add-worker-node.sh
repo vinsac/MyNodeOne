@@ -224,11 +224,11 @@ get_join_token() {
     
     echo
     log_info "Please obtain the K3s token from the control plane node ($CONTROL_PLANE_IP)"
-    log_info "On the control plane, run: sudo cat /var/lib/rancher/k3s/server/node-token"
-    log_info "Or check: $ACTUAL_HOME/mynodeone-join-token.txt"
+    log_info "On the control plane, run: sudo cat /var/lib/rancher/k3s/server/agent-token"
     echo
-    read -p "Enter K3s token: " K3S_TOKEN
-    
+    read -r -s -p "Enter K3s token (input hidden): " K3S_TOKEN
+    echo
+
     if [ -z "$K3S_TOKEN" ]; then
         log_error "Token cannot be empty"
         exit 1
@@ -272,9 +272,16 @@ configure_firewall() {
     # Allow full access on Tailscale interface
     ufw allow in on tailscale0 comment 'Tailscale mesh network'
     
-    # Allow Flannel VXLAN for Kubernetes pod-to-pod networking
-    # Required for multi-node clusters
-    ufw allow 8472/udp comment 'Flannel VXLAN'
+    # Flannel VXLAN needs no rule of its own: join_cluster sets flannel-iface to
+    # tailscale0, so its packets arrive there and the rule above covers them.
+    # Clean up the Anywhere rule that older versions of this script added.
+    if ufw status 2>/dev/null | grep -E '^8472/udp( \(v6\))?[[:space:]]+ALLOW' >/dev/null; then
+        if [ ! -f /etc/rancher/k3s/config.yaml ] || grep -Eq '^flannel-iface:[[:space:]]*"?tailscale0"?[[:space:]]*$' /etc/rancher/k3s/config.yaml; then
+            ufw delete allow 8472/udp || log_warn "Could not remove the 8472/udp UFW rule"
+        else
+            log_warn "Leaving the 8472/udp UFW rule: config.yaml does not set flannel-iface: tailscale0"
+        fi
+    fi
     
     # Default policies
     ufw default deny incoming
@@ -295,7 +302,7 @@ configure_firewall() {
     fi
     
     log_success "Firewall configured (UFW enabled, Kubernetes networking allowed)"
-    log_info "Kubernetes pod routing enabled (VXLAN port 8472/UDP, routed policy allow)"
+    log_info "Kubernetes pod routing enabled (VXLAN over tailscale0, routed policy allow)"
 }
 
 join_cluster() {
@@ -310,6 +317,8 @@ node-ip: "$TAILSCALE_IP"
 flannel-iface: tailscale0
 kubelet-arg:
   - "max-pods=250"
+kube-proxy-arg:
+  - "nodeport-addresses=100.64.0.0/10"  # Tailscale range: NodePorts stay off the LAN
 EOF
     
     # Install K3s agent
@@ -326,69 +335,79 @@ EOF
     log_success "Successfully joined MyNodeOne cluster"
 }
 
-# Configure kubectl on worker node
+# Remove the setup-only kubeconfig when this script ends, however it ends.
+cleanup_setup_kubeconfig() {
+    if [ -n "${SETUP_KUBECONFIG:-}" ] && [ -f "$SETUP_KUBECONFIG" ]; then
+        shred -fz -n 1 "$SETUP_KUBECONFIG" 2>/dev/null || true
+        rm -f "$SETUP_KUBECONFIG"
+    fi
+}
+
+# Give this script's sub-steps cluster access for the length of the setup only.
+# A worker should not keep cluster credentials: the kubeconfig is root-only, on
+# tmpfs in /run, and removed on exit.
 configure_kubectl_worker() {
-    log_info "Configuring kubectl on worker node..."
-    
-    local KUBECONFIG_DEST="$ACTUAL_HOME/.kube/config"
-    
-    # 1. Check if kubectl already works (from interactive-setup)
-    if [ -f "$KUBECONFIG_DEST" ]; then
-        if sudo -u "$ACTUAL_USER" kubectl get nodes &>/dev/null; then
-            log_success "Working kubectl configuration already exists, preserving it."
+    log_info "Configuring temporary kubectl access for setup..."
+
+    local USER_KUBECONFIG="$ACTUAL_HOME/.kube/config"
+
+    # 1. Check if kubectl already works (from an earlier install)
+    if [ -f "$USER_KUBECONFIG" ]; then
+        if KUBECONFIG="$USER_KUBECONFIG" kubectl get nodes &>/dev/null; then
+            export KUBECONFIG="$USER_KUBECONFIG"
+            log_success "Using the existing kubectl configuration for setup."
+            log_warn "$USER_KUBECONFIG keeps cluster credentials on this worker, which it no longer needs after setup."
+            log_warn "Unless you use kubectl from this machine, delete it with: shred -u $USER_KUBECONFIG"
             return 0
         fi
-        log_info "Existing kubeconfig found but cluster access failed. Attempting to fix..."
+        log_info "Existing kubeconfig found but cluster access failed. Using a temporary one."
     fi
+
+    SETUP_KUBECONFIG=$(mktemp /run/mynodeone-setup-kubeconfig.XXXXXX)
+    chmod 600 "$SETUP_KUBECONFIG"
+    trap cleanup_setup_kubeconfig EXIT
 
     # 2. Try to fetch admin k3s.yaml from control plane (most robust)
     if [ -n "${CONTROL_PLANE_IP:-}" ] && [ -n "${CONTROL_PLANE_SSH_USER:-}" ]; then
-        log_info "Attempting to fetch admin kubeconfig from control plane ($CONTROL_PLANE_IP)..."
-        
+        log_info "Attempting to fetch a temporary admin kubeconfig from control plane ($CONTROL_PLANE_IP)..."
+
         # Check if we have SSH access (ssh-copy-id should have been done)
-        if sudo -u "$ACTUAL_USER" ssh -o ConnectTimeout=5 -n "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$KUBECONFIG_DEST.tmp" 2>/dev/null; then
+        if sudo -u "$ACTUAL_USER" ssh -o ConnectTimeout=5 -n "$CONTROL_PLANE_SSH_USER@$CONTROL_PLANE_IP" "sudo cat /etc/rancher/k3s/k3s.yaml" > "$SETUP_KUBECONFIG" 2>/dev/null; then
             # Fix IP address in temp config
-            sed -i "s/127.0.0.1/$CONTROL_PLANE_IP/g" "$KUBECONFIG_DEST.tmp"
-            
+            sed -i "s/127.0.0.1/$CONTROL_PLANE_IP/g" "$SETUP_KUBECONFIG"
+
             # Verify the fetched config
-            if KUBECONFIG="$KUBECONFIG_DEST.tmp" kubectl get nodes &>/dev/null; then
-                mv "$KUBECONFIG_DEST.tmp" "$KUBECONFIG_DEST"
-                chown "$ACTUAL_USER:$ACTUAL_USER" "$KUBECONFIG_DEST"
-                chmod 600 "$KUBECONFIG_DEST"
-                log_success "Admin kubeconfig fetched successfully from control plane."
+            if KUBECONFIG="$SETUP_KUBECONFIG" kubectl get nodes &>/dev/null; then
+                export KUBECONFIG="$SETUP_KUBECONFIG"
+                log_success "Temporary admin kubeconfig ready. It is removed when setup ends."
                 return 0
             fi
-            rm -f "$KUBECONFIG_DEST.tmp"
         fi
         log_warn "Could not fetch admin kubeconfig via SSH."
     fi
 
     # 3. Fallback: Generate limited kubeconfig from local certificates
     # K3s agent nodes don't create /etc/rancher/k3s/k3s.yaml
-    
-    # Create .kube directory
-    mkdir -p "$ACTUAL_HOME/.kube"
-    
-    log_info "Generating fallback kubeconfig from local worker certificates..."
-    
+    log_info "Generating temporary kubeconfig from local worker certificates..."
+
     # Wait for K3s agent to be ready
     sleep 5
-    
+
     # Get cluster CA certificate from K3s server
     local CA_CERT_PATH="/var/lib/rancher/k3s/agent/server-ca.crt"
-    
+
     if [ ! -f "$CA_CERT_PATH" ]; then
         log_error "Could not find K3s server CA certificate at $CA_CERT_PATH"
-        log_warn "kubectl will not be available on this worker node"
+        log_warn "kubectl will not be available during setup"
         return 1
     fi
-    
+
     local CA_CERT=$(cat "$CA_CERT_PATH" | base64 -w 0)
-    
+
     # Get client certificate and key for authentication
     local CLIENT_CERT=""
     local CLIENT_KEY=""
-    
+
     if [ -f "/var/lib/rancher/k3s/agent/client-k3s-controller.crt" ] && [ -f "/var/lib/rancher/k3s/agent/client-k3s-controller.key" ]; then
         CLIENT_CERT=$(cat /var/lib/rancher/k3s/agent/client-k3s-controller.crt | base64 -w 0)
         CLIENT_KEY=$(cat /var/lib/rancher/k3s/agent/client-k3s-controller.key | base64 -w 0)
@@ -405,9 +424,9 @@ configure_kubectl_worker() {
         log_error "Could not find K3s client certificates"
         return 1
     fi
-    
+
     # Create kubeconfig
-    cat > "$KUBECONFIG_DEST" <<EOF
+    cat > "$SETUP_KUBECONFIG" <<EOF
 apiVersion: v1
 kind: Config
 clusters:
@@ -427,20 +446,15 @@ users:
     client-certificate-data: ${CLIENT_CERT}
     client-key-data: ${CLIENT_KEY}
 EOF
-    
-    # Fix ownership
-    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube"
-    
-    # Set permissions
-    chmod 600 "$KUBECONFIG_DEST"
-    
-    log_success "Fallback kubeconfig created at $KUBECONFIG_DEST"
-    
+
+    export KUBECONFIG="$SETUP_KUBECONFIG"
+    log_success "Temporary kubeconfig created. It is removed when setup ends."
+
     # Test kubectl access
-    if sudo -u "$ACTUAL_USER" kubectl get nodes &>/dev/null; then
-        log_success "kubectl configured successfully on worker node"
+    if kubectl get nodes &>/dev/null; then
+        log_success "kubectl access confirmed for setup"
     else
-        log_warn "kubectl configured but cluster access verification failed"
+        log_warn "Temporary kubeconfig created but cluster access verification failed"
         log_warn "Limited permissions may cause issues with GPU/Storage setup"
     fi
 }
@@ -633,14 +647,17 @@ install_node_agent() {
         CP_SSH_USER="${CONTROL_PLANE_USER:-}"
         
         # Call install-config-sync with ssh-user parameter for automatic token fetch
-        # Arguments: node-type control-plane-ip api-token node-name ssh-user
-        if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "$API_TOKEN" "$NODE_NAME" "$CP_SSH_USER"; then
+        # Arguments: node-type control-plane-ip (unused) node-name ssh-user. The token
+        # goes through a temporary file so it stays out of `ps`.
+        # shellcheck source=../lib/node-agent-install.sh
+        source "$PROJECT_ROOT/scripts/lib/node-agent-install.sh"
+        if node_agent_run_with_token_file "$API_TOKEN" bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" worker "$CONTROL_PLANE_IP" "" "$NODE_NAME" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Worker will now pull config updates from control plane"
         else
             log_warn "Node Agent installation had issues"
             log_warn "You can install manually later:"
-            log_warn "  sudo ./scripts/lib/install-config-sync.sh worker $CONTROL_PLANE_IP <api-token>"
+            log_warn "  sudo ./scripts/lib/install-config-sync.sh worker $CONTROL_PLANE_IP --api-token-file <file>"
         fi
     else
         log_warn "Node Agent installer not found, skipping"
@@ -794,12 +811,6 @@ main() {
     # Configure kubectl - REQUIRED for Longhorn disk configuration
     # Must run after labels are applied on control plane
     configure_kubectl_worker
-    
-    # Export KUBECONFIG so sub-scripts can access the cluster
-    if [ -f "$ACTUAL_HOME/.kube/config" ]; then
-        export KUBECONFIG="$ACTUAL_HOME/.kube/config"
-        log_info "KUBECONFIG exported: $KUBECONFIG"
-    fi
     
     # GPU setup - now that kubectl is ready, device plugin can be deployed
     setup_gpu

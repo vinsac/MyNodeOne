@@ -8,10 +8,26 @@
 
 set -euo pipefail
 
+# shellcheck source=../lib/service-registry-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/service-registry-lib.sh"
+
+# A generic alias under either key format. Real per-node entries such as
+# minio-node1/minio have a service field of minio too, so that field can't be used.
+GENERIC_MINIO_JQ='def generic_minio:
+    (.value.legacy_key // .key) as $name
+    | (["minio", "minio-api", "minio-console"] | index($name)) != null;'
+
+remove_generic_minio() {
+    jq -c "$GENERIC_MINIO_JQ"' with_entries(select(generic_minio | not))'
+}
+
 echo "Cleaning up generic MinIO aliases from service registry..."
 
-# Get current service registry
-SERVICES=$(kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' 2>/dev/null || echo '{}')
+# A failed read isn't an empty registry: nothing has been checked yet.
+if ! SERVICES=$(sr_get_services); then
+    echo "✗ Could not read the service registry; nothing changed" >&2
+    exit 1
+fi
 
 if [ "$SERVICES" = "{}" ]; then
     echo "✓ No service registry found (nothing to clean)"
@@ -19,29 +35,30 @@ if [ "$SERVICES" = "{}" ]; then
 fi
 
 # Check for generic aliases
-HAS_GENERIC=$(echo "$SERVICES" | jq 'has("minio") or has("minio-api") or has("minio-console")')
+GENERIC_KEYS=$(jq -r "$GENERIC_MINIO_JQ"' to_entries[] | select(generic_minio) | .key' <<<"$SERVICES")
 
-if [ "$HAS_GENERIC" = "false" ]; then
+if [ -z "$GENERIC_KEYS" ]; then
     echo "✓ No generic MinIO aliases found"
     exit 0
 fi
 
-echo "Found generic MinIO aliases, removing..."
+echo "Found generic MinIO aliases, removing:"
+sed 's/^/  - /' <<<"$GENERIC_KEYS"
 
-# Remove generic entries
-UPDATED=$(echo "$SERVICES" | jq 'del(.minio, .["minio-api"], .["minio-console"])')
-
-# Update ConfigMap
-kubectl create configmap service-registry \
-    --from-literal=services.json="$UPDATED" \
-    --namespace=kube-system \
-    --dry-run=client -o yaml | kubectl apply -f -
+# Remove generic entries. The write is conditional on what was read, so it can't lose
+# another writer's change. A generic entry still backed by a real Service comes back
+# from the next sync.
+if ! sr_update_cm "$SR_SERVICE_CM" "$SR_SERVICE_KEY" remove_generic_minio; then
+    echo "✗ Could not update the service registry; nothing changed" >&2
+    exit 1
+fi
 
 echo "✓ Generic MinIO aliases removed"
 echo ""
 echo "Remaining MinIO services:"
-kubectl get configmap -n kube-system service-registry -o jsonpath='{.data.services\.json}' | \
-    jq -r 'to_entries[] | select(.key | startswith("minio")) | "  - \(.key) → \(.value.subdomain).\(.value.ip // "pending")"'
+sr_get_services | \
+    jq -r 'to_entries[] | select((.value.legacy_key // .key) | startswith("minio")) | "  - \(.key) → \(.value.local_name // .value.subdomain // "unnamed") (\(.value.ip // "pending"))"' || \
+    echo "  (could not read the registry to list them)"
 
 echo ""
 echo "Run DNS sync to update /etc/hosts:"

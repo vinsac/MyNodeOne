@@ -1,0 +1,161 @@
+# Daily pg_dump of the llmapi Postgres database.
+#
+# WARNING: THIS IS NOT AN OFF-MACHINE BACKUP.
+# Dumps go to a PVC on the StorageClass below. With the default, that PVC sits on the
+# same Longhorn disk as the database. It protects against bad migrations, accidental
+# deletes and corruption, but not against losing the disk or the machine. Off-machine
+# storage is still your decision: use a StorageClass backed by other hardware, or copy
+# the dumps out using the steps below.
+#
+# Dumps contain API keys and usage data, so treat every copy as sensitive.
+#
+# APPLY
+#   Default StorageClass (longhorn):
+#     kubectl apply -f scripts/backup/llmapi-postgres-backup.yaml
+#   Another StorageClass:
+#     sed 's/storageClassName: longhorn/storageClassName: <class>/' \
+#       scripts/backup/llmapi-postgres-backup.yaml | kubectl apply -f -
+#   Retention is KEEP_DUMPS below. A PVC's StorageClass can't be changed once created.
+#
+# RUN ONE NOW
+#   kubectl -n llmapi create job llmapi-postgres-backup-manual \
+#     --from=cronjob/llmapi-postgres-backup
+#   kubectl -n llmapi logs -f job/llmapi-postgres-backup-manual
+#
+# LIST OR COPY DUMPS OFF THE MACHINE
+#   kubectl -n llmapi run llmapi-backup-shell --restart=Never --image=postgres:16-alpine \
+#     --overrides='{"spec":{"containers":[{"name":"llmapi-backup-shell","image":"postgres:16-alpine","command":["sleep","3600"],"volumeMounts":[{"name":"backups","mountPath":"/backups","readOnly":true}]}],"volumes":[{"name":"backups","persistentVolumeClaim":{"claimName":"llmapi-postgres-backups"}}]}}'
+#   kubectl -n llmapi wait --for=condition=ready pod/llmapi-backup-shell
+#   kubectl -n llmapi exec llmapi-backup-shell -- ls -l /backups
+#   kubectl -n llmapi cp llmapi-backup-shell:/backups/<dump-file> ./<dump-file>
+#   kubectl -n llmapi delete pod llmapi-backup-shell
+#
+# RESTORE
+#   See scripts/backup/llmapi-postgres-restore-job.yaml. Test it into a scratch database
+#   first: a backup hasn't been proven until it has been restored.
+#
+# The password comes from the llmapi-db Secret that install-llmapi.sh creates. If an
+# install rotates that Secret while the database keeps its old password, this job fails
+# rather than producing a dump, so watch for failed jobs.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llmapi-postgres-backups
+  namespace: llmapi
+  labels:
+    app: llmapi-postgres-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: llmapi-postgres-backup
+  namespace: llmapi
+  labels:
+    app: llmapi-postgres-backup
+spec:
+  schedule: "15 3 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app: llmapi-postgres-backup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            # The postgres user in the alpine image
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: pg-dump
+            # Same major version as the server (scripts/apps/llmapi/manifests/postgres.yaml).
+            # pg_dump can't dump a server newer than itself, so upgrade them together.
+            image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: PGHOST
+              value: llmapi-postgres
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: llmapi
+            - name: PGUSER
+              value: llmapi
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: llmapi-db
+                  key: postgres-password
+            - name: BACKUP_DIR
+              value: /backups
+            - name: KEEP_DUMPS
+              value: "14"
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -eu
+              umask 077
+              cd "$BACKUP_DIR"
+              rm -f .llmapi-*.tmp
+
+              stamp=$(date -u +%Y%m%dT%H%M%SZ)
+              dump="llmapi-$stamp.dump"
+              tmp=".llmapi-$stamp.tmp"
+              trap 'rm -f "$tmp"' EXIT
+
+              pg_dump --format=custom --file="$tmp"
+              test -s "$tmp"
+              # A dump that can't be listed can't be restored, so it must not replace anything
+              pg_restore --list "$tmp" > /dev/null
+              sha256sum "$tmp" | sed "s|$tmp|$dump|" > "$dump.sha256"
+              mv "$tmp" "$dump"
+              trap - EXIT
+
+              # Old dumps are removed by count, only after a good dump, so repeated
+              # failures can't age the last good one out
+              test "$KEEP_DUMPS" -ge 1
+              ls -1 llmapi-*.dump | sort -r | tail -n +"$((KEEP_DUMPS + 1))" | while IFS= read -r old; do
+                rm -f -- "$old" "$old.sha256"
+              done
+
+              echo "Wrote $dump ($(wc -c < "$dump") bytes)"
+              ls -l llmapi-*.dump
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+            volumeMounts:
+            - name: backups
+              mountPath: /backups
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "1000m"
+          volumes:
+          - name: backups
+            persistentVolumeClaim:
+              claimName: llmapi-postgres-backups

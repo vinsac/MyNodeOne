@@ -15,6 +15,7 @@ source "$SCRIPT_DIR/../../lib/project-root.sh"
 
 # Load shared validation library
 source "$SCRIPT_DIR/../lib/validation.sh"
+source "$SCRIPT_DIR/../lib/install-helpers.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -104,6 +105,10 @@ NAMESPACE="jellyfin"
 STORAGE_CONFIG="50Gi"
 STORAGE_MEDIA="500Gi"  # Adjust based on your media library size
 
+# Override with JELLYFIN_IMAGE. Re-running keeps the running version.
+app_resolve_image JELLYFIN_IMAGE "$NAMESPACE" jellyfin jellyfin \
+    "jellyfin/jellyfin:12.4.20261026-211555" "${JELLYFIN_IMAGE:-}"
+
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -158,7 +163,7 @@ spec:
       priorityClassName: mynodeone-app
       containers:
       - name: jellyfin
-        image: jellyfin/jellyfin:latest
+        image: $JELLYFIN_IMAGE
         ports:
         - containerPort: 8096
           name: http
@@ -220,6 +225,7 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo ""
 echo "📍 Access Jellyfin at: http://$SERVICE_IP"
 echo ""
+app_warn_first_user_admin "Jellyfin" "http://$SERVICE_IP"
 echo "🎬 First Time Setup:"
 echo "   1. Open the URL above in your browser"
 echo "   2. Follow the setup wizard"
@@ -254,9 +260,9 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             
             # Verify registration
             echo "🔍 Verifying registration..."
-            REGISTERED_LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
-                -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-                jq -r '.jellyfin.local_name' 2>/dev/null || echo "")
+            # shellcheck source=../../lib/service-registry-lib.sh
+            source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+            REGISTERED_LOCAL_NAME=$(sr_service_field "$NAMESPACE/jellyfin" local_name 2>/dev/null || echo "")
             
             if [ "$REGISTERED_LOCAL_NAME" = "$APP_SUBDOMAIN" ]; then
                 echo "✓ Verified: Service registered with local_name '$APP_SUBDOMAIN'"

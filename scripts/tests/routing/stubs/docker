@@ -1,0 +1,13 @@
+#!/bin/bash
+# Fake docker. Traefik is running unless $FAKE_DOCKER/stopped exists.
+set -u
+printf '%s\n' "$*" >>"${FAKE_DOCKER:?}/calls.log"
+case "$*" in
+    ps*)
+        if [[ -e "$FAKE_DOCKER/stopped" ]]; then
+            exit 0
+        fi
+        echo "traefik"
+        ;;
+esac
+exit 0

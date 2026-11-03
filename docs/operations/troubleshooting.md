@@ -9,23 +9,23 @@
 mynodeone-node-agent: line 43: /usr/local/bin/config-paths.sh: No such file or directory
 ```
 
-**Root Cause**: Missing dependency file during Node Agent installation
+**Root Cause**: An old copy of the agent is installed. The current agent
+(`scripts/lib/node-agent.sh`) is a single file that doesn't load `config-paths.sh`, so don't
+copy that file into `/usr/local/bin`: it would leave the old agent running.
 
-**Solution**:
+**Solution**: Reinstall the agent from an up-to-date checkout. This replaces
+`/usr/local/bin/mynodeone-node-agent` and its unit, and restarts it. It reuses the token in
+`/etc/mynodeone/agent.env` if there is one; if not, add `--api-token-file <file>`.
 ```bash
-# Copy missing dependency
-sudo cp ~/mynodeone/scripts/lib/config-paths.sh /usr/local/bin/
-sudo chmod +x /usr/local/bin/config-paths.sh
-sudo chown root:root /usr/local/bin/config-paths.sh
-
-# Restart Node Agent
-sudo systemctl restart mynodeone-node-agent
+cd ~/MyNodeOne && git pull
+sudo ./scripts/installation/install-node-agent.sh \
+    --control-plane-ip <control-plane-ip> \
+    --node-name "$(hostname)" \
+    --node-type <vps|worker|laptop>
 
 # Verify it's running
 sudo systemctl status mynodeone-node-agent
 ```
-
-**Prevention**: Fixed in install-node-agent.sh (commit 01dfe16)
 
 ### Heartbeat Not Reaching Control Plane
 
@@ -465,13 +465,14 @@ Error: "record diskUUID doesn't match the one on the disk"
 kubectl get nodes.longhorn.io <worker-node> -n longhorn-system -o yaml | grep -A 10 "diskStatus"
 ```
 
-**Solution**: Delete Longhorn node resource to re-detect disk
-```bash
-# Delete the Longhorn node resource (data on disk is preserved)
-kubectl delete nodes.longhorn.io <worker-node> -n longhorn-system
+**Solution**: Do not delete the Longhorn node resource as a first step. Recreating it keeps only the disk at `default-data-path`, so any other disks leave `spec.disks`, which puts single-replica volumes at risk.
 
-# Longhorn will automatically recreate the node resource with correct UUID
-# Verify disk shows up correctly in Longhorn UI
+1. Confirm the disk is mounted (`mountpoint <disk-path>`). A disk that failed to mount looks the same as a reformatted one.
+2. Run `scripts/storage/longhorn/install-interactive.sh`. It reports real UUID mismatches and prints the manual steps for that node. It never deletes the node resource itself.
+3. Follow those steps only after confirming no replicas remain on the node:
+```bash
+kubectl get replicas.longhorn.io -n longhorn-system -o json | \
+  jq -r --arg n "<worker-node>" '.items[] | select(.spec.nodeID == $n) | .metadata.name'
 ```
 
 ### MinIO Storage Issues
@@ -724,10 +725,14 @@ ip link show flannel.1
 sudo ufw status verbose | grep "Default:"
 # Must show: "allow (routed)" — NOT "deny (routed)"
 
-# 3. Check VXLAN port is open
+# 3. Check UFW allows the Tailscale interface, which carries VXLAN
+sudo ufw status | grep tailscale0
+# Must show: "Anywhere on tailscale0  ALLOW  Anywhere"
+
+# 4. Check VXLAN's port is NOT open. This should print nothing.
 sudo ufw status | grep 8472
 
-# 4. Test cross-node pod ping
+# 5. Test cross-node pod ping
 kubectl run test-ping --image=busybox:1.35 --restart=Never --rm -i \
   --command -- ping -c 3 <pod-ip-on-other-node>
 ```
@@ -744,9 +749,14 @@ kubectl run test-ping --image=busybox:1.35 --restart=Never --rm -i \
 ```bash
 # On EVERY node (control plane AND workers):
 sudo ufw default allow routed
-sudo ufw allow 8472/udp comment 'Flannel VXLAN'
+sudo ufw allow in on tailscale0 comment 'Tailscale mesh network'
 sudo ufw reload
 ```
+
+Don't open UDP port 8472. Flannel runs over Tailscale (`flannel-iface: tailscale0`), so VXLAN
+already arrives through the `tailscale0` rule. VXLAN has no authentication, so on the public
+interface that port would let anyone inject packets into the pod network. If an older install
+left a rule for it, `sudo bash scripts/validation/validate-network.sh --fix` removes it.
 
 #### Flannel Interface Missing
 ```
@@ -774,7 +784,7 @@ kubectl get pods -n longhorn-system -l app=longhorn-csi-plugin
 **Cause**: CSI plugin on worker cannot reach `longhorn-backend` service on control plane
 due to broken cross-node networking.
 
-**Solution**: Fix the networking (UFW routed policy + VXLAN port) — once cross-node
+**Solution**: Fix the networking (UFW routed policy + `tailscale0` rule) — once cross-node
 communication works, CSI plugin will automatically recover.
 
 #### Automated Fix
@@ -791,7 +801,7 @@ auto-recovers missing Flannel interfaces.
 
 #### Other Structural Root Causes to Check
 
-If cross-node pod networking fails again (even with UFW routed + VXLAN open),
+If cross-node pod networking fails again (even with UFW routed + `tailscale0` allowed),
 check these **structural** causes that are independent of replica count:
 
 1. **Tailscale interface not ready at K3s startup**
@@ -842,7 +852,7 @@ check these **structural** causes that are independent of replica count:
 
 After a full OS reinstall of worker node `canada-pc-0002`, multiple networking issues
 prevented cross-node pod communication, Longhorn CSI functionality, and local DNS resolution.
-The root causes were **structural networking gaps** (UFW routed policy + VXLAN port) and
+The root causes were **structural networking gaps** (UFW routed policy + VXLAN blocked) and
 a **missing Flannel interface** on the control plane. These issues were **latent** in the
 installation scripts and were exposed when Longhorn replica count was set to 1.
 
@@ -863,9 +873,11 @@ installation scripts and were exposed when Longhorn replica count was set to 1.
    - Blocked all forwarded pod traffic despite routes being present
    - Fix: `sudo ufw default allow routed` (both nodes)
 
-3. **UFW missing VXLAN port 8472/UDP**
+3. **UFW blocking VXLAN**
    - Flannel overlay traffic blocked
-   - Fix: `sudo ufw allow 8472/udp` (both nodes)
+   - The fix at the time was to open the port on both nodes. That is no longer correct:
+     Flannel now runs over `tailscale0`, the `tailscale0` rule carries it, and the port
+     stays closed. See [UFW Blocking Pod Traffic](#ufw-blocking-pod-traffic-most-common).
 
 4. **Tailscale subnet routes missing on worker (minor)**
    - Broke access to MetalLB IPs, but not Longhorn (ClusterIP)
@@ -899,7 +911,7 @@ Networking Issues Diagnosed:   Feb 15 16:00-21:00
 ##### Structural Fix Implemented
 
 1. **UFW routed policy = allow**
-2. **VXLAN port 8472/UDP open**
+2. **VXLAN carried over Tailscale** (`flannel-iface: tailscale0`, `ufw allow in on tailscale0`), with UDP port 8472 closed
 3. **Flannel interface monitored** (auto-recovery)
 4. **Network validation added** (post-install checks)
 

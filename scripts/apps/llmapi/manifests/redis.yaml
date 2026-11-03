@@ -20,6 +20,12 @@ metadata:
     app: redis
 spec:
   replicas: 1
+  # One writer on the ReadWriteOnce volume. rollingUpdate: null clears the default
+  # left on Deployments created before this was set; the API rejects the
+  # combination otherwise.
+  strategy:
+    type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       app: redis
@@ -40,14 +46,22 @@ spec:
         ports:
         - containerPort: 6379
           name: redis
+        # requirepass goes in through stdin so the password stays out of the pod spec
+        # and out of the process arguments. redis-cli reads REDISCLI_AUTH, which
+        # covers the probes below and any `kubectl exec ... redis-cli`.
         command:
-        - redis-server
-        - --appendonly
-        - "yes"
-        - --maxmemory
-        - "2gb"
-        - --maxmemory-policy
-        - allkeys-lru
+        - /bin/sh
+        - -c
+        - |
+          exec redis-server - --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru <<EOF
+          requirepass ${REDISCLI_AUTH}
+          EOF
+        env:
+        - name: REDISCLI_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: llmapi-redis-auth
+              key: password
         resources:
           requests:
             memory: "512Mi"
@@ -64,20 +78,27 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /data
+        # Check the reply, not the exit code: redis-cli can exit 0 on an error reply,
+        # which would hide a NOAUTH. LOADING counts as alive so a large AOF replay
+        # is not killed partway, but the pod only becomes Ready on PONG.
         livenessProbe:
           exec:
             command:
-            - redis-cli
-            - ping
+            - /bin/sh
+            - -c
+            - 'case "$(redis-cli ping)" in PONG|LOADING*) exit 0;; *) exit 1;; esac'
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 3
         readinessProbe:
           exec:
             command:
-            - redis-cli
-            - ping
+            - /bin/sh
+            - -c
+            - '[ "$(redis-cli ping)" = "PONG" ]'
           initialDelaySeconds: 5
           periodSeconds: 3
+          timeoutSeconds: 3
       volumes:
       - name: data
         persistentVolumeClaim:

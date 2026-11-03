@@ -38,7 +38,7 @@ for domain in "${DOMAIN_ARRAY[@]}"; do
         echo "  ✓ $FQDN already in trusted domains"
     else
         # Find next available index
-        local index=2
+        index=2
         while kubectl exec -n nextcloud deployment/nextcloud -- \
             su -s /bin/bash www-data -c \
             "php occ config:system:get trusted_domains $index" 2>/dev/null | grep -v "not set" &>/dev/null; do

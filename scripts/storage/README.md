@@ -8,19 +8,24 @@ Component-based modular scripts for managing MyNodeOne storage architecture.
 scripts/storage/
 ├── README.md (this file)
 ├── examples/          # Example manifests for storage usage
+├── lib/
+│   └── disk-safety.sh # Checks every disk wipe goes through
+├── tests/             # Stubbed tests; never touch real disks or the cluster
 ├── longhorn/          # Longhorn block storage scripts
 │   ├── install-interactive.sh
 │   ├── test-storageclass.sh
 │   └── LONGHORN-SETTINGS.md
 ├── minio/             # MinIO object storage scripts
 │   ├── install-minio.sh
+│   ├── cleanup-node-minio.sh  # Report or remove a removed node's resources
 │   ├── manifests/     # YAML templates (namespace, PV, PVC, etc.)
 │   ├── CREDENTIALS.md
 │   ├── README.md
 │   └── SERVICE-DISCOVERY.md
-└── velero/            # Velero backup scripts (reference only)
+└── velero/            # Velero backup scripts (not called by any installer)
     ├── install.sh
-    └── configure-backup.sh
+    ├── configure-backup.sh
+    └── backup.env.example  # Backup destination settings; there's no default
 ```
 
 ## Architecture Overview
@@ -48,8 +53,8 @@ Current State:
 **Purpose:** Install MinIO object storage on any node (control plane or worker)
 
 **What it does:**
-- Detects available disks
-- Formats and mounts selected disk (or uses OS folder)
+- Lists disks that can be safely formatted, and explains why others can't
+- Formats and mounts the selected disk after you type its full device name (or uses OS folder or an existing mount)
 - Generates unique credentials per node
 - Deploys MinIO as Kubernetes StatefulSet
 - Registers in service discovery with .local domain
@@ -171,6 +176,28 @@ kubectl get all --all-namespaces -o yaml > cluster-backup-$(date +%Y%m%d).yaml
 # Backup ConfigMaps and Secrets
 kubectl get configmaps,secrets --all-namespaces -o yaml > config-backup-$(date +%Y%m%d).yaml
 ```
+
+## Disk Safety
+
+`install-minio.sh` and `longhorn/install-interactive.sh` erase disks only through `lib/disk-safety.sh`:
+
+- **Never erased:** the disk holding the root filesystem (including through LVM, LUKS or RAID), and disks that are mounted, used as swap, members of LVM or RAID, listed in `/etc/fstab`, or network-attached. There's no override: unmount and clean them up yourself first.
+- **Second confirmation:** disks with other filesystems, partition tables or partitions.
+- **Always:** you see model, serial, size, filesystem, label and mountpoints, and type the full device name. A run without a terminal erases nothing.
+
+Tests: `bash scripts/storage/tests/run-all.sh`. They use stubs and need no root access.
+
+## Node Removal
+
+Removing a node leaves its `minio-<node>` namespace, PVC and PV behind. To see them, or remove them after a typed confirmation:
+
+```bash
+./scripts/storage/minio/cleanup-node-minio.sh --list
+./scripts/storage/minio/cleanup-node-minio.sh --node <name>
+./scripts/storage/minio/cleanup-node-minio.sh --node <name> --delete
+```
+
+Files on the removed node's disk are never touched.
 
 ## Troubleshooting
 

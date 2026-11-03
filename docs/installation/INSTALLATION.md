@@ -61,7 +61,7 @@ Learn how to:
 
 **Important for Multi-Node Clusters:** If you plan to add worker nodes later, the following network requirements apply:
 
-- **Port 8472/UDP**: Required for Flannel VXLAN (Kubernetes pod-to-pod networking)
+- **Tailscale interface allowed in UFW**: Flannel VXLAN (Kubernetes pod-to-pod networking) runs over `tailscale0`, so port 8472/UDP needs no UFW rule of its own and must not be opened
 - **UFW Routed Policy**: Must be set to `allow` for pod traffic forwarding
 - **Tailscale VPN**: Used for secure node-to-node communication
 - **Kernel networking + forwarding**: Installer enables `vxlan`, `br_netfilter`, and forwarding sysctls
@@ -71,7 +71,7 @@ Learn how to:
 
 **Technical Details** (for advanced users):
 - K3s uses Flannel CNI with VXLAN backend for container networking
-- VXLAN encapsulates pod traffic over UDP port 8472 between nodes
+- VXLAN encapsulates pod traffic over UDP port 8472 between nodes, inside the Tailscale tunnel (`flannel-iface: tailscale0`)
 - UFW's `routed` policy must allow forwarded packets for cross-node pod communication
 - Even single-node clusters are configured for multi-node expansion
 
@@ -622,10 +622,10 @@ sudo ./scripts/operations/manage-app-visibility.sh
 
 # Command Line Example:
 # Make demo app public on both root and subdomain
-sudo ./scripts/operations/manage-app-visibility.sh public demo "example.com,www.example.com"
+sudo ./scripts/operations/manage-app-visibility.sh public demo "example.com,www.example.com" "YOUR_VPS_TAILSCALE_IP"
 
 # Make LLM chat public (Open WebUI)
-sudo ./scripts/operations/manage-app-visibility.sh public open-webui "chat.example.com"
+sudo ./scripts/operations/manage-app-visibility.sh public open-webui "chat.example.com" "YOUR_VPS_TAILSCALE_IP"
 ```
 
 In these commands:
@@ -633,7 +633,7 @@ In these commands:
 - `public` tells the script to make the service accessible from the internet (use `private` to make it local-only again).
 - `demo` or `open-webui` is the internal service name.
 - `"example.com,www.example.com"` is the list of full URLs where the service will be exposed.
-- `YOUR_VPS_TAILSCALE_IP` (optional) can be passed if you want to restrict exposure to specific VPS nodes.
+- `YOUR_VPS_TAILSCALE_IP` is the VPS that serves the route (separate several with commas). It's required: without it, or without the URLs, the script only marks the service public in the registry and configures no route.
 
 **What happens automatically:**
 1. Service is marked as `public: true` in the registry.
@@ -960,7 +960,10 @@ sudo systemctl restart mynodeone-node-agent
 cd MyNodeOne
 # Get control plane IP and API token from your config
 source ~/.mynodeone/config.env
-sudo ./scripts/lib/install-config-sync.sh laptop "$CONTROL_PLANE_IP" "$API_TOKEN"
+TOKEN_FILE=$(mktemp)
+printf '%s\n' "$API_TOKEN" >"$TOKEN_FILE"
+sudo ./scripts/lib/install-config-sync.sh laptop "$CONTROL_PLANE_IP" --api-token-file "$TOKEN_FILE"
+rm -f "$TOKEN_FILE"
 ```
 
 ### Issue: Laptop was offline, now DNS is stale
@@ -1029,7 +1032,7 @@ The script then:
 
 **Automatic Configuration:** The worker node installation script automatically configures:
 
-- **Port 8472/UDP**: For Flannel VXLAN (Kubernetes pod-to-pod networking)
+- **Tailscale interface allowed in UFW**: Carries Flannel VXLAN (Kubernetes pod-to-pod networking), so port 8472/UDP stays closed
 - **UFW Routed Policy**: Set to `allow` for cross-node pod traffic
 - **UFW Firewall**: Allows SSH (22/tcp), Tailscale, and Kubernetes networking
 - **Kernel networking + forwarding**: Loads `vxlan`, `br_netfilter` and enables forwarding sysctls
@@ -1053,8 +1056,8 @@ sudo kubectl get nodes
 # Expected: Control plane node showing "Ready"
 
 # Get the join token (you'll need this!)
-cat ~/mynodeone-join-token.txt
-# Copy and save this token
+sudo cat /var/lib/rancher/k3s/server/agent-token
+# Copy it for the worker's installer. There's no need to save it anywhere else.
 
 # Get control plane Tailscale IP (you'll need this!)
 tailscale ip -4
@@ -1266,7 +1269,7 @@ sudo ./scripts/installation/install-mynodeone.sh
 1. **Ready to start?** → `y`
 2. **Select node type (1-4):** → `2` (Worker Node)
 3. **Control plane Tailscale IP:** → Enter the IP you noted earlier (e.g., `100.116.16.117`)
-4. **K3s join token:** → Paste the token from `~/mynodeone-join-token.txt` on control plane
+4. **K3s join token:** → Paste the output of `sudo cat /var/lib/rancher/k3s/server/agent-token` from the control plane
 5. **Worker node name:** → Enter a name (e.g., `worker-01`, `gaming-pc`, `node-002`)
 6. **Location:** → Optional label (e.g., `home`, `garage`, `office`)
 

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Fake sudo: runs the command as the current user, so a test can't touch anything
+# that user couldn't.
+while (($#)); do
+    case "$1" in
+        -u) shift 2 ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+exec "$@"

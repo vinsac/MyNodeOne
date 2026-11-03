@@ -616,9 +616,9 @@
                 'mattermost': 'sudo ./scripts/apps/mattermost/install-mattermost.sh',
                 'paperless': 'sudo ./scripts/apps/paperless/install-paperless.sh',
                 'homepage': 'sudo ./scripts/apps/homepage/install-homepage.sh',
-                'llm-chat': 'sudo ./scripts/deploy-llm-chat.sh',
+                'llm-chat': 'sudo ./scripts/apps/llm-chat/install-llm-chat.sh',
                 'llmapi': 'sudo ./scripts/apps/llmapi/install-llmapi.sh',
-                'minio': 'sudo ./scripts/apps/minio/install-minio.sh'
+                'minio': 'sudo ./scripts/storage/minio/install-minio.sh'
             };
             
             const appUrls = {
@@ -671,6 +671,13 @@
             }
         }
         
+        // Node names, roles and versions come from the cluster, so they must never be
+        // treated as markup when building HTML strings.
+        function escapeHtml(value) {
+            const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return String(value ?? '').replace(/[&<>"']/g, ch => entities[ch]);
+        }
+
         function updateClusterOverview(clusterData) {
             // Update System Health card on home page
             const systemHealthElement = document.getElementById('system-health-content');
@@ -690,17 +697,17 @@
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
                         <div style="font-size: 2em; color: #007bff; margin-bottom: 5px;">🔗</div>
                         <div style="font-size: 1.1em; font-weight: 600; color: #333;">Services</div>
-                        <div style="font-size: 0.9em; color: #666;">${clusterData.services ? clusterData.services.running || 0 : 0} Running</div>
+                        <div style="font-size: 0.9em; color: #666;">${escapeHtml(clusterData.services ? clusterData.services.running || 0 : 0)} Running</div>
                     </div>
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
                         <div style="font-size: 2em; color: #ffc107; margin-bottom: 5px;">💻</div>
                         <div style="font-size: 1.1em; font-weight: 600; color: #333;">Nodes</div>
-                        <div style="font-size: 0.9em; color: #666;">${clusterData.nodes.ready} Ready</div>
+                        <div style="font-size: 0.9em; color: #666;">${escapeHtml(clusterData.nodes.ready)} Ready</div>
                     </div>
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center;">
                         <div style="font-size: 2em; color: #17a2b8; margin-bottom: 5px;">📦</div>
                         <div style="font-size: 1.1em; font-weight: 600; color: #333;">Pods</div>
-                        <div style="font-size: 0.9em; color: #666;">${clusterData.pods.running} Active</div>
+                        <div style="font-size: 0.9em; color: #666;">${escapeHtml(clusterData.pods.running)} Active</div>
                     </div>
                 `;
             }
@@ -725,15 +732,15 @@
                     nodesHtml += `
                         <div class="node-item" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid ${statusColor};">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <div style="font-weight: 600; color: #333;">${node.name}</div>
+                                <div style="font-weight: 600; color: #333;">${escapeHtml(node.name)}</div>
                                 <div style="background: ${statusColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">${statusText}</div>
                             </div>
-                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">${roles} • ${node.os}</div>
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">${escapeHtml(roles)} • ${escapeHtml(node.os)}</div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em;">
-                                <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${cpuUsage}%</span></div>
-                                <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${ramUsage}%</span></div>
+                                <div>CPU: <span style="color: ${cpuUsage > 70 ? '#dc3545' : cpuUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${escapeHtml(cpuUsage)}%</span></div>
+                                <div>RAM: <span style="color: ${ramUsage > 70 ? '#dc3545' : ramUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${escapeHtml(ramUsage)}%</span></div>
                                 <div>Storage: <span style="color: ${storageUsage > 70 ? '#dc3545' : storageUsage > 40 ? '#ffc107' : '#28a745'}; font-weight: 600;">${storageUsage}%</span></div>
-                                <div>K8s: <span style="color: #333; font-weight: 600;">${node.kubernetes}</span></div>
+                                <div>K8s: <span style="color: #333; font-weight: 600;">${escapeHtml(node.kubernetes)}</span></div>
                             </div>
                         </div>
                     `;

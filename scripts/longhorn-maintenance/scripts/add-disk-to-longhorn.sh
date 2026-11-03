@@ -1,4 +1,7 @@
+#!/bin/bash
+
 # Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh"
 source "$PROJECT_ROOT/scripts/lib/k8s-utils.sh"
 
@@ -61,7 +64,7 @@ echo
 
 # Show currently configured Longhorn disks
 log_info "Currently configured Longhorn disks:"
-kubectl -n longhorn-system get node "$NODE_NAME" -o jsonpath='{.spec.disks}' | jq -r 'to_entries | .[] | "  • \(.key): \(.value.path)"' 2>/dev/null || echo "  (none)"
+kubectl -n longhorn-system get nodes.longhorn.io "$NODE_NAME" -o jsonpath='{.spec.disks}' | jq -r 'to_entries | .[] | "  • \(.key): \(.value.path)"' 2>/dev/null || echo "  (none)"
 echo
 
 # Show available mounted disks
@@ -99,7 +102,7 @@ fi
 DISK_NAME="disk-$(basename "$DISK_PATH")"
 
 # Check if already added
-if kubectl -n longhorn-system get node "$NODE_NAME" -o json | jq -e ".spec.disks.\"$DISK_NAME\"" &> /dev/null; then
+if kubectl -n longhorn-system get nodes.longhorn.io "$NODE_NAME" -o json | jq -e ".spec.disks.\"$DISK_NAME\"" &> /dev/null; then
     log_warn "Disk $DISK_NAME is already configured in Longhorn"
     read -p "Do you want to update it? [y/N]: " -n 1 -r
     echo
@@ -128,7 +131,7 @@ fi
 # Add disk to Longhorn
 log_info "Adding disk to Longhorn..."
 
-kubectl -n longhorn-system patch node "$NODE_NAME" --type='json' -p="[
+kubectl -n longhorn-system patch nodes.longhorn.io "$NODE_NAME" --type='json' -p="[
     {
         \"op\": \"add\",
         \"path\": \"/spec/disks/$DISK_NAME\",
@@ -160,5 +163,5 @@ fi
 
 echo
 log_info "Current Longhorn disks:"
-kubectl -n longhorn-system get node "$NODE_NAME" -o jsonpath='{.spec.disks}' | jq -r 'to_entries | .[] | "  • \(.key): \(.value.path)"'
+kubectl -n longhorn-system get nodes.longhorn.io "$NODE_NAME" -o jsonpath='{.spec.disks}' | jq -r 'to_entries | .[] | "  • \(.key): \(.value.path)"'
 echo

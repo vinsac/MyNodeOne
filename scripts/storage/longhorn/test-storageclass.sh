@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -55,7 +57,7 @@ test_function_definitions() {
 test_bootstrap_error_handling() {
     print_test "Testing bootstrap script error handling..."
     
-    local bootstrap_script="/home/vinaysachdeva1/MyNodeOne/scripts/installation/bootstrap-control-plane.sh"
+    local bootstrap_script="$REPO_ROOT/scripts/installation/bootstrap-control-plane.sh"
     
     if grep -q "if bash.*install-interactive.sh.*;" "$bootstrap_script"; then
         print_success "Bootstrap script has error handling for Longhorn installation"
@@ -78,7 +80,7 @@ test_bootstrap_error_handling() {
 test_graceful_degradation() {
     print_test "Testing graceful degradation implementation..."
     
-    local install_script="/home/vinaysachdeva1/MyNodeOne/scripts/storage/longhorn/install-interactive.sh"
+    local install_script="$REPO_ROOT/scripts/storage/longhorn/install-interactive.sh"
     
     if grep -q "Continuing with installation (StorageClass can be fixed later)" "$install_script"; then
         print_success "Graceful degradation implemented"
@@ -101,7 +103,7 @@ test_graceful_degradation() {
 test_configmap_fix() {
     print_test "Testing ConfigMap-based fix implementation..."
     
-    local install_script="/home/vinaysachdeva1/MyNodeOne/scripts/storage/longhorn/install-interactive.sh"
+    local install_script="$REPO_ROOT/scripts/storage/longhorn/install-interactive.sh"
     
     if grep -q "longhorn-storageclass.*ConfigMap" "$install_script"; then
         print_success "ConfigMap-based fix implemented"

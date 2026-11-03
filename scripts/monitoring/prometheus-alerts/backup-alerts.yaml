@@ -1,0 +1,78 @@
+# These alerts report that backups are missing or old. They fire until backups exist,
+# because that is the true state of the cluster.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mynodeone-backups
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: mynodeone.backups
+      rules:
+        # Written by scripts/backup/backup-control-plane-state.sh through node-exporter.
+        - alert: ControlPlaneBackupMissing
+          expr: absent(mynodeone_backup_last_success_timestamp_seconds{backup="control-plane-state"})
+          for: 6h
+          labels:
+            severity: warning
+          annotations:
+            summary: No control plane state backup has been recorded
+            description: >-
+              Losing this machine's disk would lose the encryption key and etcd snapshots.
+              Install the timer with scripts/backup/backup-control-plane-state.sh --install.
+              A run only records a success if the archive holds the server token and a recent
+              etcd snapshot, so on a new cluster this can fire until the first daily run after
+              the first snapshot. Otherwise check journalctl -u mynodeone-state-backup.service.
+        - alert: ControlPlaneBackupStale
+          expr: time() - mynodeone_backup_last_success_timestamp_seconds{backup="control-plane-state"} > 2 * 86400
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: The last good control plane state backup is over 2 days old
+            description: >-
+              Check it with journalctl -u mynodeone-state-backup.service on the control plane.
+              A run without the server token or a recent etcd snapshot fails and isn't counted.
+        - alert: ControlPlaneBackupNotOffMachine
+          expr: mynodeone_backup_remote_copy_enabled{backup="control-plane-state"} == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: Control plane backups exist only on this machine
+            description: These backups do not survive losing the machine. Set BACKUP_REMOTE in /etc/mynodeone/backup.env.
+
+        # Any CronJob with backup, dump or snapshot in its name. Assumes a daily
+        # schedule; rename or exclude a job that runs less often than every 2 days.
+        - alert: BackupCronJobStale
+          expr: time() - kube_cronjob_status_last_successful_time{cronjob=~".*(backup|dump|snapshot).*"} > 2 * 86400
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Backup job {{ $labels.namespace }}/{{ $labels.cronjob }} has not succeeded in 2 days
+            description: Its last success was {{ $value | humanizeDuration }} ago.
+        - alert: BackupCronJobNeverSucceeded
+          expr: |
+            (time() - kube_cronjob_created{cronjob=~".*(backup|dump|snapshot).*"} > 2 * 86400)
+            unless on (namespace, cronjob) kube_cronjob_status_last_successful_time
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Backup job {{ $labels.namespace }}/{{ $labels.cronjob }} has never succeeded
+            description: It was created over 2 days ago and has no successful run.
+
+        # Longhorn only reports this metric for backups that exist.
+        - alert: LonghornNoBackups
+          expr: absent(longhorn_backup_state) and on() (count(longhorn_volume_robustness) > 0)
+          for: 6h
+          labels:
+            severity: warning
+          annotations:
+            summary: Longhorn volumes exist but Longhorn has no backups
+            description: >-
+              Set an off-machine target and a recurring job with
+              scripts/backup/configure-longhorn-backups.sh.

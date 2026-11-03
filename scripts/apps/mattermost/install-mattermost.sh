@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Load shared validation library
 source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/install-helpers.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -99,8 +100,16 @@ echo "  Data: $DATA_STORAGE"
 echo "  Database: $DB_STORAGE"
 echo ""
 
-echo "🔐 Generating secure credentials..."
-POSTGRES_PASSWORD=$(openssl rand -hex 32)
+echo "🔐 Preparing credentials..."
+# An existing password is reused: the database was initialised with it.
+app_load_or_create_secret_value POSTGRES_PASSWORD "$NAMESPACE" mattermost-db db-password \
+    mattermost-postgres -- openssl rand -hex 32
+
+# Override with MATTERMOST_IMAGE / MATTERMOST_POSTGRES_IMAGE. Re-running keeps the running version.
+app_resolve_image POSTGRES_IMAGE "$NAMESPACE" mattermost-postgres postgres \
+    "postgres:15.19-alpine" "${MATTERMOST_POSTGRES_IMAGE:-}"
+app_resolve_image MATTERMOST_IMAGE "$NAMESPACE" mattermost mattermost \
+    "mattermost/mattermost-team-edition:12.0.1" "${MATTERMOST_IMAGE:-}"
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -108,6 +117,7 @@ kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -
 echo "🔒 Creating secrets..."
 kubectl create secret generic mattermost-db \
     --from-literal=db-password="$POSTGRES_PASSWORD" \
+    --from-literal=datasource="postgres://mattermost:${POSTGRES_PASSWORD}@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10" \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 
@@ -162,7 +172,7 @@ spec:
       priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
-        image: postgres:15-alpine
+        image: $POSTGRES_IMAGE
         env:
         - name: POSTGRES_DB
           value: mattermost
@@ -229,12 +239,15 @@ spec:
       priorityClassName: mynodeone-app
       containers:
       - name: mattermost
-        image: mattermost/mattermost-team-edition:latest
+        image: $MATTERMOST_IMAGE
         env:
         - name: MM_SQLSETTINGS_DRIVERNAME
           value: postgres
         - name: MM_SQLSETTINGS_DATASOURCE
-          value: postgres://mattermost:$POSTGRES_PASSWORD@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+          valueFrom:
+            secretKeyRef:
+              name: mattermost-db
+              key: datasource
         - name: MM_SERVICESETTINGS_SITEURL
           value: "http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         - name: MM_SERVICESETTINGS_ENABLELOCALMODE
@@ -350,6 +363,7 @@ echo ""
 echo "📍 Access Information:"
 echo "   Local URL: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo ""
+app_warn_first_user_admin "Mattermost" "http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo "👤 First-Time Setup:"
 echo "   1. Open the URL above in your browser"
 echo "   2. Create your admin account (first user becomes admin)"

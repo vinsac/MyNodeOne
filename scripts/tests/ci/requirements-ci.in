@@ -1,0 +1,10 @@
+# Lint and test tools the CI jobs need outside the gateway's own environment. Pinned
+# because the ratchet baselines are only comparable with the same tool version.
+# Regenerate requirements-ci.txt from this directory:
+#   uv pip compile requirements-ci.in --python-version 3.11 \
+#     --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header \
+#     --no-annotate -o requirements-ci.txt
+shellcheck-py==0.11.0.1
+ruff==0.15.15
+PyYAML==6.0.3
+promql-parser==0.11.0

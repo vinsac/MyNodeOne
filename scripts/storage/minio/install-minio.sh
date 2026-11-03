@@ -13,7 +13,15 @@
 #
 # USAGE:
 #   sudo ./scripts/storage/minio/install-minio.sh
-#   
+#
+# OPTIONS (environment variables):
+#   MINIO_IMAGE          Image to deploy. Default: the digest pinned below.
+#   MINIO_RUN_AS_UID     UID the container runs as, and owner of the data
+#                        directory. Must match the image. Default: 65532.
+#   MINIO_EXISTING_PATH  Use a directory that's already mounted on the node
+#                        instead of offering disks. Nothing is formatted. On a
+#                        reinstall, the existing root credentials are kept.
+#
 # The script will:
 # 1. Prompt for target node selection
 # 2. Detect available disks on that node
@@ -58,6 +66,44 @@ log_error() {
 # LIB_DIR, MANIFESTS_DIR, etc. setup
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
 MANIFESTS_DIR="$SCRIPT_DIR/manifests"
+
+# Every disk this script erases goes through these checks
+source "$SCRIPT_DIR/../lib/disk-safety.sh"
+
+# MinIO stopped publishing images: minio/minio is gone from Docker Hub and
+# quay.io/minio/minio refuses anonymous pulls. This is Chainguard's free image,
+# rebuilt from source and pinned to the multi-arch index digest (built
+# 2026-11-02). It runs as UID 65532. See README.md for how to update or replace it.
+MINIO_IMAGE_DEFAULT="cgr.dev/chainguard/minio@sha256:090010a3f73f6aa2dff606c61cd0de3640b22748abe19f4e48cce6dc9de7a53f"
+MINIO_IMAGE="${MINIO_IMAGE:-$MINIO_IMAGE_DEFAULT}"
+MINIO_RUN_AS_UID="${MINIO_RUN_AS_UID:-65532}"
+
+if ! [[ "$MINIO_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]]; then
+    log_error "MINIO_IMAGE is not a valid image reference: $MINIO_IMAGE"
+    exit 1
+fi
+if ! [[ "$MINIO_RUN_AS_UID" =~ ^[0-9]+$ ]]; then
+    log_error "MINIO_RUN_AS_UID must be a number: $MINIO_RUN_AS_UID"
+    exit 1
+fi
+
+# Writes the credentials file with stdin as its contents. A temp file is created
+# with mode 600 and renamed into place, so the secret is never readable by others,
+# even when an older file with looser permissions already exists.
+write_credentials_file() {
+    local dest="$1"
+    local owner="$2"
+    (
+        umask 077
+        tmp=$(mktemp "${dest}.XXXXXX") || exit 1
+        trap 'rm -f "$tmp"' EXIT
+        cat > "$tmp" || exit 1
+        if ! chown "$owner:" "$tmp" 2>/dev/null; then
+            log_warn "Could not give $dest to $owner. It stays owned by $(id -un)."
+        fi
+        mv -f "$tmp" "$dest" || exit 1
+    )
+}
 
 # Load user detection
 if [[ -f "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh" ]]; then
@@ -109,19 +155,13 @@ fi
 log_info "Selected node: $NODE_NAME"
 echo ""
 
-# Check if MinIO already installed on this node
+# Whether MinIO is already on this node. Nothing happens to it until the target path has
+# been chosen and checked against it, further down.
 NAMESPACE="minio-${NODE_NAME}"
+EXISTING_INSTALL=false
 if kubectl get namespace "$NAMESPACE" &>/dev/null; then
+    EXISTING_INSTALL=true
     log_warn "MinIO already installed on node $NODE_NAME (namespace: $NAMESPACE)"
-    read -p "Reinstall? This will delete existing MinIO and data [y/N]: " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Installation cancelled"
-        exit 0
-    fi
-    
-    log_info "Removing existing MinIO installation..."
-    kubectl delete namespace "$NAMESPACE" --wait=true
-    log_success "Existing installation removed"
 fi
 
 # SSH to node for disk operations (if not local)
@@ -153,96 +193,20 @@ echo "  Disk Selection for MinIO"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-detect_available_disks() {
-    local node_cmd_prefix="$1"
-    
-    # Detect OS disk using df (more reliable than lsblk)
-    local os_disk=$($node_cmd_prefix df / 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
-    
-    # Fallback to /boot if root detection fails
-    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
-        os_disk=$($node_cmd_prefix df /boot 2>/dev/null | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's/p$//')
-    fi
-    
-    # Final safety check
-    if [ -z "$os_disk" ] || [ "$os_disk" = "/dev/" ]; then
-        echo "ERROR: Could not detect OS disk" >&2
-        return 1
-    fi
-    
-    # Get Longhorn disks - convert mount paths to device paths
-    local longhorn_mount_paths=$(kubectl get nodes.longhorn.io -n longhorn-system "$NODE_NAME" -o jsonpath='{range .spec.disks[*]}{.path}{"\n"}{end}' 2>/dev/null || echo "")
-    local longhorn_disks=""
-    while IFS= read -r mount_path; do
-        [[ -z "$mount_path" ]] && continue
-        # Get the device mounted at this path
-        local dev=$($node_cmd_prefix findmnt -n -o SOURCE "$mount_path" 2>/dev/null || echo "")
-        if [ -n "$dev" ]; then
-            # Strip partition number to get base device (e.g., /dev/sda1 -> /dev/sda)
-            local base_dev=$(echo "$dev" | sed 's/[0-9]*$//' | sed 's/p$//')
-            longhorn_disks+="$base_dev"$'\n'
-        fi
-    done <<< "$longhorn_mount_paths"
-    
-    # Detect physical disks
-    local real_devices=$($node_cmd_prefix lsblk -d -n -o NAME,TYPE | grep disk | awk '{print "/dev/" $1}')
-    
-    local all_disks=""
-    for dev in $real_devices; do
-        local dev_name=$(basename "$dev")
-        local disk_info=$($node_cmd_prefix lsblk -d -n -o NAME,SIZE,FSTYPE "$dev" 2>/dev/null | grep -w "$dev_name" | head -1 | awk '{print $1":"$2":"$3}')
-        if [ -n "$disk_info" ]; then
-            all_disks+="$disk_info"$'\n'
-        fi
-    done
-    
-    local available_disks=()
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        local disk_name=$(echo "$line" | cut -d: -f1)
-        local disk_size=$(echo "$line" | cut -d: -f2)
-        local disk_fstype=$(echo "$line" | cut -d: -f3)
-        
-        # Skip OS disk
-        local os_disk_base=$(basename "$os_disk")
-        if [[ "$disk_name" == "$os_disk_base" ]] || [[ "/dev/$disk_name" == "$os_disk" ]]; then
-            continue
-        fi
-        
-        # Skip Longhorn disks
-        local is_longhorn=false
-        while IFS= read -r lh_disk; do
-            [[ -z "$lh_disk" ]] && continue
-            local lh_disk_base=$(basename "$lh_disk")
-            if [[ "$disk_name" == "$lh_disk_base" ]] || [[ "/dev/$disk_name" == "$lh_disk" ]]; then
-                is_longhorn=true
-                break
-            fi
-        done <<< "$longhorn_disks"
-        
-        if [ "$is_longhorn" = true ]; then
-            continue
-        fi
-        
-        available_disks+=("/dev/$disk_name:$disk_size:$disk_fstype")
-    done <<< "$all_disks"
-    
-    echo "${available_disks[@]}"
-}
-
 format_and_mount_disk() {
     local disk="$1"
     local mount_path="$2"
     local node_cmd_prefix="$3"
     
     log_info "Formatting and mounting $disk..."
-    
-    # Unmount if already mounted
-    $node_cmd_prefix umount "$disk"* 2>/dev/null || true
-    
-    # Wipe existing filesystem signatures
-    $node_cmd_prefix wipefs -a "$disk" &>/dev/null || true
-    
+
+    # Re-checks the disk and erases its signatures. Mounted disks are refused
+    # rather than unmounted, and any failure stops the install.
+    if ! disk_safety_wipe "$disk"; then
+        log_error "Could not safely erase $disk. Stopping."
+        exit 1
+    fi
+
     # Create partition
     log_info "Creating partition on $disk..."
     $node_cmd_prefix parted -s "$disk" mklabel gpt
@@ -280,13 +244,28 @@ format_and_mount_disk() {
     $node_cmd_prefix mount "$partition" "$mount_path"
     
     # Add to fstab
-    local uuid=$($node_cmd_prefix blkid -s UUID -o value "$partition")
-    
-    # Remove any existing entries for this mount point to prevent duplicates
-    # We use a temporary file to avoid race conditions or partial writes
+    local uuid=""
+    uuid=$($node_cmd_prefix blkid -s UUID -o value "$partition")
+    if ! [[ "$uuid" =~ ^[A-Fa-f0-9-]+$ ]]; then
+        log_error "Could not read the UUID of $partition, so /etc/fstab was not updated. Stopping."
+        exit 1
+    fi
+
+    # Replace any existing entry for this mount point to prevent duplicates. The
+    # script goes over stdin because a bash -c string would be split by ssh and run
+    # partly as the unprivileged user on remote nodes.
     log_info "Updating /etc/fstab..."
-    $node_cmd_prefix bash -c "grep -v '$mount_path' /etc/fstab > /tmp/fstab.new && echo 'UUID=$uuid $mount_path ext4 defaults,nofail 0 2' >> /tmp/fstab.new && mv /tmp/fstab.new /etc/fstab"
-    
+    $node_cmd_prefix bash -s -- "$uuid" "$mount_path" <<'FSTAB_SCRIPT'
+set -eu
+tmp=$(mktemp /etc/fstab.XXXXXX)
+trap 'rm -f "$tmp"' EXIT
+awk -v mp="$2" '$2 != mp' /etc/fstab > "$tmp"
+printf 'UUID=%s %s ext4 defaults,nofail 0 2\n' "$1" "$2" >> "$tmp"
+chmod 644 "$tmp"
+mv "$tmp" /etc/fstab
+trap - EXIT
+FSTAB_SCRIPT
+
     log_success "Disk mounted at $mount_path"
 }
 
@@ -297,84 +276,158 @@ else
     NODE_CMD_PREFIX="ssh $SSH_USER@$NODE_IP sudo"
 fi
 
-log_info "Detecting available disks on $NODE_NAME..."
-available_disks=($(detect_available_disks "$NODE_CMD_PREFIX"))
+# Disk checks run on the target node through the same prefix
+disk_safety_init "$NODE_CMD_PREFIX"
 
-echo ""
-echo "💡 Disk options:"
-echo "  0) Use OS folder: /var/lib/minio (no formatting needed)"
-
-if [ ${#available_disks[@]} -gt 0 ]; then
-    echo ""
-    echo "Available physical disks:"
-    echo "⚠️  Note: Some disks may have existing installations (OS, Longhorn, etc.)"
-    disk_count=0
-    for disk_info in "${available_disks[@]}"; do
-        disk_count=$((disk_count + 1))
-        disk_name=$(echo "$disk_info" | cut -d: -f1)
-        disk_size=$(echo "$disk_info" | cut -d: -f2)
-        echo "  $disk_count) $(basename $disk_name) ($disk_size)"
-    done
-else
-    echo ""
-    log_warn "No additional physical disks detected (only OS folder available)"
-fi
-
-echo ""
-read -p "Select disk [0-${#available_disks[@]}]: " DISK_CHOICE
-
-if [ "$DISK_CHOICE" = "0" ]; then
-    MINIO_PATH="/var/lib/minio"
-    STORAGE_SIZE="100Gi"
-    log_info "Using OS folder: $MINIO_PATH"
-    
-    # Create directory on target node
-    if [ "$IS_LOCAL" = true ]; then
-        sudo mkdir -p "$MINIO_PATH"
-        sudo chmod 755 "$MINIO_PATH"
-    else
-        ssh "$SSH_USER@$NODE_IP" "sudo mkdir -p $MINIO_PATH && sudo chmod 755 $MINIO_PATH"
-    fi
-    log_success "Created directory: $MINIO_PATH"
-elif [[ "$DISK_CHOICE" =~ ^[0-9]+$ ]] && [[ $DISK_CHOICE -ge 1 ]] && [[ $DISK_CHOICE -le ${#available_disks[@]} ]]; then
-    SELECTED_DISK_INFO="${available_disks[$((DISK_CHOICE-1))]}"
-    SELECTED_DISK=$(echo "$SELECTED_DISK_INFO" | cut -d: -f1)
-    DISK_SIZE_RAW=$(echo "$SELECTED_DISK_INFO" | cut -d: -f2)
-    
-    log_warn "⚠️  WARNING: Disk $SELECTED_DISK will be FORMATTED (all data will be lost)"
-    echo ""
-    read -p "Continue with formatting? [y/N]: " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_error "Installation cancelled"
+if [ -n "${MINIO_EXISTING_PATH:-}" ]; then
+    # Keep what's already there: an existing mount is used as is
+    if ! disk_safety_check_data_path "$MINIO_EXISTING_PATH"; then
+        log_error "MINIO_EXISTING_PATH can't be used on $NODE_NAME: $MINIO_EXISTING_PATH"
         exit 1
     fi
-    
-    MINIO_PATH="/mnt/minio"
-    
-    # Convert size to Kubernetes format (e.g., 18.2T -> 18Ti, 100G -> 100Gi)
-    # Extract numeric value and unit, round down to avoid fractional bytes
-    STORAGE_SIZE=$(echo "$DISK_SIZE_RAW" | awk '{
-        val = $1;
-        unit = substr(val, length(val), 1);
-        num = substr(val, 1, length(val)-1);
-        num = int(num);  # Round down to integer
-        if (unit == "T") print num "Ti";
-        else if (unit == "G") print num "Gi";
-        else print val;
-    }')
-    
-    # Format and mount on target node
-    format_and_mount_disk "$SELECTED_DISK" "$MINIO_PATH" "$NODE_CMD_PREFIX"
+    MINIO_PATH="$MINIO_EXISTING_PATH"
+    EXISTING_SIZE_GB=$($NODE_CMD_PREFIX df -BG --output=size "$MINIO_PATH" | tail -1 | tr -dc '0-9')
+    if [ -z "$EXISTING_SIZE_GB" ]; then
+        log_error "Could not read the size of $MINIO_PATH on $NODE_NAME."
+        exit 1
+    fi
+    STORAGE_SIZE="${EXISTING_SIZE_GB}Gi"
+    log_info "Using existing mount: $MINIO_PATH ($STORAGE_SIZE). Nothing will be formatted."
 else
-    log_error "Invalid selection"
+    log_info "Detecting available disks on $NODE_NAME..."
+    echo ""
+    echo "💡 Disk options:"
+    echo "  0) Use OS folder: /var/lib/minio (no formatting needed)"
+    echo ""
+
+    available_disks=()
+    if disk_safety_scan; then
+        available_disks=("${DISK_SAFETY_ELIGIBLE[@]}")
+    fi
+    if [ ${#available_disks[@]} -eq 0 ]; then
+        log_warn "No disks can be safely formatted (only the OS folder is available)"
+    fi
+
+    echo ""
+    read -r -p "Select disk [0-${#available_disks[@]}]: " DISK_CHOICE
+
+    if [ "$DISK_CHOICE" = "0" ]; then
+        MINIO_PATH="/var/lib/minio"
+        STORAGE_SIZE="100Gi"
+        log_info "Using OS folder: $MINIO_PATH"
+    elif [[ "$DISK_CHOICE" =~ ^[0-9]+$ ]] && [[ $DISK_CHOICE -ge 1 ]] && [[ $DISK_CHOICE -le ${#available_disks[@]} ]]; then
+        SELECTED_DISK="${available_disks[$((DISK_CHOICE-1))]}"
+
+        if ! disk_safety_confirm_wipe "$SELECTED_DISK"; then
+            log_error "Installation cancelled. $SELECTED_DISK was not changed."
+            exit 1
+        fi
+
+        MINIO_PATH="/mnt/minio"
+
+        DISK_SIZE_RAW=$($NODE_CMD_PREFIX lsblk -d -n -o SIZE "$SELECTED_DISK" | tr -d ' ')
+
+        # Convert size to Kubernetes format (e.g., 18.2T -> 18Ti, 100G -> 100Gi)
+        # Extract numeric value and unit, round down to avoid fractional bytes
+        STORAGE_SIZE=$(echo "$DISK_SIZE_RAW" | awk '{
+            val = $1;
+            unit = substr(val, length(val), 1);
+            num = substr(val, 1, length(val)-1);
+            num = int(num);  # Round down to integer
+            if (unit == "T") print num "Ti";
+            else if (unit == "G") print num "Gi";
+            else print val;
+        }')
+    else
+        log_error "Invalid selection"
+        exit 1
+    fi
+fi
+
+# A PV's hostPath can't be changed, and it outlives the namespace because it's Retain. A
+# different path would fail at the PV, after everything else was gone. So this comes first.
+EXISTING_PV_PATH=""
+if ! EXISTING_PV_PATH=$(kubectl get pv "minio-data-${NODE_NAME}" -o jsonpath='{.spec.hostPath.path}' --ignore-not-found); then
+    log_error "Could not read PersistentVolume minio-data-${NODE_NAME}. Nothing was changed."
+    exit 1
+fi
+if [ -n "$EXISTING_PV_PATH" ] && [ "${EXISTING_PV_PATH%/}" != "${MINIO_PATH%/}" ]; then
+    log_error "PersistentVolume minio-data-${NODE_NAME} points at $EXISTING_PV_PATH, not $MINIO_PATH, and a PV's path can't be changed. Nothing was changed."
+    log_error "To keep using the data there, run again with: MINIO_EXISTING_PATH=$EXISTING_PV_PATH"
+    log_error "To really move to $MINIO_PATH (the PV is Retain, so this doesn't touch the data on the node):"
+    log_error "  kubectl delete namespace $NAMESPACE   # also deletes the root credentials"
+    log_error "  kubectl delete pv minio-data-${NODE_NAME}"
+    log_error "  then run this again, and re-run scripts/storage/velero/configure-backup.sh if Velero uses this MinIO"
     exit 1
 fi
 
-# Generate unique credentials
-log_info "Generating credentials..."
+# With an existing path the data stays, so the credentials it was written with have to
+# stay too. Read before anything is deleted: if they can't be read, nothing is changed.
 MINIO_USER="admin"
-MINIO_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-log_success "Credentials generated"
+MINIO_PASSWORD=""
+if [ "$EXISTING_INSTALL" = true ] && [ -n "${MINIO_EXISTING_PATH:-}" ]; then
+    EXISTING_USER_B64=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.rootUser}' 2>/dev/null || true)
+    EXISTING_PASSWORD_B64=$(kubectl get secret minio-credentials -n "$NAMESPACE" -o jsonpath='{.data.rootPassword}' 2>/dev/null || true)
+    if [ -z "$EXISTING_USER_B64" ] || [ -z "$EXISTING_PASSWORD_B64" ]; then
+        log_error "Could not read the existing credentials from Secret minio-credentials in $NAMESPACE. Nothing was changed."
+        exit 1
+    fi
+    if ! MINIO_USER=$(printf '%s' "$EXISTING_USER_B64" | base64 -d) || [ -z "$MINIO_USER" ] ||
+       ! MINIO_PASSWORD=$(printf '%s' "$EXISTING_PASSWORD_B64" | base64 -d) || [ -z "$MINIO_PASSWORD" ]; then
+        log_error "The existing credentials in Secret minio-credentials in $NAMESPACE are not valid. Nothing was changed."
+        exit 1
+    fi
+    log_info "Keeping the existing root credentials"
+fi
+
+if [ "$EXISTING_INSTALL" = true ]; then
+    if [ -n "${MINIO_EXISTING_PATH:-}" ]; then
+        log_warn "Reinstalling deletes the namespace, then recreates it using the same data ($MINIO_PATH) and the same root credentials."
+    else
+        log_warn "Reinstalling deletes the namespace and its credentials, and creates new ones."
+        log_warn "Velero keeps a copy of the old ones: re-run scripts/storage/velero/configure-backup.sh afterwards if it uses this MinIO."
+        log_warn "A disk that's still mounted can't be selected above. To keep using the data"
+        log_warn "on it, cancel and run again with MINIO_EXISTING_PATH set to its mountpoint."
+    fi
+    if ! disk_safety_is_interactive; then
+        log_error "Reinstalling needs a terminal to confirm. Nothing was changed."
+        exit 1
+    fi
+    read -r -p "Type the namespace name ($NAMESPACE) to reinstall, or anything else to cancel: " REPLY
+    if [[ "$REPLY" != "$NAMESPACE" ]]; then
+        log_info "Installation cancelled"
+        exit 0
+    fi
+
+    log_info "Removing existing MinIO installation..."
+    kubectl delete namespace "$NAMESPACE" --wait=true
+    log_success "Existing installation removed"
+fi
+
+# Nothing above writes to the node. Set up the chosen path now.
+if [ -z "${MINIO_EXISTING_PATH:-}" ]; then
+    if [ -n "${SELECTED_DISK:-}" ]; then
+        # Format and mount on target node
+        format_and_mount_disk "$SELECTED_DISK" "$MINIO_PATH" "$NODE_CMD_PREFIX"
+    else
+        # Create directory on target node
+        $NODE_CMD_PREFIX mkdir -p "$MINIO_PATH"
+        $NODE_CMD_PREFIX chmod 755 "$MINIO_PATH"
+        log_success "Created directory: $MINIO_PATH"
+    fi
+fi
+
+# hostPath volumes ignore fsGroup, so the directory has to be owned by the
+# container's user up front
+log_info "Setting owner of $MINIO_PATH to UID $MINIO_RUN_AS_UID..."
+$NODE_CMD_PREFIX chown -R "$MINIO_RUN_AS_UID:$MINIO_RUN_AS_UID" "$MINIO_PATH"
+
+# Generate unique credentials, unless the existing ones were kept above
+if [ -z "$MINIO_PASSWORD" ]; then
+    log_info "Generating credentials..."
+    MINIO_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+    log_success "Credentials generated"
+fi
 
 # Create namespace
 log_info "Creating namespace: $NAMESPACE..."
@@ -391,19 +444,29 @@ log_success "StorageClass verified"
 
 # Create secret
 log_info "Creating secret with credentials..."
-cat "$MANIFESTS_DIR/secret.yaml" | \
-    sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
-    sed "s/PASSWORD_PLACEHOLDER/${MINIO_PASSWORD}/g" | \
-    kubectl apply -f -
+# Built in the shell and sent over stdin, so the password never appears in a process list.
+SECRET_MANIFEST=$(<"$MANIFESTS_DIR/secret.yaml")
+SECRET_MANIFEST="${SECRET_MANIFEST//NAMESPACE_PLACEHOLDER/$NAMESPACE}"
+SECRET_MANIFEST="${SECRET_MANIFEST//ROOT_USER_B64_PLACEHOLDER/$(printf '%s' "$MINIO_USER" | base64 -w0)}"
+SECRET_MANIFEST="${SECRET_MANIFEST//ROOT_PASSWORD_B64_PLACEHOLDER/$(printf '%s' "$MINIO_PASSWORD" | base64 -w0)}"
+printf '%s\n' "$SECRET_MANIFEST" | kubectl apply -f -
+unset SECRET_MANIFEST
 log_success "Secret created"
 
 # Create PV
 PV_NAME="${NODE_NAME}"
+# After a reinstall the retained PV still points at the deleted PVC, and a new PVC
+# can't bind until that reference is removed. The data on the node isn't affected.
+if [ "$(kubectl get pv "minio-data-${PV_NAME}" -o jsonpath='{.status.phase}' --ignore-not-found)" = "Released" ]; then
+    log_info "Releasing retained PersistentVolume minio-data-${PV_NAME} for reuse..."
+    kubectl patch pv "minio-data-${PV_NAME}" --type json -p '[{"op":"remove","path":"/spec/claimRef"}]'
+fi
 log_info "Creating PersistentVolume: minio-data-${PV_NAME}..."
 cat "$MANIFESTS_DIR/pv-hostpath.yaml" | \
     sed "s/PV_NAME_PLACEHOLDER/${PV_NAME}/g" | \
     sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
     sed "s|STORAGE_SIZE_PLACEHOLDER|${STORAGE_SIZE}|g" | \
+    sed "s|HOST_PATH_PLACEHOLDER|${MINIO_PATH}|g" | \
     kubectl apply -f -
 log_success "PersistentVolume created"
 
@@ -417,8 +480,10 @@ cat "$MANIFESTS_DIR/pvc.yaml" | \
 log_success "PersistentVolumeClaim created"
 
 # Deploy StatefulSet
-log_info "Deploying MinIO StatefulSet..."
+log_info "Deploying MinIO StatefulSet (image: $MINIO_IMAGE)..."
 cat "$MANIFESTS_DIR/statefulset.yaml" | \
+    sed "s|MINIO_IMAGE_PLACEHOLDER|${MINIO_IMAGE}|g" | \
+    sed "s/MINIO_UID_PLACEHOLDER/${MINIO_RUN_AS_UID}/g" | \
     sed "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g" | \
     sed "s/NODE_PLACEHOLDER/${NODE_NAME}/g" | \
     sed "s/CLUSTER_DOMAIN_PLACEHOLDER/${CLUSTER_DOMAIN}/g" | \
@@ -518,7 +583,7 @@ fi
 
 # Save credentials to file
 CREDS_FILE="$ACTUAL_HOME/minio-${NODE_NAME}-credentials.txt"
-cat > "$CREDS_FILE" <<EOF
+if ! write_credentials_file "$CREDS_FILE" "$ACTUAL_USER" <<EOF
 MinIO Installation on Node: $NODE_NAME
 ======================================
 
@@ -568,9 +633,11 @@ Management Commands:
 
 Installed: $(date)
 EOF
-
-chown "$ACTUAL_USER:$ACTUAL_USER" "$CREDS_FILE" 2>/dev/null || true
-log_success "Credentials saved to: $CREDS_FILE"
+then
+    log_error "Could not save credentials to $CREDS_FILE. They are printed below and stored in the minio-credentials Secret."
+else
+    log_success "Credentials saved to: $CREDS_FILE"
+fi
 
 # Print summary
 echo ""

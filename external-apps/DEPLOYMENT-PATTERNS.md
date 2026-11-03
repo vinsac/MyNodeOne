@@ -16,19 +16,19 @@ This document explains how MyNodeOne automatically detects and configures contai
 # docker-compose.yml
 services:
   frontend:                          # ✅ Named 'frontend' → auto-detected as public
-    image: myapp/web:latest          # ✅ Registry image (not build:)
+    image: myapp/web:1.0.0          # ✅ Registry image (not build:)
     ports:
       - "3000:80"
     
   backend:                           # ✅ Named 'backend' → auto-detected as public
-    image: myapp/api:latest          # ✅ Registry image
+    image: myapp/api:1.0.0          # ✅ Registry image
     ports:
       - "8080:8080"
     
   database:                          # ✅ Named 'database' → auto-detected as internal
-    image: postgres:15-alpine        # ✅ Registry image
+    image: postgres:15.19-alpine        # ✅ Registry image
     environment:
-      POSTGRES_PASSWORD: secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
 ```
@@ -66,10 +66,12 @@ MyNodeOne uses **naming conventions** to classify services:
 
 | Pattern | Service Type | Examples | Public Exposure |
 |---------|--------------|----------|-----------------|
-| `db`, `database`, `postgres`, `mysql`, `mongo` | Database | Data storage | ❌ No |
-| `redis`, `cache`, `memcache` | Cache | Caching layer | ❌ No |
+| `db`, `database`, `postgres`, `mysql`, `mariadb`, `mongo` | Database | Data storage | ❌ No |
+| `redis`, `valkey`, `cache`, `memcache` | Cache | Caching layer | ❌ No |
 | `worker`, `queue`, `celery` | Worker | Background jobs | ❌ No |
 | Anything else | Internal | Other services | ❌ No |
+
+These are checked before the public patterns, so `mysql-server` and `redis-server` are internal even though they contain `server`.
 
 **What happens:**
 - Service type stays: `ClusterIP`
@@ -84,17 +86,17 @@ MyNodeOne uses **naming conventions** to classify services:
 
 ```yaml
 services:
-  immich-server:          # → Detected as 'internal' (needs explicit config)
-    image: ghcr.io/immich-app/immich-server:latest
+  immich-server:          # → Detected as 'backend' ✅
+    image: ghcr.io/immich-app/immich-server:v1.132.3
     
   immich-web:             # → Detected as 'frontend' ✅
-    image: ghcr.io/immich-app/immich-web:latest
+    image: ghcr.io/immich-app/immich-web:v1.132.3
     
   immich-machine-learning:  # → Detected as 'internal'
-    image: ghcr.io/immich-app/immich-machine-learning:latest
+    image: ghcr.io/immich-app/immich-machine-learning:v1.132.3
     
   redis:                  # → Detected as 'cache' (internal)
-    image: redis:6.2-alpine
+    image: redis:7.4.12-alpine
     
   database:               # → Detected as 'database' (internal)
     image: tensorchord/pgvecto-rs:pg14-v0.2.0
@@ -102,9 +104,10 @@ services:
 
 **Result:**
 - ✅ `immich-web` gets LoadBalancer IP
-- ❌ `immich-server` stays internal (needs manual fix if it should be public)
+- ✅ `immich-server` gets LoadBalancer IP
+- ❌ `immich-machine-learning`, `redis` and `database` stay internal
 
-**Fix:** Rename to match pattern or manually change service type.
+**Fix if detection is wrong:** Rename to match a pattern or manually change the service type.
 
 ---
 
@@ -118,12 +121,12 @@ Services talk to each other using Kubernetes DNS:
 # Frontend connects to backend
 services:
   frontend:
-    image: myapp/web:latest
+    image: myapp/web:1.0.0
     environment:
       API_URL: http://backend:8080    # ✅ Kubernetes DNS resolution
       
   backend:
-    image: myapp/api:latest
+    image: myapp/api:1.0.0
     ports:
       - "8080:8080"
 ```
@@ -156,13 +159,13 @@ Internal services (`database`, `cache`, etc.) are **never** exposed externally.
 ```yaml
 services:
   web:        # ✅ Auto-detected as frontend
-    image: myapp/web:latest
+    image: myapp/web:1.0.0
     
   api:        # ✅ Auto-detected as backend
-    image: myapp/api:latest
+    image: myapp/api:1.0.0
     
   postgres:   # ✅ Auto-detected as database (internal)
-    image: postgres:15
+    image: postgres:15.19-alpine
 ```
 
 ### Method 2: Explicit Labels (Future)
@@ -172,7 +175,7 @@ services:
 ```yaml
 services:
   myservice:
-    image: myapp/service:latest
+    image: myapp/service:1.0.0
     labels:
       mynodeone.expose: "true"           # Override detection
       mynodeone.service-type: "frontend" # Explicit type
@@ -259,7 +262,7 @@ volumes:
 ```yaml
 services:
   web:
-    image: myapp/web:latest
+    image: myapp/web:1.0.0
     ports:
       - "8080:80"
 ```
@@ -271,15 +274,15 @@ services:
 ```yaml
 services:
   api:                        # Public (LoadBalancer)
-    image: myapp/api:latest
+    image: myapp/api:1.0.0
     environment:
       DB_HOST: database       # Connects via Kubernetes DNS
       DB_PORT: "5432"
     
   database:                   # Internal (ClusterIP)
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine
     environment:
-      POSTGRES_PASSWORD: secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
 
@@ -294,17 +297,17 @@ volumes:
 ```yaml
 services:
   frontend:                   # Public (LoadBalancer)
-    image: myapp/web:latest
+    image: myapp/web:1.0.0
     environment:
       API_URL: http://backend:8080    # Internal DNS
     
   backend:                    # Public (LoadBalancer)
-    image: myapp/api:latest
+    image: myapp/api:1.0.0
     environment:
       DB_HOST: database
     
   database:                   # Internal (ClusterIP)
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine
     volumes:
       - db-data:/var/lib/postgresql/data
 
@@ -330,7 +333,7 @@ services:
 ```yaml
 services:
   app:
-    image: myregistry.com/app:latest    # ✅
+    image: myregistry.com/app:1.0.0    # ✅
 ```
 
 ### 2. Non-Standard Service Names
@@ -338,14 +341,14 @@ services:
 ```yaml
 services:
   myapp:          # ❌ Doesn't match any pattern → detected as 'internal'
-    image: myapp:latest
+    image: myapp:1.0.0
 ```
 
 **Fix:** Rename or manually change service type
 ```yaml
 services:
   web:            # ✅ Matches 'frontend' pattern
-    image: myapp:latest
+    image: myapp:1.0.0
 ```
 
 ### 3. Host Paths
@@ -390,8 +393,8 @@ cd my-app/
 
 # 2. Ensure images are in registry
 # - If using build:, build and push first
-docker build -t myregistry.com/app:latest .
-docker push myregistry.com/app:latest
+docker build -t myregistry.com/app:1.0.0 .
+docker push myregistry.com/app:1.0.0
 
 # 3. Run deploy script
 bash ~/MyNodeOne/external-apps/scripts/deploy.sh
@@ -433,7 +436,7 @@ We're planning to support explicit configuration via labels:
 # docker-compose.yml (future)
 services:
   myservice:
-    image: myapp:latest
+    image: myapp:1.0.0
     labels:
       # MyNodeOne-specific configuration
       mynodeone.expose: "true"

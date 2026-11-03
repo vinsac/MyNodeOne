@@ -1,0 +1,134 @@
+# Restores a dump made by llmapi-postgres-backup.yaml. Don't apply this file as it
+# stands: it needs the placeholders replaced, and it refuses to run with them left in.
+#
+# 1. TEST INTO A SCRATCH DATABASE. This doesn't touch the llmapi database.
+#   sed -e 's/DUMP_FILE_PLACEHOLDER/<dump-file>/' \
+#       -e 's/TARGET_DB_PLACEHOLDER/llmapi_restore_test/' \
+#       -e 's/OVERWRITE_LIVE_PLACEHOLDER/no/' \
+#       scripts/backup/llmapi-postgres-restore-job.yaml | kubectl create -f -
+#   kubectl -n llmapi logs -f job/llmapi-postgres-restore
+#   kubectl -n llmapi exec deploy/llmapi-postgres -- \
+#     psql -U llmapi -d llmapi_restore_test -c '\dt'
+#   kubectl -n llmapi exec deploy/llmapi-postgres -- \
+#     psql -U llmapi -d llmapi -c 'DROP DATABASE llmapi_restore_test'
+#   kubectl -n llmapi delete job llmapi-postgres-restore
+#
+# 2. RESTORE OVER THE LIVE DATABASE. This replaces its contents with the dump.
+#   kubectl -n llmapi scale deployment/gateway --replicas=0
+#   sed -e 's/DUMP_FILE_PLACEHOLDER/<dump-file>/' \
+#       -e 's/TARGET_DB_PLACEHOLDER/llmapi/' \
+#       -e 's/OVERWRITE_LIVE_PLACEHOLDER/yes/' \
+#       scripts/backup/llmapi-postgres-restore-job.yaml | kubectl create -f -
+#   kubectl -n llmapi logs -f job/llmapi-postgres-restore
+#   kubectl -n llmapi scale deployment/gateway --replicas=1
+#   kubectl -n llmapi delete job llmapi-postgres-restore
+#
+# The restore runs in one transaction, so a failure leaves the target as it was.
+#
+# Run this while the backup CronJob isn't: the backup PVC is ReadWriteOnce, and pods
+# on another node can't mount it at the same time.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: llmapi-postgres-restore
+  namespace: llmapi
+  labels:
+    app: llmapi-postgres-backup
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  template:
+    metadata:
+      labels:
+        app: llmapi-postgres-backup
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: pg-restore
+        image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PGHOST
+          value: llmapi-postgres
+        - name: PGPORT
+          value: "5432"
+        - name: PGUSER
+          value: llmapi
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: llmapi-db
+              key: postgres-password
+        - name: BACKUP_DIR
+          value: /backups
+        - name: DUMP_FILE
+          value: "DUMP_FILE_PLACEHOLDER"
+        - name: TARGET_DB
+          value: "TARGET_DB_PLACEHOLDER"
+        - name: OVERWRITE_LIVE
+          value: "OVERWRITE_LIVE_PLACEHOLDER"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -eu
+          case "$DUMP_FILE$TARGET_DB$OVERWRITE_LIVE" in
+            *_PLACEHOLDER*)
+              echo "Replace the placeholders first. See the top of this manifest." >&2
+              exit 1
+              ;;
+          esac
+          case "$TARGET_DB" in
+            *[!a-z0-9_]*|"")
+              echo "TARGET_DB may only contain lowercase letters, digits and underscores." >&2
+              exit 1
+              ;;
+          esac
+          if [ "$TARGET_DB" = "llmapi" ] && [ "$OVERWRITE_LIVE" != "yes" ]; then
+            echo "Refusing to overwrite the live database without OVERWRITE_LIVE=yes." >&2
+            exit 1
+          fi
+
+          cd "$BACKUP_DIR"
+          test -f "$DUMP_FILE"
+          if [ -f "$DUMP_FILE.sha256" ]; then
+            sha256sum -c "$DUMP_FILE.sha256"
+          fi
+          pg_restore --list "$DUMP_FILE" > /dev/null
+
+          exists=$(psql -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$TARGET_DB'")
+          if [ -z "$exists" ]; then
+            createdb --maintenance-db=postgres "$TARGET_DB"
+          fi
+
+          pg_restore --clean --if-exists --no-owner --no-privileges \
+            --single-transaction --exit-on-error \
+            --dbname="$TARGET_DB" "$DUMP_FILE"
+          echo "Restored $DUMP_FILE into $TARGET_DB"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: backups
+          mountPath: /backups
+          readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+      volumes:
+      - name: backups
+        persistentVolumeClaim:
+          claimName: llmapi-postgres-backups

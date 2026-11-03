@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# kompose stub. With KOMPOSE_OK=1 it writes one ClusterIP Service per name in
+# KOMPOSE_SERVICES, as the real tool does; otherwise it fails, which sends deploy.sh
+# down its path for clusters without kompose.
+
+echo "kompose $*" >> "$STUB_LOG"
+
+if [[ "${KOMPOSE_OK:-}" != "1" ]]; then
+    exit 1
+fi
+
+output_dir=""
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then
+        output_dir="$2"
+        shift
+    fi
+    shift
+done
+
+for svc in ${KOMPOSE_SERVICES:-}; do
+    cat > "$output_dir/$svc-service.yaml" <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: $svc
+  namespace: default
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+  selector:
+    app: $svc
+EOF
+done

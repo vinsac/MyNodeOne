@@ -22,6 +22,7 @@ source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 APPS_DIR="$PROJECT_ROOT/manifests/apps"
+source "$PROJECT_ROOT/scripts/apps/lib/install-helpers.sh"
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -59,6 +60,40 @@ check_kubectl() {
     fi
 }
 
+# Password for a database in the "databases" namespace, stored in a Secret and reused
+# on every re-run. Earlier versions wrote the password directly into the Deployment,
+# and the data on disk still depends on it, so such a password is carried over.
+# Usage: load_db_password <var> <deployment> <container> <env_name> <secret> <pvc>
+load_db_password() {
+    local target_var="$1" deployment="$2" container="$3" env_name="$4" db_secret="$5" db_pvc="$6"
+    local inline_password=""
+
+    if [ -z "$(kubectl get secret "$db_secret" -n databases --ignore-not-found -o name)" ]; then
+        inline_password=$(kubectl get deployment "$deployment" -n databases --ignore-not-found \
+            -o "jsonpath={.spec.template.spec.containers[?(@.name==\"$container\")].env[?(@.name==\"$env_name\")].value}")
+    fi
+
+    if [ -n "$inline_password" ]; then
+        log_warn "$deployment keeps its existing password, moved into Secret '$db_secret'."
+        log_warn "If this is the old default, change it inside the database and update the Secret."
+        printf -v "$target_var" '%s' "$inline_password"
+    else
+        app_load_or_create_secret_value "$target_var" databases "$db_secret" password "$db_pvc" -- openssl rand -hex 24
+    fi
+
+    # Sent on stdin and base64 encoded, so it is neither in argv nor needs YAML escaping
+    kubectl apply -f - > /dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: $db_secret
+  namespace: databases
+type: Opaque
+data:
+  password: $(printf '%s' "${!target_var}" | base64 -w0)
+EOF
+}
+
 # ===== Available Applications =====
 
 deploy_postgresql() {
@@ -67,6 +102,11 @@ deploy_postgresql() {
     log_info "Creating namespace..."
     kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
     
+    # shellcheck disable=SC2034  # load_db_password sets and uses the password by name
+    local POSTGRES_PASSWORD POSTGRESQL_IMAGE_RESOLVED
+    load_db_password POSTGRES_PASSWORD postgresql postgres POSTGRES_PASSWORD postgresql-credentials postgres-pvc
+    app_resolve_image POSTGRESQL_IMAGE_RESOLVED databases postgresql postgres "postgres:16.15-alpine" "${POSTGRESQL_IMAGE:-}"
+
     log_info "Deploying PostgreSQL..."
     cat <<EOF | kubectl apply -f -
 ---
@@ -100,12 +140,15 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: postgres:16-alpine
+        image: $POSTGRESQL_IMAGE_RESOLVED
         ports:
         - containerPort: 5432
         env:
         - name: POSTGRES_PASSWORD
-          value: "changeme123"
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: password
         - name: POSTGRES_USER
           value: "postgres"
         - name: POSTGRES_DB
@@ -148,9 +191,7 @@ EOF
     echo "  Port: 5432"
     echo "  Database: myapp"
     echo "  Username: postgres"
-    echo "  Password: changeme123"
-    echo
-    echo "  ⚠️  IMPORTANT: Change the default password"
+    echo "  Password: kubectl get secret postgresql-credentials -n databases -o jsonpath='{.data.password}' | base64 -d"
     echo
     echo "  To remove: kubectl delete namespace databases"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -162,6 +203,9 @@ deploy_redis() {
     log_info "Creating namespace..."
     kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
     
+    local REDIS_IMAGE_RESOLVED
+    app_resolve_image REDIS_IMAGE_RESOLVED databases redis redis "redis:7.4.12-alpine" "${REDIS_IMAGE:-}"
+
     log_info "Deploying Redis..."
     cat <<EOF | kubectl apply -f -
 ---
@@ -182,7 +226,7 @@ spec:
     spec:
       containers:
       - name: redis
-        image: redis:7-alpine
+        image: $REDIS_IMAGE_RESOLVED
         ports:
         - containerPort: 6379
         resources:
@@ -225,6 +269,11 @@ deploy_mysql() {
     log_info "Creating namespace..."
     kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
     
+    # shellcheck disable=SC2034  # load_db_password sets and uses the password by name
+    local MYSQL_ROOT_PASSWORD MYSQL_IMAGE_RESOLVED
+    load_db_password MYSQL_ROOT_PASSWORD mysql mysql MYSQL_ROOT_PASSWORD mysql-credentials mysql-pvc
+    app_resolve_image MYSQL_IMAGE_RESOLVED databases mysql mysql "mysql:8.0.46" "${MYSQL_IMAGE:-}"
+
     log_info "Deploying MySQL..."
     cat <<EOF | kubectl apply -f -
 ---
@@ -258,12 +307,15 @@ spec:
     spec:
       containers:
       - name: mysql
-        image: mysql:8.0
+        image: $MYSQL_IMAGE_RESOLVED
         ports:
         - containerPort: 3306
         env:
         - name: MYSQL_ROOT_PASSWORD
-          value: "changeme123"
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
         - name: MYSQL_DATABASE
           value: "myapp"
         volumeMounts:
@@ -303,9 +355,7 @@ EOF
     echo "  Host: mysql.databases.svc.cluster.local"
     echo "  Port: 3306"
     echo "  Database: myapp"
-    echo "  Root Password: changeme123"
-    echo
-    echo "  ⚠️  IMPORTANT: Change the default password"
+    echo "  Root Password: kubectl get secret mysql-credentials -n databases -o jsonpath='{.data.password}' | base64 -d"
     echo
     echo "  To remove: kubectl delete deployment mysql -n databases"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -389,6 +439,7 @@ remove_app() {
             kubectl delete deployment postgresql -n databases --ignore-not-found=true
             kubectl delete svc postgresql -n databases --ignore-not-found=true
             kubectl delete pvc postgres-pvc -n databases --ignore-not-found=true
+            kubectl delete secret postgresql-credentials -n databases --ignore-not-found=true
             log_success "PostgreSQL removed"
             ;;
         mysql)
@@ -396,6 +447,7 @@ remove_app() {
             kubectl delete deployment mysql -n databases --ignore-not-found=true
             kubectl delete svc mysql -n databases --ignore-not-found=true
             kubectl delete pvc mysql-pvc -n databases --ignore-not-found=true
+            kubectl delete secret mysql-credentials -n databases --ignore-not-found=true
             log_success "MySQL removed"
             ;;
         redis)

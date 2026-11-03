@@ -29,6 +29,8 @@ sudo ./scripts/vps/configure-vps-route.sh
 ### `sync-vps-routes.sh`
 Synchronize routing configuration across all VPS nodes.
 
+The sync controller and `manage-app-visibility.sh` won't start it over SSH while the config API renders no routes and the registry has some published, because that would leave the VPS with an empty route file. If the API can't be asked, they go ahead and this script's own checks apply.
+
 **Usage:**
 ```bash
 sudo ./scripts/vps/sync-vps-routes.sh

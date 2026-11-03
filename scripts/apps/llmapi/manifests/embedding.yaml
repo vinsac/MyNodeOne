@@ -41,7 +41,7 @@ spec:
           type: RuntimeDefault
       initContainers:
       - name: model-downloader
-        image: curlimages/curl:latest
+        image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
         securityContext:
           runAsUser: 0  # Run as root to fix permissions
           runAsNonRoot: false
@@ -98,7 +98,7 @@ spec:
             memory: "512Mi"
       containers:
       - name: embedding
-        image: ghcr.io/ggml-org/llama.cpp:server
+        image: ghcr.io/ggml-org/llama.cpp:server-b12033@sha256:0b0212befa4facc6fd1e34ee04e19f13b570d0b9ec87d26edf4c402dc0dd636f
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

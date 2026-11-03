@@ -459,7 +459,7 @@ This section documents regressions found and fixed during code audits, preserved
 | 1 | **NVMe disks skipped** — `[0-9]$` regex matches NVMe disk names | `lsblk TYPE=disk` filter |
 | 2 | **Helm drain policy removed** — `kubectl drain` could evict only replica | Restored `nodeDrainPolicy`, `disableSchedulingOnCordonedNode`, `replicaSoftAntiAffinity` |
 | 3 | **fstab missing `nofail`** — boot hangs if disk removed | Restored `nofail` mount option |
-| 4 | **UUID mismatch detection** — wrong jsonpath (node-level vs per-disk) | Restored `diskStatus[].conditions[].reason == "DiskFilesystemChanged"` |
+| 4 | **UUID mismatch detection** — wrong jsonpath (node-level vs per-disk) | Restored `diskStatus[].conditions[].reason == "DiskFilesystemChanged"` | The installer now only reports a mismatch and prints manual per-disk steps. It no longer deletes the Longhorn node. |
 | 5 | **Missing `wipefs`** — stale filesystem signatures | Restored `umount` + `wipefs -a` before partitioning |
 | 6 | **No sudo validation** — half-formatted disks on failure | Upfront `sudo -v` check |
 | 7 | **Dead `ACTUAL_HOME`** — fails under `set -euo pipefail` | Removed unused variable |

@@ -100,7 +100,8 @@ sudo ./scripts/domains/multi-domain-registry.sh configure-routing immich \
 | **Command** | **Description** | **Example** |
 |-------------|----------------|-------------|
 | `register-vps <tailscale_ip> <public_ip> <region> <provider>` | Register VPS edge node | `register-vps 100.68.225.92 192.0.2.100 eu contabo` |
-| `unregister-vps <tailscale_ip>` | Remove VPS node | `unregister-vps 100.68.225.92` |
+| `unregister-vps <tailscale_ip>` | Remove VPS node from the VPS list only; routes still name it. To remove a node for good, use `purge-vps` | `unregister-vps 100.68.225.92` |
+| `purge-vps <tailscale_ip>` | Remove VPS node from the VPS list, all service routes and the sync targets | `purge-vps 100.68.225.92` |
 | `list-vps` | Show all VPS nodes | `list-vps` |
 
 ### **Service Routing**
@@ -370,7 +371,7 @@ sudo ./scripts/domains/multi-domain-registry.sh show | grep -A 10 "immich"
 The registry script includes several defensive measures:
 
 - **Dependency checks**: Verifies `kubectl` and `jq` are available before running
-- **Retry with backoff**: All `kubectl patch` operations use `kubectl_retry` (3 attempts, exponential backoff) to handle transient API server issues
+- **Conditional writes**: Every write goes through `sr_update_cm`, which carries the `resourceVersion` it read and retries on a conflict, so a concurrent change isn't lost. A failed read is an error and nothing is written
 - **Input validation**: `configure-routing` validates service exists in `service-registry` before writing routing config, and validates all domain formats
 - **Non-interactive safety**: Conflict prompts (`read -p`) detect if stdin is a tty. When called non-interactively (e.g., from `manage-app-visibility.sh` via `retry_command`), conflict checks are logged but don't block — the caller is expected to handle conflicts
 - **Error propagation**: All `kubectl patch` failures are caught and return non-zero, allowing callers to detect and handle failures

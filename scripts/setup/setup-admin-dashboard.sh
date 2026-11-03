@@ -11,6 +11,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Bootstrap with fallback pattern (auto-discovers if path is wrong)
+source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
+source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
+
+DASHBOARD_NS="kubernetes-dashboard"
+DASHBOARD_SA="dashboard-operator"
+TOKEN_DURATION="${DASHBOARD_TOKEN_DURATION:-1h}"
+
+# Under sudo, $HOME may be root's while the old token file is in the user's home
+ACTUAL_HOME="$HOME"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+fi
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -36,7 +51,7 @@ if kubectl get namespace kubernetes-dashboard &>/dev/null; then
     
     case $CHOICE in
         1)
-            # Just show token
+            # Fall through: refreshes access and issues a new short-lived token
             ;;
         2)
             echo "Removing existing installation..."
@@ -58,46 +73,88 @@ if ! kubectl get namespace kubernetes-dashboard &>/dev/null; then
     kubectl wait --for=condition=available --timeout=120s deployment/kubernetes-dashboard -n kubernetes-dashboard 2>/dev/null || sleep 30
 fi
 
-# Create admin service account
-echo "👤 Creating admin service account..."
+# Dashboard login: an operator role rather than cluster-admin. It can view apps and
+# their logs, scale them, and restart them by deleting a pod. It cannot read Secrets
+# or ConfigMaps, change what a workload runs, or change RBAC.
+echo "👤 Creating dashboard operator account..."
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: admin-user
-  namespace: kubernetes-dashboard
+  name: $DASHBOARD_SA
+  namespace: $DASHBOARD_NS
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: $DASHBOARD_SA
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "nodes", "pods", "pods/log", "services", "endpoints", "events", "persistentvolumes", "persistentvolumeclaims", "replicationcontrollers", "resourcequotas", "limitranges"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale", "statefulsets/scale", "replicasets/scale"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "ingressclasses", "networkpolicies"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: admin-user
+  name: $DASHBOARD_SA
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cluster-admin
+  name: $DASHBOARD_SA
 subjects:
 - kind: ServiceAccount
-  name: admin-user
-  namespace: kubernetes-dashboard
+  name: $DASHBOARD_SA
+  namespace: $DASHBOARD_NS
 EOF
 
-# Create token
-echo "🔑 Creating access token..."
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: admin-user-token
-  namespace: kubernetes-dashboard
-  annotations:
-    kubernetes.io/service-account.name: admin-user
-type: kubernetes.io/service-account-token
-EOF
+# Earlier versions created a cluster-admin account with a token that never expires,
+# and saved that token to a file. Deleting the token Secret revokes it.
+LEGACY_REMOVED=false
+if [ -n "$(kubectl get secret admin-user-token -n "$DASHBOARD_NS" --ignore-not-found -o name)" ] || \
+   [ -n "$(kubectl get serviceaccount admin-user -n "$DASHBOARD_NS" --ignore-not-found -o name)" ]; then
+    LEGACY_REMOVED=true
+fi
+kubectl delete secret admin-user-token -n "$DASHBOARD_NS" --ignore-not-found
+kubectl delete serviceaccount admin-user -n "$DASHBOARD_NS" --ignore-not-found
+# Only this script's binding: the name alone is generic enough to be someone else's
+LEGACY_BINDING_NS=$(kubectl get clusterrolebinding admin-user --ignore-not-found \
+    -o jsonpath='{.subjects[0].namespace}')
+if [ "$LEGACY_BINDING_NS" = "$DASHBOARD_NS" ]; then
+    kubectl delete clusterrolebinding admin-user --ignore-not-found
+fi
+if [ -f "$ACTUAL_HOME/.mynodeone/dashboard-token.txt" ]; then
+    rm -f "$ACTUAL_HOME/.mynodeone/dashboard-token.txt"
+    LEGACY_REMOVED=true
+fi
+if [ "$LEGACY_REMOVED" = "true" ]; then
+    echo -e "${YELLOW}Revoked the old cluster-admin dashboard login and removed its saved token.${NC}"
+fi
 
-sleep 3
-
-# Get token
-TOKEN=$(kubectl get secret admin-user-token -n kubernetes-dashboard -o jsonpath='{.data.token}' | base64 -d)
+# Issue a short-lived token. It is shown once and never written to disk.
+echo "🔑 Creating access token (valid for $TOKEN_DURATION)..."
+TOKEN=$(kubectl create token "$DASHBOARD_SA" -n "$DASHBOARD_NS" --duration="$TOKEN_DURATION")
 
 # Patch service to LoadBalancer
 echo "🌐 Configuring external access..."
@@ -134,7 +191,7 @@ else
     echo ""
 fi
 
-echo "🔐 Login Token:"
+echo "🔐 Login Token (valid for $TOKEN_DURATION):"
 echo ""
 echo "$TOKEN"
 echo ""
@@ -151,25 +208,15 @@ echo "💡 What You Can Do:"
 echo "   • View all applications and their status"
 echo "   • Check resource usage (CPU, RAM, storage)"
 echo "   • View logs from any application"
-echo "   • Restart applications"
+echo "   • Restart applications (delete a pod and it is recreated)"
 echo "   • Scale applications up/down"
 echo "   • Monitor cluster health"
 echo ""
 echo "⚠️  Token Security:"
-echo "   • Save this token securely"
-echo "   • Anyone with this token has full cluster access"
-echo "   • To revoke: kubectl delete secret admin-user-token -n kubernetes-dashboard"
+echo "   • This login cannot read Secrets, change workloads or change permissions."
+echo "     For those, use kubectl."
+echo "   • The token expires by itself and is not saved anywhere."
 echo ""
-echo "📝 To retrieve token later:"
-echo "   kubectl get secret admin-user-token -n kubernetes-dashboard \\"
-echo "     -o jsonpath='{.data.token}' | base64 -d"
-echo ""
-
-# Save token to file
-TOKEN_FILE="$HOME/.mynodeone/dashboard-token.txt"
-mkdir -p "$(dirname "$TOKEN_FILE")"
-echo "$TOKEN" > "$TOKEN_FILE"
-chmod 600 "$TOKEN_FILE"
-
-echo "✓ Token saved to: $TOKEN_FILE"
+echo "📝 To get a new token:"
+echo "   kubectl create token $DASHBOARD_SA -n $DASHBOARD_NS --duration=$TOKEN_DURATION"
 echo ""

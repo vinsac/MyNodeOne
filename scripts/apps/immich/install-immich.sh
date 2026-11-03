@@ -38,7 +38,7 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
 fi
 
 # If not found, ask user
-if [ -z "$CLUSTER_DOMAIN" ]; then
+if [ -z "${CLUSTER_DOMAIN:-}" ]; then
     echo -e "${YELLOW}⚠️  Could not detect cluster domain from cluster-info ConfigMap${NC}"
     echo ""
     read -p "Enter your cluster domain [default: mynodeone]: " USER_CLUSTER_DOMAIN
@@ -51,21 +51,15 @@ echo -e "${BLUE}  Installing Immich (Google Photos Alternative)${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Check for latest Immich version
-echo "🔍 Checking for latest Immich version..."
-LATEST_VERSION=""
-if command -v curl &> /dev/null; then
-    LATEST_VERSION=$(curl -s https://api.github.com/repos/immich-app/immich/releases/latest | grep -o '"tag_name": *"[^"]*"' | grep -o 'v[0-9.]*' || echo "")
-fi
-
-if [ -n "$LATEST_VERSION" ]; then
-    echo "✓ Latest Immich version: $LATEST_VERSION"
-    IMMICH_IMAGE="ghcr.io/immich-app/immich-server:${LATEST_VERSION}"
-else
-    echo -e "${YELLOW}⚠️  Could not fetch latest version, using 'release' tag${NC}"
-    IMMICH_IMAGE="ghcr.io/immich-app/immich-server:release"
-fi
-echo ""
+# Immich version for new installs. Set IMMICH_VERSION to choose another one.
+#
+# v1.132.3 is deliberately not the newest release. Later versions replace the
+# pgvecto.rs database image used by this manifest with VectorChord and move the
+# media path, so taking "latest" here could break a library. Read the Immich
+# release notes and migrate the manifest before raising this.
+IMMICH_DEFAULT_VERSION="v1.132.3"
+IMMICH_DEFAULT_IMAGE="ghcr.io/immich-app/immich-server:${IMMICH_DEFAULT_VERSION}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/install-helpers.sh"
 
 # Validate prerequisites
 if ! command -v kubectl &> /dev/null; then
@@ -156,7 +150,20 @@ echo "  Database: $DB_STORAGE"
 echo ""
 
 NAMESPACE="immich"
-DB_PASSWORD=$(openssl rand -base64 32)
+# An existing password is reused: the database was initialised with it.
+app_load_or_create_secret_value DB_PASSWORD "$NAMESPACE" immich-secrets DB_PASSWORD \
+    immich-postgres -- openssl rand -base64 32
+
+# Re-running keeps the running version, so an installed library is never moved
+# across versions (or downgraded to the default) by accident.
+IMMICH_OVERRIDE=""
+if [ -n "${IMMICH_VERSION:-}" ]; then
+    IMMICH_OVERRIDE="ghcr.io/immich-app/immich-server:${IMMICH_VERSION}"
+fi
+app_resolve_image IMMICH_IMAGE "$NAMESPACE" immich-server immich-server \
+    "$IMMICH_DEFAULT_IMAGE" "$IMMICH_OVERRIDE"
+app_resolve_image IMMICH_REDIS_IMAGE "$NAMESPACE" immich-redis redis "redis:7.4.12-alpine"
+echo "✓ Immich image: $IMMICH_IMAGE"
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -349,7 +356,7 @@ spec:
       priorityClassName: mynodeone-infrastructure
       containers:
       - name: redis
-        image: redis:7-alpine
+        image: $IMMICH_REDIS_IMAGE
         ports:
         - containerPort: 6379
         resources:
@@ -391,6 +398,7 @@ echo "📍 Access Immich at:"
 echo "   • Direct IP: http://$SERVICE_IP"
 echo "   • Local domain: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local (after DNS update)"
 echo ""
+app_warn_first_user_admin "Immich" "http://$SERVICE_IP"
 echo "🎯 First Time Setup:"
 echo "   1. Open the URL in your browser"
 echo "   2. Create your admin account (first user = admin)"
@@ -459,9 +467,9 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             
             # Verify registration
             echo "🔍 Verifying registration..."
-            REGISTERED_LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
-                -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-                jq -r '."immich-server".local_name' 2>/dev/null || echo "")
+            # shellcheck source=../../lib/service-registry-lib.sh
+            source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+            REGISTERED_LOCAL_NAME=$(sr_service_field "$NAMESPACE/immich-server" local_name 2>/dev/null || echo "")
             
             if [ "$REGISTERED_LOCAL_NAME" = "$APP_SUBDOMAIN" ]; then
                 echo "✓ Verified: Service registered with local_name '$APP_SUBDOMAIN'"

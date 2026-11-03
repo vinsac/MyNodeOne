@@ -1,15 +1,17 @@
 [Unit]
 Description=MyNodeOne Config API Server
 Documentation=https://github.com/vinsac/MyNodeOne
-After=network.target k3s.service
-Wants=k3s.service
+After=network.target k3s.service tailscaled.service
+Wants=k3s.service tailscaled.service
 
 [Service]
 Type=simple
 User=root
+# --bind=tailscale listens on loopback and the Tailscale IP. It needs a binary
+# built from this repo version or later; install-config-api.sh installs both.
 ExecStart=/usr/local/bin/mynodeone-config-api \
     --port=8443 \
-    --bind=0.0.0.0 \
+    --bind=tailscale \
     --token-file=/etc/mynodeone/api-token \
     --require-tailscale=true
 Restart=always

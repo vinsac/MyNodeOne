@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="llmapi"
-PRE_DOWNLOAD_DIR="/var/lib/llmapi/models"
+PRE_DOWNLOAD_DIR="${PRE_DOWNLOAD_DIR:-/var/lib/llmapi/models}"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  LLM API - Copy Pre-Downloaded Models${NC}"
@@ -27,7 +27,30 @@ if ! kubectl get namespace $NAMESPACE &>/dev/null; then
     exit 1
 fi
 
-# Function to copy models to PVC
+# Runs a copy and records whether it copied, skipped or failed.
+run_copy() {
+    local status=0
+    copy_models_to_pvc "$@" || status=$?
+    case "$status" in
+        0) COPIED="$COPIED $1" ;;
+        2) SKIPPED="$SKIPPED $1" ;;
+        *) FAILED="$FAILED $1" ;;
+    esac
+}
+
+# Puts the service back at the replica count it had before the copy.
+restore_replicas() {
+    local model_type="$1" replicas="$2"
+    [ -n "$replicas" ] || return 0
+    case "$model_type" in
+        vllm) kubectl scale statefulset/vllm --replicas="$replicas" -n $NAMESPACE || true ;;
+        llamacpp) kubectl scale deployment/llamacpp --replicas="$replicas" -n $NAMESPACE || true ;;
+        embedding) kubectl scale deployment/embedding --replicas="$replicas" -n $NAMESPACE || true ;;
+    esac
+}
+
+# Copies models to a PVC. Returns 0 if copied, 2 if skipped because the PVC isn't
+# available, and 1 if the copy failed.
 copy_models_to_pvc() {
     local model_type="$1"
     local source_path="$2"
@@ -41,25 +64,29 @@ copy_models_to_pvc() {
     # Check if PVC exists and is bound
     if ! kubectl get pvc $pvc_name -n $NAMESPACE &>/dev/null; then
         echo -e "   ${YELLOW}⚠ PVC $pvc_name not found, skipping${NC}"
-        return 0
+        return 2
     fi
-    
+
     local pvc_status=$(kubectl get pvc $pvc_name -n $NAMESPACE -o jsonpath='{.status.phase}')
     if [ "$pvc_status" != "Bound" ]; then
         echo -e "   ${YELLOW}⚠ PVC $pvc_name not bound (status: $pvc_status), skipping${NC}"
-        return 0
+        return 2
     fi
     
     # Scale down the deployment/statefulset to avoid conflicts
     echo "   🔄 Scaling down $model_type service..."
+    local original_replicas=""
     case "$model_type" in
         vllm)
+            original_replicas=$(kubectl get statefulset/vllm -n $NAMESPACE -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
             kubectl scale statefulset/vllm --replicas=0 -n $NAMESPACE --timeout=60s || true
             ;;
         llamacpp)
+            original_replicas=$(kubectl get deployment/llamacpp -n $NAMESPACE -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
             kubectl scale deployment/llamacpp --replicas=0 -n $NAMESPACE --timeout=60s || true
             ;;
         embedding)
+            original_replicas=$(kubectl get deployment/embedding -n $NAMESPACE -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
             kubectl scale deployment/embedding --replicas=0 -n $NAMESPACE --timeout=60s || true
             ;;
     esac
@@ -113,19 +140,14 @@ spec:
       path: $PRE_DOWNLOAD_DIR
 COPYPOD
 
-    # Wait for copy to complete
+    # Wait for copy to complete. Don't wait for Ready first: a pod that finishes quickly
+    # is never reported Ready.
     echo "   ⏳ Waiting for copy to complete..."
-    kubectl wait --for=condition=Ready pod/$copy_pod -n $NAMESPACE --timeout=300s || {
-        echo -e "   ${RED}❌ Copy pod failed to start${NC}"
+    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/$copy_pod -n $NAMESPACE --timeout=900s || {
+        echo -e "   ${RED}❌ Copy operation timed out or failed${NC}"
         kubectl logs $copy_pod -n $NAMESPACE 2>/dev/null || true
         kubectl delete pod $copy_pod -n $NAMESPACE --ignore-not-found
-        return 1
-    }
-    
-    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/$copy_pod -n $NAMESPACE --timeout=600s || {
-        echo -e "   ${YELLOW}⚠ Copy operation timed out or failed${NC}"
-        kubectl logs $copy_pod -n $NAMESPACE 2>/dev/null || true
-        kubectl delete pod $copy_pod -n $NAMESPACE --ignore-not-found
+        restore_replicas "$model_type" "$original_replicas"
         return 1
     }
     
@@ -138,18 +160,8 @@ COPYPOD
     
     # Scale back up
     echo "   🔄 Scaling up $model_type service..."
-    case "$model_type" in
-        vllm)
-            kubectl scale statefulset/vllm --replicas=1 -n $NAMESPACE
-            ;;
-        llamacpp)
-            kubectl scale deployment/llamacpp --replicas=1 -n $NAMESPACE
-            ;;
-        embedding)
-            kubectl scale deployment/embedding --replicas=1 -n $NAMESPACE
-            ;;
-    esac
-    
+    restore_replicas "$model_type" "$original_replicas"
+
     echo -e "   ${GREEN}✅ $model_type models copied successfully${NC}"
     echo ""
 }
@@ -158,15 +170,18 @@ COPYPOD
 echo "🔍 Checking for pre-downloaded models..."
 echo ""
 
-MODELS_COPIED=false
+FOUND_MODELS=false
+COPIED=""
+SKIPPED=""
+FAILED=""
 
 # vLLM models
 if [ -d "$PRE_DOWNLOAD_DIR/vllm" ] && [ -n "$(ls -A $PRE_DOWNLOAD_DIR/vllm 2>/dev/null)" ]; then
     echo "Found vLLM models:"
     ls -la "$PRE_DOWNLOAD_DIR/vllm"
     echo ""
-    copy_models_to_pvc "vllm" "/predownloaded/vllm" "vllm-models" "/models"
-    MODELS_COPIED=true
+    FOUND_MODELS=true
+    run_copy "vllm" "/predownloaded/vllm" "vllm-models" "/models"
 fi
 
 # llama.cpp models  
@@ -174,8 +189,8 @@ if [ -d "$PRE_DOWNLOAD_DIR/llamacpp" ] && [ -n "$(ls -A $PRE_DOWNLOAD_DIR/llamac
     echo "Found llama.cpp models:"
     ls -la "$PRE_DOWNLOAD_DIR/llamacpp"/*.gguf
     echo ""
-    copy_models_to_pvc "llamacpp" "/predownloaded/llamacpp" "llamacpp-models" "/models"
-    MODELS_COPIED=true
+    FOUND_MODELS=true
+    run_copy "llamacpp" "/predownloaded/llamacpp" "llamacpp-models" "/models"
 fi
 
 # Embedding models
@@ -183,19 +198,29 @@ if [ -d "$PRE_DOWNLOAD_DIR/embedding" ] && [ -n "$(ls -A $PRE_DOWNLOAD_DIR/embed
     echo "Found embedding models:"
     ls -la "$PRE_DOWNLOAD_DIR/embedding"/*.gguf
     echo ""
-    copy_models_to_pvc "embedding" "/predownloaded/embedding" "embedding-models" "/models"
-    MODELS_COPIED=true
+    FOUND_MODELS=true
+    run_copy "embedding" "/predownloaded/embedding" "embedding-models" "/models"
 fi
 
-if [ "$MODELS_COPIED" = false ]; then
+if [ "$FOUND_MODELS" = false ]; then
     echo -e "${YELLOW}⚠ No pre-downloaded models found in $PRE_DOWNLOAD_DIR${NC}"
     echo ""
-    echo "To download models, run:"
-    echo "  sudo $SCRIPT_DIR/download-models.sh"
+    echo "The backends download their models on first start."
     exit 0
 fi
 
-echo -e "${GREEN}✅ Model copy operations completed!${NC}"
+if [ -n "$COPIED" ]; then
+    echo -e "${GREEN}✅ Copied:$COPIED${NC}"
+fi
+if [ -n "$SKIPPED" ]; then
+    echo -e "${YELLOW}⚠ Skipped, no matching PVC:$SKIPPED${NC}"
+    echo "   The current manifests read models directly from $PRE_DOWNLOAD_DIR on the node,"
+    echo "   so backends without a PVC need no copy and will use those files as they are."
+fi
+if [ -n "$FAILED" ]; then
+    echo -e "${RED}❌ Failed:$FAILED${NC}"
+    exit 1
+fi
 echo ""
 echo "📊 Check service status:"
 echo "  kubectl get pods -n $NAMESPACE"

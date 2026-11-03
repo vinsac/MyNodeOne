@@ -1,0 +1,96 @@
+#!/bin/bash
+#
+# kubectl stub. Logs every call and answers from files in $STUB_STATE, so a test
+# describes the cluster it wants. Never contacts anything.
+#
+#   FAIL_APPLY=1 / FAIL_WAIT=1   make that verb fail
+#   FAIL_GET=1                   make every "get" fail, as an API outage would
+#   NO_DEPLOYMENTS=1             report no Deployments in the namespace
+#   $STUB_STATE/secret.<name>.<key>    base64 value of a Secret key
+#   $STUB_STATE/pvc.<name>             PVC exists
+#   $STUB_STATE/deployment.<name>      image of that Deployment's container
+#   $STUB_STATE/env.<name>.<ENV>       inline value of that env var in the Deployment
+#   $STUB_STATE/imageid.<name>         imageID reported by that Deployment's pod
+
+echo "kubectl $*" >> "$STUB_LOG"
+
+case "${1:-}" in
+    apply)
+        if [[ "${FAIL_APPLY:-}" == "1" ]]; then
+            echo 'error: simulated apply failure' >&2
+            exit 1
+        fi
+        if [[ "${2:-}" == "-f" && "${3:-}" == "-" ]]; then
+            cat >> "$STUB_CAPTURE/stdin.yaml"
+        elif [[ "${2:-}" == "-f" ]]; then
+            cp "${3%/}"/*.yaml "$STUB_CAPTURE/"
+            stat -c '%a' "${3%/}" > "$STUB_CAPTURE/.dir-mode"
+            echo "${3%/}" > "$STUB_CAPTURE/.dir-path"
+        fi
+        echo "applied"
+        ;;
+    wait)
+        if [[ "${FAIL_WAIT:-}" == "1" ]]; then
+            echo 'error: timed out waiting for the condition on deployments/simulated' >&2
+            exit 1
+        fi
+        echo "condition met"
+        ;;
+    create)
+        # create ... --dry-run=client -o yaml: echo the arguments so tests can see them
+        echo "# $*"
+        ;;
+    get)
+        if [[ "${FAIL_GET:-}" == "1" ]]; then
+            echo 'Unable to connect to the server' >&2
+            exit 1
+        fi
+        kind="${2:-}"
+        name="${3:-}"
+        args="$*"
+        case "$kind" in
+            nodes) echo "node1 Ready" ;;
+            secret)
+                if [[ "$args" == *"-o name"* ]]; then
+                    if compgen -G "$STUB_STATE/secret.$name.*" > /dev/null; then echo "secret/$name"; fi
+                elif [[ "$args" == *"jsonpath={.data."* ]]; then
+                    key="${args#*jsonpath=\{.data.}"
+                    key="${key%%\}*}"
+                    if [[ -f "$STUB_STATE/secret.$name.$key" ]]; then cat "$STUB_STATE/secret.$name.$key"; fi
+                fi
+                ;;
+            pvc)
+                if [[ -f "$STUB_STATE/pvc.$name" ]]; then echo "persistentvolumeclaim/$name"; fi
+                ;;
+            deployment)
+                if [[ "$args" == *'.env[?(@.name=='* ]]; then
+                    env_name="${args##*@.name==\"}"
+                    env_name="${env_name%%\"*}"
+                    if [[ -f "$STUB_STATE/env.$name.$env_name" ]]; then cat "$STUB_STATE/env.$name.$env_name"; fi
+                elif [[ -f "$STUB_STATE/deployment.$name" ]]; then
+                    cat "$STUB_STATE/deployment.$name"
+                fi
+                ;;
+            deployments)
+                if [[ "${NO_DEPLOYMENTS:-}" != "1" ]]; then echo "deployment.apps/stub"; fi
+                ;;
+            pods)
+                selector="${args#*-l }"
+                selector="${selector%% *}"
+                pod_app="${selector#app=}"
+                if [[ -f "$STUB_STATE/imageid.$pod_app" ]]; then cat "$STUB_STATE/imageid.$pod_app"; fi
+                ;;
+            svc)
+                if [[ "$args" == *"-o json"* ]]; then
+                    echo '{"items":[{"metadata":{"name":"stub-web"},"spec":{"type":"LoadBalancer"},"status":{"loadBalancer":{"ingress":[{"ip":"100.64.0.10"}]}}}]}'
+                elif [[ "$args" == *"-o name"* ]]; then
+                    echo "service/stub-web"
+                else
+                    echo "100.64.0.10"
+                fi
+                ;;
+            configmap) ;;
+        esac
+        ;;
+esac
+exit 0

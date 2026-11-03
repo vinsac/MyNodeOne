@@ -1,0 +1,36 @@
+# The chart's own rules only fire at 5% and 3% free. These warn with more time to act.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mynodeone-node-disk
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: mynodeone.node-disk
+      rules:
+        - alert: NodeDiskSpaceLow
+          expr: |
+            node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|squashfs"}
+              / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|squashfs"} < 0.15
+            and node_filesystem_readonly{fstype!~"tmpfs|ramfs|squashfs"} == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 15% free"
+            description: Free space is {{ $value | humanizePercentage }}.
+        - alert: NodeDiskSpaceCritical
+          expr: |
+            node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|squashfs"}
+              / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|squashfs"} < 0.07
+            and node_filesystem_readonly{fstype!~"tmpfs|ramfs|squashfs"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 7% free"
+            description: >-
+              Free space is {{ $value | humanizePercentage }}. If this is the disk holding
+              /var/lib/rancher, kubelet starts evicting pods and etcd can stop accepting writes.

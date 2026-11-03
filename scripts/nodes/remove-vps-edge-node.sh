@@ -28,6 +28,7 @@ fi
 
 CONFIG_BASE="$ACTUAL_HOME/.mynodeone/vps-nodes"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Helper functions
 print_header() {
@@ -99,7 +100,7 @@ fi
 echo
 print_warning "You are about to remove VPS node: $NODE_NAME"
 echo "This will:"
-echo "  1. Unregister the node from the control plane registry"
+echo "  1. Remove the node and its routes from the control plane registries"
 echo "  2. Delete local configuration files ($NODE_DIR)"
 echo "  3. Restart the sync controller"
 echo
@@ -130,9 +131,14 @@ print_header "Removing $NODE_NAME..."
 
 # Unregister from ConfigMap
 if [ -n "$VPS_IP" ]; then
-    echo "Unregistering from domain-registry..."
+    echo "Removing from the registries..."
     if [ -f "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" ]; then
-        bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" unregister-vps "$VPS_IP"
+        # The local config is what lets this script find the node again, so it stays
+        # until the registries no longer list it.
+        if ! bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" purge-vps "$VPS_IP"; then
+            print_error "Could not remove $VPS_IP from the registries. Nothing local was deleted; run this again."
+            exit 1
+        fi
     else
         print_warning "Registry script not found, skipping unregistration."
     fi

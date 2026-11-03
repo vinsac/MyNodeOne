@@ -13,6 +13,9 @@
 
 set -euo pipefail
 
+# shellcheck source=../lib/service-registry-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/service-registry-lib.sh"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,17 +33,17 @@ log_test() {
 
 log_pass() {
     echo -e "${GREEN}[PASS]${NC} $1"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
 }
 
 log_fail() {
     echo -e "${RED}[FAIL]${NC} $1"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
 }
 
 log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
-    ((WARN_COUNT++))
+    WARN_COUNT=$((WARN_COUNT + 1))
 }
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -102,6 +105,13 @@ if echo "$SERVICE_REGISTRY" | jq empty 2>/dev/null; then
     # Check structure (flat key-value)
     if echo "$SERVICE_REGISTRY" | jq -e 'type == "object"' &>/dev/null; then
         log_pass "service-registry uses flat object structure"
+
+        # Both key formats are valid. Bare keys just mean the migration hasn't run.
+        if sr_needs_migration "$SERVICE_REGISTRY"; then
+            log_warn "service-registry still has bare keys; they are converted on the next register or sync once the config API is upgraded"
+        else
+            log_pass "service-registry uses namespace/name keys"
+        fi
     else
         log_fail "service-registry has unexpected structure"
     fi
@@ -160,6 +170,14 @@ if echo "$ROUTING" | jq empty 2>/dev/null; then
     
     if echo "$ROUTING" | jq -e 'type == "object"' &>/dev/null; then
         log_pass "routing.json uses flat object structure"
+
+        # A route can be filed under the bare name or namespace/name.
+        while IFS= read -r route_key; do
+            [[ -n "$route_key" ]] || continue
+            if ! sr_resolve_key "$SERVICE_REGISTRY" "$route_key" >/dev/null 2>&1; then
+                log_warn "routing.json entry '$route_key' does not identify one service in service-registry"
+            fi
+        done < <(echo "$ROUTING" | jq -r 'keys[]')
     else
         log_fail "routing.json has unexpected structure"
     fi
@@ -208,7 +226,7 @@ echo ""
 log_test "Checking domain-registry write patterns..."
 WRITE_PATTERNS=$(grep -r "\.domains\[" scripts/domains/multi-domain-registry.sh 2>/dev/null || echo "")
 if [[ -n "$WRITE_PATTERNS" ]]; then
-    log_pass "domain-registry writes use .domains[$domain] pattern"
+    log_pass "domain-registry writes use .domains[\$domain] pattern"
 else
     log_warn "Could not verify domain write pattern"
 fi
@@ -244,7 +262,7 @@ echo ""
 
 # Check for empty string handling
 log_test "Checking empty string handling in domain-registry reads..."
-EMPTY_CHECKS=$(grep -A2 "domains\.json" scripts/domains/multi-domain-registry.sh | grep "|| echo" | wc -l)
+EMPTY_CHECKS=$(grep -A2 "domains\.json" scripts/domains/multi-domain-registry.sh | grep -c "|| echo" || true)
 if [[ "$EMPTY_CHECKS" -gt 0 ]]; then
     log_pass "Empty string fallbacks present ($EMPTY_CHECKS instances)"
 else

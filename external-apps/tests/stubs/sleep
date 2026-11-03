@@ -1,0 +1,3 @@
+#!/bin/bash
+# sleep stub: keeps the tests fast.
+exit 0

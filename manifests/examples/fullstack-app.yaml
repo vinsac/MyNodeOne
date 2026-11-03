@@ -1,6 +1,17 @@
 # Full-Stack Application Example
 # Frontend (React/Vue/etc) + Backend API + PostgreSQL + Redis
 # Deploy with: kubectl apply -f fullstack-app.yaml
+#
+# The database and backend do not start until you create their credentials, because
+# this example deliberately ships no password (their pods wait in
+# CreateContainerConfigError):
+#
+#   DB_PASSWORD="$(openssl rand -hex 24)"
+#   kubectl create secret generic database-credentials -n myapp \
+#     --from-literal=POSTGRES_USER=myapp \
+#     --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+#     --from-literal=POSTGRES_DB=myapp_production \
+#     --from-literal=DATABASE_URL="postgresql://myapp:$DB_PASSWORD@postgres:5432/myapp_production"
 
 ---
 apiVersion: v1
@@ -12,19 +23,6 @@ metadata:
 
 ---
 # PostgreSQL Database
-apiVersion: v1
-kind: Secret
-metadata:
-  name: database-credentials
-  namespace: myapp
-type: Opaque
-stringData:
-  POSTGRES_USER: myapp
-  POSTGRES_PASSWORD: secure-password-change-me
-  POSTGRES_DB: myapp_production
-  DATABASE_URL: postgresql://myapp:secure-password-change-me@postgres:5432/myapp_production
-
----
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -59,7 +57,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: postgres:16-alpine
+        image: postgres:16.15-alpine
         ports:
         - containerPort: 5432
           name: postgres
@@ -120,7 +118,7 @@ spec:
     spec:
       containers:
       - name: redis
-        image: redis:7-alpine
+        image: redis:7.4.12-alpine
         ports:
         - containerPort: 6379
           name: redis
@@ -179,7 +177,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: your-registry/myapp-backend:latest  # Replace with your image
+        image: your-registry/myapp-backend:1.0.0  # Replace with your image
         ports:
         - containerPort: 3000
           name: http
@@ -248,7 +246,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: your-registry/myapp-frontend:latest  # Replace with your image
+        image: your-registry/myapp-frontend:1.0.0  # Replace with your image
         ports:
         - containerPort: 80
           name: http

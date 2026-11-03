@@ -38,6 +38,10 @@ NC='\033[0m'
 # Load cluster resource detection utilities
 source "$PROJECT_ROOT/scripts/lib/cluster-resources.sh"
 
+# Helpers that keep a re-run from changing what's already in the cluster
+source "$SCRIPT_DIR/lib/install-helpers.sh"
+source "$SCRIPT_DIR/lib/gateway-code.sh"
+
 # Detect control plane user (authoritative source: cluster config)
 # This is critical because SSH keys are owned by the control plane user, not root
 CONTROL_PLANE_USER=""
@@ -89,6 +93,15 @@ fi
 
 if ! kubectl get nodes &> /dev/null; then
     echo -e "${RED}Error: Cannot connect to Kubernetes cluster.${NC}"
+    exit 1
+fi
+
+# This installer applies Redis first, and today's Redis requires a password that an older
+# gateway can't send. upgrade-llmapi.sh changes them in the safe order, with a backup.
+if gateway_predates_redis_auth; then
+    echo -e "${RED}Error: the running gateway can't send a Redis password, so this installer would leave it hanging.${NC}"
+    echo "Upgrade this install with: bash $SCRIPT_DIR/upgrade-llmapi.sh"
+    echo "Nothing changed."
     exit 1
 fi
 
@@ -287,6 +300,21 @@ if kubectl get namespace llmapi &>/dev/null; then
     echo ""
 fi
 
+# On an upgrade the prompts default to what's in the cluster, so accepting every default
+# changes nothing.
+CURRENT_SUBDOMAIN=""
+CURRENT_TOKENS=""
+CURRENT_RPM=""
+CURRENT_VLLM_MODEL=""
+CURRENT_LLAMACPP_URL=""
+if [ "$EXISTING_INSTALL" = true ]; then
+    CURRENT_SUBDOMAIN=$(kubectl get svc llmapi -n llmapi -o 'jsonpath={.metadata.annotations.mynodeone\.io/subdomain}' 2>/dev/null || true)
+    CURRENT_TOKENS=$(configmap_value gateway-config DEFAULT_TOKENS_PER_DAY)
+    CURRENT_RPM=$(configmap_value gateway-config DEFAULT_REQUESTS_PER_MINUTE)
+    CURRENT_VLLM_MODEL=$(configmap_value vllm-config MODEL_NAME)
+    CURRENT_LLAMACPP_URL=$(configmap_value llamacpp-config MODEL_URL)
+fi
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -300,8 +328,8 @@ echo ""
 echo "🌐 Choose a subdomain for the LLM API:"
 echo "   Local access: <subdomain>.${CLUSTER_DOMAIN}.local"
 echo ""
-read -p "Enter subdomain [default: llmapi]: " APP_SUBDOMAIN
-APP_SUBDOMAIN="${APP_SUBDOMAIN:-llmapi}"
+read -p "Enter subdomain [default: ${CURRENT_SUBDOMAIN:-llmapi}]: " APP_SUBDOMAIN
+APP_SUBDOMAIN="${APP_SUBDOMAIN:-${CURRENT_SUBDOMAIN:-llmapi}}"
 APP_SUBDOMAIN=$(echo "$APP_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
 if [ -z "$APP_SUBDOMAIN" ]; then
     APP_SUBDOMAIN="llmapi"
@@ -350,9 +378,15 @@ VLLM_CONFIG_FORMAT="auto"
 VLLM_LOAD_FORMAT="auto"
 VLLM_TOOL_CALL_PARSER="none"
 VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
+VLLM_TRUST_REMOTE_CODE="false"
+KEEP_VLLM_CONFIG=false
 if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ]); then
     echo "🤖 Choose primary GPU model (vLLM):"
     echo ""
+    if [ -n "$CURRENT_VLLM_MODEL" ]; then
+        echo "  0. Keep current model and all its settings: $CURRENT_VLLM_MODEL"
+        echo ""
+    fi
     echo "  Popular Models:"
     echo "  1. Qwen3-14B (AWQ)  - 32K context, reasoning enabled (~10GB weights + KV cache)"
     echo "  2. Qwen3-8B         - Faster Qwen3 option (BF16/FP16, lower context recommended)"
@@ -364,10 +398,22 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
     echo ""
     echo -e "  ${BLUE}Browse models: https://huggingface.co/models?library=vllm${NC}"
     echo ""
-    read -p "Choose model [1-5, default: 1]: " MODEL_CHOICE
-    MODEL_CHOICE="${MODEL_CHOICE:-1}"
-    
+    if [ -n "$CURRENT_VLLM_MODEL" ]; then
+        read -p "Choose model [0-5, default: 0]: " MODEL_CHOICE
+        MODEL_CHOICE="${MODEL_CHOICE:-0}"
+    else
+        read -p "Choose model [1-5, default: 1]: " MODEL_CHOICE
+        MODEL_CHOICE="${MODEL_CHOICE:-1}"
+    fi
+
     case "$MODEL_CHOICE" in
+        0)
+            if [ -n "$CURRENT_VLLM_MODEL" ]; then
+                KEEP_VLLM_CONFIG=true
+                VLLM_MODEL="$CURRENT_VLLM_MODEL"
+                VLLM_MODEL_NAME=$(configmap_value vllm-config SERVED_MODEL_NAME)
+            fi
+            ;;
         1)
             VLLM_MODEL="Qwen/Qwen3-14B-AWQ"
             VLLM_MODEL_NAME="qwen3-14b"
@@ -435,6 +481,14 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
             VLLM_LOAD_FORMAT="auto"
             VLLM_TOOL_CALL_PARSER="none"
             VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
+            echo ""
+            echo "  Some models need Python code from their own repo to load. Enabling this runs"
+            echo "  that code in the GPU pod, which holds your HuggingFace token. Only say yes"
+            echo "  for a repo you trust, and only if vLLM fails to load the model without it."
+            read -p "  Trust remote code for this model? [y/N]: " TRUST_REMOTE_CODE_ANSWER
+            if [ "${TRUST_REMOTE_CODE_ANSWER,,}" = "y" ]; then
+                VLLM_TRUST_REMOTE_CODE="true"
+            fi
             # Validate
             if [ -z "$VLLM_MODEL" ]; then
                 echo -e "${YELLOW}No model entered, using default Qwen3-14B${NC}"
@@ -448,6 +502,7 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
                 VLLM_LOAD_FORMAT="auto"
                 VLLM_TOOL_CALL_PARSER="none"
                 VLLM_ENABLE_AUTO_TOOL_CHOICE="false"
+                VLLM_TRUST_REMOTE_CODE="false"
             fi
             ;;
     esac
@@ -458,9 +513,14 @@ fi
 # Default to Qwen3-14B (same family as vLLM) for consistent responses across backends
 LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
 LLAMACPP_MODEL_FILE="Qwen3-14B-Q4_K_M.gguf"
+KEEP_LLAMACPP_CONFIG=false
 if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo "🧠 Choose CPU/RAM model (llama.cpp - GGUF format):"
     echo ""
+    if [ -n "$CURRENT_LLAMACPP_URL" ]; then
+        echo "  0. Keep current model and all its settings: $(configmap_value llamacpp-config MODEL_FILE)"
+        echo ""
+    fi
     echo -e "  ${GREEN}Recommended (same as GPU for consistent responses):${NC}"
     echo "  1. Qwen3-14B (Q4_K_M)     - ~9GB RAM, matches GPU model family ⭐"
     echo "  2. Qwen3-14B (Q8_0)       - ~16GB RAM, higher quality version"
@@ -475,10 +535,22 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     echo ""
     echo -e "  ${BLUE}Browse GGUF models: https://huggingface.co/models?library=gguf${NC}"
     echo ""
-    read -p "Choose model [1-6, default: 1]: " CPU_MODEL_CHOICE
-    CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-1}"
-    
+    if [ -n "$CURRENT_LLAMACPP_URL" ]; then
+        read -p "Choose model [0-6, default: 0]: " CPU_MODEL_CHOICE
+        CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-0}"
+    else
+        read -p "Choose model [1-6, default: 1]: " CPU_MODEL_CHOICE
+        CPU_MODEL_CHOICE="${CPU_MODEL_CHOICE:-1}"
+    fi
+
     case "$CPU_MODEL_CHOICE" in
+        0)
+            if [ -n "$CURRENT_LLAMACPP_URL" ]; then
+                KEEP_LLAMACPP_CONFIG=true
+                LLAMACPP_MODEL_URL="$CURRENT_LLAMACPP_URL"
+                LLAMACPP_MODEL_FILE=$(configmap_value llamacpp-config MODEL_FILE)
+            fi
+            ;;
         1)
             # Qwen3-14B Q4 - same model family as GPU vLLM (recommended)
             LLAMACPP_MODEL_URL="https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
@@ -560,10 +632,10 @@ fi
 
 # Default quotas
 echo "📊 Default API quotas for new keys:"
-read -p "Tokens per day [default: 100000]: " DEFAULT_TOKENS
-DEFAULT_TOKENS="${DEFAULT_TOKENS:-100000}"
-read -p "Requests per minute [default: 60]: " DEFAULT_RPM
-DEFAULT_RPM="${DEFAULT_RPM:-60}"
+read -p "Tokens per day [default: ${CURRENT_TOKENS:-100000}]: " DEFAULT_TOKENS
+DEFAULT_TOKENS="${DEFAULT_TOKENS:-${CURRENT_TOKENS:-100000}}"
+read -p "Requests per minute [default: ${CURRENT_RPM:-60}]: " DEFAULT_RPM
+DEFAULT_RPM="${DEFAULT_RPM:-${CURRENT_RPM:-60}}"
 echo ""
 
 # Load HF token management
@@ -585,11 +657,14 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "2" ] || [ "$DEPLOY_MODE" = "3
         echo "   Get a free token at: https://huggingface.co/settings/tokens"
         echo "   (Leave empty to skip - downloads will be slower)"
         echo ""
-        read -p "Enter HuggingFace token [optional]: " user_token
+        read -rsp "Enter HuggingFace token [optional]: " user_token
+        echo ""
         if [ -n "$user_token" ]; then
             if [[ "$user_token" == hf_* ]]; then
                 HF_TOKEN="$user_token"
-                save_token "$HF_TOKEN"
+                # The namespace may not exist yet. The Secret is written again once it does,
+                # and a failure there stops the install.
+                save_token "$HF_TOKEN" || true
                 echo -e "   ${GREEN}✓ Token saved and will be reused in future installations${NC}"
             else
                 echo -e "   ${YELLOW}⚠ Invalid token format (should start with 'hf_')${NC}"
@@ -938,13 +1013,9 @@ COPYPOD
 # Deploy PostgreSQL
 echo "🐘 Deploying PostgreSQL..."
 
-# Generate PostgreSQL password
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
-kubectl create secret generic llmapi-db \
-    --from-literal=postgres-password="$POSTGRES_PASSWORD" \
-    --namespace="$NAMESPACE" \
-    --dry-run=client -o yaml | kubectl apply -f -
-echo "   ✓ PostgreSQL secret created"
+# Generated on a first install only. The database keeps its original password, so an
+# upgrade has to keep it too.
+ensure_postgres_secret
 
 kubectl apply -f "$SCRIPT_DIR/manifests/postgres.yaml"
 echo "   ✓ PostgreSQL deployment created"
@@ -956,7 +1027,11 @@ kubectl wait --for=condition=ready pod -l app=llmapi-postgres -n "$NAMESPACE" --
 
 # Deploy Redis
 echo "🔴 Deploying Redis..."
-kubectl apply -f "$SCRIPT_DIR/manifests/redis.yaml"
+ensure_redis_secret
+apply_manifest "$SCRIPT_DIR/manifests/redis.yaml"
+# The gateway below needs Redis to be up with its password.
+kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=300s || \
+    echo "   ⚠ Redis is not ready yet: kubectl logs -n $NAMESPACE deploy/redis"
 
 # Build and deploy gateway (using inline image for now)
 echo "🌐 Deploying API Gateway..."
@@ -964,21 +1039,36 @@ echo "🌐 Deploying API Gateway..."
 # Determine model names for gateway config
 LLAMACPP_MODEL_API_NAME="${LLAMACPP_MODEL_FILE%.gguf}"
 LLAMACPP_MODEL_API_NAME=$(echo "$LLAMACPP_MODEL_API_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
-GATEWAY_CODE_SHA=$(sha256sum "$SCRIPT_DIR/gateway/main.py" | awk '{print $1}')
+GATEWAY_CODE_SHA=$(gateway_code_sha "$SCRIPT_DIR")
 
-# Build VLLM_URLS from GPU count so every GPU pod is registered.
-# With GPU_COUNT=2 this produces http://vllm-0.vllm:8000,http://vllm-1.vllm:8000
+# Build VLLM_URLS so every vLLM pod is registered: one per GPU on a first install, and the
+# current replica count on an upgrade, since it may have been scaled through the Admin UI.
+# With 2 replicas this produces http://vllm-0.vllm:8000,http://vllm-1.vllm:8000
 VLLM_URLS_LIST=""
 EFFECTIVE_GPU_COUNT="${GPU_COUNT:-1}"
 if [ "$EFFECTIVE_GPU_COUNT" -lt 1 ] 2>/dev/null; then EFFECTIVE_GPU_COUNT=1; fi
-for i in $(seq 0 $((EFFECTIVE_GPU_COUNT - 1))); do
+CURRENT_VLLM_REPLICAS=$(kubectl get statefulset vllm -n "$NAMESPACE" -o 'jsonpath={.spec.replicas}' 2>/dev/null || true)
+VLLM_URL_COUNT="$EFFECTIVE_GPU_COUNT"
+if [[ "$CURRENT_VLLM_REPLICAS" =~ ^[1-9][0-9]*$ ]]; then
+    VLLM_URL_COUNT="$CURRENT_VLLM_REPLICAS"
+fi
+for i in $(seq 0 $((VLLM_URL_COUNT - 1))); do
     [ -n "$VLLM_URLS_LIST" ] && VLLM_URLS_LIST="${VLLM_URLS_LIST},"
     VLLM_URLS_LIST="${VLLM_URLS_LIST}http://vllm-${i}.vllm:8000"
 done
 COMPUTED_VLLM_URLS="${VLLM_URLS_LIST:-http://vllm-0.vllm:8000}"
 
-# Update gateway config with custom settings
-cat <<EOF | kubectl apply -f -
+# Update gateway config with custom settings. Other values already in the cluster are
+# kept, because the Admin UI and scale-backends.sh change them too. These are the values
+# this run is setting on purpose.
+GATEWAY_CONFIG_SET_KEYS="REDIS_URL VLLM_URLS DEFAULT_REQUESTS_PER_MINUTE DEFAULT_TOKENS_PER_DAY"
+if [ "$KEEP_LLAMACPP_CONFIG" = false ] && { [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; }; then
+    GATEWAY_CONFIG_SET_KEYS+=" LLAMACPP_MODEL_NAME"
+fi
+if [ "$DEFAULT_RPM" != "$CURRENT_RPM" ]; then
+    GATEWAY_CONFIG_SET_KEYS+=" DEFAULT_EMBEDDING_REQUESTS_PER_MINUTE DEFAULT_LLAMACPP_REQUESTS_PER_MINUTE DEFAULT_OLLAMA_REQUESTS_PER_MINUTE"
+fi
+cat <<EOF | keep_existing_configmap_values gateway-config "$GATEWAY_CONFIG_SET_KEYS" | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1018,7 +1108,7 @@ data:
   CONCURRENCY_PER_EMBEDDING_REPLICA: "4"
   CONCURRENCY_PER_LLAMACPP_REPLICA: "1"
   CONCURRENCY_PER_OLLAMA_REPLICA: "1"
-  # Legacy TTL knobs: no longer used by the slot-based limiter, kept as no-ops for rollback.
+  # Legacy TTL knobs: no longer used by the slot-based limiter. They have no effect.
   CONCURRENCY_LEASE_TTL_SECONDS: "600"
   BACKEND_INFLIGHT_LEASE_TTL_SECONDS: "600"
   # Slot/Lease reconciler: reaps leases whose owning asyncio.Task has ended.
@@ -1043,131 +1133,18 @@ data:
   DEFAULT_OLLAMA_TOKENS_PER_MINUTE: "200000"
   # Higher default TPM for admin-scoped keys created via Admin UI/API
   ADMIN_DEFAULT_TOKENS_PER_MINUTE: "200000"
+  # Largest accepted request body, in bytes. Larger ones get a 413.
+  MAX_REQUEST_BODY_BYTES: "10485760"
+  # Hosts an admin-supplied GGUF URL may point at. The download sends the HuggingFace
+  # token to that URL, so keep this short.
+  GGUF_MODEL_ALLOWED_HOSTS: "huggingface.co,hf.co"
 EOF
 
-# Create ConfigMap with gateway Python code
+# Ship the gateway code and deploy it on a stock Python image
 echo "📄 Creating gateway code ConfigMap..."
-if kubectl get configmap gateway-code -n "$NAMESPACE" &>/dev/null; then
-    kubectl create configmap gateway-code -n "$NAMESPACE" \
-        --from-file=main.py="$SCRIPT_DIR/gateway/main.py" \
-        --dry-run=client -o yaml | kubectl replace -f -
-else
-    kubectl create configmap gateway-code -n "$NAMESPACE" \
-        --from-file=main.py="$SCRIPT_DIR/gateway/main.py"
-fi
-
-# Deploy gateway using Python image with code from ConfigMap
-cat <<'EOF' | sed -e "s/\$NAMESPACE/$NAMESPACE/g" -e "s/\$GATEWAY_CODE_SHA/$GATEWAY_CODE_SHA/g" | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: gateway
-  namespace: $NAMESPACE
-  labels:
-    app: llmapi-gateway
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: llmapi-gateway
-  template:
-    metadata:
-      labels:
-        app: llmapi-gateway
-      annotations:
-        llmapi.mynodeone.io/gateway-code-sha: "$GATEWAY_CODE_SHA"
-    spec:
-      serviceAccountName: gateway
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      initContainers:
-      - name: install-deps
-        image: python:3.11-slim
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          pip install --target=/app/deps fastapi uvicorn httpx redis pydantic prometheus-client python-multipart kubernetes==31.0.0 asyncpg sqlalchemy --quiet
-        volumeMounts:
-        - name: app-deps
-          mountPath: /app/deps
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-      containers:
-      - name: gateway
-        image: python:3.11-slim
-        ports:
-        - containerPort: 8000
-          name: http
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          export PYTHONPATH=/app/deps
-          cd /app && python -m uvicorn main:app --host 0.0.0.0 --port 8000
-        env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: llmapi-db
-              key: postgres-password
-        envFrom:
-        - configMapRef:
-            name: gateway-config
-        volumeMounts:
-        - name: gateway-code
-          mountPath: /app/main.py
-          subPath: main.py
-        - name: app-deps
-          mountPath: /app/deps
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "2000m"
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: false
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 120
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 5
-      volumes:
-      - name: gateway-code
-        configMap:
-          name: gateway-code
-      - name: app-deps
-        emptyDir: {}
-EOF
+ship_gateway_code "$SCRIPT_DIR"
+ship_gateway_static "$SCRIPT_DIR"
+apply_gateway_deployment "$SCRIPT_DIR" "$GATEWAY_CODE_SHA"
 
 # Create gateway service
 cat <<EOF | kubectl apply -f -
@@ -1176,6 +1153,8 @@ kind: Service
 metadata:
   name: llmapi
   namespace: $NAMESPACE
+  labels:
+    app: llmapi-gateway
   annotations:
     mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
 spec:
@@ -1195,9 +1174,7 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
     # Create HuggingFace token secret if provided
     if [ -n "$HF_TOKEN" ]; then
         echo "   Creating HuggingFace token secret..."
-        kubectl create secret generic hf-token -n $NAMESPACE \
-            --from-literal=token="$HF_TOKEN" \
-            --dry-run=client -o yaml | kubectl apply -f -
+        write_hf_secret "$HF_TOKEN" "$NAMESPACE" || { echo -e "${RED}✗ Could not write Secret hf-token${NC}"; exit 1; }
     fi
     
     # Pre-pull vLLM image to avoid Docker Hub rate limits during deployment
@@ -1216,7 +1193,10 @@ if [ "$GPU_AVAILABLE" = true ] && ([ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" 
         echo "   ⏳ Image will be pulled during deployment..."
     fi
     
-    # Update vLLM config with selected model
+    # Update vLLM config with selected model, unless the current one is being kept
+    if [ "$KEEP_VLLM_CONFIG" = true ]; then
+        echo "   Keeping current vLLM config"
+    else
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
@@ -1241,11 +1221,15 @@ data:
   LOAD_FORMAT: "$VLLM_LOAD_FORMAT"
   TOOL_CALL_PARSER: "$VLLM_TOOL_CALL_PARSER"
   ENABLE_AUTO_TOOL_CHOICE: "$VLLM_ENABLE_AUTO_TOOL_CHOICE"
+  TRUST_REMOTE_CODE: "$VLLM_TRUST_REMOTE_CODE"
 EOF
+    fi
 
-    # Deploy vLLM StatefulSet and scale replicas to match GPU count
-    kubectl apply -f "$SCRIPT_DIR/manifests/vllm.yaml"
-    if [ "$EFFECTIVE_GPU_COUNT" -gt 1 ] 2>/dev/null; then
+    # Deploy vLLM StatefulSet. A first install scales it to the GPU count; an existing one
+    # keeps its replica count.
+    ship_model_downloader_lock "$SCRIPT_DIR"
+    apply_manifest "$SCRIPT_DIR/manifests/vllm.yaml"
+    if [ -z "$CURRENT_VLLM_REPLICAS" ] && [ "$EFFECTIVE_GPU_COUNT" -gt 1 ] 2>/dev/null; then
         kubectl scale statefulset vllm -n "$NAMESPACE" --replicas="$EFFECTIVE_GPU_COUNT"
     fi
     
@@ -1375,13 +1359,14 @@ EOF
 
                 # Run sync script with full output for debugging
                 echo ""
-                "$SCRIPT_DIR/sync-models-to-workers.sh"
-                SYNC_EXIT_CODE=$?
-                echo ""
-                if [ $SYNC_EXIT_CODE -eq 0 ]; then
+                # In an if, so a failed sync reaches the message below and doesn't end the
+                # install under set -e.
+                if "$SCRIPT_DIR/sync-models-to-workers.sh"; then
+                    echo ""
                     echo -e "   ${GREEN}✓ Models synced to worker nodes${NC}"
                     echo "   💡 Workers will use local models (~2 min startup)"
                 else
+                    echo ""
                     echo -e "   ${YELLOW}⚠ Model sync failed or incomplete${NC}"
                     echo "   💡 Workers will download from HuggingFace if needed (~5-10 min)"
                     echo "   💡 To retry sync: ./scripts/apps/llmapi/sync-models-to-workers.sh"
@@ -1412,12 +1397,14 @@ if [ "$DEPLOY_MODE" = "1" ] || [ "$DEPLOY_MODE" = "3" ]; then
     
     # Create HuggingFace token secret if provided and not already created
     if [ -n "$HF_TOKEN" ]; then
-        kubectl create secret generic hf-token -n $NAMESPACE \
-            --from-literal=token="$HF_TOKEN" \
-            --dry-run=client -o yaml | kubectl apply -f -
+        write_hf_secret "$HF_TOKEN" "$NAMESPACE" || { echo -e "${RED}✗ Could not write Secret hf-token${NC}"; exit 1; }
     fi
     
-    # Update llama.cpp config with selected model
+    # Update llama.cpp config with selected model, unless the current one is being kept.
+    # apply_manifest below doesn't overwrite this with the defaults in llamacpp.yaml.
+    if [ "$KEEP_LLAMACPP_CONFIG" = true ]; then
+        echo "   Keeping current llama.cpp config"
+    else
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
@@ -1434,8 +1421,9 @@ data:
   PARALLEL: "4"
   CHAT_TEMPLATE: "llama3"
 EOF
+    fi
 
-    kubectl apply -f "$SCRIPT_DIR/manifests/llamacpp.yaml"
+    apply_manifest "$SCRIPT_DIR/manifests/llamacpp.yaml"
     
     # Note: Deployment starts with 0 replicas to save RAM (256GB can run 70B models when needed)
     # Users can scale up via Admin UI: POST /admin/backend/llamacpp/scale with replicas: 1
@@ -1453,11 +1441,16 @@ fi
 
 # Deploy embedding service
 echo "📐 Deploying embedding service..."
-kubectl apply -f "$SCRIPT_DIR/manifests/embedding.yaml"
+apply_manifest "$SCRIPT_DIR/manifests/embedding.yaml"
 
 # Deploy Ollama (flexible model management)
 echo "🦙 Deploying Ollama (dynamic model loading)..."
-kubectl apply -f "$SCRIPT_DIR/manifests/ollama.yaml"
+apply_manifest "$SCRIPT_DIR/manifests/ollama.yaml"
+
+# Default-deny ingress for the namespace, with the allows each component needs.
+# See the notes in the manifest.
+echo "🛡️  Applying network policies..."
+kubectl apply -f "$SCRIPT_DIR/manifests/networkpolicy.yaml"
 
 # =============================================================================
 # Prometheus + Grafana Monitoring Integration
@@ -1611,77 +1604,47 @@ fi
 # =============================================================================
 
 echo ""
-echo "🔑 Creating API keys..."
+echo "🔑 Checking API keys..."
 
-# Helper function to create API key in Postgres
-# Usage: create_api_key <name> <scopes> <rpm> <tokens_per_day> [tokens_per_minute]
-create_api_key() {
-    local name="$1"
-    local scopes="$2"
-    local rpm="$3"
-    local tokens="$4"
-    local tpm="${5:-200000}"
-    if [[ "$tpm" =~ ^[0-9]+$ ]] && [ "$tpm" -lt 200000 ]; then
-        tpm=200000
-    fi
-    
-    local key_id=$(openssl rand -hex 16)
-    local api_key="sk-mynodeone-${key_id}"
-    local created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    
-    # Convert comma-separated scopes to PostgreSQL array format
-    local scopes_array=$(echo "$scopes" | sed 's/,/","/g' | sed 's/^/{"/;s/$/"}/') 
-    
-    # Store in PostgreSQL with retries
-    for i in {1..10}; do
-        if kubectl exec -n "$NAMESPACE" deploy/llmapi-postgres -- psql -U llmapi -d llmapi -c \
-            "INSERT INTO api_keys (api_key, name, scopes, requests_per_minute, tokens_per_day, tokens_per_minute, created_at) \
-            VALUES ('${api_key}', '${name}', '${scopes_array}', ${rpm}, ${tokens}, ${tpm}, '${created_at}') \
-            ON CONFLICT (api_key) DO NOTHING;" &>/dev/null; then
-            echo "$api_key"
-            return 0
-        fi
-        sleep 2
-    done
-    
-    return 1
-}
+# Creates a key only for a role that has none. Args: name scope rpm tokens/day tokens/min file
+ensure_api_key "admin-ui" "admin" 1000 10000000 200000 "$HOME/.mynodeone/llmapi-admin-key" || true
+ADMIN_KEY="$ENSURED_KEY"; ADMIN_KEY_STATE="$ENSURED_KEY_STATE"
+ensure_api_key "prometheus" "metrics" 100 1000000 200000 "$HOME/.mynodeone/llmapi-prometheus-key" || true
+PROMETHEUS_KEY="$ENSURED_KEY"; PROMETHEUS_KEY_STATE="$ENSURED_KEY_STATE"
+ensure_api_key "default" "inference" 100 1000000 200000 "$HOME/.mynodeone/llmapi-key" || true
+API_KEY="$ENSURED_KEY"; API_KEY_STATE="$ENSURED_KEY_STATE"
 
-# Generate 3 API keys with different scopes
-# Args: name  scopes    rpm   tokens/day  tokens/min
-ADMIN_KEY=$(create_api_key      "admin-ui"   "admin"     1000  10000000  200000)
-PROMETHEUS_KEY=$(create_api_key "prometheus" "metrics"   100   1000000   200000)
-API_KEY=$(create_api_key        "default"    "inference" 100   1000000   200000)
-
-if [ -n "$ADMIN_KEY" ] && [ -n "$PROMETHEUS_KEY" ] && [ -n "$API_KEY" ]; then
-    echo -e "${GREEN}✓ API keys created${NC}"
-    
-    # Save keys to files
-    mkdir -p ~/.mynodeone
-    echo "$ADMIN_KEY" > ~/.mynodeone/llmapi-admin-key
-    echo "$PROMETHEUS_KEY" > ~/.mynodeone/llmapi-prometheus-key
-    echo "$API_KEY" > ~/.mynodeone/llmapi-key
-    chmod 600 ~/.mynodeone/llmapi-admin-key
-    chmod 600 ~/.mynodeone/llmapi-prometheus-key
-    chmod 600 ~/.mynodeone/llmapi-key
-    echo "   (saved to ~/.mynodeone/llmapi-admin-key, llmapi-prometheus-key, llmapi-key)"
-    
-    # Create Kubernetes secret for Prometheus scraping
-    if kubectl get namespace monitoring &>/dev/null; then
-        echo "   Creating Prometheus bearer token secret..."
-        kubectl create secret generic llmapi-prometheus-token -n $NAMESPACE \
-            --from-literal=token="$PROMETHEUS_KEY" \
-            --dry-run=client -o yaml | kubectl apply -f -
-        
-        # Now deploy/update ServiceMonitor with the secret
-        kubectl apply -f "$SCRIPT_DIR/manifests/servicemonitor.yaml"
-    fi
-else
-    echo -e "${YELLOW}⚠ Failed to create some API keys in PostgreSQL${NC}"
-    echo "   You can create them manually:"
+if [ "$ADMIN_KEY_STATE" = unknown ] || [ "$PROMETHEUS_KEY_STATE" = unknown ] || [ "$API_KEY_STATE" = unknown ]; then
+    echo -e "${YELLOW}⚠ PostgreSQL wasn't reachable, or the gateway hasn't created its schema yet, so no API keys were created${NC}"
+    echo "   Re-run this installer once the gateway is up, or create them manually:"
     echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'admin' --scopes 'admin'"
     echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'prometheus' --scopes 'metrics'"
     echo "   ./scripts/apps/llmapi/manage-keys.sh create --name 'default' --scopes 'inference'"
+else
+    echo -e "${GREEN}✓ API keys ready${NC}"
+    echo "   (kept in ~/.mynodeone/llmapi-admin-key, llmapi-prometheus-key, llmapi-key)"
+fi
+
+for key_state in "admin-ui:admin:llmapi-admin-key:$ADMIN_KEY_STATE" \
+    "prometheus:metrics:llmapi-prometheus-key:$PROMETHEUS_KEY_STATE" \
+    "default:inference:llmapi-key:$API_KEY_STATE"; do
+    IFS=: read -r key_name key_scope key_file key_status <<<"$key_state"
+    if [ "$key_status" = stale ]; then
+        echo -e "${YELLOW}⚠ ~/.mynodeone/$key_file doesn't match any active '$key_scope' key, so it wasn't used${NC}"
+        echo "   It's revoked, or left from an earlier install. To replace it, list the keys, revoke"
+        echo "   any you don't need, then create one and save its value in that file (mode 600):"
+        echo "   ./scripts/apps/llmapi/manage-keys.sh list"
+        echo "   ./scripts/apps/llmapi/manage-keys.sh create --name '$key_name' --scopes '$key_scope'"
+    fi
+done
+
+# Prometheus scrapes with this token. Left alone if the key's value isn't known here.
+if [ -n "$PROMETHEUS_KEY" ] && kubectl get namespace monitoring &>/dev/null; then
+    echo "   Creating Prometheus bearer token secret..."
+    printf '%s' "$PROMETHEUS_KEY" | put_secret_from_stdin llmapi-prometheus-token token
+
+    # Now deploy/update ServiceMonitor with the secret
+    kubectl apply -f "$SCRIPT_DIR/manifests/servicemonitor.yaml"
 fi
 
 # =============================================================================
@@ -1750,18 +1713,31 @@ echo "📍 Access the API at:"
 echo "   • Direct: http://$SERVICE_IP"
 echo "   • Local:  http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo ""
-echo "🔑 API Keys Generated:"
+# Shows a key only when it was just created. An existing key stays out of the terminal
+# and its scrollback.
+show_key() {
+    local key="$1" state="$2" file="$3"
+    case "$state" in
+        new) echo "      $key" ;;
+        reused | restored) echo "      (existing key, unchanged, stored in ~/.mynodeone/$file)" ;;
+        elsewhere) echo "      (an active key exists but isn't saved in ~/.mynodeone/$file. See manage-keys.sh)" ;;
+        stale) echo "      (~/.mynodeone/$file holds a key that isn't active. See the warning above)" ;;
+        *) echo "      (not available, see the warning above)" ;;
+    esac
+}
+
+echo "🔑 API Keys:"
 echo ""
 echo "   1. Admin Key (admin scope - for Admin UI):"
-echo "      $ADMIN_KEY"
+show_key "$ADMIN_KEY" "$ADMIN_KEY_STATE" llmapi-admin-key
 echo "      Access: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/admin"
 echo ""
 echo "   2. Prometheus Key (metrics scope - for monitoring):"
-echo "      $PROMETHEUS_KEY"
+show_key "$PROMETHEUS_KEY" "$PROMETHEUS_KEY_STATE" llmapi-prometheus-key
 echo "      Endpoints: /metrics, /health/backends"
 echo ""
 echo "   3. Default Key (inference scope - for LLM API):"
-echo "      $API_KEY"
+show_key "$API_KEY" "$API_KEY_STATE" llmapi-key
 echo "      Endpoints: /v1/chat/completions, /v1/embeddings, /v1/models"
 echo ""
 echo "   Keys saved to: ~/.mynodeone/llmapi-*-key"
@@ -1769,31 +1745,33 @@ echo ""
 echo "🧪 Test the API:"
 echo ""
 echo "   # List models"
-echo "   curl -H \"Authorization: Bearer $API_KEY\" \\"
+echo "   curl -H \"Authorization: Bearer \$(cat ~/.mynodeone/llmapi-key)\" \\"
 echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1/models"
 echo ""
 echo "   # Chat completion"
-echo "   curl -H \"Authorization: Bearer $API_KEY\" \\"
+echo "   curl -H \"Authorization: Bearer \$(cat ~/.mynodeone/llmapi-key)\" \\"
 echo "        -H \"Content-Type: application/json\" \\"
 echo "        -d '{\"model\":\"$VLLM_MODEL_NAME\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}' \\"
 echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1/chat/completions"
 echo ""
 echo "   # Check metrics (requires prometheus key)"
-echo "   curl -H \"Authorization: Bearer $PROMETHEUS_KEY\" \\"
+echo "   curl -H \"Authorization: Bearer \$(cat ~/.mynodeone/llmapi-prometheus-key)\" \\"
 echo "        http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/metrics"
 echo ""
 echo "📚 Python/OpenAI SDK:"
 echo ""
+echo "   import os"
 echo "   from openai import OpenAI"
 echo "   client = OpenAI("
 echo "       base_url=\"http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/v1\","
-echo "       api_key=\"$API_KEY\"  # inference key"
+echo "       api_key=open(os.path.expanduser(\"~/.mynodeone/llmapi-key\")).read().strip()  # inference key"
 echo "   )"
 echo ""
 echo "🎛️  Admin UI:"
 echo "   http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local/admin"
 echo ""
-echo "   Authentication: Add header \"Authorization: Bearer $ADMIN_KEY\""
+echo "   Authentication: Add header \"Authorization: Bearer <admin key>\""
+echo "   (the admin key is in ~/.mynodeone/llmapi-admin-key)"
 echo "   (Old HTTP Basic Auth removed - use admin API key instead)"
 echo ""
 echo "   Features:"

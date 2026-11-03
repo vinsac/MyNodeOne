@@ -27,21 +27,17 @@ fi
 
 echo "🔧 LLMAPI Health Monitoring Features:"
 echo ""
-echo "  ✅ Automatic PVC stuck-state detection and recovery"
-echo "  ✅ Pod health monitoring with automatic restart (30m default)"
+echo "  ✅ Reports PVCs stuck in deletion (no automatic action)"
+echo "  ✅ Restarts a Deployment when its pod is crash looping or stays not Ready, within a restart budget"
 echo "  ✅ Longhorn storage system health checks"
 echo "  ✅ Service availability verification"
-echo "  ✅ Comprehensive logging and alerting"
-echo "  ✅ Systemd timer integration (5-minute intervals)"
+echo "  ✅ Logging with rotation"
+echo "  ✅ Systemd timer integration (5-minute intervals, first run 15 minutes after boot)"
 echo ""
 
 # Install monitoring if running as root
 if [[ "$EUID" -eq 0 ]]; then
     echo "🚀 Installing automated health monitoring..."
-    
-    # Copy script to system location
-    cp "$HEALTH_CHECK_SCRIPT" /usr/local/bin/llmapi-health-monitor.sh
-    chmod +x /usr/local/bin/llmapi-health-monitor.sh
     
     # Install systemd service and timer
     if bash "$HEALTH_CHECK_SCRIPT" --install-monitor; then
@@ -58,8 +54,9 @@ if [[ "$EUID" -eq 0 ]]; then
         echo "  • Disable: sudo systemctl disable llmapi-health-monitor.timer"
         echo ""
         echo "🚨 What Gets Monitored:"
-        echo "  • Stuck PVCs in namespace 'llmapi' (automatic force-delete)"
-        echo "  • Pod failures (auto-restart after 30 minutes by default)"
+        echo "  • PVCs stuck in deletion in namespace 'llmapi' (reported, never forced)"
+        echo "  • Deployments restarted when a pod crash loops for 15m or stays not Ready for 30m"
+        echo "    (at most 3 restarts per day, with backoff; StatefulSets are only reported)"
         echo "  • Longhorn storage health"
         echo "  • All LLMAPI services (Redis, Gateway, Embedding, Postgres)"
         echo "  • Resource availability and connectivity"

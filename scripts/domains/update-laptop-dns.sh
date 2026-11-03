@@ -16,6 +16,9 @@
 
 set -euo pipefail
 
+# shellcheck source=../lib/hosts-block.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/hosts-block.sh"
+
 # Parse arguments
 QUIET_MODE=false
 if [[ "${1:-}" == "--quiet" ]] || [[ "${1:-}" == "-q" ]]; then
@@ -226,16 +229,23 @@ generate_dns_entries() {
 update_hosts_file() {
     print_header "Updating /etc/hosts"
     
-    log_info "Backing up current /etc/hosts..."
-    sudo cp /etc/hosts /etc/hosts.bak.$(date +%Y%m%d_%H%M%S)
-    log_success "Backup created"
+    # Unless the newest backup already holds these contents
+    local newest_backup
+    # shellcheck disable=SC2012  # these names have no whitespace
+    newest_backup=$(ls -t /etc/hosts.bak.* 2>/dev/null | head -n 1 || true)
+    if [ -z "$newest_backup" ] || ! cmp -s /etc/hosts "$newest_backup"; then
+        log_info "Backing up current /etc/hosts..."
+        sudo cp /etc/hosts "/etc/hosts.bak.$(date +%Y%m%d_%H%M%S)"
+        log_success "Backup created"
+    fi
     
     log_info "Removing old MyNodeOne entries..."
-    sudo sed -i '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
+    hosts_remove_block /etc/hosts '# MyNodeOne services' '# End MyNodeOne services'
     
     log_info "Adding new MyNodeOne entries..."
     {
-        echo ""
+        # The blank line from the last run is still there, so don't add another.
+        [ -z "$(tail -n 1 /etc/hosts)" ] || echo ""
         echo "# MyNodeOne services"
         echo -e "$DNS_ENTRIES"
         echo "# End MyNodeOne services"

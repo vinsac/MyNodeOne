@@ -1,0 +1,35 @@
+# MyNodeOne settings for the kube-prometheus-stack chart.
+# Used by bootstrap-control-plane.sh and apply-monitoring-config.sh.
+
+prometheus:
+  prometheusSpec:
+    # The PVC is 100 GiB. Prometheus counts GB as 1024^3 bytes, and blocks plus the
+    # WAL count toward this limit. Keeping 15 GiB spare stops a full volume from
+    # crashing Prometheus before it can delete old blocks.
+    retentionSize: 85GB
+
+# K3s runs the scheduler, controller manager and kube-proxy inside the k3s process,
+# so there are no pods to scrape. Left enabled, the chart's KubeSchedulerDown,
+# KubeControllerManagerDown and KubeProxyDown rules fire forever.
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus-node-exporter:
+  # The first two arguments repeat the chart defaults, because setting extraArgs
+  # replaces the whole list. Compare them with the chart when changing its version.
+  extraArgs:
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+    - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$
+    - --collector.textfile.directory=/host/mynodeone-metrics
+  # Backup scripts write their last-success time here. DirectoryOrCreate means a node
+  # without the directory gets an empty one, so it does not raise a textfile error.
+  extraHostVolumeMounts:
+    - name: mynodeone-metrics
+      hostPath: /var/lib/mynodeone/metrics
+      type: DirectoryOrCreate
+      mountPath: /host/mynodeone-metrics
+      readOnly: true

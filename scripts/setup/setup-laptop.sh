@@ -263,48 +263,56 @@ fetch_kubeconfig() {
         log_warn "Existing kubeconfig is not working, will re-fetch"
     fi
     
-    # K3s stores kubeconfig at /etc/rancher/k3s/k3s.yaml (requires sudo)
+    # K3s stores kubeconfig at /etc/rancher/k3s/k3s.yaml (requires sudo). It holds
+    # cluster-admin credentials, so it is streamed over SSH straight into a private
+    # file. It is never copied to a readable location on the control plane.
     echo
     echo "Fetching K3s kubeconfig (requires sudo on control plane)..."
-    echo "You may be prompted for the sudo password on the control plane."
     echo
-    
-    # Better approach: Copy file to temp location with sudo, then scp it
-    log_info "Copying kubeconfig to temporary location on control plane..."
-    echo "Note: You'll be prompted for the sudo password on the control plane."
-    echo
-    
-    # Use -t to allocate pseudo-terminal for sudo password prompt, but keep it simple
-    if ssh_with_control -t "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s-config.yaml && sudo chmod 644 /tmp/k3s-config.yaml"; then
-        echo
-        log_info "Downloading kubeconfig via SCP..."
-        if scp_with_control -q "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s-config.yaml" "$ACTUAL_HOME/.kube/config"; then
-            # Clean up temp file on remote
-            ssh_with_control "$CONTROL_PLANE_USER@$CONTROL_PLANE_IP" "rm -f /tmp/k3s-config.yaml" 2>/dev/null || true
-            chmod 600 "$ACTUAL_HOME/.kube/config"
-            chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config" 2>/dev/null || true
-            log_success "Kubeconfig retrieved successfully"
-        else
-            log_error "Failed to download kubeconfig via SCP"
-            exit 1
-        fi
+
+    local control_plane="$CONTROL_PLANE_USER@$CONTROL_PLANE_IP"
+    local kubeconfig_new="$ACTUAL_HOME/.kube/config.new"
+    local sudo_password=""
+    local fetched=false
+
+    rm -f "$kubeconfig_new"
+    (umask 077; : > "$kubeconfig_new")
+
+    if ssh_with_control -o BatchMode=yes "$control_plane" "sudo -n cat /etc/rancher/k3s/k3s.yaml" > "$kubeconfig_new" 2>/dev/null; then
+        fetched=true
     else
+        # Sent over the encrypted connection on stdin, so it is never in any argv
+        read -r -s -p "Sudo password for $CONTROL_PLANE_USER on the control plane: " sudo_password
+        echo
+        if printf '%s\n' "$sudo_password" | ssh_with_control "$control_plane" "sudo -S -p '' cat /etc/rancher/k3s/k3s.yaml" > "$kubeconfig_new"; then
+            fetched=true
+        fi
+        unset sudo_password
+    fi
+
+    if [ "$fetched" != "true" ] || ! grep -q '^apiVersion:' "$kubeconfig_new"; then
+        rm -f "$kubeconfig_new"
         echo
         log_error "Failed to access kubeconfig on control plane"
         echo
         echo "Troubleshooting:"
         echo "  • Ensure K3s is installed on control plane"
-        echo "  • Check file exists: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP 'sudo ls -l /etc/rancher/k3s/k3s.yaml'"
+        echo "  • Check file exists: ssh $control_plane 'sudo ls -l /etc/rancher/k3s/k3s.yaml'"
         echo "  • Verify user '$CONTROL_PLANE_USER' has sudo access"
-        echo "  • Try manually: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP 'sudo cat /etc/rancher/k3s/k3s.yaml'"
         echo
-        echo "Manual steps to fix:"
-        echo "  1. SSH to control plane: ssh $CONTROL_PLANE_USER@$CONTROL_PLANE_IP"
-        echo "  2. Copy kubeconfig: sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s.yaml && sudo chmod 644 /tmp/k3s.yaml"
-        echo "  3. Exit and run: scp $CONTROL_PLANE_USER@$CONTROL_PLANE_IP:/tmp/k3s.yaml $ACTUAL_HOME/.kube/config"
+        echo "Manual steps to fix (from this laptop; the first line waits for your sudo password):"
+        echo "  read -rs SUDO_PASSWORD"
+        echo "  (umask 077; printf '%s\\n' \"\$SUDO_PASSWORD\" | ssh $control_plane \"sudo -S -p '' cat /etc/rancher/k3s/k3s.yaml\" > $ACTUAL_HOME/.kube/config)"
+        echo "  unset SUDO_PASSWORD"
+        echo "  sed -i 's/127.0.0.1/$CONTROL_PLANE_IP/' $ACTUAL_HOME/.kube/config"
         exit 1
     fi
-    
+
+    chmod 600 "$kubeconfig_new"
+    mv "$kubeconfig_new" "$ACTUAL_HOME/.kube/config"
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME/.kube/config" 2>/dev/null || true
+    log_success "Kubeconfig retrieved successfully"
+
     # Update server address from 127.0.0.1 to control plane IP
     log_info "Configuring kubeconfig to use control plane IP..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -433,6 +441,48 @@ install_helpful_tools() {
     fi
 }
 
+# Hands the API token to the installer in a temp file, so it never appears in `ps`.
+# mktemp creates the file mode 600. main's EXIT trap removes it if this is interrupted.
+NODE_AGENT_TOKEN_TMP=""
+install_laptop_node_agent() {
+    local control_plane_user="$1" control_plane_ip="$2" hostname="$3" api_token
+
+    # Fetch API token from control plane
+    api_token=$(ssh_with_control "$control_plane_user@$control_plane_ip" \
+        "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null || echo "")
+
+    if [ -z "$api_token" ]; then
+        log_warn "Could not fetch API token - skipping node agent installation"
+        log_warn "Install manually later with:"
+        log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $control_plane_ip --ssh-user $control_plane_user"
+        return 0
+    fi
+
+    if ! NODE_AGENT_TOKEN_TMP=$(mktemp) || ! printf '%s\n' "$api_token" >"$NODE_AGENT_TOKEN_TMP"; then
+        log_warn "Could not write a temporary token file - skipping node agent installation"
+        rm -f "$NODE_AGENT_TOKEN_TMP"
+        NODE_AGENT_TOKEN_TMP=""
+        return 0
+    fi
+
+    if sudo "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
+        --control-plane-ip "$control_plane_ip" \
+        --node-type laptop \
+        --node-name "$hostname" \
+        --api-token-file "$NODE_AGENT_TOKEN_TMP" \
+        --ssh-user "$control_plane_user" \
+        --poll-interval 60; then
+        log_success "Node agent installed - laptop will appear in nodes-status"
+    else
+        log_warn "Node agent installation failed - laptop won't appear in nodes-status"
+        log_warn "You can install it manually later with:"
+        log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $control_plane_ip"
+    fi
+
+    rm -f "$NODE_AGENT_TOKEN_TMP"
+    NODE_AGENT_TOKEN_TMP=""
+}
+
 register_laptop_with_cluster() {
     local control_plane_user="$1"
     local control_plane_ip="$2"
@@ -545,31 +595,7 @@ register_laptop_with_cluster() {
     echo ""
     log_info "Installing node agent for cluster visibility..."
     if [ -f "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" ]; then
-        # Fetch API token from control plane
-        local api_token=$(ssh_with_control "$control_plane_user@$control_plane_ip" \
-            "sudo cat /etc/mynodeone/api-token 2>/dev/null" 2>/dev/null || echo "")
-        
-        if [ -n "$api_token" ]; then
-            sudo "$PROJECT_ROOT/scripts/installation/install-node-agent.sh" \
-                --control-plane-ip "$control_plane_ip" \
-                --node-type laptop \
-                --node-name "$hostname" \
-                --api-token "$api_token" \
-                --ssh-user "$control_plane_user" \
-                --poll-interval 60
-            
-            if [ $? -eq 0 ]; then
-                log_success "Node agent installed - laptop will appear in nodes-status"
-            else
-                log_warn "Node agent installation failed - laptop won't appear in nodes-status"
-                log_warn "You can install it manually later with:"
-                log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $control_plane_ip"
-            fi
-        else
-            log_warn "Could not fetch API token - skipping node agent installation"
-            log_warn "Install manually later with:"
-            log_warn "  sudo $PROJECT_ROOT/scripts/installation/install-node-agent.sh --control-plane-ip $control_plane_ip --ssh-user $control_plane_user"
-        fi
+        install_laptop_node_agent "$control_plane_user" "$control_plane_ip" "$hostname"
     else
         log_warn "Node agent installer not found - skipping"
     fi
@@ -686,39 +712,67 @@ print_summary() {
     echo
 }
 
+# stdin_is_terminal: separate so that the tests can exercise the prompt below.
+stdin_is_terminal() {
+    [ -t 0 ]
+}
+
+# Blanket passwordless sudo lets anything running as this user become root without
+# asking, so it is only ever granted on explicit request. Every script here works
+# without it: sudo simply asks for a password. uninstall-mynodeone.sh removes it.
 configure_passwordless_sudo() {
-    log_info "Configuring passwordless sudo for automation..."
-    
-    # Use ACTUAL_USER which correctly detects the real user even when running with sudo
     local current_user="$ACTUAL_USER"
-    
-    # Check if already configured
-    if sudo -n true 2>/dev/null; then
-        log_success "Passwordless sudo already configured for $current_user"
+    # sudo ignores files in sudoers.d with a dot in the name
+    local sudoers_file="/etc/sudoers.d/${current_user//./_}-nopasswd"
+
+    if sudo -n -l 2>/dev/null | grep -q 'NOPASSWD: ALL'; then
+        log_info "Passwordless sudo is already enabled for $current_user; leaving it unchanged"
         return 0
     fi
-    
-    log_info "Setting up passwordless sudo for user: $current_user"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Passwordless Sudo Configuration"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "This allows MyNodeOne scripts to run without password prompts."
-    echo "You'll be prompted for your sudo password ONE LAST TIME."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    # Create sudoers rule
-    echo "$current_user ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/${current_user}-nopasswd" > /dev/null
-    sudo chmod 0440 "/etc/sudoers.d/${current_user}-nopasswd"
-    
-    # Verify it works
-    if sudo -n true 2>/dev/null; then
-        log_success "Passwordless sudo configured successfully"
-    else
-        log_warn "Could not verify passwordless sudo, continuing anyway..."
+
+    if ! stdin_is_terminal; then
+        log_info "Not granting passwordless sudo (no terminal to confirm it). Scripts will ask for your password."
+        return 0
     fi
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Optional: Passwordless Sudo"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "MyNodeOne does not need this. Without it, scripts ask for your password."
+    echo ""
+    echo "With it, ANY program running as '$current_user' can become root without"
+    echo "asking: a malicious download or a compromised browser extension could"
+    echo "take over this laptop. This is not recommended."
+    echo ""
+    local response=""
+    read -r -p "Type 'grant' to allow it, or press Enter to skip: " response
+    echo ""
+
+    if [ "$response" != "grant" ]; then
+        log_info "Skipped passwordless sudo"
+        return 0
+    fi
+
+    local candidate
+    candidate=$(mktemp)
+    echo "$current_user ALL=(ALL) NOPASSWD: ALL" > "$candidate"
+
+    # A broken file in sudoers.d can lock everyone out of sudo, so check it first
+    if ! sudo visudo -c -f "$candidate" > /dev/null; then
+        rm -f "$candidate"
+        log_warn "The sudoers rule failed validation, so it was not installed"
+        return 0
+    fi
+
+    if sudo install -m 0440 -o root -g 0 "$candidate" "$sudoers_file"; then
+        log_success "Passwordless sudo enabled: $sudoers_file"
+        log_info "To remove it: sudo rm $sudoers_file"
+    else
+        log_warn "Could not install $sudoers_file"
+    fi
+    rm -f "$candidate"
     echo ""
 }
 
@@ -731,9 +785,16 @@ main() {
     
     check_requirements
 
-    log_info "Ensuring correct home directory permissions for user: $ACTUAL_USER..."
-    sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$ACTUAL_HOME"
-    log_success "Home directory permissions verified."
+    # Only what MyNodeOne itself creates. The rest of the home directory is not ours
+    # to change: it can hold files that are owned by other users on purpose.
+    log_info "Ensuring correct ownership of MyNodeOne config for user: $ACTUAL_USER..."
+    local owned_dir
+    for owned_dir in "$ACTUAL_HOME/.mynodeone" "$ACTUAL_HOME/.kube"; do
+        if [ -d "$owned_dir" ]; then
+            sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$owned_dir"
+        fi
+    done
+    log_success "Config ownership verified."
     echo
 
     configure_passwordless_sudo
@@ -751,7 +812,8 @@ main() {
     setup_ssh_control_master "$CONTROL_PLANE_USER" "$CONTROL_PLANE_IP"
 
     # Ensure the ControlMaster socket is cleaned up on exit
-    trap "cleanup_ssh_control_master '$CONTROL_PLANE_USER' '$CONTROL_PLANE_IP'" EXIT
+    # and any temporary API token file is removed
+    trap "cleanup_ssh_control_master '$CONTROL_PLANE_USER' '$CONTROL_PLANE_IP'; rm -f \"\${NODE_AGENT_TOKEN_TMP:-}\"" EXIT
     install_kubectl
     fetch_kubeconfig
     test_cluster_connection

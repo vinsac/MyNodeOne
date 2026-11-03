@@ -34,9 +34,13 @@ fi
 
 echo "This will delete:"
 echo "  • All LLM API pods and services"
-echo "  • All downloaded models (~200-500GB)"
+echo "  • Ollama models stored in the cluster"
 echo "  • All API keys and usage data"
 echo "  • All configuration"
+echo ""
+echo "This will NOT delete vLLM, llama.cpp and embedding model files. They stay on each"
+echo "node under /var/lib/llmapi/models, and a reinstall reuses them. To free the space,"
+echo "remove that directory on each node."
 echo ""
 echo -e "${RED}This action cannot be undone!${NC}"
 echo ""
@@ -56,12 +60,13 @@ if [ -n "$PVC_NAMES" ]; then
 fi
 
 # Delete secrets
-kubectl delete secret -n "$NAMESPACE" llmapi-db llmapi-secrets llmapi-prometheus-token --ignore-not-found=true 2>/dev/null || true
+kubectl delete secret -n "$NAMESPACE" llmapi-db llmapi-redis-auth llmapi-secrets llmapi-prometheus-token hf-token --ignore-not-found=true 2>/dev/null || true
 
 if [[ "$EUID" -eq 0 ]]; then
     systemctl stop llmapi-health-monitor.timer llmapi-health-monitor.service 2>/dev/null || true
     systemctl disable llmapi-health-monitor.timer llmapi-health-monitor.service 2>/dev/null || true
-    rm -f /etc/systemd/system/llmapi-health-monitor.service /etc/systemd/system/llmapi-health-monitor.timer /usr/local/bin/llmapi-health-monitor.sh
+    rm -f /etc/systemd/system/llmapi-health-monitor.service /etc/systemd/system/llmapi-health-monitor.timer /usr/local/bin/llmapi-health-monitor.sh /etc/logrotate.d/llmapi-health-monitor
+    rm -rf /var/lib/llmapi-health
     systemctl daemon-reload 2>/dev/null || true
 fi
 

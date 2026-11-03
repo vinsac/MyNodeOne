@@ -44,6 +44,7 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Load centralized version configuration
 source "$PROJECT_ROOT/scripts/lib/versions.sh"
+source "$PROJECT_ROOT/scripts/setup/edge-install-helpers.sh"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -116,10 +117,8 @@ if command -v docker &> /dev/null; then
     log_success "Docker already installed: $(docker --version)"
 else
     log_info "Installing Docker..."
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sh /tmp/get-docker.sh
-    rm -f /tmp/get-docker.sh
-    
+    install_docker_from_apt
+
     # Add user to docker group
     usermod -aG docker "$ACTUAL_USER"
     
@@ -133,8 +132,15 @@ if command -v docker-compose &> /dev/null; then
     log_success "Docker Compose already installed: $(docker-compose --version)"
 else
     log_info "Installing Docker Compose..."
-    curl -L "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
+    # -f: an HTTP error must not leave an error page installed as an executable
+    compose_download=$(mktemp)
+    if ! curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)" -o "$compose_download"; then
+        rm -f "$compose_download"
+        log_error "Could not download Docker Compose ${DOCKER_COMPOSE_VERSION}"
+        exit 1
+    fi
+    install -m 0755 "$compose_download" /usr/local/bin/docker-compose
+    rm -f "$compose_download"
     log_success "Docker Compose installed successfully"
 fi
 echo
@@ -167,9 +173,11 @@ mkdir -p "$TRAEFIK_DIR/config"
 mkdir -p "$TRAEFIK_DIR/letsencrypt"
 
 # Create Traefik static configuration
+# The dashboard exposes every route and backend on this public machine, so it is off
+# unless TRAEFIK_DASHBOARD_ENABLED=true is set (in the environment or config.env).
 cat > "$TRAEFIK_DIR/traefik.yml" << 'TRAEFIK_CONFIG'
 api:
-  dashboard: true
+  dashboard: REPLACE_DASHBOARD_SETTING
   insecure: false
 
 entryPoints:
@@ -209,6 +217,38 @@ TRAEFIK_CONFIG
 
 # Update email in config
 sed -i "s/REPLACE_SSL_EMAIL/${SSL_EMAIL:-admin@${VPS_DOMAIN:-localhost}}/g" "$TRAEFIK_DIR/traefik.yml"
+
+if traefik_dashboard_is_enabled; then
+    sed -i "s/REPLACE_DASHBOARD_SETTING/true/" "$TRAEFIK_DIR/traefik.yml"
+    DASHBOARD_CREDENTIALS="$ACTUAL_HOME/.mynodeone/traefik-dashboard-credentials"
+    DASHBOARD_USER=$(traefik_dashboard_user_entry "$DASHBOARD_CREDENTIALS")
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$DASHBOARD_CREDENTIALS"
+    (umask 077; cat > "$TRAEFIK_DIR/config/dashboard.yml" << DASHBOARD_CONFIG
+http:
+  routers:
+    traefik-dashboard:
+      rule: "Host(\`traefik.${VPS_DOMAIN:-localhost}\`)"
+      service: api@internal
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - traefik-dashboard-auth
+  middlewares:
+    traefik-dashboard-auth:
+      basicAuth:
+        users:
+          - "${DASHBOARD_USER}"
+DASHBOARD_CONFIG
+    )
+    log_success "Traefik dashboard enabled. Login is in $DASHBOARD_CREDENTIALS"
+else
+    sed -i "s/REPLACE_DASHBOARD_SETTING/false/" "$TRAEFIK_DIR/traefik.yml"
+    rm -f "$TRAEFIK_DIR/config/dashboard.yml"
+    log_info "Traefik dashboard is off (set TRAEFIK_DASHBOARD_ENABLED=true to enable it with a generated password)"
+fi
+
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$TRAEFIK_DIR"
 chmod 600 "$TRAEFIK_DIR/traefik.yml"
 log_success "Traefik configuration created"
@@ -234,12 +274,6 @@ services:
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
       - ./config:/etc/traefik/config:ro
       - ./letsencrypt:/letsencrypt
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.REPLACE_VPS_DOMAIN`)"
-      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
     networks:
       - traefik
 
@@ -248,8 +282,7 @@ networks:
     external: true
 COMPOSE_CONFIG
 
-# Update domain and Traefik version in compose file
-sed -i "s/REPLACE_VPS_DOMAIN/${VPS_DOMAIN:-localhost}/g" "$TRAEFIK_DIR/docker-compose.yml"
+# Update Traefik version in compose file
 sed -i "s/REPLACE_TRAEFIK_VERSION/${TRAEFIK_VPS_VERSION}/g" "$TRAEFIK_DIR/docker-compose.yml"
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$TRAEFIK_DIR"
 log_success "Traefik service configured"
@@ -401,14 +434,17 @@ if [ -f "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" ]; then
     fi
     
     # Call install-config-sync with ssh-user parameter for automatic token fetch
-    # Arguments: node-type control-plane-ip api-token node-name ssh-user
-    if bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "${NODE_NAME:-$(hostname)}" "$CP_SSH_USER"; then
+    # Arguments: node-type control-plane-ip (unused) node-name ssh-user. The token
+    # goes through a temporary file so it stays out of `ps`.
+    # shellcheck source=../lib/node-agent-install.sh
+    source "$PROJECT_ROOT/scripts/lib/node-agent-install.sh"
+    if node_agent_run_with_token_file "$API_TOKEN" bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" vps "${CONTROL_PLANE_IP:-}" "" "${NODE_NAME:-$(hostname)}" "$CP_SSH_USER"; then
         log_success "Node Agent installed"
         log_info "VPS will now pull config updates from control plane"
     else
         log_warn "Node Agent installation had issues"
         log_warn "You can install manually later:"
-        log_warn "  sudo ./scripts/lib/install-config-sync.sh vps ${CONTROL_PLANE_IP:-<control-plane-ip>} <api-token>"
+        log_warn "  sudo ./scripts/lib/install-config-sync.sh vps ${CONTROL_PLANE_IP:-<control-plane-ip>} --api-token-file <file>"
     fi
 else
     log_warn "Node Agent installer not found, skipping"

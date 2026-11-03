@@ -78,12 +78,13 @@ spec:
 
 ### ConfigMap Structure
 
-Services are registered in `service-registry` ConfigMap in `kube-system` namespace:
+Services are registered in `service-registry` ConfigMap in `kube-system` namespace, keyed on `namespace/service`:
 
 ```json
 {
-  "minio-canada-pc-worker-0001": {
-    "subdomain": "minio-canada-pc-worker-0001",
+  "minio-canada-pc-worker-0001/minio": {
+    "legacy_key": "minio-canada-pc-worker-0001",
+    "local_name": "minio-canada-pc-worker-0001",
     "namespace": "minio-canada-pc-worker-0001",
     "service": "minio",
     "ip": "100.77.243.210",
@@ -91,8 +92,9 @@ Services are registered in `service-registry` ConfigMap in `kube-system` namespa
     "public": false,
     "updated": "2026-01-08T18:45:00Z"
   },
-  "minio-console-canada-pc-worker-0001": {
-    "subdomain": "minio-console-canada-pc-worker-0001",
+  "minio-canada-pc-worker-0001/minio-console": {
+    "legacy_key": "minio-console-canada-pc-worker-0001",
+    "local_name": "minio-console-canada-pc-worker-0001",
     "namespace": "minio-canada-pc-worker-0001",
     "service": "minio-console",
     "ip": "100.77.243.211",
@@ -110,10 +112,15 @@ Services are registered in `service-registry` ConfigMap in `kube-system` namespa
 kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq
 
 # View MinIO services only
-kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq 'to_entries[] | select(.key | startswith("minio"))'
+kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq 'to_entries[] | select(.value.service | startswith("minio"))'
 
-# Get specific MinIO service IP
-kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq -r '.["minio-canada-pc-worker-0001"].ip'
+# Get specific MinIO service IP (the key is namespace/service)
+kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq -r '.["minio-canada-pc-worker-0001/minio"].ip'
+
+# In a script, the helpers accept the key or the bare name
+source scripts/lib/service-registry-lib.sh
+sr_service_field minio-canada-pc-worker-0001 ip
+sr_lookup_entry "$(sr_get_services)" minio-canada-pc-worker-0001 | jq .
 ```
 
 ---
@@ -218,7 +225,7 @@ spec:
 kubectl get svc -n minio-<nodename>
 
 # Check if service is registered
-kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq '.["minio-canada-pc-worker-0001"]'
+kubectl get configmap service-registry -n kube-system -o jsonpath='{.data.services\.json}' | jq '.["minio-canada-pc-worker-0001/minio"]'
 
 # Check /etc/hosts on control plane
 grep minio /etc/hosts

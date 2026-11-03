@@ -19,7 +19,7 @@ sudo ./scripts/setup/fix-script-permissions.sh
 
 ### VPS installation shows "Initial sync failed"
 
-**Problem**: Node Agent can't start due to missing dependencies
+**Problem**: An old copy of the Node Agent is installed. The current agent is a single file that doesn't load `config-paths.sh`.
 
 **Symptoms**:
 ```
@@ -27,13 +27,15 @@ mynodeone-node-agent: line 43: /usr/local/bin/config-paths.sh: No such file or d
 ```
 
 **Solution**:
+Reinstall the agent from an up-to-date checkout on that node. Don't copy `config-paths.sh` into `/usr/local/bin`: that leaves the old agent running.
 ```bash
-# Manual fix (for existing installations)
-ssh user@vps-ip "sudo cp ~/mynodeone/scripts/lib/config-paths.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/config-paths.sh && sudo chown root:root /usr/local/bin/config-paths.sh"
-
-# Restart Node Agent
-ssh user@vps-ip "sudo systemctl restart mynodeone-node-agent"
+cd ~/MyNodeOne && git pull
+sudo ./scripts/installation/install-node-agent.sh \
+    --control-plane-ip <control-plane-ip> \
+    --node-name "$(hostname)" \
+    --node-type vps
 ```
+It reuses the token in `/etc/mynodeone/agent.env` if there is one; if not, add `--api-token-file <file>`.
 
 **Prevention**: Fixed in install-node-agent.sh (commit 01dfe16)
 
@@ -86,7 +88,7 @@ jq: error: Cannot index array with string "domain-name"
 
 ### Node Agent keeps restarting
 
-**Problem**: Missing config-paths.sh dependency
+**Problem**: An old copy of the agent, which still looks for `config-paths.sh`
 
 **Diagnosis**:
 ```bash
@@ -775,13 +777,13 @@ User → VPS (SSL termination) → Tailscale tunnel → Control Plane Node → A
 
 ### How do pods on different nodes communicate?
 
-MyNodeOne uses **Flannel VXLAN** for pod-to-pod networking across nodes. Each node gets its own pod subnet (e.g., `10.42.0.0/24`, `10.42.2.0/24`). Flannel creates a virtual overlay network that tunnels pod traffic between nodes over **UDP port 8472**.
+MyNodeOne uses **Flannel VXLAN** for pod-to-pod networking across nodes. Each node gets its own pod subnet (e.g., `10.42.0.0/24`, `10.42.2.0/24`). Flannel creates a virtual overlay network that tunnels pod traffic between nodes over **UDP port 8472**, inside the Tailscale tunnel (`flannel-iface: tailscale0`).
 
 This is transparent to your applications — a pod on Node A can reach a pod on Node B using its pod IP, just like they were on the same network.
 
 **Requirements** (configured automatically by installation scripts):
 - UFW routed policy set to `allow` (for forwarded packets)
-- UDP port 8472 open (for VXLAN encapsulation)
+- UFW allows traffic on `tailscale0` (this carries VXLAN, so UDP port 8472 needs no rule of its own and must not be opened: VXLAN has no authentication)
 - `flannel.1` interface present on each node
 
 See [NETWORKING.md](../architecture/NETWORKING.md) for the full architecture diagram.
@@ -799,7 +801,7 @@ sudo ufw status verbose | grep "Default:"
 
 # Fix:
 sudo ufw default allow routed
-sudo ufw allow 8472/udp comment 'Flannel VXLAN'
+sudo ufw allow in on tailscale0 comment 'Tailscale mesh network'
 sudo ufw reload
 ```
 
@@ -811,7 +813,7 @@ Or run the automated fix: `sudo bash scripts/validation/validate-network.sh --fi
 
 The Longhorn CSI plugin on each node needs to reach the `longhorn-backend` ClusterIP service via pod networking. If cross-node networking is broken (see above), the CSI plugin cannot communicate with Longhorn and will crashloop.
 
-**Fix the networking first** — once `ufw default allow routed` and `ufw allow 8472/udp` are set on all nodes, the CSI plugin will recover automatically.
+**Fix the networking first** — once `ufw default allow routed` and `ufw allow in on tailscale0` are set on all nodes, the CSI plugin will recover automatically.
 
 ### The `flannel.1` interface disappeared
 

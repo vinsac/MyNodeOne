@@ -36,7 +36,7 @@ check_command() {
 }
 
 main() {
-    clear
+    clear 2>/dev/null || true
     
     echo -e "${GREEN}"
     cat << "EOF"

@@ -606,7 +606,7 @@ register_cluster_node() {
                 capacity: "0",
                 mode: "standalone",
                 credentials_secret: "minio-credentials",
-                namespace: "minio"
+                namespace: ("minio-" + $name)
             },
             installation: {
                 bootstrap_date: $timestamp,
@@ -745,8 +745,8 @@ update_cluster_node_minio() {
     local console=""
     local disk=""
     local capacity=""
-    local namespace="minio"
-    
+    local namespace=""
+
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -791,6 +791,9 @@ update_cluster_node_minio() {
         return 1
     fi
     
+    # install-minio.sh creates one namespace per node
+    namespace="${namespace:-minio-$node_name}"
+
     log_info "Updating MinIO configuration for node: $node_name..."
     
     # Sync from ConfigMap
@@ -927,7 +930,7 @@ main() {
             ;;
         update-minio)
             shift
-            update_minio_config "$@"
+            update_cluster_node_minio "$@"
             ;;
         get-cluster-node)
             shift

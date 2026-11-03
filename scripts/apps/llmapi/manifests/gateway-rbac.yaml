@@ -2,7 +2,16 @@
 # This allows the Admin UI to:
 # - Change vLLM and llama.cpp models
 # - Update context length, GPU memory, batch size, etc.
-# - Start/stop llama.cpp
+# - Start/stop llama.cpp and scale vLLM
+#
+# Every rule below matches a call in gateway/main.py and is limited to the objects
+# that call uses. A new Kubernetes call in main.py needs a rule here too, or it gets
+# a 403. gateway-code and gateway-static are deliberately not writable, so a
+# compromised gateway can't rewrite its own code through the ConfigMaps.
+#
+# This does not fully contain a compromised gateway: patch on a Deployment still
+# allows changing its pod template, and the namespace allows privileged pods. Closing
+# that means moving the gateway to its own namespace.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -16,30 +25,43 @@ metadata:
   name: gateway-backend-manager
   namespace: llmapi
 rules:
-  # Read and update StatefulSets (for vLLM)
+  # vLLM: model changes restart it through its pod template
   - apiGroups: ["apps"]
     resources: ["statefulsets"]
-    verbs: ["get", "list", "patch", "update"]
-  # Read and update Deployments (for llama.cpp, embedding, ollama)
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["get", "list", "patch", "update"]
-  # Read and update Deployment scale (for start/stop)
-  - apiGroups: ["apps"]
-    resources: ["deployments/scale"]
-    verbs: ["get", "patch", "update"]
-  # Read and update ConfigMaps (for backend configuration)
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get", "list", "patch", "update"]
-  # Read pods for status checking
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
-  # Read and update StatefulSet scale (for vLLM scaling)
+    resourceNames: ["vllm"]
+    verbs: ["get", "patch"]
+  # vLLM scaling
   - apiGroups: ["apps"]
     resources: ["statefulsets/scale"]
+    resourceNames: ["vllm"]
+    verbs: ["get", "patch"]
+  # llama.cpp and embedding restarts on config changes; gateway restart after vLLM
+  # scaling changes VLLM_URLS
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["llamacpp", "embedding", "gateway"]
+    verbs: ["get", "patch"]
+  # llama.cpp start/stop
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["llamacpp"]
+    verbs: ["get", "patch"]
+  # Backend configuration. "update" is for replace_namespaced_config_map.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["vllm-config", "llamacpp-config", "embedding-config", "gateway-config"]
     verbs: ["get", "patch", "update"]
+  # Backend status. Kubernetes can't limit list with resourceNames.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+  # Admin UI save of the HuggingFace token. Patch only, so the gateway can't read the
+  # token back. create can't be limited with resourceNames, so the gateway can't make
+  # the Secret: lib/hf-token.sh set does that, and the save returns 409 until it has.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["hf-token"]
+    verbs: ["patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -64,7 +86,7 @@ rules:
   # Read nodes to get GPU availability
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

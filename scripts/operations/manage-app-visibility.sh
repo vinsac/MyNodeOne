@@ -38,7 +38,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
+# shellcheck source=../lib/service-registry-lib.sh
+source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
 MAX_RETRIES=3
+
+# `private` exits with this when the registry changed but the public route could
+# not be confirmed gone from a VPS, so callers can tell it from a plain failure.
+EXIT_NOT_VERIFIED=3
+
+# Node Agents poll every 60s, so a change normally lands within 90s.
+VPS_MAX_WAIT="${VISIBILITY_MAX_WAIT:-120}"
+VPS_POLL_INTERVAL="${VISIBILITY_POLL_INTERVAL:-10}"
+
+# Set to 1 by --allow-infrastructure.
+ALLOW_INFRASTRUCTURE="${MYNODEONE_ALLOW_INFRASTRUCTURE_PUBLIC:-0}"
 
 # Load cluster config
 ACTUAL_HOME="${HOME}"
@@ -50,19 +63,19 @@ if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
 fi
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
-# Retry function with exponential backoff
+# Retry function with exponential backoff. Takes a command and its arguments, not
+# a string, so nothing it's given is ever parsed by a shell.
 retry_command() {
     local max_attempts="$1"
     shift
-    local cmd="$@"
     local attempt=1
     local delay=2
-    
+
     while [ $attempt -le $max_attempts ]; do
-        if eval "$cmd" 2>/dev/null; then
+        if "$@"; then
             return 0
         fi
-        
+
         if [ $attempt -lt $max_attempts ]; then
             log_warn "Attempt $attempt/$max_attempts failed, retrying in ${delay}s..."
             sleep $delay
@@ -70,13 +83,17 @@ retry_command() {
         fi
         attempt=$((attempt + 1))
     done
-    
+
     return 1
+}
+
+cluster_reachable() {
+    kubectl get nodes >/dev/null 2>&1
 }
 
 # Verify kubectl access
 verify_cluster_access() {
-    if ! retry_command 3 "kubectl get nodes"; then
+    if ! retry_command 3 cluster_reachable; then
         log_error "Cannot access cluster"
         echo "Please ensure:"
         echo "  1. You're on the control plane OR"
@@ -86,17 +103,59 @@ verify_cluster_access() {
     return 0
 }
 
-# Verify service exists
+# Verify service exists and turn what was typed (llmapi or llmapi/llmapi) into the
+# registry key. Sets RESOLVED_SERVICE.
+RESOLVED_SERVICE=""
 verify_service_exists() {
-    local service_name="$1"
-    
-    if ! kubectl get configmap -n kube-system service-registry \
-        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -e --arg svc "$service_name" '.[$svc]' &>/dev/null; then
-        log_error "Service '$service_name' not found in registry"
+    local service_name="$1" services rc=0
+
+    if ! services=$(sr_get_services); then
+        log_error "Cannot read the service registry"
         return 1
     fi
-    return 0
+    RESOLVED_SERVICE=$(sr_resolve_key "$services" "$service_name") || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        2) log_error "'$service_name' matches several services; use namespace/name" ;;
+        *) log_error "Service '$service_name' not found in registry" ;;
+    esac
+    return 1
+}
+
+# Services that manage the cluster or its data. They commonly have no login of
+# their own and rely on being reachable only from the tailnet.
+is_infrastructure_service() {
+    local key="${1,,}" local_name="${2,,}" part
+    for part in "$key" "${key##*/}" "$local_name"; do
+        case "$part" in
+            *longhorn* | *minio* | *dashboard* | *grafana* | *argocd* | *traefik* | *prometheus* | *alertmanager* | kube-*)
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
+# Publishing one of those takes a deliberate step: typing its name, or the flag
+# when there is no terminal to type at.
+confirm_infrastructure_publish() {
+    local key="$1" local_name="$2" typed=""
+    is_infrastructure_service "$key" "$local_name" || return 0
+
+    log_warn "'$key' looks like an infrastructure service (storage, dashboards, cluster admin)."
+    log_warn "Publishing it can hand the internet control of the cluster or its data."
+    if [[ "$ALLOW_INFRASTRUCTURE" == "1" ]]; then
+        log_warn "Continuing because --allow-infrastructure was given"
+        return 0
+    fi
+    if [[ -t 0 ]]; then
+        read -r -p "Type the service name ($key) to publish it anyway: " typed
+        [[ "$typed" == "$key" ]] && return 0
+        log_error "Not confirmed; nothing was changed"
+        return 1
+    fi
+    log_error "Refusing to publish '$key' without --allow-infrastructure; nothing was changed"
+    return 1
 }
 
 # Verify domain registry exists
@@ -122,7 +181,7 @@ check_vps_availability() {
         -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
         jq '.vps_nodes | length' 2>/dev/null || echo "0")
     
-    if [ "$vps_count" -eq 0 ]; then
+    if [ "${vps_count:-0}" -eq 0 ]; then
         log_warn "No VPS nodes registered"
         echo ""
         echo "To make apps publicly accessible, you need a VPS edge node."
@@ -139,7 +198,7 @@ check_domain_availability() {
         -o jsonpath='{.data.domains\.json}' 2>/dev/null | \
         jq '.domains | length' 2>/dev/null || echo "0")
     
-    if [ "$domain_count" -eq 0 ]; then
+    if [ "${domain_count:-0}" -eq 0 ]; then
         log_warn "No domains registered"
         echo ""
         echo "To make apps publicly accessible, you need a domain."
@@ -150,285 +209,470 @@ check_domain_availability() {
     return 0
 }
 
+###############################################################################
+# Checking what a VPS actually serves
+###############################################################################
+
+vps_ssh() {
+    local timeout="$1" user="$2" ip="$3" command="$4"
+    ssh -o BatchMode=yes -o ConnectTimeout="$timeout" -o StrictHostKeyChecking=no \
+        "$user@$ip" "$command" </dev/null 2>/dev/null
+}
+
+vps_ssh_user() {
+    local ip="$1" user=""
+    user=$(kubectl get configmap -n kube-system sync-controller-registry \
+        -o jsonpath='{.data.registry\.json}' 2>/dev/null |
+        jq -r --arg ip "$ip" '[.vps_nodes[]? | select(.ip == $ip) | .ssh_user] | first // ""' 2>/dev/null) || user=""
+    if [[ ! "$user" =~ ^[a-z_][a-z0-9_.-]*$ ]]; then
+        user="root"
+    fi
+    printf '%s\n' "$user"
+}
+
+# Every VPS the registries know about, comma-separated.
+known_vps_nodes() {
+    {
+        kubectl get configmap -n kube-system domain-registry \
+            -o jsonpath='{.data.domains\.json}' 2>/dev/null |
+            jq -r '.vps_nodes[]?.tailscale_ip // empty' 2>/dev/null || true
+        kubectl get configmap -n kube-system sync-controller-registry \
+            -o jsonpath='{.data.registry\.json}' 2>/dev/null |
+            jq -r '.vps_nodes[]?.ip // empty' 2>/dev/null || true
+    } | sort -u | paste -sd, -
+}
+
+# The script run on the VPS. It looks in every file Traefik could be loading routes
+# from, so a route left by the older per-app generator counts too. Exits 0 if the
+# route is there, 10 if it isn't, anything else if it can't tell. The domain has
+# been validated, so it can't break out of the quotes.
+route_check_script() {
+    local domain="$1"
+    cat <<EOF
+pat='Host(\`${domain}\`)'; rc=10; seen=0
+for d in "\$HOME/traefik/config" /root/traefik/config /etc/traefik/config /etc/traefik/dynamic /home/*/traefik/config; do
+    [ -d "\$d" ] || continue
+    for f in "\$d"/*.yml "\$d"/*.yaml; do
+        [ -f "\$f" ] || continue
+        seen=1
+        grep -qF -- "\$pat" "\$f"; s=\$?
+        [ "\$s" -eq 0 ] && exit 0
+        [ "\$s" -eq 1 ] || rc=11
+    done
+done
+[ "\$seen" -eq 1 ] || exit 11
+exit "\$rc"
+EOF
+}
+
+# Returns 0 route present, 1 route absent, 2 can't tell.
+vps_route_state() {
+    local ip="$1" domain="$2" user rc=0
+    if ! sr_valid_ip "$ip" || ! sr_valid_fqdn "$domain"; then
+        return 2
+    fi
+    user=$(vps_ssh_user "$ip")
+    vps_ssh 5 "$user" "$ip" "$(route_check_script "$domain")" || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        10) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+# Is every domain in the wanted state ("present" or "absent") on this VPS?
+vps_routes_match() {
+    local ip="$1" domains_csv="$2" want="$3" domain state domain_list
+    IFS=',' read -ra domain_list <<<"$domains_csv"
+    for domain in "${domain_list[@]}"; do
+        domain=$(echo "$domain" | xargs)
+        state=0
+        vps_route_state "$ip" "$domain" || state=$?
+        case "$want:$state" in
+            present:0 | absent:1) ;;
+            *) return 1 ;;
+        esac
+    done
+    return 0
+}
+
+# Polls until all VPS nodes match, or the wait runs out.
+wait_for_routes() {
+    local vps_csv="$1" domains_csv="$2" want="$3" elapsed=0 all_synced vps_ip vps_list
+    IFS=',' read -ra vps_list <<<"$vps_csv"
+    while true; do
+        all_synced=true
+        for vps_ip in "${vps_list[@]}"; do
+            vps_ip=$(echo "$vps_ip" | xargs)
+            if ! vps_routes_match "$vps_ip" "$domains_csv" "$want"; then
+                all_synced=false
+                break
+            fi
+        done
+        if [ "$all_synced" = true ]; then
+            return 0
+        fi
+        if [ "$elapsed" -ge "$VPS_MAX_WAIT" ]; then
+            return 1
+        fi
+        echo "  Waiting for sync... (${elapsed}s/${VPS_MAX_WAIT}s)"
+        sleep "$VPS_POLL_INTERVAL"
+        elapsed=$((elapsed + VPS_POLL_INTERVAL))
+    done
+}
+
+# Push the sync over SSH for a VPS whose agent hasn't caught up, then look again.
+# The push succeeding isn't evidence on its own; only the routes file is.
+force_vps_sync() {
+    local vps_ip="$1" domains_csv="$2" want="$3" user
+    if ! sr_valid_ip "$vps_ip"; then
+        return 1
+    fi
+    if sr_vps_push_loses_routes; then
+        log_error "  ✗ Not syncing $vps_ip over SSH: it could replace its routes with an empty file"
+        return 1
+    fi
+    user=$(vps_ssh_user "$vps_ip")
+    log_warn "  ⚠ Node Agent sync pending on $vps_ip - falling back to SSH sync..."
+    if ! vps_ssh 10 "$user" "$vps_ip" "cd ~/mynodeone && sudo ./scripts/vps/sync-vps-routes.sh" >/dev/null; then
+        log_error "  ✗ SSH sync failed on $vps_ip"
+        return 1
+    fi
+    vps_routes_match "$vps_ip" "$domains_csv" "$want"
+}
+
+###############################################################################
 # Make app public
+###############################################################################
+
 make_public() {
     local service_name="$1"
     local domains="${2:-}"
     local vps_nodes="${3:-}"
-    
-    log_info "Making '$service_name' publicly accessible..."
-    
-    # Update service registry to mark as public
-    local services=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath='{.data.services\.json}' 2>/dev/null)
-    
-    local updated_services=$(echo "$services" | jq \
-        --arg service "$service_name" \
-        '.[$service].public = true')
-    
-    if ! kubectl patch configmap service-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"services.json\":\"$(echo "$updated_services" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" &>/dev/null; then
-        log_error "Failed to update service registry"
+    local services routing
+
+    if ! services=$(sr_get_services); then
+        log_error "Cannot read the service registry; nothing was changed"
         return 1
     fi
-    
-    log_success "Service marked as public in registry"
-    
-    # Configure routing if domains and VPS provided
+    if ! routing=$(sr_get_routing); then
+        log_error "Cannot read the domain routing; nothing was changed"
+        return 1
+    fi
+
+    local local_name
+    local_name=$(jq -r --arg svc "$service_name" '.[$svc].local_name // ""' <<<"$services")
+
+    if ! confirm_infrastructure_publish "$service_name" "$local_name"; then
+        return 1
+    fi
+
+    log_info "Making '$service_name' publicly accessible..."
+    log_warn "Public access adds no login or other protection. Anyone on the internet"
+    log_warn "reaches whatever this app itself exposes, so check that it has its own authentication."
+
+    # A record under a bare name another entry also goes by could be that entry's, so
+    # this service must not pick it up by going public. With domains given it gets a
+    # record of its own below; without any there is nothing to tell them apart.
+    local inherited
+    inherited=$(sr_routing_inherited_by "$services" "$service_name" "$routing")
+    if [[ -n "$inherited" && ( -z "$domains" || -z "$vps_nodes" ) ]]; then
+        log_error "Not making '$service_name' public: it would take over the routing filed under: ${inherited//$'\n'/, }"
+        log_error "Another service goes by that name. Give the domains and VPS nodes to use, or remove that record first."
+        return 1
+    fi
+
+    # A bare record stays with the public service using it today. Going public next to
+    # that service would otherwise make the record ambiguous and drop its live route.
+    if [[ "$routing" != "{}" ]] &&
+        ! sr_update_cm "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" sr_routing_promote_filter "$services" "$service_name"; then
+        log_error "Could not update the domain routing; nothing was changed"
+        return 1
+    fi
+
+    # Routing goes first. The API renders a public entry as soon as it sees one, and
+    # until this entry has its own record it could resolve to a bare one.
     if [ -n "$domains" ] && [ -n "$vps_nodes" ]; then
         log_info "Configuring routing..."
-        
-        if retry_command 3 "bash '$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh' configure-routing '$service_name' '$domains' '$vps_nodes'"; then
+
+        if retry_command "$MAX_RETRIES" bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" configure-routing "$service_name" "$domains" "$vps_nodes"; then
             log_success "Routing configured"
         else
             log_error "Failed to configure routing after $MAX_RETRIES attempts"
-            log_warn "Service is marked public but routing may not be active"
-            log_info "You can retry manually: sudo bash scripts/domains/multi-domain-registry.sh configure-routing '$service_name' '$domains' '$vps_nodes'"
+            log_warn "The service was not marked public"
+            log_info "You can retry: sudo bash scripts/operations/manage-app-visibility.sh public '$service_name' '$domains' '$vps_nodes'"
             return 1
         fi
-        
-        # Call app-specific post-public hook if it exists
-        if [ -f "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh" ]; then
+    fi
+
+    # Update service registry to mark as public
+    if ! sr_update_cm "$SR_SERVICE_CM" "$SR_SERVICE_KEY" sr_set_public_filter "$service_name" true; then
+        log_error "Failed to update service registry"
+        return 1
+    fi
+
+    log_success "Service marked as public in registry"
+
+    if [ -n "$domains" ] && [ -n "$vps_nodes" ]; then
+        # Call app-specific post-public hook if it exists. Hooks live under the bare
+        # app name and look the service up in the registry by the key they're given.
+        local app_dir
+        app_dir=$(sr_bare_name "$services" "$service_name")
+        if sr_valid_k8s_name "$app_dir" && [ -f "$PROJECT_ROOT/scripts/apps/$app_dir/post-public-hook.sh" ]; then
             log_info "Running app-specific configuration hook..."
-            if ! bash "$PROJECT_ROOT/scripts/apps/$service_name/post-public-hook.sh" "$service_name" "$domains"; then
+            if ! bash "$PROJECT_ROOT/scripts/apps/$app_dir/post-public-hook.sh" "$service_name" "$domains"; then
                 log_warn "App-specific configuration had issues (check above)"
             fi
         fi
     fi
-    
+
     # Verify configuration in ConfigMap
     sleep 1
-    local is_public=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -r --arg svc "$service_name" '.[$svc].public' || echo "false")
-    
+    local is_public=""
+    if services=$(sr_get_services); then
+        is_public=$(jq -r --arg svc "$service_name" '.[$svc].public' <<<"$services")
+    fi
+
     if [ "$is_public" != "true" ]; then
         log_error "✗ Service not marked as public in ConfigMap"
         return 1
     fi
-    
+
     log_success "✓ Service marked as public in ConfigMap"
-    
-    # Get service details for verification
-    local service_info=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -r --arg svc "$service_name" '.[$svc]')
-    local local_name=$(echo "$service_info" | jq -r '.local_name')
-    
+
+    if [ -z "$domains" ] || [ -z "$vps_nodes" ]; then
+        log_warn "No domains and VPS nodes were given, so no public route was configured or checked."
+        log_warn "The service is only marked public in the registry."
+        return 0
+    fi
+
     # Wait for Node Agent to sync routes to VPS nodes
     # Node Agents poll every 60s, Config API updates every 30s
     # Total max wait: ~90s, but usually faster
-    if [ -n "$vps_nodes" ]; then
-        log_info "Waiting for Node Agent to sync routes to VPS nodes..."
-        echo "  (Node Agents poll every 60s - this may take up to 90 seconds)"
+    log_info "Waiting for Node Agent to sync routes to VPS nodes..."
+    echo "  (Node Agents poll every 60s - this may take up to 90 seconds)"
+    echo ""
+
+    wait_for_routes "$vps_nodes" "$domains" present || true
+
+    # Verify final state
+    log_info "Verifying routes on VPS nodes..."
+    local verification_failed=false vps_ip vps_user="root"
+    local vps_array
+    IFS=',' read -ra vps_array <<<"$vps_nodes"
+
+    for vps_ip in "${vps_array[@]}"; do
+        vps_ip=$(echo "$vps_ip" | xargs)
+        if ! sr_valid_ip "$vps_ip"; then
+            log_error "  ✗ Not a valid VPS address: $vps_ip"
+            verification_failed=true
+            continue
+        fi
+
+        vps_user=$(vps_ssh_user "$vps_ip")
+        log_info "Checking VPS: $vps_ip (user: $vps_user)..."
+
+        if vps_routes_match "$vps_ip" "$domains" present; then
+            log_success "  ✓ Routes synced for $service_name"
+        elif force_vps_sync "$vps_ip" "$domains" present; then
+            log_success "  ✓ Routes synced for $service_name over SSH"
+        else
+            log_error "  ✗ Routes for $service_name are not on $vps_ip"
+            verification_failed=true
+        fi
+
+        # Check if Traefik is running
+        if vps_ssh 5 "$vps_user" "$vps_ip" "docker ps | grep -q traefik"; then
+            log_success "  ✓ Traefik is running"
+        else
+            log_error "  ✗ Traefik is NOT running"
+            verification_failed=true
+        fi
+    done
+
+    if [ "$verification_failed" = true ]; then
+        log_error "VPS verification failed - routes may not be accessible"
         echo ""
-        
-        local max_wait=120  # 2 minutes max
-        local poll_interval=10
-        local elapsed=0
-        local all_synced=false
-        
-        IFS=',' read -ra VPS_ARRAY <<< "$vps_nodes"
-        
-        while [ $elapsed -lt $max_wait ]; do
-            all_synced=true
-            
-            for vps_ip in "${VPS_ARRAY[@]}"; do
-                vps_ip=$(echo "$vps_ip" | xargs)
-                
-                # Get VPS SSH user from registry
-                local vps_user=$(kubectl get configmap -n kube-system sync-controller-registry \
-                    -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
-                    jq -r ".vps_nodes[] | select(.ip==\"$vps_ip\") | .ssh_user" || echo "root")
-                
-                # Check if routes file contains our service (checking for service name as key or Host rule)
-                local route_check="test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$service_name-service' ~/traefik/config/mynodeone-routes.yml"
-                
-                if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
-                    all_synced=false
-                    break
-                fi
-            done
-            
-            if [ "$all_synced" = true ]; then
-                break
-            fi
-            
-            echo "  Waiting for sync... (${elapsed}s/${max_wait}s)"
-            sleep $poll_interval
-            elapsed=$((elapsed + poll_interval))
-        done
-        
-        # Verify final state
-        log_info "Verifying routes on VPS nodes..."
-        local verification_failed=false
-        
-        for vps_ip in "${VPS_ARRAY[@]}"; do
-            vps_ip=$(echo "$vps_ip" | xargs)
-            
-            local vps_user=$(kubectl get configmap -n kube-system sync-controller-registry \
-                -o jsonpath='{.data.registry\.json}' 2>/dev/null | \
-                jq -r ".vps_nodes[] | select(.ip==\"$vps_ip\") | .ssh_user" || echo "root")
-            
-            log_info "Checking VPS: $vps_ip (user: $vps_user)..."
-            
-            # Check for service name in routes file
-            local route_check="test -f ~/traefik/config/mynodeone-routes.yml && grep -q '$service_name-service' ~/traefik/config/mynodeone-routes.yml"
-            
-            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" "$route_check" 2>/dev/null; then
-                log_success "  ✓ Routes synced via Node Agent for $service_name"
-            else
-                log_warn "  ⚠ Node Agent sync pending - falling back to SSH sync..."
-                
-                # Fallback: Force SSH sync for this VPS
-                if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
-                    "cd ~/mynodeone && sudo ./scripts/vps/sync-vps-routes.sh" 2>/dev/null; then
-                    log_success "  ✓ SSH sync completed"
-                else
-                    log_error "  ✗ SSH sync also failed"
-                    verification_failed=true
-                fi
-            fi
-            
-            # Check if Traefik is running
-            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$vps_user@$vps_ip" \
-                "docker ps | grep -q traefik" 2>/dev/null; then
-                log_success "  ✓ Traefik is running"
-            else
-                log_error "  ✗ Traefik is NOT running"
-                verification_failed=true
-            fi
-        done
-        
-        if [ "$verification_failed" = true ]; then
-            log_error "VPS verification failed - routes may not be accessible"
-            echo ""
-            echo "Troubleshooting:"
-            echo "  1. Check Node Agent status: ssh <user>@<vps-ip> 'systemctl status mynodeone-agent'"
-            echo "  2. Check Traefik logs: ssh <user>@<vps-ip> 'docker logs traefik --tail 50'"
-            echo "  3. Verify routes file: ssh <user>@<vps-ip> 'cat ~/traefik/config/mynodeone-routes.yml'"
-            echo ""
-            return 1
-        fi
-        
-        log_success "✓ All VPS nodes verified"
-        
-        # Test HTTP endpoint accessibility
-        log_info "Testing endpoint accessibility..."
-        echo "  This may take 30-60 seconds for SSL certificate issuance..."
-        
-        IFS=',' read -ra DOMAIN_ARRAY <<< "$domains"
-        local test_url="https://${DOMAIN_ARRAY[0]}"   # Use full domain directly
-        
-        local max_attempts=12
-        local attempt=1
-        local endpoint_accessible=false
-        
-        while [ $attempt -le $max_attempts ]; do
-            if curl -I -k -m 10 "$test_url" 2>/dev/null | grep -q "HTTP.*[23]0[0-9]"; then
-                log_success "✓ Endpoint is accessible: $test_url"
-                endpoint_accessible=true
-                break
-            fi
-            
-            if [ $attempt -lt $max_attempts ]; then
-                echo "  Waiting for SSL certificate... ($attempt/$max_attempts)"
-                sleep 5
-            fi
-            attempt=$((attempt + 1))
-        done
-        
-        if [ "$endpoint_accessible" = false ]; then
-            log_warn "⚠ Endpoint not accessible after ${max_attempts} attempts"
-            echo ""
-            echo "This is normal if:"
-            echo "  • DNS records are not yet propagated (can take 5-10 minutes)"
-            echo "  • SSL certificate is still being issued (first time only)"
-            echo ""
-            echo "Check:"
-            echo "  1. DNS: dig ${DOMAIN_ARRAY[0]}"
-            echo "  2. Traefik logs: ssh $vps_user@$vps_ip 'docker logs traefik --tail 50'"
-            echo "  3. Try again in 5 minutes: curl -I $test_url"
-            echo ""
-            # Don't fail here - DNS propagation can take time
-        fi
+        echo "Troubleshooting:"
+        echo "  1. Check Node Agent status: ssh <user>@<vps-ip> 'systemctl status mynodeone-node-agent'"
+        echo "  2. Check Traefik logs: ssh <user>@<vps-ip> 'docker logs traefik --tail 50'"
+        echo "  3. Verify routes file: ssh <user>@<vps-ip> 'cat ~/traefik/config/mynodeone-routes.yml'"
+        echo ""
+        return 1
     fi
-    
+
+    log_success "✓ All VPS nodes verified"
+
+    # Test HTTP endpoint accessibility
+    log_info "Testing endpoint accessibility..."
+    echo "  This may take 30-60 seconds for SSL certificate issuance..."
+
+    local domain_array
+    IFS=',' read -ra domain_array <<<"$domains"
+    local first_domain
+    first_domain=$(echo "${domain_array[0]}" | xargs)
+    local test_url="https://${first_domain}"   # Use full domain directly
+
+    local max_attempts=12
+    local attempt=1
+    local endpoint_accessible=false
+
+    while [ $attempt -le $max_attempts ]; do
+        if curl -I -k -m 10 "$test_url" 2>/dev/null | grep -q "HTTP.*[23]0[0-9]"; then
+            log_success "✓ Endpoint is accessible: $test_url"
+            endpoint_accessible=true
+            break
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            echo "  Waiting for SSL certificate... ($attempt/$max_attempts)"
+            sleep 5
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$endpoint_accessible" = false ]; then
+        log_warn "⚠ Endpoint not accessible after ${max_attempts} attempts"
+        echo ""
+        echo "This is normal if:"
+        echo "  • DNS records are not yet propagated (can take 5-10 minutes)"
+        echo "  • SSL certificate is still being issued (first time only)"
+        echo ""
+        echo "Check:"
+        echo "  1. DNS: dig ${first_domain}"
+        echo "  2. Traefik logs: ssh $vps_user@$vps_ip 'docker logs traefik --tail 50'"
+        echo "  3. Try again in 5 minutes: curl -I $test_url"
+        echo ""
+        # Don't fail here - DNS propagation can take time
+    fi
+
     return 0
 }
 
+###############################################################################
 # Make app private
+###############################################################################
+
+# Returns 0 only once the route is confirmed gone from every VPS it was on, and
+# EXIT_NOT_VERIFIED if the registry is updated but that couldn't be confirmed.
 make_private() {
     local service_name="$1"
-    
+    local services routing routing_keys contested domains vps_nodes
+
     log_info "Making '$service_name' private (local-only)..."
-    
-    # Update service registry to mark as private
-    local services=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath='{.data.services\.json}' 2>/dev/null)
-    
-    if [[ -z "$services" ]] || [[ "$services" == "{}" ]]; then
-        log_error "Service registry is empty or unreachable"
+
+    if ! services=$(sr_get_services); then
+        log_error "Cannot read the service registry; nothing was changed"
         return 1
     fi
-    
-    local updated_services=$(echo "$services" | jq \
-        --arg service "$service_name" \
-        '.[$service].public = false')
-    
-    if ! retry_command 3 "kubectl patch configmap service-registry \
-        -n kube-system \
-        --type merge \
-        -p '{\"data\":{\"services.json\":\"$(echo "$updated_services" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}'"; then
+    if ! routing=$(sr_get_routing); then
+        log_error "Cannot read the domain routing; nothing was changed"
+        return 1
+    fi
+
+    # Read what has to disappear from the VPS before deleting the record of it. An
+    # unmigrated routing.json can still file this service under its bare name.
+    routing_keys=$(sr_routing_keys_for "$services" "$service_name" "$routing" | jq -Rsc 'split("\n") | map(select(length > 0))')
+
+    # A record this service shares a claim on has no route today. Left in place it would
+    # go live for the other service as soon as this one stops claiming it, and nothing
+    # says the domain was meant for that one. It goes too, and the operator is told.
+    contested=$(sr_routing_contested_by "$services" "$service_name" "$routing")
+    if [[ -n "$contested" ]]; then
+        log_warn "Routing filed under '${contested//$'\n'/, }' also matches another public service, so it published no route."
+        log_warn "Removing it so that service doesn't inherit the domains. To give them to it, run configure-routing for it."
+        routing_keys=$(jq -c --arg more "$contested" '. + ($more | split("\n")) | unique' <<<"$routing_keys")
+    fi
+
+    domains=$(jq -r --argjson keys "$routing_keys" '
+        . as $all | [$keys[] as $k | ($all[$k].expose? // [])
+                     | if type == "array" then .[] else empty end | select(type == "string")]
+        | unique | join(",")' <<<"$routing")
+    vps_nodes=$(jq -r --argjson keys "$routing_keys" '
+        . as $all | [$keys[] as $k | ($all[$k].vps_nodes? // [])
+                     | if type == "array" then .[] else empty end | select(type == "string")]
+        | unique | join(",")' <<<"$routing")
+
+    # Update service registry to mark as private. The API stops rendering the route
+    # as soon as this lands, so it goes first.
+    if ! sr_update_cm "$SR_SERVICE_CM" "$SR_SERVICE_KEY" sr_set_public_filter "$service_name" false; then
         log_error "Failed to update service registry"
         return 1
     fi
-    
     log_success "Service marked as private in registry"
-    
+
     # Remove from domain routing
     log_info "Removing from public routing..."
-    
-    local routing=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo "{}")
-    
-    local updated_routing=$(echo "$routing" | jq --arg svc "$service_name" 'del(.[$svc])')
-    
-    if kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$updated_routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" &>/dev/null; then
+    if jq -e --argjson keys "$routing_keys" '. as $all | any($keys[]; . as $k | $all | has($k))' <<<"$routing" >/dev/null; then
+        if ! SR_ALLOW_BLANK=1 sr_update_cm "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" sr_routing_del_filter "$routing_keys"; then
+            log_error "Could not remove its routing entry from domain-registry"
+            log_warn "The service is marked private, but routing for it is still on record: ${domains:-none}"
+            return 1
+        fi
         log_success "Removed from routing"
     else
-        log_warn "Could not update routing (may not have been configured)"
+        log_info "It had no routing entry"
     fi
-    
-    # Wait for Node Agent to remove routes from VPS nodes
-    # Node Agents poll every 60s - route removal will happen on next sync
-    log_info "Waiting for Node Agent to update VPS routes..."
-    echo "  (Routes will be removed on next Node Agent sync cycle)"
-    sleep 5  # Brief wait - we don't need to wait for full sync for private
-    
+
     # Verify
-    sleep 2
-    local is_public=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -r --arg svc "$service_name" '.[$svc].public' || echo "true")
-    
-    if [ "$is_public" = "false" ]; then
-        log_success "✓ Verified: Service is now private"
-        return 0
-    else
+    local is_public="unknown"
+    if services=$(sr_get_services); then
+        is_public=$(jq -r --arg svc "$service_name" '.[$svc].public' <<<"$services")
+    fi
+    if [ "$is_public" != "false" ]; then
         log_error "✗ Verification failed: Service still marked as public"
         return 1
     fi
+    log_success "✓ Registry says the service is private"
+
+    if [[ -z "$domains" ]]; then
+        log_info "No public domain was on record for it, so there is no VPS route to check"
+        return 0
+    fi
+
+    [[ -n "$vps_nodes" ]] || vps_nodes=$(known_vps_nodes)
+
+    # Node Agents poll every 60s and old ones ignore an empty route list, so look at
+    # the VPS rather than assuming.
+    local vps_list vps_ip all_clean=true
+    if [[ -n "$vps_nodes" ]]; then
+        log_info "Waiting for the public route to disappear from VPS nodes..."
+        echo "  (Node Agents poll every 60s - this may take up to ${VPS_MAX_WAIT} seconds)"
+        if ! wait_for_routes "$vps_nodes" "$domains" absent; then
+            IFS=',' read -ra vps_list <<<"$vps_nodes"
+            for vps_ip in "${vps_list[@]}"; do
+                vps_ip=$(echo "$vps_ip" | xargs)
+                if ! vps_routes_match "$vps_ip" "$domains" absent &&
+                    ! force_vps_sync "$vps_ip" "$domains" absent; then
+                    all_clean=false
+                    log_error "  ✗ Could not confirm the route is gone from $vps_ip"
+                fi
+            done
+        fi
+    else
+        all_clean=false
+        log_error "  ✗ No VPS nodes on record to check"
+    fi
+
+    if [[ "$all_clean" == true ]]; then
+        log_success "✓ Verified on VPS nodes: no route for $domains"
+        return 0
+    fi
+
+    echo ""
+    log_warn "NOT VERIFIED: the registry is updated, but the public route may STILL BE LIVE."
+    echo "  Domains: $domains"
+    echo "  VPS nodes: ${vps_nodes:-unknown}"
+    echo "  Check on the VPS: grep -l 'Host(' ~/traefik/config/*.yml"
+    echo "  Force an update:  cd ~/mynodeone && sudo ./scripts/vps/sync-vps-routes.sh"
+    echo "  Check an agent:   systemctl status mynodeone-node-agent"
+    echo ""
+    return "$EXIT_NOT_VERIFIED"
 }
 
 # Main interactive mode
 main() {
-    clear
+    clear 2>/dev/null || true
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  🌐 Manage App Public Visibility"
@@ -444,35 +688,44 @@ main() {
     echo ""
     
     # Get all services
-    local services=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath='{.data.services\.json}' 2>/dev/null || echo "{}")
-    
+    local services
+    if ! services=$(sr_get_services); then
+        log_error "Cannot read the service registry"
+        exit 1
+    fi
+
     if [ "$services" = "{}" ]; then
         log_error "No services found in registry"
         echo "Install apps first, then run this script"
         exit 1
     fi
-    
+
     # Display services
     echo "Available services:"
     echo ""
-    
+
     declare -a service_array
     declare -a local_name_array
     declare -a public_array
     i=1
-    
+
+    # Values come from annotations, so anything outside this set is masked before it
+    # reaches the terminal or the field separator.
     while IFS='|' read -r service local_name is_public; do
         local status_marker="🔒 Private"
         [ "$is_public" = "true" ] && status_marker="🌍 Public"
-        
-        echo "  $i. $service (local: $local_name) - $status_marker"
+        local infra_marker=""
+        is_infrastructure_service "$service" "$local_name" && infra_marker=" [infrastructure]"
+
+        echo "  $i. $service (local: $local_name) - $status_marker$infra_marker"
         service_array[$i]="$service"
         local_name_array[$i]="$local_name"
         public_array[$i]="$is_public"
         ((i++))
-    done < <(echo "$services" | jq -r 'to_entries[] | "\(.key)|\(.value.local_name)|\(.value.public // false)"')
-    
+    done < <(jq -r 'to_entries[]
+        | [.key, (.value.local_name // "" | tostring), (.value.public // false | tostring)]
+        | map(gsub("[^A-Za-z0-9._/-]"; "?")) | join("|")' <<<"$services")
+
     echo ""
     read -p "Select service number: " service_num
     
@@ -535,7 +788,7 @@ main() {
             echo "Examples:"
             echo "  • Root:      curiios.com"
             echo "  • WWW:       www.curiios.com"
-            echo "  • Subdomain: $selected_service.curiios.com"
+            echo "  • Subdomain: $local_name.curiios.com"
             echo ""
             read -p "URLs: " selected_domains
             
@@ -577,19 +830,24 @@ main() {
             # Check for domain conflicts
             echo ""
             echo "Checking for domain conflicts..."
-            local has_conflicts=false
+            local has_conflicts=false routing own_keys
+            if ! routing=$(sr_get_routing); then
+                log_error "Cannot read the domain routing"
+                exit 1
+            fi
+            # A bare key from before the migration is this same service, not a conflict.
+            own_keys=$(sr_routing_keys_for "$services" "$selected_service" "$routing" | jq -Rsc 'split("\n") | map(select(length > 0))')
             for domain in "${DOMAIN_ARRAY[@]}"; do
                 domain=$(echo "$domain" | xargs)
                 
-                local conflicting_service=$(kubectl get configmap -n kube-system domain-registry \
-                    -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
-                    jq -r --arg domain "$domain" --arg svc "$selected_service" '
+                local conflicting_service
+                conflicting_service=$(jq -r --arg domain "$domain" --argjson own "$own_keys" '
                         to_entries[] |
-                        select(.key != $svc) |
-                        select(.value.expose[] == $domain) |
+                        select(.key as $k | $own | index($k) | not) |
+                        select(any((.value.expose? // [])[]; . == $domain)) |
                         .key
-                    ' 2>/dev/null || echo "")
-                
+                    ' <<<"$routing")
+
                 if [[ -n "$conflicting_service" && "$conflicting_service" != "null" ]]; then
                     log_warn "Domain $domain is already used by service: $conflicting_service"
                     has_conflicts=true
@@ -672,7 +930,9 @@ main() {
             [ "$confirm" != "y" ] && exit 0
             
             echo ""
-            if make_private "$selected_service"; then
+            local private_rc=0
+            make_private "$selected_service" || private_rc=$?
+            if [ "$private_rc" -eq 0 ]; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "  ✅ Service is Now Private"
@@ -680,12 +940,15 @@ main() {
                 echo ""
                 echo "  • http://$local_name.${CLUSTER_DOMAIN}.local (local access only)"
                 echo ""
+            elif [ "$private_rc" -eq "$EXIT_NOT_VERIFIED" ]; then
+                log_error "Marked private, but removal from the VPS is not verified (see above)"
+                exit "$EXIT_NOT_VERIFIED"
             else
                 log_error "Failed to make service private"
                 exit 1
             fi
             ;;
-            
+
         *)
             log_info "Cancelled"
             exit 0
@@ -694,19 +957,31 @@ main() {
 }
 
 # Run main if no arguments, otherwise support command-line mode
+CLI_ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == "--allow-infrastructure" ]]; then
+        ALLOW_INFRASTRUCTURE=1
+    else
+        CLI_ARGS+=("$arg")
+    fi
+done
+set -- ${CLI_ARGS[@]+"${CLI_ARGS[@]}"}
+
 if [ $# -eq 0 ]; then
     main
 else
     case "${1:-}" in
         public)
             verify_cluster_access || exit 1
-            verify_service_exists "$2" || exit 1
-            make_public "$2" "${3:-}" "${4:-}"
+            verify_service_exists "${2:-}" || exit 1
+            make_public "$RESOLVED_SERVICE" "${3:-}" "${4:-}"
             ;;
         private)
             verify_cluster_access || exit 1
-            verify_service_exists "$2" || exit 1
-            make_private "$2"
+            verify_service_exists "${2:-}" || exit 1
+            private_rc=0
+            make_private "$RESOLVED_SERVICE" || private_rc=$?
+            exit "$private_rc"
             ;;
         *)
             echo "Usage: $0 [public|private] <service-name> [domains] [vps-nodes]"
@@ -717,7 +992,11 @@ else
             echo "Command-line mode:"
             echo "  $0 public immich"
             echo "  $0 public immich 'example.com,test.org' '100.68.225.92'"
+            echo "  $0 public grafana 'grafana.example.com' '100.68.225.92' --allow-infrastructure"
             echo "  $0 private immich"
+            echo ""
+            echo "  'private' exits $EXIT_NOT_VERIFIED if the registry changed but the route could not"
+            echo "  be confirmed gone from a VPS."
             exit 1
             ;;
     esac

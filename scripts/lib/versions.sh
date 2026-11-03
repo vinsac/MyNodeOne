@@ -36,6 +36,11 @@ export LOKI_VERSION="${LOKI_VERSION:-2.10.2}"
 
 # GitOps
 export ARGOCD_VERSION="${ARGOCD_VERSION:-7.7.5}"
+# Plain manifest used only if the ArgoCD Helm install fails
+export ARGOCD_FALLBACK_MANIFEST_VERSION="${ARGOCD_FALLBACK_MANIFEST_VERSION:-v2.9.3}"
+
+# GPU (remote manifest used only if the local one is missing)
+export NVIDIA_DEVICE_PLUGIN_VERSION="${NVIDIA_DEVICE_PLUGIN_VERSION:-v0.14.5}"
 
 # CLI Tools (for management laptops)
 export K9S_VERSION="${K9S_VERSION:-v0.32.5}"
@@ -43,6 +48,7 @@ export K9S_VERSION="${K9S_VERSION:-v0.32.5}"
 # VPS & Edge Node Components
 export DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-2.24.5}"
 export TRAEFIK_VPS_VERSION="${TRAEFIK_VPS_VERSION:-2.11}"
+export NODE_EXPORTER_VERSION="${NODE_EXPORTER_VERSION:-1.7.0}"
 
 # Validation function to ensure versions are loaded
 validate_versions() {

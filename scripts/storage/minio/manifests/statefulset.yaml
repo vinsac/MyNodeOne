@@ -15,6 +15,11 @@ spec:
         app: minio
         node: NODE_PLACEHOLDER
     spec:
+      securityContext:
+        runAsUser: MINIO_UID_PLACEHOLDER
+        runAsGroup: MINIO_UID_PLACEHOLDER
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -26,7 +31,13 @@ spec:
                 - NODE_PLACEHOLDER
       containers:
       - name: minio
-        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+        image: MINIO_IMAGE_PLACEHOLDER
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         args:
         - server
         - /data

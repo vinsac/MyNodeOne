@@ -1,15 +1,15 @@
 [Unit]
 Description=MyNodeOne Node Agent
 Documentation=https://github.com/vinsac/MyNodeOne
-After=network.target tailscaled.service
-Wants=tailscaled.service
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
 
 [Service]
 Type=simple
 User=root
 ExecStart=/usr/local/bin/mynodeone-node-agent run
 Restart=always
-RestartSec=30
+RestartSec=10
 
 # Environment
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -23,6 +23,16 @@ SyslogIdentifier=mynodeone-node-agent
 # Security hardening
 PrivateTmp=yes
 NoNewPrivileges=true
+ProtectSystem=strict
+# read-only, not true: the agent reads CLUSTER_DOMAIN from ~/.mynodeone/config.env
+# and a Traefik directory under /home has to be reachable for ReadWritePaths.
+ProtectHome=read-only
+# /etc/hosts becomes a bind mount, so the agent has to write it in place: renaming
+# over it fails with EBUSY. Anything next to it, like /etc/hosts.bak, stays
+# read-only, so its backup lives in /etc/mynodeone.
+# A Traefik directory under /home is added per host by the installer in
+# mynodeone-node-agent.service.d/10-traefik.conf. A "-" path may not exist.
+ReadWritePaths=/etc/mynodeone /etc/hosts -/etc/traefik/config -/root/traefik/config
 
 # Resource limits
 LimitNOFILE=65536

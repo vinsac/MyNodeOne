@@ -129,7 +129,9 @@ spec:
           
           containers:
           - name: backup
-            image: minio/mc:latest
+            # minio/mc no longer exists on Docker Hub. The -dev variant includes the
+            # shell this script needs. Pin a digest for real use.
+            image: cgr.dev/chainguard/minio-client:latest-dev
             command: ["/bin/sh", "/scripts/backup.sh"]
             env:
             # MinIO credentials from secret

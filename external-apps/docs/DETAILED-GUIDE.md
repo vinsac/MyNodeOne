@@ -421,7 +421,7 @@ spec:
     spec:
       containers:
       - name: web
-        image: your-registry/mywebapp:latest
+        image: your-registry/mywebapp:1.0.0
         ports:
         - containerPort: 8080
         resources:
@@ -493,7 +493,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: your-registry/myapi:latest
+        image: your-registry/myapi:1.0.0
         ports:
         - containerPort: 8000
         env:

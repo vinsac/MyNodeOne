@@ -10,10 +10,10 @@ Complete SaaS application with:
 
 1. Build and push your Docker images:
    ```bash
-   docker build -t your-registry/myapp-frontend:latest ./frontend
-   docker build -t your-registry/myapp-backend:latest ./backend
-   docker push your-registry/myapp-frontend:latest
-   docker push your-registry/myapp-backend:latest
+   docker build -t your-registry/myapp-frontend:1.0.0 ./frontend
+   docker build -t your-registry/myapp-backend:1.0.0 ./backend
+   docker push your-registry/myapp-frontend:1.0.0
+   docker push your-registry/myapp-backend:1.0.0
    ```
 
 2. Update `docker-compose.yml` with your image URLs

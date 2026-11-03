@@ -1,0 +1,136 @@
+# Gateway Deployment, applied by install-llmapi.sh, deploy-gateway.sh and
+# upgrade-llmapi.sh through lib/gateway-code.sh, which fills in the placeholders.
+# The code and lockfile come from the gateway-code ConfigMap, built from gateway/.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: __NAMESPACE__
+  labels:
+    app: llmapi-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llmapi-gateway
+  template:
+    metadata:
+      labels:
+        app: llmapi-gateway
+      annotations:
+        llmapi.mynodeone.io/gateway-code-sha: "__GATEWAY_CODE_SHA__"
+    spec:
+      serviceAccountName: gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: install-deps
+        image: python:3.11-slim
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          pip install --no-cache-dir --quiet --disable-pip-version-check \
+            --require-hashes --only-binary=:all: \
+            --target=/app/deps -r /lock/requirements.lock
+        volumeMounts:
+        - name: app-deps
+          mountPath: /app/deps
+        - name: gateway-code
+          mountPath: /lock
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      containers:
+      - name: gateway
+        image: python:3.11-slim
+        ports:
+        - containerPort: 8000
+          name: http
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          export PYTHONPATH=/app/deps
+          cd /app && exec python -m uvicorn main:app --host 0.0.0.0 --port 8000
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: llmapi-db
+              key: postgres-password
+        # REDIS_URL in gateway-config stays free of credentials because main.py logs it.
+        # optional: lets deploy-gateway.sh keep working on a cluster that hasn't been
+        # through upgrade-llmapi.sh yet, where Redis has no password either.
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: llmapi-redis-auth
+              key: password
+              optional: true
+        envFrom:
+        - configMapRef:
+            name: gateway-config
+        volumeMounts:
+        - name: gateway-code
+          mountPath: /app/main.py
+          subPath: main.py
+        - name: app-deps
+          mountPath: /app/deps
+        - name: gateway-static
+          mountPath: /app/static
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 10
+        # uvicorn answers only once startup has finished, which is what's being waited for.
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: gateway-code
+        configMap:
+          name: gateway-code
+      # Files from gateway/static/, when there are any. Optional, so /app/static is
+      # just empty without them.
+      - name: gateway-static
+        configMap:
+          name: gateway-static
+          optional: true
+      - name: app-deps
+        emptyDir: {}

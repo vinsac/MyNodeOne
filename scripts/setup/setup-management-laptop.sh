@@ -26,6 +26,8 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Detect actual user and home directory
 source "$PROJECT_ROOT/scripts/lib/detect-actual-home.sh"
+# shellcheck source=../lib/hosts-block.sh
+source "$PROJECT_ROOT/scripts/lib/hosts-block.sh"
 # Load centralized version configuration
 source "$PROJECT_ROOT/scripts/lib/versions.sh"
 
@@ -230,19 +232,21 @@ update_dns_entries() {
         return 1
     fi
     
-    # Backup hosts file
-    sudo cp /etc/hosts "/etc/hosts.bak.$(date +%Y%m%d_%H%M%S)"
+    # Backup hosts file, unless the newest backup already holds these contents
+    local newest_backup
+    # shellcheck disable=SC2012  # these names have no whitespace
+    newest_backup=$(ls -t /etc/hosts.bak.* 2>/dev/null | head -n 1 || true)
+    if [ -z "$newest_backup" ] || ! cmp -s /etc/hosts "$newest_backup"; then
+        sudo cp /etc/hosts "/etc/hosts.bak.$(date +%Y%m%d_%H%M%S)"
+    fi
     
     # Remove old MyNodeOne entries
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sudo sed -i '' '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
-    else
-        sudo sed -i '/# MyNodeOne services/,/# End MyNodeOne services/d' /etc/hosts
-    fi
+    hosts_remove_block /etc/hosts '# MyNodeOne services' '# End MyNodeOne services'
     
     # Add new entries
     {
-        echo ""
+        # The blank line from the last run is still there, so don't add another.
+        [ -z "$(tail -n 1 /etc/hosts)" ] || echo ""
         echo "# MyNodeOne services"
         
         while IFS='|' read -r ip name namespace; do
@@ -591,14 +595,17 @@ main() {
         fi
         
         # Call install-config-sync with ssh-user parameter for automatic token fetch
-        # Arguments: node-type control-plane-ip api-token node-name ssh-user
-        if sudo bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "$API_TOKEN" "$(hostname)" "$CP_SSH_USER"; then
+        # Arguments: node-type control-plane-ip (unused) node-name ssh-user. The token
+        # goes through a temporary file so it stays out of `ps`.
+        # shellcheck source=../lib/node-agent-install.sh
+        source "$PROJECT_ROOT/scripts/lib/node-agent-install.sh"
+        if node_agent_run_with_token_file "$API_TOKEN" sudo bash "$PROJECT_ROOT/scripts/lib/install-config-sync.sh" laptop "${CONTROL_PLANE_IP:-}" "" "$(hostname)" "$CP_SSH_USER"; then
             log_success "Node Agent installed"
             log_info "Laptop will now pull config updates from control plane"
         else
             log_warn "Node Agent installation had issues"
             log_warn "You can install manually later:"
-            log_warn "  sudo ./scripts/lib/install-config-sync.sh laptop ${CONTROL_PLANE_IP:-<control-plane-ip>} <api-token>"
+            log_warn "  sudo ./scripts/lib/install-config-sync.sh laptop ${CONTROL_PLANE_IP:-<control-plane-ip>} --api-token-file <file>"
         fi
     else
         log_warn "Node Agent installer not found, skipping"

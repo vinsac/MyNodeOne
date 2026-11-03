@@ -17,6 +17,7 @@ source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/install-helpers.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -66,6 +67,10 @@ echo "  Local: http://${APP_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
 echo ""
 
 NAMESPACE="homepage"
+
+# Override with HOMEPAGE_IMAGE. Re-running keeps the running version.
+app_resolve_image HOMEPAGE_IMAGE "$NAMESPACE" homepage homepage \
+    "ghcr.io/gethomepage/homepage:v2.7.0" "${HOMEPAGE_IMAGE:-}"
 warn_if_namespace_exists "$NAMESPACE"
 
 echo "📦 Creating namespace..."
@@ -92,7 +97,7 @@ spec:
       priorityClassName: mynodeone-app
       containers:
       - name: homepage
-        image: ghcr.io/gethomepage/homepage:latest
+        image: $HOMEPAGE_IMAGE
         ports:
         - containerPort: 3000
         resources:
@@ -141,9 +146,9 @@ if [ -f "$PROJECT_ROOT/scripts/lib/service-registry.sh" ]; then
 
         # Verify registration
         echo "🔍 Verifying registration..."
-        REGISTERED_LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
-            -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-            jq -r '.homepage.local_name' 2>/dev/null || echo "")
+        # shellcheck source=../../lib/service-registry-lib.sh
+        source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+        REGISTERED_LOCAL_NAME=$(sr_service_field "$NAMESPACE/homepage" local_name 2>/dev/null || echo "")
 
         if [ "$REGISTERED_LOCAL_NAME" = "$APP_SUBDOMAIN" ]; then
             echo "✓ Verified: Service registered with local_name '$APP_SUBDOMAIN'"

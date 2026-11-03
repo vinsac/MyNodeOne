@@ -1,0 +1,148 @@
+# Every job calls scripts/tests/run-all.sh, which runs the same commands locally. Tools
+# are pinned in scripts/tests/ci/ (install-tools.sh, requirements-ci.txt), and under CI
+# a missing tool fails its suite instead of skipping it.
+#
+# Actions are pinned to the commit behind the tag in each comment.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11" # The gateway image's Python
+      - name: Install the gateway's locked dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/gateway-venv"
+          "$RUNNER_TEMP/gateway-venv/bin/pip" install --require-hashes --only-binary=:all: \
+            -r scripts/apps/llmapi/gateway/requirements.lock
+          echo "GATEWAY_PYTHON=$RUNNER_TEMP/gateway-venv/bin/python" >> "$GITHUB_ENV"
+      # Before the dev requirements go in, so they can't hide a missing dependency.
+      - name: Imports resolve from the lock alone
+        run: bash scripts/tests/run-all.sh gateway-deps
+      - name: Install the test dependencies
+        run: |
+          "$RUNNER_TEMP/gateway-venv/bin/pip" install --require-hashes --only-binary=:all: \
+            -r scripts/apps/llmapi/gateway/requirements-dev.lock
+      - name: Install the lint tools
+        run: |
+          python -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/pip" install --require-hashes --only-binary=:all: \
+            -r scripts/tests/ci/requirements-ci.txt
+          echo "CI_VENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
+      # gateway-deps again: the dev requirements must not have moved a locked version.
+      - name: pytest and ruff
+        run: bash scripts/tests/run-all.sh gateway-deps gateway-tests gateway-lint
+
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build, vet, gofmt and test with the race detector
+        run: bash scripts/tests/run-all.sh go
+
+  shell:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install the lint tools
+        run: |
+          python -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/pip" install --require-hashes --only-binary=:all: \
+            -r scripts/tests/ci/requirements-ci.txt
+          echo "CI_VENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
+      - name: bash -n and the shellcheck ratchet
+        run: bash scripts/tests/run-all.sh bash-syntax shellcheck
+
+  suites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # The routing tests run old clients from commit 3461b65
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      # Some tests run scripts with PATH=...:/usr/bin:/bin, which finds the system
+      # python3 rather than the one set up above.
+      - name: Install what those tests need from the system
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends python3-yaml jq
+      - name: Install the tools
+        run: |
+          python -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/pip" install --require-hashes --only-binary=:all: \
+            -r scripts/tests/ci/requirements-ci.txt
+          echo "CI_VENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
+          bash scripts/tests/ci/install-tools.sh "$RUNNER_TEMP/tools" helm promtool
+          echo "CI_TOOLS_DIR=$RUNNER_TEMP/tools" >> "$GITHUB_ENV"
+      - name: Stubbed-cluster test suites
+        run: bash scripts/tests/run-all.sh routing storage llmapi external-apps bootstrap cleanup
+
+  manifests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install the tools
+        run: |
+          python -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/pip" install --require-hashes --only-binary=:all: \
+            -r scripts/tests/ci/requirements-ci.txt
+          echo "CI_VENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
+          bash scripts/tests/ci/install-tools.sh "$RUNNER_TEMP/tools" kubeconform actionlint
+          echo "CI_TOOLS_DIR=$RUNNER_TEMP/tools" >> "$GITHUB_ENV"
+      - name: YAML, Kubernetes schemas and this workflow
+        run: bash scripts/tests/run-all.sh manifests workflows
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install gitleaks
+        run: |
+          bash scripts/tests/ci/install-tools.sh "$RUNNER_TEMP/tools" gitleaks
+          echo "CI_TOOLS_DIR=$RUNNER_TEMP/tools" >> "$GITHUB_ENV"
+      - name: Scan the tree
+        run: bash scripts/tests/run-all.sh secrets

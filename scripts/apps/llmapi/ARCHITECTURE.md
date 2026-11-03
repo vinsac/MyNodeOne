@@ -19,7 +19,7 @@ Models are downloaded from **HuggingFace** automatically when the service starts
 **HuggingFace Account:**
 - **Not required** for most models (Qwen, Mistral, etc.)
 - **Required** for gated models such as Llama
-- If using a gated model, create a free account at huggingface.co, accept the model license, then set `HF_TOKEN` in the deployment
+- If using a gated model, create a free account at huggingface.co, accept the model license, then set the token as described in [When do I need a HuggingFace token?](#when-do-i-need-a-huggingface-token)
 
 ### How does quantization work?
 
@@ -109,7 +109,7 @@ Responses follow the **OpenAI API format** with an additional `system_fingerprin
 
 ### How do I access the Admin UI?
 
-**URL:** `http://llmapi.<cluster>.local/admin`
+**URL:** `http://<loadbalancer-ip>/admin`, over the tailnet. Get the IP with `kubectl get svc -n llmapi llmapi`. The public route on the VPS blocks `/admin`, along with `/docs`, `/redoc` and `/openapi.json`.
 
 **Authentication:** API Key with `admin` scope
 - **Header:** `Authorization: Bearer sk-mynodeone-xxxx`
@@ -119,7 +119,7 @@ Responses follow the **OpenAI API format** with an additional `system_fingerprin
 # Access admin UI
 ADMIN_KEY=$(cat ~/.mynodeone/llmapi-admin-key)
 curl -H "Authorization: Bearer $ADMIN_KEY" \
-     http://llmapi.mynodeone.local/admin
+     http://<loadbalancer-ip>/admin/keys
 ```
 
 To create additional admin keys:
@@ -154,7 +154,7 @@ To create additional admin keys:
 | Change llama.cpp model | Enter GGUF URL, click "Change Model" | ~5-15 min |
 | Download Ollama model | Enter model name (e.g., `qwen3:14b`), click "Download" | None |
 | Start/Stop llama.cpp | Click "Start/Stop" toggle | Immediate |
-| Set HuggingFace token | Paste token, click "Save" | None |
+| Set HuggingFace token | Paste token, click "Save". The Secret must already exist; see [below](#when-do-i-need-a-huggingface-token) | Takes effect when vLLM restarts |
 | **Change context/memory** | Advanced Config section | Requires restart |
 
 **Note:** vLLM and llama.cpp require pod restarts to change models OR configuration.
@@ -353,11 +353,14 @@ Admin UI → [Start] button → Pod starts, model reloads (2-5 min)
 | Ollama models | ❌ No (uses Ollama registry) |
 
 **How to set the token:**
-1. Go to Admin UI (`/admin`)
-2. Find "HuggingFace Token" section
-3. Paste your `hf_xxxxx` token
-4. Click "Save Token"
-5. When you change vLLM to a gated model, the token will be used
+
+The installer creates Secret `hf-token` if you give it a token, and otherwise leaves it absent. The vLLM pods' references to it are optional, so without it `HF_TOKEN` stays unset, where an empty Secret would set it to the empty string.
+
+1. If the Secret doesn't exist, run `scripts/apps/llmapi/lib/hf-token.sh set` on the control node. It prompts for the token and creates the Secret.
+2. To change it later, use that command again, or the "HuggingFace Token" section of the Admin UI.
+3. Pods read the token when they start, so restart vLLM to use a new one: `kubectl rollout restart statefulset/vllm -n llmapi`. Changing vLLM's model also restarts it.
+
+The gateway can patch this one Secret but not create or read it, as Kubernetes can't limit `create` to one name. So until the Secret exists, a save in the Admin UI returns 409, and the message names the command above. Ollama doesn't use this Secret.
 
 ### What is a "secondary model"?
 
@@ -372,18 +375,20 @@ Secondary models are **lazy-loaded** when requested - no manual loading needed.
 **Yes!** Admin API endpoints:
 
 ```bash
-# List available models (cached + loaded)
+# List available models (cached + loaded), plus download_status from vLLM's
+# model-downloader init containers: downloading, failed, or unavailable if the gateway
+# can't read the pods. null means no download is running or failing.
 GET /admin/models
 
 # Download a new model from HuggingFace
 POST /admin/models/download
 {"model": "Qwen/Qwen3-8B", "backend": "ollama"}
 
-# Set active model for a backend
-POST /admin/models/activate
-{"model": "qwen3-8b", "backend": "ollama"}
+# Load a cached Ollama model into memory
+POST /admin/models/load
+{"model": "qwen3-8b"}
 
-# Set HuggingFace token (for gated models)
+# Update the HuggingFace token (for gated models). 409 if Secret hf-token doesn't exist.
 POST /admin/config
 {"hf_token": "hf_xxxxx"}
 
@@ -629,9 +634,9 @@ The central orchestration layer that handles all incoming requests.
 | Layer | Mechanism | Default | Redis? | Fail behaviour |
 |-------|-----------|---------|--------|----------------|
 | **1. Concurrency** | Max in-flight per key | `1 × GPU count` | No (in-process) | Always enforced |
-| **2. RPM** | Requests/minute sliding window | `60 RPM` | Yes | Fail-open if Redis down |
-| **3. TPM** | Tokens/minute sliding window | `200,000 TPM` | Yes | Fail-open if Redis down |
-| **4. Daily quota** | Total tokens/day (PostgreSQL) | `100,000 tokens` | No | Always enforced |
+| **2. RPM** | Requests/minute fixed window | `60 RPM` | Yes | Fail-open if Redis down |
+| **3. TPM** | Tokens/minute fixed window | `200,000 TPM` | Yes | Fail-open if Redis down |
+| **4. Daily quota** | Total tokens/day (PostgreSQL) | `100,000 tokens` | No | Fail-open if PostgreSQL down |
 
 **Why immediate 429 (no server-side queue)?**
 Server-side queuing holds open HTTP connections and uvicorn worker slots — a DDoS attacker can exhaust the worker pool before a single GPU request is made. OpenAI, Anthropic, and Azure all reject immediately and rely on client-side exponential backoff (built into `openai-python`).
@@ -701,13 +706,17 @@ Dedicated service for vector embeddings (document indexing, RAG, search).
 Central coordination for rate limiting and caching.
 
 **Responsibilities:**
-- RPM counters per API key (sliding 60s window via INCR/EXPIRE)
-- TPM counters per API key (sliding 60s window, charged on prompt + completion)
+- RPM counters per API key (fixed 60s window via INCR/EXPIRE)
+- TPM counters per API key (fixed 60s window, charged on prompt + completion)
 - Response caching for embeddings (LRU with TTL, 24h for identical inputs)
 - API key config cache (warmed from PostgreSQL on startup)
-- Backend health + download status (ephemeral, non-durable)
+- Settings saved from the Admin UI, such as the current model names (`config:*`)
 
-**Failure mode:** All Redis-backed checks fail-open. A Redis pod crash allows requests through (inference is not blocked). Only the in-process concurrency cap remains enforced without Redis.
+Redis requires a password, from Secret `llmapi-redis-auth`. It reaches the gateway as `REDIS_PASSWORD`, so `REDIS_URL` holds no credentials.
+
+vLLM's download status isn't here: the init container has no Redis access, so `/admin/models` reads it from the pods.
+
+**Failure mode:** RPM and TPM fail open. A Redis pod crash allows requests through, because auth and scopes come from PostgreSQL. The in-process concurrency cap stays enforced. See [Store outages](#store-outages).
 
 ### 6. PostgreSQL (State Store)
 
@@ -716,8 +725,19 @@ Persistent storage for configuration and usage data.
 **Tables:**
 - `api_keys`: Key management and quotas
 - `usage_logs`: Token usage history (hourly aggregates)
-- `model_configs`: Model deployment configurations
-- `rate_limits`: Custom rate limits per key
+
+The gateway creates and migrates these tables when it starts. The installer creates none, and waits for them before it adds its API keys. `api_keys` stores only key ids and display prefixes; see [Authentication](#authentication).
+
+**Failure mode:** Keys in the Redis cache keep working. The daily quota isn't enforced and those requests' usage isn't recorded. A key not in the cache gets a 503, not a 401.
+
+### Store outages
+
+An outage costs a request at most a few seconds:
+
+- Every store operation has a time limit. See the `*_TIMEOUT_SECONDS` settings in `README.md`.
+- After a failure the store is marked down, and only one caller at a time tries to reconnect, with one bounded attempt per backoff interval. Everyone else gets the outage answer at once.
+- With both stores down, every authenticated endpoint returns 503 with `Retry-After`. Auth fails closed.
+- `/health` uses neither store, so an outage doesn't make the probes restart the gateway.
 
 ---
 
@@ -980,6 +1000,10 @@ All endpoints (except `/health`) require API key authentication:
 curl -H "Authorization: Bearer sk-mynodeone-xxxx" \
      https://llmapi.cluster.local/v1/chat/completions
 ```
+
+**How keys are stored:** The `api_key` column holds the key id, `sha256:` plus the SHA-256 of the raw key, and `key_prefix` holds up to 20 leading characters for display. Raw keys aren't stored, so they can't be recovered: a key is shown once, when it's created. `install-llmapi.sh`, `manage-keys.sh` and the Admin UI all store this form. The gateway hashes plaintext rows from older versions when it starts, and a row added later when its key is first used.
+
+**Public access:** The VPS route blocks `/admin`, `/docs`, `/redoc` and `/openapi.json`. The tailnet LoadBalancer IP has full access. `/docs` and `/redoc` are disabled in the gateway itself. `/health` stays public, and `/metrics` and `/health/backends` need the `metrics` scope.
 
 **API Key Scopes:**
 
@@ -1432,17 +1456,33 @@ For complete resource optimization strategy across all MyNodeOne apps, see `scri
   --name "power-user" \
   --scopes "inference,metrics"
 
-# List keys
+# List keys, by prefix. --full shows key ids.
 ./scripts/apps/llmapi/manage-keys.sh list
 
-# Revoke key
+# Revoke key, by raw key, key id, or the prefix from list
 ./scripts/apps/llmapi/manage-keys.sh revoke sk-mynodeone-xxxx
 ```
 
+### Remote code in model repos
+
+`TRUST_REMOTE_CODE` in `vllm-config` is `false` by default, so vLLM doesn't run Python shipped inside a model's repo. That code would run in a pod holding the HuggingFace token and a hostPath mount. The installer asks when you enter a custom model, and the Admin UI never turns it on.
+
 ### Network Policies
-- API Gateway exposed via LoadBalancer
-- Backend services only accessible within cluster
-- PostgreSQL/Redis internal only
+
+`manifests/networkpolicy.yaml` denies ingress to every pod in the namespace, then allows:
+
+| To | Port | From |
+|----|------|------|
+| Gateway | 8000 | Any source. The public path arrives from a client or node address, which no pod selector would match |
+| Redis | 6379 | Gateway |
+| PostgreSQL | 5432 | Gateway, and pods labelled `app: llmapi-postgres-backup` (the backup CronJob and restore Job) |
+| vLLM | 8000 | Gateway |
+| llama.cpp, embedding | 8080 | Gateway |
+| Ollama | 11434 | Gateway |
+
+Egress isn't restricted, so DNS and model downloads work. `install-llmapi.sh` and `upgrade-llmapi.sh` apply the policies. To back them out: `kubectl delete networkpolicy -n llmapi --all`. `upgrade-llmapi.sh` takes its backup through `kubectl exec`, so the policies don't affect it, and applies them after the new gateway is up.
+
+`tests/test-networkpolicy.sh` evaluates these rules against the manifests. It doesn't run them on a CNI.
 
 ---
 
@@ -1457,17 +1497,28 @@ scripts/apps/llmapi/
 ├── manage-models.sh          # Model deployment management
 ├── monitor-llmapi.sh         # Status and monitoring
 ├── scale-backends.sh         # Scale vLLM/llama.cpp instances
+├── upgrade-llmapi.sh         # Upgrade of an existing install: preflight, backup, cut, --rollback
+├── deploy-gateway.sh         # Ships only the gateway
 ├── uninstall-llmapi.sh       # Clean uninstall
+├── lib/
+│   ├── gateway-code.sh       # Ships the gateway's code and rolls it out
+│   ├── hf-token.sh           # HuggingFace token, including creating Secret hf-token
+│   └── install-helpers.sh    # Re-runnable Secrets, ConfigMaps and API keys
 ├── gateway/                  # Gateway source code
 │   ├── main.py               # FastAPI application with Admin UI
 │   ├── Dockerfile
-│   └── requirements.txt
+│   ├── requirements.txt      # Direct dependencies
+│   ├── requirements.lock     # Pinned, hashed dependencies the pod installs
+│   └── tests/                # Not shipped to the cluster
+├── tests/                    # Script and manifest tests, using stubs
 └── manifests/
     ├── namespace.yaml        # Namespace definition
     ├── redis.yaml            # Redis deployment
     ├── postgres.yaml         # PostgreSQL deployment
-    ├── gateway.yaml          # API Gateway deployment + ConfigMap
+    ├── gateway-deployment.yaml # API Gateway Deployment
+    ├── gateway.yaml          # Reference copy of gateway-config and the Services
     ├── gateway-rbac.yaml     # RBAC for Admin UI model management
+    ├── networkpolicy.yaml    # Default-deny ingress with explicit allows
     ├── vllm.yaml             # vLLM StatefulSet (GPU)
     ├── llamacpp.yaml         # llama.cpp deployment (CPU)
     ├── embedding.yaml        # Embedding service

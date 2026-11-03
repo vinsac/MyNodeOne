@@ -104,7 +104,9 @@ fi
 log_info "Fetching Traefik routes from Config API..."
 
 ROUTE_FILE="$TRAEFIK_CONFIG_DIR/mynodeone-routes.yml"
-TEMP_FILE="/tmp/mynodeone-routes.yml"
+# Private to this run: a fixed name in /tmp can be pre-created by any local user.
+TEMP_FILE=$(mktemp)
+trap 'rm -f "$TEMP_FILE"' EXIT
 
 # Ensure directory exists
 if [[ ! -d "$TRAEFIK_CONFIG_DIR" ]]; then
@@ -116,16 +118,15 @@ fi
 API_PORT="${API_PORT:-8443}"
 URL="http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/config/vps/traefik-config"
 
-# Fetch config
-HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_FILE" \
-    -H "X-API-Token: ${API_TOKEN:-}" \
+# Fetch config. The token goes through a config stream so it stays out of `ps`.
+HTTP_CODE=$(curl -s --connect-timeout 10 --max-time 60 -w "%{http_code}" -o "$TEMP_FILE" \
+    -K <(printf 'header = "X-API-Token: %s"\n' "${API_TOKEN:-}") \
     -H "X-Node-Name: $(hostname)" \
-    "$URL" || echo "000")
+    "$URL") || HTTP_CODE="000"
 
 if [[ "$HTTP_CODE" != "200" ]]; then
     log_error "Failed to fetch routes from $URL (HTTP $HTTP_CODE)"
     log_info "Check if Config API is running and reachable via Tailscale."
-    rm -f "$TEMP_FILE"
     exit 1
 fi
 
@@ -134,7 +135,14 @@ log_info "Validating generated routes..."
 
 # Check if file has content
 if [ ! -s "$TEMP_FILE" ]; then
-    log_error "Route file is empty"
+    log_error "Route file is empty; keeping the current routes"
+    exit 1
+fi
+
+# Every config the API renders has a top-level http: block. Anything else, such as
+# an error page from a proxy, must not reach Traefik.
+if ! grep -q '^http:' "$TEMP_FILE"; then
+    log_error "Response is not a Traefik route file; keeping the current routes"
     exit 1
 fi
 
@@ -149,57 +157,112 @@ if command -v yq &>/dev/null; then
         echo "--- Invalid YAML ---"
         cat "$TEMP_FILE"
         echo "--- End ---"
-        rm -f "$TEMP_FILE"
         exit 1
     fi
 else
     log_warn "yq not installed, skipping YAML validation"
 fi
 
-# Backup existing routes
+count_routes() {
+    grep -c 'Host(`' "$1" 2>/dev/null || true
+}
+
+# The timestamp header changes on every render, so ignore it when comparing.
+routes_unchanged() {
+    [[ -f "$ROUTE_FILE" ]] &&
+        cmp -s <(grep -v '^# Generated:' "$ROUTE_FILE") <(grep -v '^# Generated:' "$TEMP_FILE")
+}
+
+NEW_ROUTES=$(count_routes "$TEMP_FILE")
+OLD_ROUTES=0
 if [[ -f "$ROUTE_FILE" ]]; then
-    log_info "Backing up existing routes..."
-    sudo cp "$ROUTE_FILE" "$ROUTE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    OLD_ROUTES=$(count_routes "$ROUTE_FILE")
 fi
 
-# Install new routes
-log_info "Installing new routes..."
-# Fix ownership if needed (match directory owner)
-DIR_OWNER=$(stat -c '%U' "$TRAEFIK_CONFIG_DIR" 2>/dev/null || echo "root")
-DIR_GROUP=$(stat -c '%G' "$TRAEFIK_CONFIG_DIR" 2>/dev/null || echo "root")
-
-sudo cp "$TEMP_FILE" "$ROUTE_FILE"
-sudo chmod 644 "$ROUTE_FILE"
-
-if [[ "$DIR_OWNER" != "root" ]]; then
-    sudo chown "${DIR_OWNER}:${DIR_GROUP}" "$ROUTE_FILE" 2>/dev/null || true
+# An older config API answers 200 with an empty config when it can't read the
+# registry, so from one of those an empty answer can't be told from a real one.
+# Schema 2 servers answer 503 instead, which makes their empty answer trustworthy.
+if ((NEW_ROUTES == 0 && OLD_ROUTES > 0)); then
+    API_SCHEMA=$(curl -fsS --connect-timeout 5 --max-time 10 \
+        "http://${CONTROL_PLANE_IP}:${API_PORT}/api/v1/health" 2>/dev/null |
+        jq -r '.registry_schema // 0' 2>/dev/null) || API_SCHEMA=""
+    if ! [[ "$API_SCHEMA" =~ ^[0-9]+$ ]] || ((API_SCHEMA < 2)); then
+        log_error "Config API returned no routes but this VPS has $OLD_ROUTES, and the API"
+        log_error "is too old to confirm that (registry_schema '${API_SCHEMA:-unknown}'). Keeping the current routes."
+        log_info "Upgrade the control plane's Config API: scripts/installation/install-config-api.sh"
+        exit 1
+    fi
+    log_warn "Removing all $OLD_ROUTES public routes: the Config API confirms there are none"
 fi
 
-rm -f "$TEMP_FILE"
+if routes_unchanged; then
+    log_success "Routes unchanged, nothing to install"
+else
+    # Backup existing routes. Traefik's file provider only loads .yml, .yaml and
+    # .toml, so these don't become live config.
+    if [[ -f "$ROUTE_FILE" ]]; then
+        log_info "Backing up existing routes..."
+        sudo cp -p "$ROUTE_FILE" "$ROUTE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+        # This runs on every change, so keep only the newest few.
+        # Timestamped names contain no whitespace, so ls is safe here.
+        # shellcheck disable=SC2012
+        ls -1t "$ROUTE_FILE".backup.* 2>/dev/null | tail -n +6 | while read -r old_backup; do
+            sudo rm -f "$old_backup"
+        done
+    fi
 
-log_success "Routes installed to $ROUTE_FILE"
+    # Install new routes
+    log_info "Installing new routes..."
+    # Fix ownership if needed (match directory owner)
+    DIR_OWNER=$(stat -c '%U' "$TRAEFIK_CONFIG_DIR" 2>/dev/null || echo "root")
+    DIR_GROUP=$(stat -c '%G' "$TRAEFIK_CONFIG_DIR" 2>/dev/null || echo "root")
 
-# Restart Traefik
-log_info "Restarting Traefik..."
+    # Stage beside the target and rename, so Traefik's file watcher never sees a
+    # half-written file. The name has no .yml suffix, so Traefik doesn't load it.
+    STAGED=$(sudo mktemp "$TRAEFIK_CONFIG_DIR/.mynodeone-routes.XXXXXX")
+    if ! sudo cp "$TEMP_FILE" "$STAGED" || ! sudo chmod 644 "$STAGED"; then
+        sudo rm -f "$STAGED"
+        log_error "Could not write to $TRAEFIK_CONFIG_DIR; the current routes are unchanged"
+        exit 1
+    fi
+    if [[ "$DIR_OWNER" != "root" ]]; then
+        sudo chown "${DIR_OWNER}:${DIR_GROUP}" "$STAGED" 2>/dev/null || true
+    fi
+    if ! sudo mv -f "$STAGED" "$ROUTE_FILE"; then
+        sudo rm -f "$STAGED"
+        log_error "Could not install $ROUTE_FILE; the current routes are unchanged"
+        exit 1
+    fi
+
+    log_success "Routes installed to $ROUTE_FILE"
+fi
+
+if ((NEW_ROUTES == 0)); then
+    log_info "No public services configured"
+fi
+
+# Traefik's file provider runs with watch: true (see setup-vps-node.sh) and picks
+# the file up by itself. A restart here would drop every public connection, so only
+# start Traefik if it isn't running.
+log_info "Verifying Traefik status..."
 TRAEFIK_DIR="$ACTUAL_HOME/traefik"
 
-# Capture docker compose output
-restart_output=""
-if restart_output=$(cd "$TRAEFIK_DIR" && sudo -u "$ACTUAL_USER" docker compose restart 2>&1); then
-    log_success "Traefik restart command succeeded"
-else
-    # Check if Traefik is running first, maybe docker compose is not needed if it's strictly a reload
-    # But this script claims to restart.
-    log_warn "Traefik restart failed or docker compose not found. Assuming auto-reload or manual restart needed."
+traefik_running() {
+    command -v docker &>/dev/null && docker ps --filter "name=traefik" --format "{{.Names}}" | grep -q traefik
+}
+
+if ! traefik_running; then
+    log_warn "Traefik is not running, starting it..."
+    if (cd "$TRAEFIK_DIR" && sudo -u "$ACTUAL_USER" docker compose up -d) &>/dev/null; then
+        sleep 3
+    else
+        log_warn "Could not start Traefik from $TRAEFIK_DIR"
+    fi
 fi
 
-# Verify Traefik is running
-log_info "Verifying Traefik status..."
-sleep 3
-
-if command -v docker &>/dev/null && docker ps | grep -q traefik; then
+if traefik_running; then
     log_success "✓ Traefik container is running"
-    
+
     # Get container status
     traefik_status=$(docker ps --filter "name=traefik" --format "{{.Status}}")
     log_info "  Status: $traefik_status"
@@ -208,8 +271,8 @@ else
 fi
 
 # Verify routes were loaded (if Traefik API is accessible)
-if curl -s http://localhost:8080/api/http/routers 2>/dev/null | jq -e 'length > 0' &>/dev/null; then
-    route_count=$(curl -s http://localhost:8080/api/http/routers 2>/dev/null | jq 'length')
+if curl -s --max-time 5 http://localhost:8080/api/http/routers 2>/dev/null | jq -e 'length > 0' &>/dev/null; then
+    route_count=$(curl -s --max-time 5 http://localhost:8080/api/http/routers 2>/dev/null | jq 'length')
     log_success "✓ Traefik loaded $route_count routes"
 else
     log_warn "⚠ Could not verify routes via Traefik API (API may not be exposed)"

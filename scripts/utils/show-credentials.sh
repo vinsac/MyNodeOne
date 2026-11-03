@@ -103,16 +103,27 @@ if [ -f $ACTUAL_HOME/mynodeone-grafana-credentials.txt ]; then
     FILES_FOUND=$((FILES_FOUND + 1))
 fi
 
-if [ -f $ACTUAL_HOME/mynodeone-join-token.txt ]; then
-    echo -e "  ${GREEN}✓${NC} $ACTUAL_HOME/mynodeone-join-token.txt (kept for adding worker nodes)"
+OLD_JOIN_TOKEN_FOUND=false
+if [ -f "$ACTUAL_HOME/mynodeone-join-token.txt" ]; then
+    echo -e "  ${YELLOW}⚠️  $ACTUAL_HOME/mynodeone-join-token.txt (old copy of the join token, SHOULD BE DELETED)${NC}"
+    OLD_JOIN_TOKEN_FOUND=true
 fi
 
-if [ $FILES_FOUND -gt 0 ]; then
+if [ $FILES_FOUND -gt 0 ] || [ "$OLD_JOIN_TOKEN_FOUND" = true ]; then
     echo
     echo -e "${YELLOW}⚠️  WARNING: Credential files found on disk! For security, delete them:${NC}"
-    echo -e "   ${YELLOW}sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt${NC}"
+    if [ $FILES_FOUND -gt 0 ]; then
+        echo -e "   ${YELLOW}sudo rm $ACTUAL_HOME/mynodeone-*-credentials.txt${NC}"
+    fi
+    if [ "$OLD_JOIN_TOKEN_FOUND" = true ]; then
+        echo -e "   ${YELLOW}sudo shred -u $ACTUAL_HOME/mynodeone-join-token.txt${NC}"
+    fi
     echo
 fi
+
+echo "🔑 To add a worker node, read the join token on the control plane when you need it:"
+echo "   sudo cat /var/lib/rancher/k3s/server/agent-token"
+echo
 
 print_header "Security Recommendations"
 

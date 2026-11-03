@@ -42,9 +42,10 @@ spec:
     spec:
       containers:
       - name: llama-cpp
-        image: ghcr.io/ggerganov/llama.cpp:server
+        # The project moved to ggml-org; the old image repository stopped updating
+        image: ghcr.io/ggml-org/llama.cpp:server-b12033
         command:
-        - /app/server
+        - /app/llama-server
         args:
         - --model
         - /models/model.gguf  # Update with your model filename
@@ -135,20 +136,13 @@ spec:
     secret: llm-auth
 
 ---
-# Create secret with: kubectl create secret generic llm-auth \
-#   --from-literal=users=admin:$(openssl passwd -apr1 yourpassword) \
-#   -n ai-workloads
-apiVersion: v1
-kind: Secret
-metadata:
-  name: llm-auth
-  namespace: ai-workloads
-type: Opaque
-stringData:
-  # Generate with: echo $(htpasswd -nb admin yourpassword) | base64
-  # Or: openssl passwd -apr1 yourpassword
-  users: |
-    admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/
+# The API stays unreachable until you create the login, because this example
+# deliberately ships no password:
+#
+#   LLM_PASSWORD="$(openssl rand -hex 16)"
+#   echo "LLM API login: admin / $LLM_PASSWORD"
+#   kubectl create secret generic llm-auth -n ai-workloads \
+#     --from-literal=users="admin:$(printf '%s\n' "$LLM_PASSWORD" | openssl passwd -apr1 -stdin)"
 
 ---
 # Job to download a model (run once)
@@ -163,7 +157,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: downloader
-        image: alpine:latest
+        image: alpine:3.24.3
         command:
         - /bin/sh
         - -c

@@ -1,15 +1,18 @@
 #!/bin/bash
 
 ###############################################################################
-# Setup Passwordless Sudo for MyNodeOne Control Plane
+# Optional: passwordless sudo for kubectl on the MyNodeOne control plane
 #
-# This script configures passwordless sudo access for kubectl and MyNodeOne
-# scripts, enabling automated operations from VPS and management nodes.
-#
-# IMPORTANT: Run this AFTER control plane installation and BEFORE installing
-# any VPS edge nodes or management laptops.
+# VPS and management node setup run 'sudo kubectl' over SSH, which needs this
+# rule. It is powerful: 'sudo kubectl' can read every Secret and start privileged
+# pods, so it is equal to root on every node for anyone who gets this account or
+# its SSH key. For that reason it is only added with your consent.
 #
 # Usage: sudo ./scripts/setup/setup-control-plane-sudo.sh
+#
+# Non-interactive runs add or remove nothing unless told to:
+#   MYNODEONE_SUDO_CONSENT=yes   Add or keep the rule
+#   MYNODEONE_SUDO_CONSENT=no    Do not add it, and remove it if present
 ###############################################################################
 
 set -euo pipefail
@@ -37,11 +40,13 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/mynodeone}"
+SETUP_COMMAND="sudo $(realpath "${BASH_SOURCE[0]}")"
+
 # Detect actual user (works with or without sudo)
 if [ -n "${SUDO_USER:-}" ]; then
     # Running with sudo - use SUDO_USER
     ACTUAL_USER="$SUDO_USER"
-    ACTUAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 elif [ "$EUID" -eq 0 ]; then
     # Running as root without sudo - not allowed
     log_error "Do not run this script directly as root."
@@ -51,136 +56,109 @@ elif [ "$EUID" -eq 0 ]; then
 else
     # Running as regular user without sudo
     ACTUAL_USER="$USER"
-    ACTUAL_HOME="$HOME"
 fi
 
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🔐 MyNodeOne Control Plane - Passwordless Sudo Configuration"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
+rule_exists() {
+    sudo test -f "$SUDOERS_FILE"
+}
 
-MYNODEONE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Prints yes, no or unset. Only an explicit answer can change anything.
+decide_consent() {
+    local answer=""
 
-log_info "Configuring passwordless sudo for: $ACTUAL_USER"
-log_info "MyNodeOne directory: $MYNODEONE_DIR"
-log_info "User home directory: $ACTUAL_HOME"
-echo ""
+    case "${MYNODEONE_SUDO_CONSENT:-}" in
+        yes|no)
+            echo "$MYNODEONE_SUDO_CONSENT"
+            return 0
+            ;;
+        "") ;;
+        *)
+            log_warn "Ignoring MYNODEONE_SUDO_CONSENT='$MYNODEONE_SUDO_CONSENT' (use yes or no)" >&2
+            ;;
+    esac
 
-# Check if already configured
-if [ -f /etc/sudoers.d/mynodeone ]; then
-    log_info "Passwordless sudo already configured, checking if update needed..."
-    
-    # Check if current config is valid
-    if sudo visudo -c -f /etc/sudoers.d/mynodeone &>/dev/null; then
-        # Test if it works
-        if sudo -n kubectl version --client &>/dev/null 2>&1; then
-            log_success "Passwordless sudo already working correctly"
-            echo ""
-            echo "✅ Configuration is up to date. No changes needed."
-            echo ""
-            exit 0
-        else
-            log_warn "Configuration exists but not working, will recreate..."
-        fi
-    else
-        log_warn "Existing configuration has syntax errors, will recreate..."
+    if [ "${UNATTENDED:-0}" = "1" ] || [ ! -t 0 ]; then
+        echo "unset"
+        return 0
     fi
-fi
 
-# Create sudoers configuration
-log_info "Creating sudoers configuration..."
+    {
+        echo
+        echo "Passwordless 'sudo kubectl' for user '$ACTUAL_USER' lets VPS and management"
+        echo "node setup run over SSH without a password prompt."
+        echo
+        echo "Risk: 'sudo kubectl' can read every Secret and start privileged pods. Anyone"
+        echo "who gets this account or its SSH key gets root on every node."
+        echo
+    } >&2
 
-cat > /tmp/mynodeone-sudo << EOF
-# MyNodeOne Passwordless Sudo Configuration
-# 
-# Purpose: Enable automated operations from VPS and management nodes
+    if rule_exists; then
+        read -r -p "A rule already exists. Remove it? [y/N]: " answer
+        case "$answer" in
+            [Yy]*) echo "no" ;;
+            *) echo "yes" ;;
+        esac
+    else
+        read -r -p "Allow it? [y/N]: " answer
+        case "$answer" in
+            [Yy]*) echo "yes" ;;
+            *) echo "no" ;;
+        esac
+    fi
+}
+
+install_rule() {
+    local tmp
+    tmp=$(mktemp)
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp'" EXIT
+
+    cat > "$tmp" <<EOF
+# MyNodeOne: passwordless sudo for kubectl, added with the user's consent.
+# Remove with: MYNODEONE_SUDO_CONSENT=no $SETUP_COMMAND
 # Generated: $(date)
-# User: $ACTUAL_USER
-#
-# Security Note: This allows the user to run kubectl and MyNodeOne scripts
-# without interactive password prompts. Only grant this to trusted users.
 
 # Allow specific environment variables to pass through sudo
 # Required for VPS registration scripts
 Defaults:$ACTUAL_USER env_keep += "SKIP_SSH_VALIDATION"
 
-# Allow kubectl without password (required for cluster management)
+# Allow kubectl without password
 $ACTUAL_USER ALL=(ALL) NOPASSWD: /usr/local/bin/kubectl, /usr/bin/kubectl
-
-# Allow MyNodeOne scripts without password (required for automation)
-$ACTUAL_USER ALL=(ALL) NOPASSWD: $MYNODEONE_DIR/scripts/*.sh, $MYNODEONE_DIR/scripts/lib/*.sh
 EOF
 
-# Install sudoers file
-if sudo cp /tmp/mynodeone-sudo /etc/sudoers.d/mynodeone; then
-    log_success "Sudoers file installed"
-else
-    log_error "Failed to install sudoers file"
-    rm -f /tmp/mynodeone-sudo
-    exit 1
-fi
+    # Checked before install: a broken file in sudoers.d can lock out sudo entirely
+    if ! sudo visudo -c -f "$tmp" >/dev/null; then
+        log_error "Generated sudoers rule failed validation. Nothing was changed."
+        exit 1
+    fi
 
-sudo chmod 440 /etc/sudoers.d/mynodeone
-rm -f /tmp/mynodeone-sudo
+    sudo install -o root -g root -m 440 "$tmp" "$SUDOERS_FILE"
+    log_success "Passwordless kubectl configured for $ACTUAL_USER"
+}
 
-# Verify syntax
-log_info "Verifying sudoers syntax..."
-if sudo visudo -c -f /etc/sudoers.d/mynodeone &>/dev/null; then
-    log_success "Sudoers syntax verified"
-else
-    log_error "Sudoers configuration has syntax errors"
-    sudo rm -f /etc/sudoers.d/mynodeone
-    exit 1
-fi
+consent=$(decide_consent)
 
-echo ""
-log_info "Testing configuration..."
-echo ""
-
-# Test kubectl
-if sudo kubectl version --client &>/dev/null; then
-    log_success "kubectl passwordless sudo: OK"
-else
-    log_error "kubectl sudo test failed"
-    exit 1
-fi
-
-# Test script execution
-if sudo bash -c 'exit 0' 2>/dev/null; then
-    log_success "Script passwordless sudo: OK"
-else
-    log_error "Script sudo test failed"
-    exit 1
-fi
-
-# Test remote access pattern (what VPS will use)
-if echo "test" | sudo -S kubectl version --client &>/dev/null; then
-    log_success "Remote sudo pattern: OK"
-else
-    log_warn "Remote sudo pattern test inconclusive (expected)"
-fi
-
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log_success "Passwordless sudo configured successfully"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "✅ What was configured:"
-echo "   • kubectl commands can run without password"
-echo "   • MyNodeOne scripts can run without password"
-echo "   • Remote automation from VPS/management nodes will work"
-echo ""
-echo "⚠️  Security Note:"
-echo "   This allows user '$ACTUAL_USER' to run kubectl and MyNodeOne"
-echo "   scripts without password prompts. Only grant this to trusted users."
-echo ""
-echo "📋 Next Steps:"
-echo "   1. You can now install VPS edge nodes"
-echo "   2. You can now install management laptops"
-echo "   3. Automated operations will work without password prompts"
-echo ""
-echo "🔍 To verify from VPS or management laptop:"
-echo "   ssh $ACTUAL_USER@<control-plane-ip> 'sudo kubectl version --client'"
-echo "   (Should show version without asking for password)"
-echo ""
+case "$consent" in
+    yes)
+        install_rule
+        log_info "To verify from a VPS or laptop: ssh $ACTUAL_USER@<control-plane-ip> 'sudo -n kubectl version --client'"
+        ;;
+    no)
+        if rule_exists; then
+            sudo rm -f "$SUDOERS_FILE"
+            log_success "Removed the passwordless kubectl rule"
+        else
+            log_info "Passwordless kubectl not added"
+        fi
+        log_info "VPS and management node setup need this rule. To add it later: $SETUP_COMMAND"
+        ;;
+    unset)
+        if rule_exists; then
+            log_warn "Left the existing rule in $SUDOERS_FILE as it is (no consent answer given)."
+            log_warn "It may still hold an old, unused scripts line. Review it with: $SETUP_COMMAND"
+        else
+            log_info "Passwordless kubectl not added (non-interactive run with no consent given)."
+            log_info "VPS and management node setup need this rule. To add it: $SETUP_COMMAND"
+        fi
+        ;;
+esac

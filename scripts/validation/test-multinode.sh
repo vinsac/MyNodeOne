@@ -184,10 +184,18 @@ test_node_infrastructure() {
                     log_fail "  $name: UFW routed policy NOT allow"
                 fi
 
-                if echo "$ufw_out" | grep -q "8472/udp.*ALLOW"; then
-                    log_pass "  $name: UFW allows VXLAN 8472/UDP"
+                # VXLAN runs over tailscale0, so that rule is what carries it. A rule of
+                # its own would open it to the LAN, and VXLAN has no authentication.
+                if echo "$ufw_out" | grep -Eq 'on tailscale0[[:space:]]+ALLOW'; then
+                    log_pass "  $name: UFW allows tailscale0 (carries VXLAN)"
                 else
-                    log_fail "  $name: UFW does NOT allow VXLAN 8472/UDP"
+                    log_fail "  $name: UFW does NOT allow tailscale0"
+                fi
+
+                if echo "$ufw_out" | grep -Eq '^8472/udp( \(v6\))?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere'; then
+                    log_fail "  $name: UFW opens VXLAN 8472/UDP to Anywhere (fix: scripts/validation/validate-network.sh --fix)"
+                else
+                    log_pass "  $name: UFW does not open VXLAN 8472/UDP"
                 fi
             else
                 log_warn "  $name: Cannot SSH ($ip) - skipping remote checks"
@@ -312,7 +320,7 @@ EOF
     else
         log_crit "Cross-node pod ping FAILED: $node1 -> $node2"
         echo "    This means Flannel VXLAN overlay is broken"
-        echo "    Check: UFW routed policy, VXLAN port 8472/UDP, flannel.1 on both nodes"
+        echo "    Check: UFW routed policy, UFW rule for tailscale0, flannel.1 on both nodes"
     fi
 
     # Test 3b: DNS resolution from pod

@@ -87,30 +87,24 @@ else
     log_warn "Could not register service (kubectl may not be configured)"
 fi
 
-# 2. Update local DNS entries on control plane
+# 2. Update local DNS entries, through whatever owns /etc/hosts on this machine
 log_info "Updating local DNS on this machine..."
 
-DNS_ENTRIES=$(bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null || echo "")
-
-if [[ -n "$DNS_ENTRIES" ]]; then
-    # Backup /etc/hosts
-    sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
-    
-    # Remove old MyNodeOne entries
-    sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
-    
-    # Add new entries
-    {
-        echo ""
-        echo "$DNS_ENTRIES"
-        echo ""
-    } | sudo tee -a /etc/hosts > /dev/null
-    
-    log_success "Local DNS updated"
-    log_info "Access your app locally: http://${LOCAL_NAME}.${CLUSTER_DOMAIN}.local"
-else
-    log_warn "Could not update local DNS (kubectl may not be configured)"
-fi
+# shellcheck source=service-registry-lib.sh
+source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+case "$(sr_refresh_hosts)" in
+    updated)
+        log_success "Local DNS updated"
+        log_info "Access your app locally: http://${LOCAL_NAME}.${CLUSTER_DOMAIN}.local"
+        ;;
+    deferred)
+        log_info "The node agent adds new names at its next poll (about a minute)"
+        log_info "Access your app locally: http://${LOCAL_NAME}.${CLUSTER_DOMAIN}.local"
+        ;;
+    *)
+        log_warn "Could not update local DNS (kubectl may not be configured)"
+        ;;
+esac
 
 # 3. Show access information
 echo ""

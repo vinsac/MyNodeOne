@@ -1,0 +1,44 @@
+{
+  "root_source": "/dev/nvme0n1p2",
+  "devices": [
+    {
+      "name": "/dev/nvme0n1",
+      "type": "disk",
+      "size": "1.8T",
+      "model": "Samsung 990",
+      "serial": "SN-NVME0N1",
+      "tran": "nvme",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/nvme0n1p1",
+          "type": "part",
+          "size": "1G",
+          "fstype": "vfat",
+          "uuid": "AAAA-0001",
+          "mountpoint": "/boot/efi"
+        },
+        {
+          "name": "/dev/nvme0n1p2",
+          "type": "part",
+          "size": "1.8T",
+          "fstype": "ext4",
+          "uuid": "root-uuid",
+          "mountpoint": "/"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdz",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDZ",
+      "tran": "sata"
+    }
+  ],
+  "fstab": [
+    "UUID=root-uuid",
+    "UUID=AAAA-0001"
+  ]
+}

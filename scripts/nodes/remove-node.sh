@@ -30,6 +30,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_MANAGER="$SCRIPT_DIR/../lib/node-registry-manager.sh"
+# shellcheck source=../lib/service-registry-lib.sh
+source "$SCRIPT_DIR/../lib/service-registry-lib.sh"
+MINIO_CLEANUP="$SCRIPT_DIR/../storage/minio/cleanup-node-minio.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -115,6 +118,7 @@ What this script does:
   2. Cleans up SSH known_hosts entries
   3. Removes local configuration files (if applicable)
   4. Restarts sync-controller service
+  5. Reports any MinIO resources the node left behind (changes nothing)
 
 What this script does NOT do:
   - Does NOT uninstall software from the node itself
@@ -309,12 +313,47 @@ find_node() {
     return 1
 }
 
+# Removes the node from the sync targets. Checked and written with the same conditional
+# update, so a failed read or a concurrent change loses nothing.
+remove_from_configmap_registry() {
+    local name="$1"
+    log_info "Removing $name from ConfigMap registry..."
+    local rc=0
+    sr_read_cm sync-controller-registry registry.json || rc=$?
+    case "$rc" in
+        0)
+            if jq -e --arg name "$name" 'any(.management_laptops[]?, .vps_nodes[]?, .cluster_nodes[]?, .worker_nodes[]?; .name == $name)' \
+                <<<"$SR_READ_JSON" >/dev/null; then
+                if sr_update_cm sync-controller-registry registry.json registry_remove_node_filter "$name"; then
+                    log_success "Removed from ConfigMap registry"
+                else
+                    log_error "Could not update the ConfigMap registry; $name is still listed there"
+                    return 1
+                fi
+            else
+                log_info "Node not found in ConfigMap (already clean)"
+            fi
+            ;;
+        2 | 3)
+            log_info "Node not found in ConfigMap (already clean)"
+            ;;
+        *)
+            log_error "Could not read the ConfigMap registry; $name may still be listed there"
+            return 1
+            ;;
+    esac
+}
+
 # Remove node from registry
 remove_from_registry() {
     local type="$1"
     local name="$2"
     local ip="$3"
-    
+
+    # The ConfigMap goes first. The Config API refuses to delete a node it no longer
+    # has, so with the order reversed a failed write here could not be retried.
+    remove_from_configmap_registry "$name" || return 1
+
     log_info "Removing $name from Config API registry..."
     
     # Remove from Config API
@@ -334,46 +373,17 @@ remove_from_registry() {
         return 1
     fi
     
-    # Also remove from ConfigMap if present
-    log_info "Removing $name from ConfigMap registry..."
-    local registry=$(get_registry)
-    
-    # Check if node exists in ConfigMap
-    local in_configmap=false
-    if echo "$registry" | jq -e ".management_laptops[]? | select(.name == \"$name\")" &>/dev/null || \
-       echo "$registry" | jq -e ".vps_nodes[]? | select(.name == \"$name\")" &>/dev/null || \
-       echo "$registry" | jq -e ".cluster_nodes[]? | select(.name == \"$name\")" &>/dev/null; then
-        in_configmap=true
-    fi
-    
-    if [[ "$in_configmap" == "true" ]]; then
-        # Remove from all arrays in ConfigMap
-        local updated_registry="$registry"
-        updated_registry=$(echo "$updated_registry" | jq \
-            --arg name "$name" \
-            '.management_laptops |= map(select(.name != $name)) |
-             .vps_nodes |= map(select(.name != $name)) |
-             .cluster_nodes |= map(select(.name != $name))')
-        
-        # Update metadata
-        updated_registry=$(echo "$updated_registry" | jq \
-            --arg timestamp "$(date -Iseconds)" \
-            --arg updated_by "$(whoami)@$(hostname)" \
-            '.metadata.last_updated = $timestamp | .metadata.updated_by = $updated_by')
-        
-        # Update ConfigMap
-        kubectl patch configmap sync-controller-registry \
-            -n kube-system \
-            --type merge \
-            -p "{\"data\":{\"registry.json\":\"$(echo "$updated_registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}" 
-        
-        log_success "Removed from ConfigMap registry"
-    else
-        log_info "Node not found in ConfigMap (already clean)"
-    fi
 }
 
-# Clean SSH known_hosts
+# Filter for sr_update_cm, which runs it again on a conflict.
+registry_remove_node_filter() {
+    jq -c --arg name "$1" --arg timestamp "$(date -Iseconds)" --arg updated_by "$(whoami)@$(hostname)" '
+        reduce ("management_laptops", "vps_nodes", "cluster_nodes", "worker_nodes") as $list (.;
+            if (.[$list] | type) == "array" then .[$list] |= map(select(.name != $name)) else . end)
+        | .metadata.last_updated = $timestamp
+        | .metadata.updated_by = $updated_by'
+}
+
 clean_ssh_known_hosts() {
     local ip="$1"
     
@@ -413,6 +423,24 @@ clean_local_config() {
     esac
 }
 
+# Report what the node's MinIO instance left behind. The node is already out of the
+# registry by now, so nothing here is allowed to stop the removal, including a hang.
+report_minio_leftovers() {
+    local type="$1"
+    local name="$2"
+
+    # MinIO only runs on cluster nodes
+    case "$type" in
+        laptop|vps) return 0 ;;
+    esac
+
+    log_info "Checking for MinIO resources left by $name..."
+    if ! timeout 60 bash "$MINIO_CLEANUP" --node "$name" </dev/null; then
+        log_warn "Could not check for leftover MinIO resources. Check later with:"
+        log_warn "  $MINIO_CLEANUP --node $name"
+    fi
+}
+
 # Main
 main() {
     print_header "Remove Node from Cluster"
@@ -438,6 +466,7 @@ main() {
     echo "  2. Clean SSH known_hosts entries"
     echo "  3. Remove local configuration files (if applicable)"
     echo "  4. Restart sync-controller service"
+    echo "  5. Report any MinIO resources the node left behind (changes nothing)"
     echo
     echo -e "${YELLOW}Note: This does NOT:${NC}"
     echo "  - Uninstall software from the node itself"
@@ -462,6 +491,8 @@ main() {
     log_info "Restarting sync-controller..."
     systemctl restart mynodeone-sync-controller 2>/dev/null || true
     log_success "Sync-controller restarted"
+
+    report_minio_leftovers "$NODE_TYPE" "$NODE_NAME"
     
     # Success
     print_header "Removal Complete"

@@ -18,6 +18,8 @@
 
 set -euo pipefail
 
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -93,7 +95,9 @@ WHAT GETS REMOVED:
     • All running pods and services
     • Docker/containerd images
     • Longhorn storage system
-    • Systemd services (sync-controller)
+    • Systemd services and timers (config API, node agent, sync controller, DNS
+      sync, CoreDNS guardian, Flannel health monitor, state backup)
+    • Passwordless sudo rules MyNodeOne added (/etc/sudoers.d)
     • VPS Traefik setup (/etc/traefik/)
     • DNS configurations (/etc/hosts, dnsmasq, Avahi)
     • Cron jobs (VPS sync)
@@ -108,6 +112,8 @@ WHAT CAN BE KEPT:
     • Configuration files (~/.mynodeone/config.env)
     • Application data (Longhorn volumes)
     • Formatted disks (always kept)
+    • State backups in /var/backups/mynodeone (always kept: they may be the last
+      copy, and they hold the encryption key, so delete them yourself when done)
     • Tailscale installation (always kept)
 
 EOF
@@ -271,6 +277,7 @@ echo
 [ "$KEEP_DATA" = true ] && echo "  • Application data"
 [ "$REMOVE_TAILSCALE" = false ] && echo "  • Tailscale installation"
 echo "  • Formatted disks (unmounted)"
+echo "  • State backups (/var/backups/mynodeone)"
 echo
 
 if [ "$INTERACTIVE" = true ]; then
@@ -303,6 +310,34 @@ else
     log_info "[1/12] Keeping Kubernetes cluster (skipped)"
 fi
 echo
+
+# Removes this node from one list in sync-controller-registry. The update is
+# conditional on what was read, and a failed read changes nothing.
+unregister_from_sync_registry() {
+    local list="$1" ip="$2" rc=0
+    sr_read_cm sync-controller-registry registry.json || rc=$?
+    case "$rc" in
+        0) ;;
+        2 | 3) return 0 ;;
+        *)
+            log_warn "Could not read sync-controller-registry; $ip may still be listed there"
+            return 1
+            ;;
+    esac
+    if ! jq -e --arg list "$list" --arg ip "$ip" 'any(.[$list][]?; .ip == $ip)' <<<"$SR_READ_JSON" >/dev/null; then
+        return 0
+    fi
+    if sr_update_cm sync-controller-registry registry.json sync_registry_drop_filter "$list" "$ip"; then
+        log_success "Unregistered $ip from sync-controller-registry"
+    else
+        log_warn "Could not update sync-controller-registry; $ip is still listed there"
+        return 1
+    fi
+}
+
+sync_registry_drop_filter() {
+    jq -c --arg list "$1" --arg ip "$2" '.[$list] |= map(select(.ip != $ip))'
+}
 
 # Step 2: Clean Kubernetes ConfigMaps (CRITICAL - before removing K3s)
 # Only delete ConfigMaps when uninstalling control-plane, not management laptops!
@@ -349,35 +384,26 @@ elif [ "$NODE_TYPE" = "management" ] || [ "$NODE_TYPE" = "vps" ] || [ "$NODE_TYP
         if [ -n "$node_ip" ]; then
             log_info "Unregistering $NODE_TYPE from cluster node registry..."
             
-            # Remove from sync-controller-registry ConfigMap
-            registry=$(kubectl get configmap sync-controller-registry -n kube-system \
-                -o jsonpath='{.data.registry\.json}' 2>/dev/null || echo '{}')
-            if [ -n "$registry" ] && [ "$registry" != "{}" ]; then
-                # Determine registry key based on node type
-                registry_key="management_laptops"
-                [ "$NODE_TYPE" = "vps" ] && registry_key="vps_nodes"
-                [ "$NODE_TYPE" = "worker" ] && registry_key="worker_nodes"
-                
-                # Remove this node's entry
-                updated=$(echo "$registry" | jq --arg key "$registry_key" --arg ip "$node_ip" \
-                    'del(.[$key][$ip])' 2>/dev/null || echo "$registry")
-                if [ "$updated" != "$registry" ]; then
-                    kubectl patch configmap sync-controller-registry -n kube-system \
-                        --type merge -p "{\"data\":{\"registry.json\":$(echo "$updated" | jq -c '.' | jq -Rs '.')}}" \
-                        2>/dev/null && log_success "Unregistered $NODE_TYPE ($node_ip) from sync-controller-registry" || true
-                fi
-            fi
-            
-            # Remove VPS from domain registry (if this is a VPS node)
-            if [ "$NODE_TYPE" = "vps" ] && [ -f "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" ]; then
-                log_info "Removing VPS from domain registry..."
-                if bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" unregister-vps "$node_ip" &>/dev/null; then
-                    log_success "Removed VPS ($node_ip) from domain-registry"
+            if [ "$NODE_TYPE" = "vps" ]; then
+                # purge-vps also takes the node off every route and the sync targets.
+                log_info "Removing VPS from the registries..."
+                if bash "$PROJECT_ROOT/scripts/domains/multi-domain-registry.sh" purge-vps "$node_ip" &>/dev/null; then
+                    log_success "Removed VPS ($node_ip) from the registries"
                 else
-                    log_warn "Could not remove from domain-registry (may not exist)"
+                    log_warn "Could not remove VPS ($node_ip) from the registries. On the control plane run: scripts/domains/multi-domain-registry.sh purge-vps $node_ip"
+                fi
+            else
+                registry_list="management_laptops"
+                [ "$NODE_TYPE" = "worker" ] && registry_list="worker_nodes"
+                if [ -f "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh" ]; then
+                    # shellcheck source=../lib/service-registry-lib.sh
+                    source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+                    unregister_from_sync_registry "$registry_list" "$node_ip" || true
+                else
+                    log_warn "Registry library not found; $node_ip may still be listed in sync-controller-registry"
                 fi
             fi
-            
+
             # Also remove from Config API V2 node registry (if it exists)
             if command -v curl &> /dev/null; then
                 # Try to get control plane IP from config
@@ -559,28 +585,135 @@ else
 fi
 echo
 
+# Removes MyNodeOne's entries from a hosts file and keeps every other line, in the
+# same bytes and order. What counts as ours:
+#   * A block from a whole-line marker through its own End marker. A block never
+#     reaches past the next marker, so one with no End can't borrow another's.
+#   * A marker with no End (sync-dns.sh and the node agent write these), plus the
+#     entries directly below it: address lines naming only .local hosts, and any
+#     comments between them. It stops at a blank line or anything else.
+#   * A leftover End marker, and an address line naming only hosts under
+#     mynodeone.local or the cluster domain. A line that also names another host, or
+#     carries a comment, isn't only ours, so it stays.
+# Text after other text on a line is never a marker. awk compares strings, so the
+# cluster domain is never read as a regex. Writes in place, not sed -i or a rename:
+# /etc/hosts can be a bind mount, where replacing the file fails.
+# Usage: remove_mynodeone_hosts_entries <file> [cluster-domain]
+remove_mynodeone_hosts_entries() {
+    local file="$1" domain="${2:-}" work status=0 no_final_newline=0
+    work=$(mktemp -d) || return 1
+
+    if ! cat "$file" >"$work/old"; then
+        rm -rf "$work"
+        return 1
+    fi
+    [ -z "$(tail -c 1 "$work/old" | tr -d '\000')" ] || no_final_newline=1
+
+    # NUL bytes go, as in sync-dns.sh: a zero-filled hole is damage, not content.
+    if ! tr -d '\000' <"$work/old" |
+        HOSTS_DOMAIN="$domain" NO_FINAL_NEWLINE="$no_final_newline" LC_ALL=C awk '
+        function comment_text(text) {
+            if (text !~ /^[ \t]*#/) return ""
+            text = tolower(text)
+            sub(/^[ \t]*#[ \t]*/, "", text)
+            sub(/[ \t\r]+$/, "", text)
+            return text
+        }
+        # These two give the block a marker belongs to, "-" for a bare one, or "".
+        function opens(text,    s) {
+            s = comment_text(text)
+            if (s == "mynodeone") return "-"
+            if (s !~ /^mynodeone (services|apps|dns entries)( [-(].*)?$/) return ""
+            sub(/^mynodeone /, "", s)
+            sub(/ [-(].*$/, "", s)
+            return s
+        }
+        function closes(text,    s) {
+            s = comment_text(text)
+            if (s == "end mynodeone") return "-"
+            if (s !~ /^end mynodeone (services|apps|dns entries)$/) return ""
+            sub(/^end mynodeone /, "", s)
+            return s
+        }
+        function ends_with(s, suffix) {
+            return length(s) > length(suffix) && substr(s, length(s) - length(suffix) + 1) == suffix
+        }
+        function ours(name) {
+            return name == "mynodeone.local" || ends_with(name, ".mynodeone.local") ||
+                (domain != "" && (name == (domain ".local") || ends_with(name, ("." domain ".local"))))
+        }
+        # An address, then only names of the kind asked for.
+        function host_line(text, only_ours,    f, n, k) {
+            n = split(text, f)
+            if (n < 2) return 0
+            if (f[1] !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !(index(f[1], ":") > 0 && f[1] ~ /^[0-9A-Fa-f:.]+$/)) return 0
+            for (k = 2; k <= n; k++) {
+                if (only_ours ? !ours(f[k]) : !ends_with(f[k], ".local")) return 0
+            }
+            return 1
+        }
+        function matching_end(start, name,    j, c) {
+            for (j = start + 1; j <= NR; j++) {
+                c = closes(line[j])
+                if (c != "" && (c == name || c == "-" || name == "-")) return j
+                if (opens(line[j]) != "") return 0
+            }
+            return 0
+        }
+        # Comments only count when another entry follows them, so a note someone left
+        # just below the block stays.
+        function last_entry(start,    j, last) {
+            last = start
+            for (j = start + 1; j <= NR; j++) {
+                if (opens(line[j]) != "" || closes(line[j]) != "") break
+                if (host_line(line[j], 0)) last = j
+                else if (line[j] !~ /^[ \t]*#/) break
+            }
+            return last
+        }
+        BEGIN { domain = ENVIRON["HOSTS_DOMAIN"]; no_final = ENVIRON["NO_FINAL_NEWLINE"] == "1" }
+        { line[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                if (closes(line[i]) != "") continue
+                name = opens(line[i])
+                if (name != "") {
+                    end = matching_end(i, name)
+                    i = end ? end : last_entry(i)
+                    continue
+                }
+                if (host_line(line[i], 1)) continue
+                if (kept) printf "\n"
+                printf "%s", line[i]
+                kept = i
+            }
+            if (kept && !(no_final && kept == NR)) printf "\n"
+        }
+    ' >"$work/new"; then
+        status=1
+    elif ! cmp -s "$work/old" "$work/new"; then
+        if ! { cat "$work/new" >"$file" && cmp -s "$work/new" "$file"; } 2>/dev/null; then
+            cat "$work/old" >"$file" 2>/dev/null || true
+            status=1
+        fi
+    fi
+
+    rm -rf "$work"
+    return "$status"
+}
+
 # Step 8: Remove DNS configurations
 log_info "[8/12] Removing DNS configurations..."
 
-# Remove from /etc/hosts (aggressive cleanup)
+# Remove from /etc/hosts
 if [ -f /etc/hosts ]; then
-    cp /etc/hosts /etc/hosts.bak.$(date +%Y%m%d_%H%M%S)
-    
-    # Method 1: Remove entries between markers
-    sed -i '/# MyNodeOne/,/# End MyNodeOne/d' /etc/hosts 2>/dev/null || true
-    sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
-    
-    # Method 2: Remove all .local domain entries (mynodeone, mynodeone, mynodeone)
-    sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
-    sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
-    sed -i '/\.mynodeone\.local/d' /etc/hosts 2>/dev/null || true
-    
-    # Method 3: Remove entries matching config domain (if available)
-    if [ -n "${CLUSTER_DOMAIN:-}" ]; then
-        sed -i "/\.${CLUSTER_DOMAIN}\.local/d" /etc/hosts 2>/dev/null || true
+    if ! cp /etc/hosts "/etc/hosts.bak.$(date +%Y%m%d_%H%M%S)"; then
+        log_warn "Could not back up /etc/hosts; leaving it unchanged"
+    elif remove_mynodeone_hosts_entries /etc/hosts "${CLUSTER_DOMAIN:-}"; then
+        log_success "Removed MyNodeOne's /etc/hosts entries"
+    else
+        log_warn "Could not update /etc/hosts; see the newest /etc/hosts.bak.* file"
     fi
-    
-    log_success "Removed /etc/hosts entries (cleaned all .local domains)"
 fi
 
 # Remove ALL domain-specific dnsmasq configs (not just mynodeone*)
@@ -689,14 +822,86 @@ if systemctl is-enabled --quiet fail2ban 2>/dev/null; then
     log_success "Stopped and disabled fail2ban"
 fi
 
-if systemctl is-enabled --quiet coredns-dns-guardian.timer 2>/dev/null; then
-    systemctl stop coredns-dns-guardian.timer 2>/dev/null || true
-    systemctl disable coredns-dns-guardian.timer 2>/dev/null || true
-    rm -f /etc/systemd/system/coredns-dns-guardian.timer 2>/dev/null || true
-    rm -f /etc/systemd/system/coredns-dns-guardian.service 2>/dev/null || true
-    systemctl daemon-reload
-    log_success "Removed coredns-dns-guardian"
-fi
+# Remove timers that run as root, the root-owned copies of the scripts they run, and
+# the node agent's sandbox drop-in, which would otherwise outlive its unit.
+# Usage: remove_mynodeone_host_units [root]   (root is a directory prefix, for tests)
+remove_mynodeone_host_units() {
+    local root="${1:-}"
+    local systemd_dir="$root/etc/systemd/system" name tool
+
+    for name in flannel-health-monitor mynodeone-state-backup mynodeone-local-dns-sync \
+        coredns-dns-guardian maintain-dns-config; do
+        if [ -f "$systemd_dir/$name.timer" ] || [ -f "$systemd_dir/$name.service" ]; then
+            systemctl stop "$name.timer" 2>/dev/null || true
+            systemctl disable "$name.timer" 2>/dev/null || true
+            systemctl stop "$name.service" 2>/dev/null || true
+            rm -f "$systemd_dir/$name.timer" "$systemd_dir/$name.service"
+            log_success "Removed $name"
+        fi
+    done
+
+    for tool in mynodeone-flannel-health mynodeone-state-backup; do
+        if [ -f "$root/usr/local/sbin/$tool" ]; then
+            rm -f "$root/usr/local/sbin/$tool"
+            log_success "Removed /usr/local/sbin/$tool"
+        fi
+    done
+
+    for tool in mynodeone-node-agent mynodeone-config-api coredns-dns-guardian.sh maintain-dns-config.sh; do
+        if [ -f "$root/usr/local/bin/$tool" ]; then
+            rm -f "$root/usr/local/bin/$tool"
+            log_success "Removed /usr/local/bin/$tool"
+        fi
+    done
+
+    if [ -d "$systemd_dir/mynodeone-node-agent.service.d" ]; then
+        rm -rf "$systemd_dir/mynodeone-node-agent.service.d"
+        log_success "Removed Node Agent drop-in"
+    fi
+
+    systemctl daemon-reload 2>/dev/null || true
+
+    if [ -d "$root/var/backups/mynodeone" ]; then
+        log_warn "Kept state backups in /var/backups/mynodeone. They hold the encryption key and"
+        log_warn "the k3s tokens: delete them once you no longer need them."
+    fi
+}
+remove_mynodeone_host_units
+
+# Remove the sudo rules MyNodeOne added, and only those: a file in sudoers.d that has
+# since been edited, or that merely has a similar name, is the administrator's.
+# Usage: remove_mynodeone_sudoers <user> [sudoers_dir]
+remove_mynodeone_sudoers() {
+    local user="$1" sudoers_dir="${2:-/etc/sudoers.d}"
+    local names=("${user}-nopasswd")
+    if [ "${user//./_}" != "$user" ]; then
+        names+=("${user//./_}-nopasswd")
+    fi
+
+    local name file rule
+    for name in "${names[@]}"; do
+        file="$sudoers_dir/$name"
+        [ -f "$file" ] || continue
+        rule=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$file" || true)
+        if [ "$rule" = "$user ALL=(ALL) NOPASSWD: ALL" ]; then
+            rm -f "$file"
+            log_success "Removed passwordless sudo rule: $file"
+        else
+            log_warn "Left $file in place: it is not the rule MyNodeOne wrote"
+        fi
+    done
+
+    file="$sudoers_dir/mynodeone"
+    if [ -f "$file" ]; then
+        if grep -qi 'mynodeone' "$file"; then
+            rm -f "$file"
+            log_success "Removed MyNodeOne sudo rules: $file"
+        else
+            log_warn "Left $file in place: it does not look like MyNodeOne's"
+        fi
+    fi
+}
+remove_mynodeone_sudoers "$ACTUAL_USER"
 
 # Remove VPS Traefik setup
 if [ -d /etc/traefik ]; then

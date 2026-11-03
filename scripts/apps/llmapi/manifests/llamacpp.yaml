@@ -67,6 +67,33 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+      # Node setup creates this hostPath as root:root 755, and fsGroup doesn't apply to
+      # hostPath volumes, so model-downloader (uid 1000) couldn't write to it. Hand the
+      # directory to uid 1000 first. Root here, with CHOWN as the only capability.
+      - name: fix-model-dir-owner
+        image: alpine:3.19
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - CHOWN
+        command:
+        - /bin/sh
+        - -c
+        - chown -R 1000:1000 /models
+        volumeMounts:
+        - name: models
+          mountPath: /models
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
       # Download model if not present - uses wget with resume support
       - name: model-downloader
         # Use alpine with wget pre-installed (supports resume)
@@ -88,6 +115,29 @@ spec:
           echo "Target: ${MODEL_PATH}"
           echo "HF Token: $([ -n \"${HF_TOKEN:-}\" ] && echo 'configured' || echo 'not set')"
           
+          # BEGIN token-scope
+          # MODEL_URL can be set through the Admin UI, so only send the HF token to
+          # Hugging Face itself, over https. The host is checked on its own, with any
+          # unusual character rejected, because a pattern on the full URL can be fooled
+          # by something like https://evil.example/huggingface.co/x.gguf.
+          AUTH_TOKEN=""
+          if [ -n "${HF_TOKEN:-}" ]; then
+            case "$MODEL_URL" in
+              https://*)
+                URL_HOST="${MODEL_URL#https://}"
+                URL_HOST="${URL_HOST%%[/?#]*}"
+                case "$URL_HOST" in
+                  *[!A-Za-z0-9.-]*) ;;
+                  huggingface.co|*.huggingface.co) AUTH_TOKEN="$HF_TOKEN" ;;
+                esac
+                ;;
+            esac
+            if [ -z "$AUTH_TOKEN" ]; then
+              echo "HF token will not be sent: MODEL_URL is not an https://huggingface.co URL"
+            fi
+          fi
+          # END token-scope
+
           # 1. Check if model already exists on hostPath (persistent across reinstalls)
           # Models are stored directly on node disk at /var/lib/llmapi/models/llamacpp
           if [ -f "$MODEL_PATH" ]; then
@@ -103,8 +153,8 @@ spec:
             
             # Try URL validation for smaller files or if explicitly needed
             echo "Validating file completeness..."
-            if [ -n "${HF_TOKEN:-}" ]; then
-              EXPECTED_SIZE=$(wget --spider --header="Authorization: Bearer ${HF_TOKEN}" -S "${MODEL_URL}" 2>&1 | grep -i "Content-Length" | tail -1 | awk '{print $2}' || echo "")
+            if [ -n "$AUTH_TOKEN" ]; then
+              EXPECTED_SIZE=$(wget --spider --header="Authorization: Bearer ${AUTH_TOKEN}" -S "${MODEL_URL}" 2>&1 | grep -i "Content-Length" | tail -1 | awk '{print $2}' || echo "")
             else
               EXPECTED_SIZE=$(wget --spider -S "${MODEL_URL}" 2>&1 | grep -i "Content-Length" | tail -1 | awk '{print $2}' || echo "")
             fi
@@ -146,9 +196,9 @@ spec:
             echo "Using aria2c (16 parallel connections, 5-10x faster)"
             echo ""
             
-            if [ -n "${HF_TOKEN:-}" ]; then
+            if [ -n "$AUTH_TOKEN" ]; then
               aria2c -x 16 -s 16 -c --allow-overwrite=true \
-                --header="Authorization: Bearer ${HF_TOKEN}" \
+                --header="Authorization: Bearer ${AUTH_TOKEN}" \
                 -d "$(dirname "$MODEL_PATH")" \
                 -o "$(basename "$MODEL_PATH")" \
                 "${MODEL_URL}"
@@ -163,9 +213,9 @@ spec:
             echo ""
             
             # Download with resume support (-c)
-            if [ -n "${HF_TOKEN:-}" ]; then
+            if [ -n "$AUTH_TOKEN" ]; then
               wget -c \
-                --header="Authorization: Bearer ${HF_TOKEN}" \
+                --header="Authorization: Bearer ${AUTH_TOKEN}" \
                 -O "$MODEL_PATH" \
                 "${MODEL_URL}"
             else
@@ -207,7 +257,7 @@ spec:
             memory: "2Gi"
       containers:
       - name: llamacpp
-        image: ghcr.io/ggml-org/llama.cpp:server
+        image: ghcr.io/ggml-org/llama.cpp:server-b12033@sha256:0b0212befa4facc6fd1e34ee04e19f13b570d0b9ec87d26edf4c402dc0dd636f
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

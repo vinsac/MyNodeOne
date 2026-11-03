@@ -1,0 +1,20 @@
+#!/bin/bash
+# Fake systemctl. The DNS timer counts as active if $FAKE_SYSTEMD/timer-active exists,
+# and as enabled if $FAKE_SYSTEMD/timer-enabled does. The node agent is active if
+# $FAKE_SYSTEMD/agent-active exists.
+set -u
+printf '%s\n' "$*" >>"${FAKE_SYSTEMD:?}/calls.log"
+case "$*" in
+    *is-active*mynodeone-local-dns-sync.timer*)
+        [[ -e "$FAKE_SYSTEMD/timer-active" ]]
+        ;;
+    *is-active*mynodeone-node-agent*)
+        [[ -e "$FAKE_SYSTEMD/agent-active" ]]
+        ;;
+    *is-active*) exit 3 ;;
+    *is-enabled*mynodeone-local-dns-sync.timer*)
+        [[ -e "$FAKE_SYSTEMD/timer-enabled" ]]
+        ;;
+    *is-enabled*) exit 1 ;;
+    *) exit 0 ;;
+esac

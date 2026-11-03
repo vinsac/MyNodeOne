@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
 # Load shared validation library
 source "$PROJECT_ROOT/scripts/apps/lib/validation.sh"
+source "$PROJECT_ROOT/scripts/apps/lib/install-helpers.sh"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -99,9 +100,23 @@ echo "  Files: $FILE_STORAGE"
 echo "  Database: $DB_STORAGE"
 echo ""
 
-echo "🔐 Generating secure credentials..."
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
-ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '/+=' | head -c 16)
+generate_admin_password() {
+    openssl rand -base64 16 | tr -d '/+=' | head -c 16
+}
+
+echo "🔐 Preparing credentials..."
+# Existing values are reused: the database was initialised with this password.
+app_load_or_create_secret_value POSTGRES_PASSWORD "$NAMESPACE" nextcloud-db db-password \
+    nextcloud-postgres -- openssl rand -base64 32
+app_load_or_create_secret_value ADMIN_PASSWORD "$NAMESPACE" nextcloud-admin admin-password \
+    "" -- generate_admin_password
+
+# Override with NEXTCLOUD_IMAGE. Re-running keeps the running version: Nextcloud
+# can only be upgraded one major version at a time.
+app_resolve_image POSTGRES_IMAGE "$NAMESPACE" nextcloud-postgres postgres "postgres:15.19-alpine"
+app_resolve_image REDIS_IMAGE "$NAMESPACE" nextcloud-redis redis "redis:7.4.12-alpine"
+app_resolve_image NEXTCLOUD_IMAGE "$NAMESPACE" nextcloud nextcloud \
+    "nextcloud:28.0.14-apache" "${NEXTCLOUD_IMAGE:-}"
 
 echo "📦 Creating namespace..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -168,7 +183,7 @@ spec:
       priorityClassName: mynodeone-infrastructure
       containers:
       - name: postgres
-        image: postgres:15-alpine
+        image: $POSTGRES_IMAGE
         env:
         - name: POSTGRES_DB
           value: nextcloud
@@ -230,7 +245,7 @@ spec:
       priorityClassName: mynodeone-infrastructure
       containers:
       - name: redis
-        image: redis:7-alpine
+        image: $REDIS_IMAGE
         ports:
         - containerPort: 6379
         resources:
@@ -274,7 +289,7 @@ spec:
       priorityClassName: mynodeone-app
       containers:
       - name: nextcloud
-        image: nextcloud:28-apache
+        image: $NEXTCLOUD_IMAGE
         env:
         - name: POSTGRES_HOST
           value: nextcloud-postgres
@@ -402,9 +417,9 @@ if command -v kubectl &> /dev/null && kubectl get nodes &>/dev/null 2>&1; then
             
             # Verify registration
             echo "🔍 Verifying registration..."
-            REGISTERED_LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
-                -o jsonpath='{.data.services\.json}' 2>/dev/null | \
-                jq -r '.nextcloud.local_name' 2>/dev/null || echo "")
+            # shellcheck source=../../lib/service-registry-lib.sh
+            source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+            REGISTERED_LOCAL_NAME=$(sr_service_field "$NAMESPACE/nextcloud" local_name 2>/dev/null || echo "")
             
             if [ "$REGISTERED_LOCAL_NAME" = "$APP_SUBDOMAIN" ]; then
                 echo "✓ Verified: Service registered with local_name '$APP_SUBDOMAIN'"

@@ -1,0 +1,31 @@
+{
+  "root_source": "/dev/sda2[/@]",
+  "devices": [
+    {
+      "name": "/dev/sda",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDA",
+      "tran": "sata",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/sda2",
+          "type": "part",
+          "size": "1T",
+          "fstype": "btrfs",
+          "mountpoint": "/"
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdz",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDZ",
+      "tran": "sata"
+    }
+  ]
+}

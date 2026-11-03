@@ -1,0 +1,3 @@
+# Findings accepted so that CI can start green. Each entry is a problem to fix, not a
+# false positive unless it says so.
+

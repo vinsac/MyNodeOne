@@ -26,16 +26,13 @@ spec:
       X-Robots-Tag: "none,noarchive,nosnippet,notranslate,noimageindex"
       Server: ""  # Hide server version
       X-Powered-By: ""  # Hide technology stack
+      Permissions-Policy: "geolocation=(), microphone=(), camera=()"  # Formerly Feature Policy
     
     # Content Security Policy (customize based on your needs)
     contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
     
     # Referrer Policy
     referrerPolicy: "strict-origin-when-cross-origin"
-    
-    # Permissions Policy (formerly Feature Policy)
-    customResponseHeaders:
-      Permissions-Policy: "geolocation=(), microphone=(), camera=()"
 
 ---
 # Rate limiting middleware

@@ -34,6 +34,9 @@ log_error() {
     echo -e "${RED}[✗]${NC} $1"
 }
 
+# shellcheck source=../lib/service-registry-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/service-registry-lib.sh"
+
 # Dependency checks
 for dep in kubectl jq; do
     if ! command -v "$dep" &>/dev/null; then
@@ -41,28 +44,6 @@ for dep in kubectl jq; do
         exit 1
     fi
 done
-
-# Retry wrapper for kubectl operations with exponential backoff
-kubectl_retry() {
-    local max_attempts=3
-    local attempt=1
-    local delay=2
-
-    while [ $attempt -le $max_attempts ]; do
-        if "$@" 2>/dev/null; then
-            return 0
-        fi
-        if [ $attempt -lt $max_attempts ]; then
-            log_warn "kubectl attempt $attempt/$max_attempts failed, retrying in ${delay}s..."
-            sleep $delay
-            delay=$((delay * 2))
-        fi
-        attempt=$((attempt + 1))
-    done
-
-    log_error "kubectl command failed after $max_attempts attempts: $*"
-    return 1
-}
 
 # Validate domain format
 validate_domain() {
@@ -103,19 +84,26 @@ check_domain_conflicts() {
     local domain="$1"
     local current_service="$2"
     
-    local routing=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
-    
-    [ -z "$routing" ] && routing='{}'
-    
+    local routing services own='[]'
+    if ! routing=$(sr_get_routing); then
+        log_warn "Could not read routing to check $domain for conflicts"
+        return 1
+    fi
+
+    # A bare key from before the migration is this same service, not a conflict.
+    if services=$(sr_get_services); then
+        own=$(sr_routing_keys_for "$services" "$current_service" "$routing" | jq -Rsc 'split("\n") | map(select(length > 0))')
+    fi
+
     # Check if domain is used by other services
-    local conflicting_service=$(echo "$routing" | jq -r --arg domain "$domain" --arg current "$current_service" '
+    local conflicting_service
+    conflicting_service=$(jq -r --arg domain "$domain" --arg current "$current_service" --argjson own "$own" '
         to_entries[] |
-        select(.key != $current) |
-        select(.value.expose[] == $domain) |
+        select(.key != $current and (.key as $k | $own | index($k) | not)) |
+        select(any((.value.expose? // [])[]; . == $domain)) |
         .key
-    ' 2>/dev/null || echo "")
-    
+    ' <<<"$routing" 2>/dev/null) || conflicting_service=""
+
     if [[ -n "$conflicting_service" && "$conflicting_service" != "null" ]]; then
         log_warn "Domain $domain is already used by service: $conflicting_service"
         log_warn "Continuing will override the existing configuration"
@@ -127,7 +115,14 @@ check_domain_conflicts() {
 
 # Initialize multi-domain registry in Kubernetes
 init_multi_domain_registry() {
-    if ! kubectl get configmap -n kube-system domain-registry &>/dev/null; then
+    # --ignore-not-found, so a failed read can't pass for a registry that isn't there.
+    local existing
+    if ! existing=$(kubectl get configmap domain-registry -n "$SR_NAMESPACE" -o name --ignore-not-found 2>/dev/null); then
+        log_error "Could not read the domain registry"
+        return 1
+    fi
+
+    if [[ -z "$existing" ]]; then
         log_info "Creating domain registry..."
         
         # Use unified structure for domains.json
@@ -142,36 +137,56 @@ init_multi_domain_registry() {
     fi
 }
 
+DOMAINS_KEY="domains.json"
+
+# Filters for sr_update_cm, which runs them again on a conflict. Each adds or removes
+# one thing from what it reads, so another writer's change survives.
+register_domain_filter() {
+    jq -c --arg domain "$1" --arg desc "$2" '
+        .domains = ((.domains // {}) | .[$domain] = {
+            description: $desc,
+            registered: (now | todate),
+            status: "active"
+        })
+        | .vps_nodes = (.vps_nodes // [])'
+}
+
+# An old registry keeps domains at the top level, with no "domains" object.
+JQ_HAS_DOMAINS='((.domains | type) == "object")'
+
+unregister_domain_filter() {
+    jq -c --arg domain "$1" "if $JQ_HAS_DOMAINS then del(.domains[\$domain]) else del(.[\$domain]) end"
+}
+
+register_vps_filter() {
+    jq -c --arg ip "$1" --arg public_ip "$2" --arg region "$3" '
+        .domains = (.domains // {})
+        | .vps_nodes = ((.vps_nodes // []) + [{
+            tailscale_ip: $ip,
+            public_ip: $public_ip,
+            location: $region,
+            registered: (now | todate),
+            status: "active"
+        }] | unique_by(.tailscale_ip))'
+}
+
+unregister_vps_filter() {
+    jq -c --arg ip "$1" '.vps_nodes = ((.vps_nodes // []) | map(select(.tailscale_ip != $ip)))'
+}
+
 # Register a domain
 register_domain() {
     local domain="$1"
     local description="${2:-}"
     
-    init_multi_domain_registry
+    init_multi_domain_registry || return 1
     
     log_info "Registering domain: $domain"
     
-    local registry=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
-    
-    # Handle empty string from ConfigMap
-    [ -z "$registry" ] && registry='{"domains":{},"vps_nodes":[]}'
-    
-    # Add domain to the nested "domains" object
-    registry=$(echo "$registry" | jq \
-        --arg domain "$domain" \
-        --arg desc "$description" \
-        '.domains[$domain] = {
-            description: $desc,
-            registered: now | todate,
-            status: "active"
-        }')
-    
-    # Use kubectl patch to preserve other fields (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+    # Blank is fine here, as there is nothing in it to lose. A failed read is not, and
+    # sr_update_cm writes nothing after one.
+    if ! SR_ALLOW_BLANK=1 sr_update_cm "$SR_DOMAIN_CM" "$DOMAINS_KEY" \
+        register_domain_filter "$domain" "$description"; then
         log_error "Failed to register domain: $domain"
         return 1
     fi
@@ -181,27 +196,31 @@ register_domain() {
 
 # Unregister a domain
 unregister_domain() {
-    local domain="$1"
+    local domain="$1" rc=0
     
     log_info "Unregistering domain: $domain"
     
-    local registry=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
+    sr_read_cm "$SR_DOMAIN_CM" "$DOMAINS_KEY" || rc=$?
+    case "$rc" in
+        0) ;;
+        2 | 3)
+            log_warn "Domain not found: $domain"
+            return 0
+            ;;
+        *)
+            log_error "Could not read the domain registry; $domain not changed"
+            return 1
+            ;;
+    esac
     
-    # Check if domain exists
-    if ! echo "$registry" | jq -e ".domains[\"$domain\"]" &>/dev/null; then
+    if ! jq -e --arg domain "$domain" \
+        "if $JQ_HAS_DOMAINS then .domains | has(\$domain) else has(\$domain) end" \
+        <<<"$SR_READ_JSON" >/dev/null 2>&1; then
         log_warn "Domain not found: $domain"
         return 0
     fi
     
-    # Remove domain from the registry
-    registry=$(echo "$registry" | jq "del(.domains[\"$domain\"])")
-    
-    # Update ConfigMap (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+    if ! sr_update_cm "$SR_DOMAIN_CM" "$DOMAINS_KEY" unregister_domain_filter "$domain"; then
         log_error "Failed to unregister domain: $domain"
         return 1
     fi
@@ -214,37 +233,13 @@ register_vps() {
     local vps_ip="$1"
     local public_ip="$2"
     local region="${3:-unknown}"
-    local provider="${4:-unknown}"
     
-    init_multi_domain_registry
+    init_multi_domain_registry || return 1
     
     log_info "Registering VPS: $vps_ip ($region)"
     
-    local registry=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
-    
-    # Handle empty string from ConfigMap
-    [ -z "$registry" ] && registry='{"domains":{},"vps_nodes":[]}'
-    
-    # Add VPS to the "vps_nodes" array
-    registry=$(echo "$registry" | jq \
-        --arg ip "$vps_ip" \
-        --arg public_ip "$public_ip" \
-        --arg region "$region" \
-        --arg provider "$provider" \
-        '.vps_nodes += [{
-            tailscale_ip: $ip,
-            public_ip: $public_ip,
-            location: $region,
-            registered: now | todate,
-            status: "active"
-        }] | .vps_nodes |= unique_by(.tailscale_ip)')
-    
-    # Use kubectl patch to update the unified structure (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+    if ! SR_ALLOW_BLANK=1 sr_update_cm "$SR_DOMAIN_CM" "$DOMAINS_KEY" \
+        register_vps_filter "$vps_ip" "$public_ip" "$region"; then
         log_error "Failed to register VPS: $vps_ip"
         return 1
     fi
@@ -254,32 +249,110 @@ register_vps() {
 
 # Unregister a VPS node
 unregister_vps() {
-    local vps_ip="$1"
+    local vps_ip="$1" rc=0
     
     log_info "Unregistering VPS: $vps_ip"
     
-    local registry=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.domains\.json}' 2>/dev/null || echo '{"domains":{},"vps_nodes":[]}')
+    sr_read_cm "$SR_DOMAIN_CM" "$DOMAINS_KEY" || rc=$?
+    case "$rc" in
+        0) ;;
+        2 | 3)
+            log_warn "VPS not found: $vps_ip"
+            return 0
+            ;;
+        *)
+            log_error "Could not read the domain registry; VPS $vps_ip not changed"
+            return 1
+            ;;
+    esac
     
-    # Check if VPS exists
-    if ! echo "$registry" | jq -e ".vps_nodes[] | select(.tailscale_ip==\"$vps_ip\")" &>/dev/null; then
+    if ! jq -e --arg ip "$vps_ip" 'any((.vps_nodes // [])[]; .tailscale_ip == $ip)' \
+        <<<"$SR_READ_JSON" >/dev/null 2>&1; then
         log_warn "VPS not found: $vps_ip"
         return 0
     fi
     
-    # Remove VPS from the registry
-    registry=$(echo "$registry" | jq "del(.vps_nodes[] | select(.tailscale_ip==\"$vps_ip\"))")
-    
-    # Update ConfigMap (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"domains.json\":\"$(echo "$registry" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+    if ! sr_update_cm "$SR_DOMAIN_CM" "$DOMAINS_KEY" unregister_vps_filter "$vps_ip"; then
         log_error "Failed to unregister VPS: $vps_ip"
         return 1
     fi
     
     log_success "VPS unregistered: $vps_ip"
+}
+
+# Filters for sr_update_cm in purge_vps. Each leaves everything else as it found it,
+# so with nothing to remove there is no write.
+routing_drop_vps_filter() {
+    jq -c --arg ip "$1" 'map_values(
+        if type == "object" and (.vps_nodes | type) == "array"
+        then .vps_nodes |= map(select(. != $ip))
+        else . end)'
+}
+
+# Entries can carry the address as ip, tailscale_ip or both (see register_vps_node).
+sync_registry_drop_vps_filter() {
+    jq -c --arg ip "$1" '
+        if (.vps_nodes | type) == "array"
+        then .vps_nodes |= map(select(type != "object" or (.ip != $ip and .tailscale_ip != $ip)))
+        else . end'
+}
+
+SYNC_REGISTRY_CM="sync-controller-registry"
+SYNC_REGISTRY_KEY="registry.json"
+
+# A ConfigMap or key that isn't there has nothing to remove. Only a failed read fails.
+registry_readable() {
+    local rc=0
+    sr_read_cm "$1" "$2" || rc=$?
+    if [[ "$rc" -eq 1 ]]; then
+        log_error "Could not read $1/$2"
+        return 1
+    fi
+}
+
+drop_vps_from() {
+    local cm="$1" key="$2" filter="$3" vps_ip="$4" rc=0
+    sr_read_cm "$cm" "$key" || rc=$?
+    case "$rc" in
+        0) ;;
+        2 | 3)
+            log_info "Nothing to clean up in $cm/$key"
+            return 0
+            ;;
+        *)
+            log_error "Could not read $cm/$key"
+            return 1
+            ;;
+    esac
+    if ! sr_update_cm "$cm" "$key" "$filter" "$vps_ip"; then
+        log_error "Failed to update $cm/$key"
+        return 1
+    fi
+    log_success "Cleaned up $cm/$key"
+}
+
+# Removes a VPS from everything that names it: the VPS list, each route's vps_nodes,
+# and the sync targets. Everything is read before anything is written, so a failed read
+# changes nothing. Each write is conditional and only touches its own key. If one fails
+# later on, the earlier ones stand, and running this again finishes the job.
+purge_vps() {
+    local vps_ip="$1"
+
+    if ! sr_valid_ip "$vps_ip"; then
+        log_error "Invalid IP address: $vps_ip"
+        return 1
+    fi
+
+    if ! registry_readable "$SR_DOMAIN_CM" "$DOMAINS_KEY" ||
+        ! registry_readable "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" ||
+        ! registry_readable "$SYNC_REGISTRY_CM" "$SYNC_REGISTRY_KEY"; then
+        log_error "VPS $vps_ip not changed"
+        return 1
+    fi
+
+    unregister_vps "$vps_ip" &&
+        drop_vps_from "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" routing_drop_vps_filter "$vps_ip" &&
+        drop_vps_from "$SYNC_REGISTRY_CM" "$SYNC_REGISTRY_KEY" sync_registry_drop_vps_filter "$vps_ip"
 }
 
 # Configure service routing
@@ -301,15 +374,24 @@ configure_service_routing() {
     
     log_info "Configuring routing for: $service_name"
     
-    # Verify service exists in service-registry
-    if ! kubectl get configmap -n kube-system service-registry \
-        -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-        jq -e --arg svc "$service_name" '.[$svc]' &>/dev/null; then
+    # Verify service exists in service-registry, and file the routing under its
+    # registry key whichever name was given.
+    local services rc=0 service_key
+    if ! services=$(sr_get_services); then
+        log_error "Cannot read service-registry; routing not changed"
+        return 1
+    fi
+    service_key=$(sr_resolve_key "$services" "$service_name") || rc=$?
+    if [[ "$rc" -eq 2 ]]; then
+        log_error "'$service_name' matches several services; use namespace/name"
+        return 1
+    elif [[ "$rc" -ne 0 ]]; then
         log_error "Service '$service_name' not found in service-registry"
         log_info "Run 'service-registry.sh sync' first or check the service name"
         return 1
     fi
-    
+    service_name="$service_key"
+
     # Validate all domains first
     IFS=',' read -ra DOMAIN_ARRAY <<< "$expose_domains"
     for domain in "${DOMAIN_ARRAY[@]}"; do
@@ -331,37 +413,34 @@ configure_service_routing() {
         fi
     done
     
-    local routing=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
-    
     # Convert comma-separated to JSON array and trim whitespace
-    local expose_array=$(echo "$expose_domains" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
-    local vps_array=$(echo "$vps_nodes" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
-    
-    # Handle empty string from ConfigMap
-    [ -z "$routing" ] && routing='{}'
-    
-    routing=$(echo "$routing" | jq \
-        --arg service "$service_name" \
+    local expose_array vps_array entry aliases routing
+    expose_array=$(printf '%s' "$expose_domains" | jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
+    vps_array=$(printf '%s' "$vps_nodes" | jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
+    entry=$(jq -cn \
         --argjson expose "$expose_array" \
         --argjson vps "$vps_array" \
         --arg strategy "$strategy" \
-        '.[$service] = {
+        '{
             expose: $expose,
             vps_nodes: $vps,
             strategy: $strategy,
             updated: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
         }')
-    
-    # Use kubectl patch to preserve other fields (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+    if ! routing=$(sr_get_routing); then
+        log_error "Cannot read domain-registry; routing not changed"
+        return 1
+    fi
+    aliases=$(sr_routing_keys_for "$services" "$service_key" "$routing" | jq -Rsc 'split("\n") | map(select(length > 0))')
+
+    # routing.json may never have been written, so blank is fine here. The write is
+    # conditional on what was read, so it can't lose another writer's entry.
+    if ! SR_ALLOW_BLANK=1 sr_update_cm "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" \
+        sr_routing_set_filter "$service_key" "$entry" "$aliases"; then
         log_error "Failed to update domain-registry ConfigMap"
         return 1
     fi
-    
+
     log_success "Routing configured for $service_name"
     log_info "  Exposed at:"
     echo "$expose_domains" | tr ',' '\n' | sed 's/^[ \t]*//' | sed 's/^/    - https:\/\//'
@@ -369,14 +448,48 @@ configure_service_routing() {
     log_info "  Strategy: $strategy"
 }
 
+# Prints the routing.json key holding a service, whichever name it was given by.
+# Routing can be filed under the bare name or namespace/name. Falls back to the name
+# as given, so callers report it as not found.
+routing_key_for() {
+    local name="$1" routing services key candidate
+    if routing=$(sr_get_routing) && ! jq -e --arg k "$name" 'has($k)' <<<"$routing" >/dev/null &&
+        services=$(sr_get_services) && key=$(sr_resolve_key "$services" "$name" 2>/dev/null); then
+        while IFS= read -r candidate; do
+            if jq -e --arg k "$candidate" 'has($k)' <<<"$routing" >/dev/null; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done < <(sr_routing_keys_for "$services" "$key" "$routing")
+    fi
+    printf '%s\n' "$name"
+}
+
+# Filters for sr_update_cm, which runs them again on a conflict. An entry that has
+# gone since it was checked below is an error, so nothing is written for it.
+add_domain_filter() {
+    jq -c --arg service "$1" --arg domain "$2" '
+        if has($service) | not then error("no routing entry for \($service)") else . end
+        | .[$service].expose |= (. + [$domain] | unique)
+        | .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))'
+}
+
+remove_domain_filter() {
+    jq -c --arg service "$1" --arg domain "$2" '
+        if has($service) | not then error("no routing entry for \($service)") else . end
+        | .[$service].expose |= ((. // []) - [$domain])
+        | .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))'
+}
+
 # Add domain to existing service routing
 # Appends domain to expose array instead of replacing
 add_domain() {
-    local service_name="$1"
+    local service_name
+    service_name=$(routing_key_for "$1")
     local new_domain="$2"  # Single domain to add
-    
+
     init_multi_domain_registry
-    
+
     log_info "Adding domain to $service_name: $new_domain"
     
     # Validate domain format
@@ -400,30 +513,24 @@ add_domain() {
         fi
     fi
     
-    local routing=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
-    
-    [ -z "$routing" ] && routing='{}'
-    
+    # A failed read is an error here, not an empty routing table.
+    local routing
+    if ! routing=$(sr_get_routing); then
+        log_error "Could not read routing config; nothing changed"
+        return 1
+    fi
+
     # Check if service exists in routing
-    if ! echo "$routing" | jq -e --arg service "$service_name" '.[$service]' >/dev/null 2>&1; then
+    if ! jq -e --arg service "$service_name" '.[$service]' <<<"$routing" >/dev/null 2>&1; then
         log_error "Service $service_name not found in routing config"
         log_info "Use 'configure-routing' to create initial routing"
         return 1
     fi
-    
-    # Add domain to expose array (check for duplicates)
-    routing=$(echo "$routing" | jq \
-        --arg service "$service_name" \
-        --arg domain "$new_domain" \
-        '.[$service].expose |= (. + [$domain] | unique) |
-         .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))')
-    
-    # Update configmap (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+
+    # Add domain to expose array (check for duplicates). The write is conditional on
+    # what was read, so it can't lose another writer's change.
+    if ! sr_update_cm "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" \
+        add_domain_filter "$service_name" "$new_domain"; then
         log_error "Failed to add domain: $new_domain"
         return 1
     fi
@@ -436,36 +543,31 @@ add_domain() {
 
 # Remove domain from existing service routing
 remove_domain() {
-    local service_name="$1"
+    local service_name
+    service_name=$(routing_key_for "$1")
     local remove_domain="$2"  # Single domain to remove
     
     init_multi_domain_registry
     
     log_info "Removing domain from $service_name: $remove_domain"
     
-    local routing=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
-    
-    [ -z "$routing" ] && routing='{}'
-    
+    # A failed read is an error here, not an empty routing table.
+    local routing
+    if ! routing=$(sr_get_routing); then
+        log_error "Could not read routing config; nothing changed"
+        return 1
+    fi
+
     # Check if service exists
-    if ! echo "$routing" | jq -e --arg service "$service_name" '.[$service]' >/dev/null 2>&1; then
+    if ! jq -e --arg service "$service_name" '.[$service]' <<<"$routing" >/dev/null 2>&1; then
         log_error "Service $service_name not found in routing config"
         return 1
     fi
-    
-    # Remove domain from expose array
-    routing=$(echo "$routing" | jq \
-        --arg service "$service_name" \
-        --arg domain "$remove_domain" \
-        '.[$service].expose |= (. - [$domain]) |
-         .[$service].updated = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))')
-    
-    # Update configmap (with retry)
-    if ! kubectl_retry kubectl patch configmap domain-registry \
-        -n kube-system \
-        --type merge \
-        -p "{\"data\":{\"routing.json\":\"$(echo "$routing" | sed 's/"/\\"/g' | tr '\n' ' ')\"}}"; then
+
+    # Remove domain from expose array. The write is conditional on what was read, so
+    # it can't lose another writer's change.
+    if ! sr_update_cm "$SR_DOMAIN_CM" "$SR_ROUTING_KEY" \
+        remove_domain_filter "$service_name" "$remove_domain"; then
         log_error "Failed to remove domain: $remove_domain"
         return 1
     fi
@@ -478,8 +580,9 @@ remove_domain() {
 
 # List domains for a service
 list_domains() {
-    local service_name="$1"
-    
+    local service_name
+    service_name=$(routing_key_for "$1")
+
     local routing=$(kubectl get configmap -n kube-system domain-registry \
         -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
     
@@ -501,98 +604,140 @@ export_vps_routing() {
     
     init_multi_domain_registry
     
-    # Get all routing entries
-    local routing=$(kubectl get configmap -n kube-system domain-registry \
-        -o jsonpath='{.data.routing\.json}' 2>/dev/null || echo '{}')
-    
-    # Get service registry
-    local services=$(kubectl get configmap -n kube-system service-registry \
-        -o jsonpath='{.data.services\.json}' 2>/dev/null || echo '{}')
-    
+    # Get all routing entries. A failed read must not look like "no routes": the
+    # output of this command can be installed as the VPS's route file.
+    local routing services
+    if ! routing=$(sr_get_routing); then
+        log_error "Cannot read domain routing"
+        return 1
+    fi
+    if ! services=$(sr_get_services); then
+        log_error "Cannot read service registry"
+        return 1
+    fi
+
     if [[ "$routing" == "{}" ]]; then
         log_warn "No routing configured"
         return 1
     fi
-    
+
     # Filter routes for this VPS using Clean Separation expose array
-    local vps_routes=$(echo "$routing" | jq -r \
+    local vps_routes
+    vps_routes=$(jq -c \
         --arg vps "$vps_ip" \
         'to_entries[] |
-        select(.value.vps_nodes | index($vps)) |
+        select((.value.vps_nodes? // []) | index($vps)) |
         .key as $service |
-        .value.expose[] as $url |
+        (.value.expose? // [])[] as $url |
         {
             service: $service,
             url: $url
-        } | @json')
-    
-    if [[ -z "$vps_routes" ]]; then
+        }' <<<"$routing")
+
+    # Work out each route first, so a route that can't be rendered safely is left out
+    # whole. Route IDs match the config API's for a migrated entry and never contain
+    # a slash, which Traefik names can't hold.
+    local rendered_routers="" rendered_services="" seen_services=" "
+    local route service url key entry route_id blocked safe_url rule
+    while IFS= read -r route; do
+        [[ -n "$route" ]] || continue
+        service=$(jq -r '.service' <<<"$route")
+        url=$(jq -r '.url' <<<"$route")
+
+        if ! key=$(sr_resolve_key "$services" "$service" 2>/dev/null); then
+            sr_warn "routing entry '$service' matches no single service; not publishing $url"
+            continue
+        fi
+        entry=$(jq -c --arg k "$key" '.[$k]' <<<"$services")
+        if [[ "$(jq -r '.public' <<<"$entry")" != "true" ]]; then
+            sr_warn "$key is not public; not publishing $url"
+            continue
+        fi
+        if ! sr_valid_fqdn "$url"; then
+            sr_warn "invalid domain for $key; not publishing it"
+            continue
+        fi
+        if ! blocked=$(sr_blocked_rule_suffix "$entry" "$key" 2>/dev/null); then
+            sr_warn "$key has invalid public_blocked_paths; not publishing $url"
+            continue
+        fi
+
+        # Same IDs as assignRouteIDs in cmd/config-api/main.go.
+        route_id=$(jq -r --arg k "$key" '
+            def base($k; $v): $v.legacy_key // ($k | split("/") | last);
+            . as $all
+            | base($k; $all[$k]) as $id
+            | if ([to_entries[] | select((.value | type) == "object" and .value.public == true and base(.key; .value) == $id)] | length) > 1
+              then $k | gsub("/"; "-")
+              else $id end' <<<"$services")
+        route_id=${route_id//[^A-Za-z0-9_-]/-}
+
+        # Clean URL/Host for Traefik naming (replace dots with dashes)
+        safe_url=${url//\./-}
+        rule="Host(\`${url}\`)${blocked}"
+
+        rendered_routers+="    ${route_id}-${safe_url}:
+      rule: \"${rule}\"
+      service: ${route_id}-service
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    ${route_id}-${safe_url}-http:
+      rule: \"${rule}\"
+      service: ${route_id}-service
+      entryPoints:
+        - web
+      middlewares:
+        - https-redirect
+
+"
+
+        # One service block per route ID
+        if [[ "$seen_services" == *" $route_id "* ]]; then
+            continue
+        fi
+        seen_services+="$route_id "
+
+        local svc_ip port backend_url
+        svc_ip=$(jq -r '.ip // ""' <<<"$entry")
+        port=$(jq -r '.port // ""' <<<"$entry")
+        if ! sr_valid_port "$port"; then
+            sr_warn "$key has no valid port; its routes have no backend"
+            continue
+        fi
+
+        # Use service LoadBalancer IP if available, otherwise fallback to control plane
+        if sr_valid_ip "$svc_ip"; then
+            backend_url="http://${svc_ip}:${port}"
+        else
+            backend_url="http://${control_plane_ip}:${port}"
+        fi
+
+        rendered_services+="    ${route_id}-service:
+      loadBalancer:
+        servers:
+          - url: \"${backend_url}\"
+
+"
+    done <<<"$vps_routes"
+
+    if [[ -z "$rendered_routers" ]]; then
         log_info "No routes assigned to VPS: $vps_ip"
         return 0
     fi
-    
+
     # Generate Traefik configuration
     echo "# Multi-Domain Routing for VPS: $vps_ip"
     echo "# Generated on: $(date)"
     echo ""
     echo "http:"
     echo "  routers:"
-    
-    while IFS= read -r route; do
-        local service=$(echo "$route" | jq -r '.service')
-        local url=$(echo "$route" | jq -r '.url')
-        
-        # Clean URL/Host for Traefik naming (replace dots with dashes)
-        local safe_url=${url//\./-}
-        
-        echo "    ${service}-${safe_url}:"
-        echo "      rule: \"Host(\`${url}\`)\"" 
-        echo "      service: ${service}-service"
-        echo "      entryPoints:"
-        echo "        - websecure"
-        echo "      tls:"
-        echo "        certResolver: letsencrypt"
-        echo ""
-        
-        echo "    ${service}-${safe_url}-http:"
-        echo "      rule: \"Host(\`${url}\`)\"" 
-        echo "      service: ${service}-service"
-        echo "      entryPoints:"
-        echo "        - web"
-        echo "      middlewares:"
-        echo "        - https-redirect"
-        echo ""
-    done <<< "$vps_routes"
-    
+    printf '%s' "$rendered_routers"
     echo "  services:"
-    
-    # Deduplicate services
-    local unique_services=$(echo "$vps_routes" | jq -r '.service' | sort -u)
-    
-    while IFS= read -r service; do
-        local svc_info=$(echo "$services" | jq -r ".\"$service\"")
-        local svc_ip=$(echo "$svc_info" | jq -r '.ip')
-        local port=$(echo "$svc_info" | jq -r '.port')
-        
-        if [[ "$port" == "null" ]]; then
-            continue
-        fi
-        
-        # Use service LoadBalancer IP if available, otherwise fallback to control plane
-        local backend_url
-        if [[ "$svc_ip" != "null" ]] && [[ -n "$svc_ip" ]]; then
-            backend_url="http://${svc_ip}:${port}"
-        else
-            backend_url="http://${control_plane_ip}:${port}"
-        fi
-        
-        echo "    ${service}-service:"
-        echo "      loadBalancer:"
-        echo "        servers:"
-        echo "          - url: \"${backend_url}\""
-        echo ""
-    done <<< "$unique_services"
-    
+    printf '%s' "$rendered_services"
+
     echo "  middlewares:"
     echo "    https-redirect:"
     echo "      redirectScheme:"
@@ -650,6 +795,9 @@ case "${1:-}" in
     unregister-vps)
         unregister_vps "$2"
         ;;
+    purge-vps)
+        purge_vps "$2"
+        ;;
     configure-routing)
         configure_service_routing "$2" "$3" "$4" "${5:-round-robin}"
         ;;
@@ -689,6 +837,10 @@ Commands:
                                           Example: 100.68.225.92 192.0.2.100 eu contabo
 
   unregister-vps <tailscale_ip>           Unregister a VPS node
+                                          Example: 100.68.225.92
+
+  purge-vps <tailscale_ip>                Remove a VPS node from the VPS list, all
+                                          service routes and the sync targets
                                           Example: 100.68.225.92
 
   configure-routing <service> <domains> <vps_nodes> [strategy]

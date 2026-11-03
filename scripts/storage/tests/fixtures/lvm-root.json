@@ -1,0 +1,44 @@
+{
+  "root_source": "/dev/mapper/ubuntu--vg-ubuntu--lv",
+  "devices": [
+    {
+      "name": "/dev/nvme0n1",
+      "type": "disk",
+      "size": "1.8T",
+      "model": "Samsung 990",
+      "serial": "SN-NVME0N1",
+      "tran": "nvme",
+      "pttype": "gpt",
+      "children": [
+        {
+          "name": "/dev/nvme0n1p3",
+          "type": "part",
+          "size": "1.8T",
+          "fstype": "LVM2_member",
+          "uuid": "pv-uuid",
+          "children": [
+            {
+              "name": "/dev/mapper/ubuntu--vg-ubuntu--lv",
+              "type": "lvm",
+              "size": "1.8T",
+              "fstype": "ext4",
+              "uuid": "lv-uuid",
+              "mountpoint": "/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "/dev/sdz",
+      "type": "disk",
+      "size": "16.4T",
+      "model": "TestDisk 18TB",
+      "serial": "SN-SDZ",
+      "tran": "sata"
+    }
+  ],
+  "fstab": [
+    "/dev/mapper/ubuntu--vg-ubuntu--lv"
+  ]
+}

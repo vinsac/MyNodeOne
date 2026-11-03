@@ -1,0 +1,10 @@
+# gitleaks' default rules, plus the placeholder key the docs use in curl examples.
+title = "MyNodeOne"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The docs' placeholder API key. A real key has 32 hex characters in that place."
+targetRules = ["curl-auth-header"]
+regexes = ['''^sk-mynodeone-x+$''']

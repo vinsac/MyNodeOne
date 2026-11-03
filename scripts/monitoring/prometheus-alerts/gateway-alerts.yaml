@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mynodeone-gateway
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: mynodeone.gateway
+      rules:
+        # Scaling the gateway to zero on purpose does not fire this. If the app
+        # is not installed, neither metric exists and this stays quiet.
+        - alert: LLMGatewayDown
+          expr: |
+            (kube_deployment_spec_replicas{namespace="llmapi", deployment="gateway"} > 0)
+            and on (namespace, deployment)
+            (kube_deployment_status_replicas_available{namespace="llmapi", deployment="gateway"} == 0)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: The LLM API gateway has no available pods
+            description: >-
+              Deployment llmapi/gateway wants replicas but none has been available for
+              2 minutes, so API requests are failing.

@@ -36,14 +36,20 @@ if [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
 fi
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
-# Get local_name from registry
-LOCAL_NAME=$(kubectl get configmap -n kube-system service-registry \
-    -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-    jq -r ".[\"$SERVICE_NAME\"].local_name")
+# Find this service in the registry, under whichever key format it uses
+# shellcheck source=../../lib/service-registry-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/service-registry-lib.sh"
+if ! SERVICES_JSON=$(sr_get_services) || ! SERVICE_ENTRY=$(sr_lookup_entry "$SERVICES_JSON" "$SERVICE_NAME"); then
+    echo -e "  ${YELLOW}⚠ Could not find $SERVICE_NAME in the service registry${NC}"
+    exit 1
+fi
+LOCAL_NAME=$(jq -r '.local_name // ""' <<<"$SERVICE_ENTRY")
+# A blank local_name means the bare cluster domain.
+LOCAL_HOST="${LOCAL_NAME:+$LOCAL_NAME.}${CLUSTER_DOMAIN}.local"
 
 # Build allowed hosts list (start with local access)
-ALLOWED_HOSTS="$LOCAL_NAME.${CLUSTER_DOMAIN}.local"
-CSRF_ORIGINS="http://$LOCAL_NAME.${CLUSTER_DOMAIN}.local"
+ALLOWED_HOSTS="$LOCAL_HOST"
+CSRF_ORIGINS="http://$LOCAL_HOST"
 
 # Add each public domain
 IFS=',' read -ra DOMAIN_ARRAY <<< "$DOMAINS"
@@ -60,11 +66,9 @@ for domain in "${DOMAIN_ARRAY[@]}"; do
 done
 
 # Update Paperless deployment environment variables
-NAMESPACE=$(kubectl get configmap -n kube-system service-registry \
-    -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-    jq -r ".[\"$SERVICE_NAME\"].namespace")
+NAMESPACE=$(jq -r '.namespace // ""' <<<"$SERVICE_ENTRY")
 
-if [ -z "$NAMESPACE" ] || [ "$NAMESPACE" = "null" ]; then
+if [ -z "$NAMESPACE" ]; then
     echo -e "  ${YELLOW}⚠ Could not determine namespace${NC}"
     exit 1
 fi

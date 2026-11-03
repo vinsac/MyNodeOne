@@ -37,6 +37,10 @@ Installs the Config API server for configuration distribution to nodes.
 ### `install-node-agent.sh`
 Installs the Node Agent daemon that polls for configuration updates.
 
+On a VPS it keeps the Traefik directory already in `agent.env`, or else uses the one holding
+`mynodeone-routes.yml`. If several could be right it stops; name one with
+`--traefik-config-dir <dir>`.
+
 ### `install-vps-edge-node.sh`
 Specialized installer for VPS edge nodes that provide public access.
 

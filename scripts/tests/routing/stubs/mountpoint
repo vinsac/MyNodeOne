@@ -1,0 +1,5 @@
+#!/bin/bash
+# Fake mountpoint, for the node agent's check after a failed write. /etc/hosts counts as
+# mounted unless $FAKE_SYSTEMD/hosts-detached exists.
+set -u
+[[ ! -e "${FAKE_SYSTEMD:?}/hosts-detached" ]]

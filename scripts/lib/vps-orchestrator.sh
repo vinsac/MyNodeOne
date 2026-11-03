@@ -160,9 +160,10 @@ verify_vps_sudo() {
         echo "1. SSH into the VPS manually:"
         echo "   ssh $vps_user@$vps_ip"
         echo
-        echo "2. Run these commands:"
-        echo "   echo '$vps_user ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/$vps_user"
-        echo "   sudo chmod 0440 /etc/sudoers.d/$vps_user"
+        echo "2. Run these commands. They give '$vps_user' full root without a password, so"
+        echo "   anyone who gets this account or its SSH key gets root on the VPS:"
+        echo "   echo '$vps_user ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/${vps_user//./_}"
+        echo "   sudo chmod 0440 /etc/sudoers.d/${vps_user//./_}"
         echo
         echo "3. Test it:"
         echo "   sudo -n echo 'sudo works'"
@@ -276,9 +277,11 @@ transfer_to_vps() {
         echo "[INFO] File ownership: $(ls -lh "$local_path" | awk '{print $3":"$4}')"
         echo "[INFO] File permissions: $(stat -c '%a' "$local_path")"
         
-        # Ensure the file is readable by ACTUAL_USER
-        chmod 644 "$local_path" 2>/dev/null || true
-        echo "[INFO] After chmod 644: $(stat -c '%a' "$local_path")"
+        # Ensure the file is readable by ACTUAL_USER without opening it to everyone:
+        # this function also transfers config files that hold secrets.
+        chown "$ACTUAL_USER" "$local_path" 2>/dev/null || true
+        chmod u+r,go-rwx "$local_path" 2>/dev/null || true
+        echo "[INFO] After chmod: $(stat -c '%a' "$local_path")"
     elif [ -d "$local_path" ]; then
         echo "[INFO] Directory exists: $local_path"
         echo "[INFO] Directory ownership: $(ls -ldh "$local_path" | awk '{print $3":"$4}')"

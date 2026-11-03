@@ -219,7 +219,7 @@ install_tailscale_prompt() {
 }
 
 welcome() {
-    clear
+    clear 2>/dev/null || true
     echo -e "${MAGENTA}"
     cat << "EOF"
    __  ___       _   __          __     ____             
@@ -622,30 +622,17 @@ configure_cluster_info() {
 }
 
 configure_storage() {
-    # Storage configuration is handled by the main mynodeone script
-    # after this wizard completes. The main script will:
-    # - Detect available disks
-    # - Let you choose which disks to use
-    # - Let you choose storage type (Longhorn/MinIO/RAID/Individual)
-    # - Automatically format and mount disks
-    # 
-    # We don't ask for storage details here to avoid confusing users
-    # before disks are actually set up.
+    # Storage is handled by the Longhorn and MinIO installers, which run later
+    # and ask about disks themselves. We don't ask for storage details here to
+    # avoid confusing users before disks are actually set up.
     
     if [ "$NODE_TYPE" = "control-plane" ] || [ "$NODE_TYPE" = "worker" ]; then
         print_header "Storage Configuration"
         
         echo "Storage setup will happen after this configuration wizard."
         echo
-        echo "The main installer will:"
-        echo "  1. Detect your available disks"
-        echo "  2. Let you choose which disks to use"
-        echo "  3. Let you choose storage type:"
-        echo "     • Longhorn (recommended for most users)"
-        echo "     • MinIO (S3-compatible object storage)"
-        echo "     • RAID array (manual redundancy)"
-        echo "     • Individual mounts (no redundancy)"
-        echo "  4. Automatically format and mount your disks"
+        echo "  • The Longhorn installer asks which disks to use, or uses the OS disk"
+        echo "  • The MinIO installer (optional) asks about its disk separately"
         echo
         print_info "You don't need to configure storage paths now."
         print_info "The disk setup wizard will guide you through everything"
@@ -846,7 +833,7 @@ show_next_steps() {
             echo
             echo "  1. Disk detection and setup (if you have additional disks)"
             echo "  2. Control plane installation (K3s, Longhorn, monitoring)"
-            echo "  3. Generate join tokens for worker nodes"
+            echo "  3. Show how to add worker nodes"
             echo
             if [ "$NUM_VPS" -gt 0 ]; then
                 print_info "After installation, you'll need to:"
@@ -857,8 +844,8 @@ show_next_steps() {
         worker)
             echo "Your worker node is configured! Next:"
             echo
-            echo "1. Get the join token from your control plane node"
-            echo "   (It was displayed after bootstrap, or check $ACTUAL_HOME/mynodeone-join-token.txt)"
+            echo "1. Get the join token: on your control plane node, run"
+            echo -e "   ${CYAN}sudo cat /var/lib/rancher/k3s/server/agent-token${NC}"
             echo
             echo "2. Run the worker node script:"
             echo -e "   ${CYAN}sudo ./scripts/nodes/add-worker-node.sh${NC}"

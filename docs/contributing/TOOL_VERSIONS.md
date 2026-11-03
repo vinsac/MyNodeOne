@@ -30,7 +30,8 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
   Defined in `scripts/lib/versions.sh` (`CERT_MANAGER_VERSION`).
 - **Traefik (Kubernetes Ingress)**: Helm chart `33.2.0`  
   Defined in `scripts/lib/versions.sh` (`TRAEFIK_VERSION`).
-- **MetalLB**: Helm chart (version pinned in `scripts/installation/bootstrap-control-plane.sh`).
+- **MetalLB**: Helm chart `0.14.3`  
+  Defined in `scripts/lib/versions.sh` (`METALLB_VERSION`).
 - **Longhorn**: Helm chart `1.7.2`  
   Defined in `scripts/lib/versions.sh` (`LONGHORN_VERSION`).
 - **MinIO**: Installed via Helm in `scripts/installation/bootstrap-control-plane.sh` (chart version pinned there).
@@ -49,8 +50,10 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
 
 - **Docker Compose**: `2.24.5`  
   Defined in `scripts/lib/versions.sh` (`DOCKER_COMPOSE_VERSION`).
-- **Traefik (VPS Edge)**: Docker image `traefik:v2.11`  
-  Defined in `scripts/lib/versions.sh` (`TRAEFIK_VPS_VERSION`).
+- **Traefik (VPS Edge)**: Docker image `traefik:2.11`  
+  Defined in `scripts/lib/versions.sh` (`TRAEFIK_VPS_VERSION`), and used by both `setup-vps-node.sh` and `setup-edge-node.sh`. It is an image tag, unlike `TRAEFIK_VERSION`, which is a Helm chart version.
+- **node_exporter**: `1.7.0`  
+  Defined in `scripts/lib/versions.sh` (`NODE_EXPORTER_VERSION`).
 
 ## Application Templates
 

@@ -105,7 +105,7 @@ The current sync controller has limitations:
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                               ▲
-                              │ HTTPS over Tailscale (100.x.x.x)
+                              │ HTTP over Tailscale (100.x.x.x)
         ┌─────────────────────┼─────────────────────────────────┐
         │                     │                                 │
         ▼                     ▼                                 ▼
@@ -130,12 +130,13 @@ The current sync controller has limitations:
 
 ### 1. Config API Server (Control Plane)
 
-A lightweight HTTP server running on the control plane.
+A lightweight Go HTTP server (`cmd/config-api/main.go`) running on the control plane.
 
-**Implementation Options:**
-- Go binary (single file, easy to distribute)
-- Python Flask (easier to modify)
-- Bash + netcat (simplest, limited features)
+It speaks plain HTTP, not HTTPS, even though the port is 8443. Traffic is encrypted
+by Tailscale's WireGuard tunnel. `--bind=tailscale` (the default, and what the systemd
+unit uses) listens on loopback and the Tailscale IP only, and every endpoint except
+`/api/v1/health` requires the `X-API-Token` header. The server refuses to start if
+the token file is missing or empty.
 
 **Endpoints:**
 
@@ -145,8 +146,8 @@ Returns configuration for a specific node type.
 
 ```bash
 # Request
-curl -H "X-Node-Name: dev-laptop" \
-     https://100.x.x.x:8443/api/v1/config/laptop
+curl -H "X-API-Token: <token>" -H "X-Node-Name: dev-laptop" \
+     http://100.x.x.x:8443/api/v1/config/laptop
 
 # Response
 {
@@ -178,6 +179,35 @@ Returns Traefik routes for VPS nodes.
 }
 ```
 
+**Empty versus unknown.** Agents act on this difference, so it is part of the contract:
+
+| Response | Meaning | What the agent does |
+|----------|---------|---------------------|
+| `200` with `"routes": []` or `"dns_entries": []` | The registry was read and there are none | Removes its routes or entries |
+| `200` without the field | An older server, which can't express "none" | Keeps what it has |
+| `503` | The registry couldn't be read; the version does not advance | Keeps what it has and retries |
+
+`GET /api/v1/health` needs no token and reports `registry_schema`. Schema 2 and later
+follow this table and understand `namespace/name` registry keys.
+
+**Moving the registry to `namespace/name` keys is explicit.** Upgrade the config API
+first, then run `scripts/lib/service-registry.sh migrate` once on the control plane.
+Until then `sync` and `register` keep working: they update bare entries in place, add new
+services under `namespace/name`, and `sync` warns. `migrate` refuses while the API doesn't
+report schema 2. It moves the registry, then files each route in `routing.json` under the
+new key, and records the opt-in in `service-registry/migration.json`. After that, `sync`
+and `register` also move any bare entry an old client writes.
+
+An entry remembers the name its route was first published under in `legacy_key`. Nothing
+replaces it once it is set. A bare `routing.json` key goes to the one public service with
+no record of its own that goes by that name; two claimants mean no route. Such a shared
+record stays bare through the migration, because only an operator can say whose it is.
+
+A route for `llmapi` excludes `/admin`, `/docs`, `/redoc` and `/openapi.json`, and any
+service can set its own list with a `public_blocked_paths` field in its registry entry
+(an empty list turns the `llmapi` default off). Tailnet clients using the LoadBalancer
+IP are not affected.
+
 #### POST /api/v1/heartbeat
 
 Nodes report their status.
@@ -185,6 +215,7 @@ Nodes report their status.
 ```bash
 # Request
 curl -X POST \
+     -H "X-API-Token: <token>" \
      -H "Content-Type: application/json" \
      -d '{
        "node_name": "dev-laptop",
@@ -193,11 +224,15 @@ curl -X POST \
        "config_version": "v42",
        "uptime_seconds": 3600
      }' \
-     https://100.x.x.x:8443/api/v1/heartbeat
+     http://100.x.x.x:8443/api/v1/heartbeat
 
 # Response
 {"status": "ok", "server_time": "2024-12-08T10:00:00Z"}
 ```
+
+The server records the address the request came from, not the `node_ip` in the body,
+for nodes on the tailnet. A heartbeat using a name that another online node holds is
+refused with `409`, so one node can't take over another's entry.
 
 #### GET /api/v1/nodes
 
@@ -241,11 +276,14 @@ A lightweight daemon running on each node.
 2. Send heartbeat to control plane
 3. Apply config locally when changed
 
-**Implementation:** Bash script + systemd service
+**Implementation:** Bash script (`scripts/lib/node-agent.sh`, installed as
+`/usr/local/bin/mynodeone-node-agent`) + systemd service
+(`scripts/lib/mynodeone-node-agent.service`). The real script does more than this
+sketch of its loop:
 
 ```bash
 #!/bin/bash
-# mynodeone-agent.sh
+# node-agent.sh (simplified)
 
 CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-100.x.x.x}"
 NODE_NAME="${NODE_NAME:-$(hostname)}"
@@ -255,8 +293,9 @@ CONFIG_VERSION=""
 
 while true; do
     # 1. Fetch config
-    response=$(curl -s -H "X-Node-Name: $NODE_NAME" \
-        "https://$CONTROL_PLANE_IP:8443/api/v1/config/$NODE_TYPE")
+    response=$(curl -s -K <(printf 'header = "X-API-Token: %s"\n' "$API_TOKEN") \
+        -H "X-Node-Name: $NODE_NAME" \
+        "http://$CONTROL_PLANE_IP:8443/api/v1/config/$NODE_TYPE")
     
     new_version=$(echo "$response" | jq -r '.version')
     
@@ -270,7 +309,7 @@ while true; do
     curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "{\"node_name\":\"$NODE_NAME\",\"node_type\":\"$NODE_TYPE\",\"config_version\":\"$CONFIG_VERSION\"}" \
-        "https://$CONTROL_PLANE_IP:8443/api/v1/heartbeat"
+        "http://$CONTROL_PLANE_IP:8443/api/v1/heartbeat"
     
     sleep "$POLL_INTERVAL"
 done
@@ -282,25 +321,50 @@ done
 |-----------|--------------|
 | Laptop | Update `/etc/hosts` with DNS entries |
 | Worker | Update `/etc/hosts` with DNS entries |
-| VPS | Generate Traefik routes, reload Traefik |
+| VPS | Install rendered Traefik routes atomically; Traefik's file watcher picks them up without a restart |
+
+**One `/etc/hosts` writer per host.** Where `mynodeone-local-dns-sync.timer` is enabled
+(the control plane), `scripts/domains/sync-dns.sh` owns `/etc/hosts` and the agent leaves
+it alone. Stopping the timer for maintenance changes nothing about that, and starting
+`mynodeone-local-dns-sync.service` by hand still does its work. To hand the file to the
+agent, disable the timer. Everywhere else the agent writes it. The agent's unit runs under
+`ProtectSystem=strict` with `/etc/hosts` as a writable bind mount, so the file has to be
+written in place: renaming over it fails, and `/etc/hosts.mynodeone.bak` could not be
+created, so the backup is `/etc/mynodeone/hosts.bak`. On a VPS whose Traefik directory is
+under `/home`, the installer adds a drop-in that makes that directory writable.
+
+The same mount is why nothing here uses `sed -i` on `/etc/hosts`. A rename from outside the
+service (`sed -i`, many editors) takes the mount away from the running agent, and its
+writes then fail until it gets a new namespace. When a write fails and `/etc/hosts` is no
+longer a mount point, the agent exits and `Restart=always` brings it back.
+
+**A route file must be complete.** The agent installs one only if curl finished cleanly
+with `200`, and every router names a service defined in the file with a backend. Anything
+else leaves the current routes in place and is retried on the next poll.
+
+**Which Traefik directory.** The installers use `--traefik-config-dir` if given, then
+`TRAEFIK_CONFIG_DIR` from `agent.env`, then the one directory holding
+`mynodeone-routes.yml`, then the one that exists. With several candidates
+`install-node-agent.sh` stops and asks for the flag. Settings in `agent.env` that the
+installer doesn't know are kept.
 
 ### 3. Authentication
 
-**Option A: Tailscale IP Verification (Recommended)**
-- API server only listens on Tailscale IP (100.x.x.x)
-- Only devices on the Tailscale network can reach it
-- No additional auth needed
+Two layers, both always on:
 
-**Option B: Shared Secret**
-- Generate a secret during installation
-- Nodes include it in `Authorization` header
-- Stored in `/etc/mynodeone/agent.env`
+- **Network:** the server listens only on loopback and the Tailscale IP (`--bind=tailscale`).
+  Check any Tailscale ACLs too, because every device on the tailnet can reach that address
+  unless an ACL says otherwise.
+- **Token:** every endpoint except `/api/v1/health` needs `X-API-Token`, from
+  `/etc/mynodeone/api-token` on the control plane. A missing or empty token file stops the
+  server from starting rather than leaving it open.
 
-**Option C: mTLS**
-- Each node has a client certificate
-- Most secure but complex to manage
+There is one shared token, so any node holding it can read every node's config. Per-node
+tokens are not implemented. To limit what a leaked token can do, deleting a node is only
+allowed from the control plane itself or from the node's own IP, and heartbeats can't
+overwrite another node's entry.
 
-**Recommendation:** Start with Option A (Tailscale IP verification). Add Option B if needed.
+mTLS is not implemented.
 
 ---
 
@@ -470,20 +534,20 @@ scripts/
 
 ## Configuration
 
-### Control Plane (`/etc/mynodeone/config-api.env`)
+### Control Plane (`scripts/lib/mynodeone-config-api.service`)
+
+The server takes command-line flags, set in the systemd unit:
 
 ```bash
-# API Server Configuration
-API_PORT=8443
-API_BIND_IP=0.0.0.0  # Tailscale handles access control
-
-# Heartbeat settings
-HEARTBEAT_ONLINE_THRESHOLD=120    # seconds
-HEARTBEAT_STALE_THRESHOLD=600     # seconds
-
-# Optional: Shared secret for auth
-# API_SECRET=your-secret-here
+mynodeone-config-api \
+    --port=8443 \
+    --bind=tailscale \
+    --token-file=/etc/mynodeone/api-token \
+    --require-tailscale=true
 ```
+
+`--bind` also accepts a specific IP. Avoid `0.0.0.0`: on a machine with a public interface
+the token would be the only thing protecting the API, sent over plain HTTP.
 
 ### Node (`/etc/mynodeone/agent.env`)
 
@@ -497,8 +561,8 @@ NODE_TYPE=laptop  # laptop, vps, worker
 POLL_INTERVAL=60
 HEARTBEAT_INTERVAL=60
 
-# Optional: Shared secret for auth
-# API_SECRET=your-secret-here
+# Required. Root-owned, mode 600.
+API_TOKEN=<token>
 ```
 
 ---
@@ -539,8 +603,8 @@ Add node status to `http://mynodeone.local` dashboard:
 | Aspect | Old (SSH Push) | New (HTTP Pull) |
 |--------|----------------|-----------------|
 | Direction | Control plane → Nodes | Nodes → Control plane |
-| Protocol | SSH | HTTPS |
-| Authentication | SSH keys | Tailscale IP / shared secret |
+| Protocol | SSH | HTTP over Tailscale (WireGuard) |
+| Authentication | SSH keys | Tailscale-only bind + shared API token |
 | Heartbeat | None | Built-in |
 | Offline detection | None | Automatic |
 | Scalability | O(n) SSH connections | O(1) API server |
@@ -589,7 +653,7 @@ sudo ./scripts/installation/install-config-api.sh
 sudo ./scripts/installation/install-node-agent.sh \
     --control-plane-ip 100.x.x.x \
     --node-type laptop \
-    --api-token <token-from-control-plane>
+    --api-token-file <file-holding-the-control-plane-token>
 ```
 
 ### Check Status

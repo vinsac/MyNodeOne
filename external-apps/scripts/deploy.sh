@@ -35,13 +35,48 @@ if [ -z "$CLUSTER_DOMAIN" ]; then
     CLUSTER_DOMAIN="mynodeone"
 fi
 
+# State shared between the setup, generation and deployment functions
+APP_NAME=""
+LOCAL_SUBDOMAIN=""
+PUBLIC_DOMAINS=""
+MANIFEST_DIR=""
+SERVICE_ARRAY=()
+SERVICE_NAMES=()
+SERVICE_IMAGES=()
+SERVICE_PORTS=()
+declare -A SERVICE_TYPES=()
+
+# Generated manifests go in a private directory, removed on success. After a
+# failure it is kept and its path printed, so the manifests can be inspected.
+DEPLOY_WORK_DIR=""
+cleanup_work_dir() {
+    local status=$?
+    if [[ -n "$DEPLOY_WORK_DIR" && -d "$DEPLOY_WORK_DIR" ]]; then
+        if [[ $status -eq 0 ]]; then
+            rm -rf "$DEPLOY_WORK_DIR"
+        else
+            echo "Generated manifests kept for debugging: $DEPLOY_WORK_DIR" >&2
+        fi
+    fi
+}
+trap cleanup_work_dir EXIT
+
+# Start a fresh output directory, dropping any earlier attempt so that a failed
+# kompose conversion cannot leave stale manifests to be applied.
+prepare_output_dir() {
+    if [[ -n "$DEPLOY_WORK_DIR" && -d "$DEPLOY_WORK_DIR" ]]; then
+        rm -rf "$DEPLOY_WORK_DIR"
+    fi
+    DEPLOY_WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mynodeone-deploy.XXXXXX")
+}
+
 log() { echo -e "${BLUE}▶${NC} $1"; }
 success() { echo -e "${GREEN}✓${NC} $1"; }
 warn() { echo -e "${YELLOW}⚠${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1"; }
 ask() { echo -e "${CYAN}?${NC} $1"; }
 
-clear
+clear 2>/dev/null || true
 cat << 'EOF'
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
@@ -157,33 +192,95 @@ parse_docker_compose() {
     fi
 }
 
+# Classify a service by name. Datastores and other internal infrastructure are
+# checked first, because their names routinely contain a word that also suggests a
+# public service: "mysql-server", "redis-server", "web-db", "api-cache".
+classify_service() {
+    local svc_lower
+    svc_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    # These tools are named after a database but are not datastores
+    if [[ "$svc_lower" =~ (phpmyadmin|pgadmin|adminer|mongo-express|redis-commander|redisinsight) ]]; then
+        echo "admin"
+    elif [[ "$svc_lower" =~ (^|[-_])(db|database)($|[-_0-9]) ]] || [[ "$svc_lower" =~ [a-z]db($|[-_]) ]] || \
+         [[ "$svc_lower" =~ (postgres|mysql|mariadb|mongo|mssql|sqlserver|cassandra|clickhouse|elasticsearch|opensearch|neo4j|cockroach|timescale|influx|couch) ]]; then
+        echo "database"
+    elif [[ "$svc_lower" =~ (redis|valkey|cache|memcache) ]]; then
+        echo "cache"
+    elif [[ "$svc_lower" =~ (worker|queue|celery|seed|rabbitmq|kafka|zookeeper|mosquitto) ]] || \
+         [[ "$svc_lower" =~ (^|[-_])nats($|[-_0-9]) ]]; then
+        echo "worker"
+    elif [[ "$svc_lower" =~ (vote|result) ]]; then
+        # Voting app specific
+        echo "frontend"
+    elif [[ "$svc_lower" =~ (admin|dashboard) ]]; then
+        echo "admin"
+    elif [[ "$svc_lower" =~ (frontend|web|ui|client) ]]; then
+        echo "frontend"
+    elif [[ "$svc_lower" =~ (backend|api|server) ]]; then
+        echo "backend"
+    else
+        echo "internal"
+    fi
+}
+
 # Detect service types based on naming conventions
 detect_service_types() {
     declare -g -A SERVICE_TYPES
-    
+
+    local svc
     for svc in "${SERVICE_ARRAY[@]}"; do
-        local svc_lower=$(echo "$svc" | tr '[:upper:]' '[:lower:]')
-        
-        # Detect common service types
-        if [[ "$svc_lower" =~ (vote|result) ]]; then
-            # Voting app specific
-            SERVICE_TYPES["$svc"]="frontend"
-        elif [[ "$svc_lower" =~ (frontend|web|ui|client) ]]; then
-            SERVICE_TYPES["$svc"]="frontend"
-        elif [[ "$svc_lower" =~ (backend|api|server) ]]; then
-            SERVICE_TYPES["$svc"]="backend"
-        elif [[ "$svc_lower" =~ (admin|dashboard) ]]; then
-            SERVICE_TYPES["$svc"]="admin"
-        elif [[ "$svc_lower" =~ (db|database|postgres|mysql|mongo) ]]; then
-            SERVICE_TYPES["$svc"]="database"
-        elif [[ "$svc_lower" =~ (redis|cache|memcache) ]]; then
-            SERVICE_TYPES["$svc"]="cache"
-        elif [[ "$svc_lower" =~ (worker|queue|celery|seed) ]]; then
-            SERVICE_TYPES["$svc"]="worker"
-        else
-            SERVICE_TYPES["$svc"]="internal"
-        fi
+        SERVICE_TYPES["$svc"]=$(classify_service "$svc")
     done
+}
+
+# Double a Kubernetes quantity for use as a limit. A quantity this cannot double
+# exactly (such as "0.5") is returned as it is, which is still a valid limit.
+double_quantity() {
+    local quantity="$1"
+    if [[ "$quantity" =~ ^([0-9]+)(m|k|M|G|T|Ki|Mi|Gi|Ti)?$ ]]; then
+        echo "$((10#${BASH_REMATCH[1]} * 2))${BASH_REMATCH[2]}"
+    else
+        echo "$quantity"
+    fi
+}
+
+# Ask for the app name and local subdomain
+prompt_app_identity() {
+    ask "What's your app name?"
+    echo "  (lowercase, no spaces, used for namespace)"
+    read -p "App name: " APP_NAME
+    APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+
+    if [[ -z "$APP_NAME" ]]; then
+        error "App name is required"
+        return 1
+    fi
+
+    success "App name: $APP_NAME"
+    echo ""
+
+    ask "Local subdomain for cluster access?"
+    echo "  (your app will be at: <subdomain>.${CLUSTER_DOMAIN}.local)"
+    read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
+    LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
+    LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+
+    success "Subdomain: $LOCAL_SUBDOMAIN"
+    echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
+    echo ""
+}
+
+# Ask whether to expose the app publicly
+prompt_public_access() {
+    ask "Make this app publicly accessible?"
+    read -p "Public access [y/N]: " MAKE_PUBLIC
+
+    if [[ "$MAKE_PUBLIC" =~ ^[Yy] ]]; then
+        configure_public_domains || PUBLIC_DOMAINS=""
+    else
+        PUBLIC_DOMAINS=""
+    fi
 }
 
 # Interactive app setup
@@ -193,19 +290,8 @@ interactive_setup() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     
-    # App name
-    ask "What's your app name? (lowercase, no spaces)"
-    read -p "App name: " APP_NAME
-    APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
-    
-    if [[ -z "$APP_NAME" ]]; then
-        error "App name required"
-        exit 1
-    fi
-    
-    success "App name: $APP_NAME"
-    echo ""
-    
+    prompt_app_identity || exit 1
+
     # Services/containers
     ask "How many services/containers does your app have?"
     echo "  Examples:"
@@ -218,10 +304,10 @@ interactive_setup() {
     echo ""
     
     # Collect service details
-    declare -a SERVICE_NAMES
-    declare -a SERVICE_IMAGES
-    declare -a SERVICE_PORTS
-    
+    SERVICE_NAMES=()
+    SERVICE_IMAGES=()
+    SERVICE_PORTS=()
+
     for ((i=1; i<=NUM_SERVICES; i++)); do
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  Service $i Configuration"
@@ -231,16 +317,24 @@ interactive_setup() {
         ask "Service $i name? (e.g., frontend, backend, api)"
         read -p "Name: " svc_name
         svc_name=$(echo "$svc_name" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+        if [[ -z "$svc_name" ]]; then
+            error "Service name is required"
+            exit 1
+        fi
         SERVICE_NAMES+=("$svc_name")
-        
+
         ask "Docker image for $svc_name?"
         echo "  Examples:"
-        echo "  • your-registry/myapp:latest"
-        echo "  • ghcr.io/username/myapp:v1.0"
-        echo "  • docker.io/library/nginx:alpine"
+        echo "  • your-registry/myapp:1.0.0"
+        echo "  • ghcr.io/username/myapp:v1.0.0"
+        echo "  • docker.io/nginxinc/nginx-unprivileged:1.31.7-alpine"
         read -p "Image: " svc_image
+        if [[ -z "$svc_image" ]]; then
+            error "Docker image is required"
+            exit 1
+        fi
         SERVICE_IMAGES+=("$svc_image")
-        
+
         ask "Port that $svc_name listens on?"
         read -p "Port [80]: " svc_port
         svc_port=${svc_port:-80}
@@ -274,41 +368,46 @@ interactive_setup() {
     
     echo ""
     
-    # Domains
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Domain Configuration"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    ask "Local subdomain for your app?"
-    echo "  This will be: <subdomain>.${CLUSTER_DOMAIN}.local"
-    read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
-    LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
-    LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
-    
-    success "Subdomain: $LOCAL_SUBDOMAIN"
-    echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
-    echo ""
-    
-    ask "Do you want public internet access?"
-    read -p "Make public? [y/N]: " MAKE_PUBLIC
-    
-    if [[ "$MAKE_PUBLIC" =~ ^[Yy] ]]; then
-        configure_public_domains
-    else
-        PUBLIC_DOMAINS=""
-    fi
-    
+    # Public access needs to know the services
+    SERVICE_ARRAY=("${SERVICE_NAMES[@]}")
+    detect_service_types
+
+    prompt_public_access
+
     echo ""
 }
 
-# Generate manifests from docker-compose extracted data
-generate_manifests_from_compose() {
-    local output_dir="/tmp/mynodeone-deploy-$$"
-    mkdir -p "$output_dir"
-    
+# Index of the service that gets the app's subdomain: the first frontend, or else
+# the first service that is not a datastore, cache or worker.
+find_primary_index() {
+    local idx svc_type fallback=""
+    for idx in "${!SERVICE_NAMES[@]}"; do
+        svc_type=$(classify_service "${SERVICE_NAMES[$idx]}")
+        case "$svc_type" in
+            frontend)
+                echo "$idx"
+                return 0
+                ;;
+            database|cache|worker)
+                ;;
+            *)
+                [[ -n "$fallback" ]] || fallback="$idx"
+                ;;
+        esac
+    done
+    echo "${fallback:-0}"
+}
+
+# Generate Kubernetes manifests from SERVICE_NAMES, SERVICE_IMAGES and SERVICE_PORTS.
+# Datastores, caches and workers are never given a LoadBalancer. The primary service
+# always gets one otherwise; with "expose_all" so does every frontend and backend.
+render_manifests() {
+    local expose_mode="$1"
+    prepare_output_dir
+    local output_dir="$DEPLOY_WORK_DIR"
+
     log "Generating Kubernetes manifests..."
-    
+
     # Namespace
     cat > "$output_dir/00-namespace.yaml" << EOF
 ---
@@ -320,7 +419,7 @@ metadata:
     app.kubernetes.io/name: $APP_NAME
     app.kubernetes.io/managed-by: mynodeone-deploy
 EOF
-    
+
     # Storage (if requested)
     if [[ "$STORAGE_SIZE" != "none" ]]; then
         cat > "$output_dir/10-storage.yaml" << EOF
@@ -339,21 +438,47 @@ spec:
       storage: $STORAGE_SIZE
 EOF
     fi
-    
+
+    local primary_idx memory_limit cpu_limit
+    primary_idx=$(find_primary_index)
+    memory_limit=$(double_quantity "$MEMORY_REQ")
+    cpu_limit=$(double_quantity "$CPU_REQ")
+
     # Services and deployments
-    for idx in "${!SERVICE_ARRAY[@]}"; do
-        local svc_name="${SERVICE_ARRAY[$idx]}"
+    local idx
+    for idx in "${!SERVICE_NAMES[@]}"; do
+        local svc_name="${SERVICE_NAMES[$idx]}"
         local svc_image="${SERVICE_IMAGES[$idx]}"
         local svc_port="${SERVICE_PORTS[$idx]}"
-        local svc_type="${SERVICE_TYPES[$svc_name]:-service}"
-        local is_primary=$([[ $idx -eq 0 ]] && echo "true" || echo "false")
-        
-        # Skip internal services for LoadBalancer
+        local svc_type
+        svc_type=$(classify_service "$svc_name")
+        local is_primary="false"
+        [[ "$idx" == "$primary_idx" ]] && is_primary="true"
+
         local service_type="ClusterIP"
-        if [[ "$svc_type" == "frontend" || "$svc_type" == "backend" ]]; then
-            service_type="LoadBalancer"
+        case "$svc_type" in
+            database|cache|worker)
+                ;;
+            frontend|backend)
+                if [[ "$is_primary" == "true" || "$expose_mode" == "expose_all" ]]; then
+                    service_type="LoadBalancer"
+                fi
+                ;;
+            *)
+                [[ "$is_primary" == "true" ]] && service_type="LoadBalancer"
+                ;;
+        esac
+
+        local mount_storage="false"
+        [[ "$STORAGE_SIZE" != "none" && "$is_primary" == "true" ]] && mount_storage="true"
+
+        # A ReadWriteOnce volume cannot be attached to pods on two nodes, and two
+        # replicas of a datastore would each hold different data.
+        local replicas=2
+        if [[ "$mount_storage" == "true" || "$svc_type" == "database" || "$svc_type" == "cache" ]]; then
+            replicas=1
         fi
-        
+
         cat > "$output_dir/20-${svc_name}.yaml" << EOF
 ---
 apiVersion: apps/v1
@@ -362,7 +487,7 @@ metadata:
   name: ${APP_NAME}-${svc_name}
   namespace: $APP_NAME
 spec:
-  replicas: 2
+  replicas: ${replicas}
   selector:
     matchLabels:
       app: ${APP_NAME}
@@ -384,8 +509,8 @@ spec:
             memory: "${MEMORY_REQ}"
             cpu: "${CPU_REQ}"
           limits:
-            memory: "$(echo $MEMORY_REQ | sed 's/Mi$/*2Mi/;s/Gi$/*2Gi/' | bc 2>/dev/null || echo ${MEMORY_REQ})"
-            cpu: "$(echo $CPU_REQ | sed 's/m$/*2m/' | bc 2>/dev/null || echo ${CPU_REQ})"
+            memory: "${memory_limit}"
+            cpu: "${cpu_limit}"
         livenessProbe:
           tcpSocket:
             port: ${svc_port}
@@ -396,114 +521,8 @@ spec:
             port: ${svc_port}
           initialDelaySeconds: 10
           periodSeconds: 5
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${APP_NAME}-${svc_name}
-  namespace: $APP_NAME
-$([[ "$is_primary" == "true" ]] && cat << ANNOTATIONS
-  annotations:
-    mynodeone.io/subdomain: "${LOCAL_SUBDOMAIN}"
-    mynodeone.io/auto-register: "true"
-ANNOTATIONS
-)
-spec:
-  type: ${service_type}
-  ports:
-  - port: 80
-    targetPort: ${svc_port}
-  selector:
-    app: ${APP_NAME}
-    component: ${svc_name}
-EOF
-    done
-    
-    success "Manifests generated in: $output_dir"
-    MANIFEST_DIR="$output_dir"
-    echo ""
-}
-
-# Generate Kubernetes manifests from interactive input
-generate_manifests() {
-    local output_dir="/tmp/mynodeone-deploy-$$"
-    mkdir -p "$output_dir"
-    
-    log "Generating Kubernetes manifests..."
-    
-    # Namespace
-    cat > "$output_dir/00-namespace.yaml" << EOF
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: $APP_NAME
-  labels:
-    app.kubernetes.io/name: $APP_NAME
-    app.kubernetes.io/managed-by: mynodeone-deploy
-EOF
-    
-    # Storage (if requested)
-    if [[ "$STORAGE_SIZE" != "none" ]]; then
-        cat > "$output_dir/10-storage.yaml" << EOF
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ${APP_NAME}-data
-  namespace: $APP_NAME
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn
-  resources:
-    requests:
-      storage: $STORAGE_SIZE
-EOF
-    fi
-    
-    # Services and deployments
-    for idx in "${!SERVICE_NAMES[@]}"; do
-        local svc_name="${SERVICE_NAMES[$idx]}"
-        local svc_image="${SERVICE_IMAGES[$idx]}"
-        local svc_port="${SERVICE_PORTS[$idx]}"
-        local is_primary=$([[ $idx -eq 0 ]] && echo "true" || echo "false")
-        
-        cat > "$output_dir/20-${svc_name}.yaml" << EOF
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${APP_NAME}-${svc_name}
-  namespace: $APP_NAME
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: ${APP_NAME}
-      component: ${svc_name}
-  template:
-    metadata:
-      labels:
-        app: ${APP_NAME}
-        component: ${svc_name}
-    spec:
-      containers:
-      - name: ${svc_name}
-        image: ${svc_image}
-        ports:
-        - containerPort: ${svc_port}
-          name: http
-        resources:
-          requests:
-            memory: "${MEMORY_REQ}"
-            cpu: "${CPU_REQ}"
-          limits:
-            memory: "$(echo $MEMORY_REQ | sed 's/Mi/*2Mi/;s/Gi/*2Gi/' | bc 2>/dev/null || echo $MEMORY_REQ)"
-            cpu: "$(echo $CPU_REQ | sed 's/m/*2m/' | bc 2>/dev/null || echo $CPU_REQ)"
-$(if [[ "$STORAGE_SIZE" != "none" && "$is_primary" == "true" ]]; then
-cat << 'VOLMOUNT'
+$(if [[ "$mount_storage" == "true" ]]; then
+cat << VOLMOUNT
         volumeMounts:
         - name: data
           mountPath: /data
@@ -512,17 +531,6 @@ cat << 'VOLMOUNT'
         persistentVolumeClaim:
           claimName: ${APP_NAME}-data
 VOLMOUNT
-else
-echo "        livenessProbe:"
-echo "          httpGet:"
-echo "            path: /"
-echo "            port: ${svc_port}"
-echo "          initialDelaySeconds: 30"
-echo "        readinessProbe:"
-echo "          httpGet:"
-echo "            path: /"
-echo "            port: ${svc_port}"
-echo "          initialDelaySeconds: 10"
 fi)
 
 ---
@@ -539,7 +547,7 @@ cat << ANNOTATIONS
 ANNOTATIONS
 fi)
 spec:
-  type: $([[ "$is_primary" == "true" ]] && echo "LoadBalancer" || echo "ClusterIP")
+  type: ${service_type}
   ports:
   - port: 80
     targetPort: ${svc_port}
@@ -548,10 +556,15 @@ spec:
     component: ${svc_name}
 EOF
     done
-    
+
     success "Manifests generated in: $output_dir"
     MANIFEST_DIR="$output_dir"
     echo ""
+}
+
+# Generate manifests from interactive input
+generate_manifests() {
+    render_manifests "primary_only"
 }
 
 # Extract service details from docker-compose
@@ -559,17 +572,46 @@ extract_service_details() {
     local compose_file="$1"
     local service_name="$2"
     
+    # The lines belonging to this service
+    local block
+    block=$(awk -v svc="$service_name" '
+        $0 ~ "^  " svc ":" { in_service = 1; next }
+        in_service && /^([^ #]| [^ #]|  [^ #])/ { exit }
+        in_service { print }
+    ' "$compose_file")
+
     # Extract image
-    local image=$(grep -A 10 "^  ${service_name}:" "$compose_file" | grep "image:" | head -1 | awk '{print $2}' | tr -d '"')
-    
-    # Extract ports (first exposed port)
-    local port=$(grep -A 20 "^  ${service_name}:" "$compose_file" | grep -E "^    - .*:.*" | head -1 | awk -F: '{print $NF}' | tr -d ' "')
-    
-    # If no port in standard format, try "expose" section
-    if [[ -z "$port" ]]; then
-        port=$(grep -A 20 "^  ${service_name}:" "$compose_file" | grep -A 5 "expose:" | grep "^    -" | head -1 | awk '{print $2}' | tr -d ' "')
+    local image
+    image=$(printf '%s\n' "$block" | awk '$1 == "image:" { print $2; exit }' | tr -d "\"'")
+
+    # Extract the container side of the first published port ("8080:80", "127.0.0.1:80:80/tcp")
+    local port
+    port=$(printf '%s\n' "$block" | awk '
+        /^ *ports:/ { in_ports = 1; next }
+        in_ports && /^ *-/ { print; exit }
+        in_ports { in_ports = 0 }
+    ' | sed -E 's/^ *- *//; s/["'"'"' ]//g; s#/[a-z]+$##; s/.*://')
+
+    # If no published port, try the "expose" section
+    if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+        port=$(printf '%s\n' "$block" | awk '
+            /^ *expose:/ { in_expose = 1; next }
+            in_expose && /^ *-/ { print; exit }
+            in_expose { in_expose = 0 }
+        ' | sed -E 's/^ *- *//; s/["'"'"' ]//g')
     fi
-    
+
+    # The port is what the health probes check, so a wrong guess fails the deployment
+    if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+        case "$image" in
+            *postgres*|*pgvector*|*timescale*) port="5432" ;;
+            *mysql*|*mariadb*) port="3306" ;;
+            *redis*|*valkey*) port="6379" ;;
+            *mongo*) port="27017" ;;
+            *) port="" ;;
+        esac
+    fi
+
     # Default port if not found
     if [[ -z "$port" ]]; then
         port="80"
@@ -590,7 +632,7 @@ check_compose_compatibility() {
         echo "      Kompose cannot build images - only reference existing ones."
         echo ""
         echo "  Fix: Replace 'build:' with 'image:' pointing to registry images."
-        echo "  Example: image: myregistry.com/myapp:latest"
+        echo "  Example: image: myregistry.com/myapp:1.0.0"
         echo ""
     fi
 }
@@ -656,13 +698,10 @@ convert_docker_compose() {
     
     # Use kompose if available
     if command -v kompose &> /dev/null; then
-        local output_dir="/tmp/mynodeone-deploy-$$"
-        mkdir -p "$output_dir"
-        
-        cd "$(dirname "$compose_file")"
-        kompose convert -f "$compose_file" -o "$output_dir" &>/dev/null
-        
-        if [[ $? -eq 0 ]]; then
+        prepare_output_dir
+        local output_dir="$DEPLOY_WORK_DIR"
+
+        if (cd "$(dirname "$compose_file")" && kompose convert -f "$(basename "$compose_file")" -o "$output_dir") &>/dev/null; then
             success "Converted with kompose"
             
             # Check for common compatibility issues
@@ -683,30 +722,8 @@ convert_docker_compose() {
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
             
-            ask "What's your app name?"
-            echo "  (lowercase, no spaces, used for namespace)"
-            read -p "App name: " APP_NAME
-            APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
-            
-            if [[ -z "$APP_NAME" ]]; then
-                error "App name is required"
-                return 1
-            fi
-            
-            success "App name: $APP_NAME"
-            echo ""
-            
-            ask "Local subdomain for cluster access?"
-    echo "  (your app will be at: <subdomain>.${CLUSTER_DOMAIN}.local)"
-    read -p "Subdomain [$APP_NAME]: " LOCAL_SUBDOMAIN
-    LOCAL_SUBDOMAIN=${LOCAL_SUBDOMAIN:-$APP_NAME}
-    LOCAL_SUBDOMAIN=$(echo "$LOCAL_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
-    
-    success "Subdomain: $LOCAL_SUBDOMAIN"
-    echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
-            echo "  Access: http://$LOCAL_SUBDOMAIN.${CLUSTER_DOMAIN}.local"
-            echo ""
-            
+            prompt_app_identity || return 1
+
             # Update namespace in all manifests
             for manifest in "$output_dir"/*.yaml; do
                 if [[ -f "$manifest" ]]; then
@@ -735,15 +752,8 @@ EOF
             fi
             
             # Ask about public access
-            ask "Make this app publicly accessible?"
-            read -p "Public access [y/N]: " MAKE_PUBLIC
-            
-            if [[ "$MAKE_PUBLIC" =~ ^[Yy] ]]; then
-                configure_public_domains
-            else
-                PUBLIC_DOMAINS=""
-            fi
-            
+            prompt_public_access
+
             return 0
         fi
     fi
@@ -758,16 +768,19 @@ EOF
     fi
     
     # Filter out non-container services (volumes, networks)
-    declare -a REAL_SERVICES
-    declare -a SERVICE_IMAGES
-    declare -a SERVICE_PORTS
-    
+    local REAL_SERVICES=()
+    SERVICE_IMAGES=()
+    SERVICE_PORTS=()
+
     for svc in "${SERVICE_ARRAY[@]}"; do
         # Extract service details
         local details=$(extract_service_details "$compose_file" "$svc")
         local image=$(echo "$details" | cut -d'|' -f1)
         local port=$(echo "$details" | cut -d'|' -f2)
-        
+        if [[ -z "$port" ]]; then
+            port="80"
+        fi
+
         # Skip if no image (likely a volume or network definition)
         if [[ -z "$image" ]]; then
             continue
@@ -783,11 +796,14 @@ EOF
     # Update global arrays
     SERVICE_ARRAY=("${REAL_SERVICES[@]}")
     SERVICE_NAMES=("${REAL_SERVICES[@]}")
-    
+
     echo ""
     success "Extracted ${#SERVICE_ARRAY[@]} services from docker-compose"
-    
-    # Ask for resource requirements only
+
+    echo ""
+    prompt_app_identity || return 1
+
+    # Resource requirements
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Resource Requirements"
@@ -810,9 +826,12 @@ EOF
     read -p "Storage size (or 'none') [10Gi]: " STORAGE_SIZE
     STORAGE_SIZE=${STORAGE_SIZE:-10Gi}
     
+    echo ""
+    prompt_public_access
+
     # Generate manifests with extracted data
-    generate_manifests_from_compose
-    
+    render_manifests "expose_all"
+
     return 0
 }
 
@@ -824,16 +843,39 @@ deploy_to_cluster() {
     echo ""
     
     # Apply manifests
-    kubectl apply -f "$manifest_dir/" 2>&1 | grep -v "unchanged" || true
-    
+    local apply_output
+    if ! apply_output=$(kubectl apply -f "$manifest_dir/" 2>&1); then
+        echo "$apply_output"
+        echo ""
+        error "kubectl apply failed, so the app was not deployed"
+        return 1
+    fi
+    echo "$apply_output" | grep -v "unchanged" || true
+
     echo ""
     log "Waiting for deployment..."
-    
+
     # Wait for deployment
     sleep 5
-    kubectl wait --for=condition=available --timeout=180s \
-        deployment -n "$APP_NAME" --all 2>/dev/null || true
-    
+
+    if [[ -z "$(kubectl get deployments -n "$APP_NAME" -o name 2>/dev/null)" ]]; then
+        echo ""
+        warn "No Deployments found in namespace '$APP_NAME', so there is nothing to wait for"
+        return 0
+    fi
+
+    local wait_output
+    if ! wait_output=$(kubectl wait --for=condition=available --timeout=180s \
+        deployment -n "$APP_NAME" --all 2>&1); then
+        echo "$wait_output"
+        echo ""
+        kubectl get pods -n "$APP_NAME" 2>&1 || true
+        echo ""
+        error "The app did not become available within 180s"
+        echo "  Check why: kubectl describe pods -n $APP_NAME"
+        return 1
+    fi
+
     echo ""
     success "Deployment complete"
 }
@@ -949,7 +991,7 @@ register_app() {
         if bash "$MYNODEONE_ROOT/scripts/domains/sync-dns.sh" &>/dev/null; then
             success "DNS updated"
         else
-            warn "DNS sync failed (run manually: sudo bash ~/MyNodeOne/scripts/domains/sync-dns.sh)"
+            warn "DNS sync failed (run manually: sudo bash $MYNODEONE_ROOT/scripts/domains/sync-dns.sh)"
         fi
     fi
     
@@ -1323,7 +1365,7 @@ show_summary() {
         echo "   2. Run: sudo $MYNODEONE_ROOT/scripts/operations/manage-app-visibility.sh"
         echo "   3. Access your app at: https://$(echo $PUBLIC_DOMAINS | awk '{print $1}')"
     else
-        echo "   1. Access your app at: http://${LOCAL_SUBDOMAIN}.mynodeone.local"
+        echo "   1. Access your app at: http://${LOCAL_SUBDOMAIN}.${CLUSTER_DOMAIN}.local"
         echo "   2. To make it public, run: sudo $MYNODEONE_ROOT/scripts/operations/manage-app-visibility.sh"
     fi
     
@@ -1363,6 +1405,10 @@ main() {
             ask "App name?"
             read -p "Name: " APP_NAME
             APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+            if [[ -z "$APP_NAME" ]]; then
+                error "App name is required"
+                exit 1
+            fi
             LOCAL_SUBDOMAIN="$APP_NAME"
             ;;
         *)

@@ -30,7 +30,7 @@ Configures local DNS resolution for `.local` domains.
 Sets up reverse proxy for application access.
 
 ### `setup-admin-dashboard.sh`
-Deploys and configures the admin dashboard.
+Deploys the Kubernetes Dashboard with a limited operator login (no access to Secrets) and prints a short-lived token. Re-run it, or use the `kubectl create token` command it prints, to get a new token.
 
 ### `setup-enterprise-registry.sh`
 Configures enterprise container registry.
@@ -49,7 +49,7 @@ Establishes SSH keys between control plane and management laptop.
 ```
 
 ### `setup-control-plane-sudo.sh`
-Configures passwordless sudo for control plane operations.
+Offers passwordless `sudo kubectl` for VPS and management node setup. It adds the rule (`/etc/sudoers.d/mynodeone`) only with your consent, because `sudo kubectl` is equal to root on every node. `uninstall-mynodeone.sh` removes it.
 
 ## Security
 

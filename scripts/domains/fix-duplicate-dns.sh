@@ -26,8 +26,11 @@
 #   2. Removes old "MyNodeOne Apps" section entries
 #   3. Removes standalone duplicate entries (demo-chat-app, demoapp)
 #   4. Syncs service registry from Kubernetes
-#   5. Exports clean DNS entries from enterprise registry
-#   6. Updates /etc/hosts with single, consistent entries
+#   5. Asks whatever owns /etc/hosts on this host to bring it up to date
+#
+# Steps 2 and 3 are the only writes this script makes itself, and it makes them on
+# purpose. They remove names from retired systems, including under other domains,
+# which the regular writers leave alone.
 #
 # USAGE:
 #   sudo ./scripts/domains/fix-duplicate-dns.sh
@@ -112,10 +115,13 @@ if [ -z "$CLUSTER_DOMAIN" ] && [ -f "$ACTUAL_HOME/.mynodeone/config.env" ]; then
 fi
 CLUSTER_DOMAIN="${CLUSTER_DOMAIN:-mynodeone}"
 
+# Tests point this at a temp file.
+HOSTS_FILE="${MYNODEONE_HOSTS_FILE:-/etc/hosts}"
+
 log_info "Checking current DNS entries..."
 echo ""
-echo "Current entries in /etc/hosts:"
-grep -E "(demo-chat-app|demoapp|demo)\." /etc/hosts 2>/dev/null || echo "  (none found)"
+echo "Current entries in $HOSTS_FILE:"
+grep -E "(demo-chat-app|demoapp|demo)\." "$HOSTS_FILE" 2>/dev/null || echo "  (none found)"
 echo ""
 
 read -p "Continue with cleanup? [y/N]: " confirm
@@ -127,18 +133,30 @@ fi
 echo ""
 
 # Backup hosts file
-log_info "Backing up /etc/hosts..."
-sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S)
+log_info "Backing up $HOSTS_FILE..."
+sudo cp "$HOSTS_FILE" "$HOSTS_FILE.backup.$(date +%Y%m%d_%H%M%S)"
 log_success "Backup created"
+
+# shellcheck source=../lib/hosts-block.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/hosts-block.sh"
 
 # Remove old MyNodeOne Apps entries
 log_info "Removing old DNS entries..."
-sudo sed -i '/# MyNodeOne Apps/,/# End MyNodeOne Apps/d' /etc/hosts 2>/dev/null || true
+if ! hosts_remove_block "$HOSTS_FILE" '# MyNodeOne Apps' '# End MyNodeOne Apps'; then
+    log_warn "Could not update $HOSTS_FILE"
+    exit 1
+fi
 
 # Also remove any standalone demo entries that might exist
 log_info "Removing any standalone demo entries..."
-sudo sed -i '/demo-chat-app\..*\.local/d' /etc/hosts 2>/dev/null || true
-sudo sed -i '/demoapp\..*\.local/d' /etc/hosts 2>/dev/null || true
+HOSTS_FILTERED=$(mktemp)
+grep -vE '(demo-chat-app|demoapp)\..*\.local' "$HOSTS_FILE" >"$HOSTS_FILTERED" || true
+if ! cmp -s "$HOSTS_FILTERED" "$HOSTS_FILE" && ! hosts_write_in_place "$HOSTS_FILTERED" "$HOSTS_FILE"; then
+    rm -f "$HOSTS_FILTERED"
+    log_warn "Could not update $HOSTS_FILE"
+    exit 1
+fi
+rm -f "$HOSTS_FILTERED"
 
 log_success "Old entries removed"
 
@@ -167,20 +185,16 @@ else
     log_warn "Could not sync (this is OK if no apps installed yet)"
 fi
 
-# Export and update DNS
+# Update DNS through whatever owns /etc/hosts on this machine
 log_info "Updating DNS from registry..."
-if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/registry-dns.txt; then
-    sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
-    {
-        echo ""
-        cat /tmp/registry-dns.txt
-        echo ""
-    } | sudo tee -a /etc/hosts > /dev/null
-    rm -f /tmp/registry-dns.txt
-    log_success "DNS updated from registry"
-else
-    log_warn "Could not export DNS"
-fi
+# shellcheck source=../lib/service-registry-lib.sh
+source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+DNS_RESULT=$(sr_refresh_hosts)
+case "$DNS_RESULT" in
+    updated) log_success "DNS updated from registry" ;;
+    deferred) log_info "The node agent manages DNS here; it adds new names when the cluster config changes" ;;
+    *) log_warn "Could not update DNS from the registry" ;;
+esac
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -188,9 +202,9 @@ echo "  ✅ Cleanup Complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-log_info "New DNS entries:"
+log_info "DNS entries now in $HOSTS_FILE:"
 echo ""
-grep "# MyNodeOne Services" -A 20 /etc/hosts | grep -E "\." | head -n 10
+grep -E "\.${CLUSTER_DOMAIN}\.local" "$HOSTS_FILE" | head -n 10 || true
 
 echo ""
 log_info "If you had demo app, it should now be at:"

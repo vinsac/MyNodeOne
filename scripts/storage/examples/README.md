@@ -274,8 +274,8 @@ kubectl logs cronjob/app-backup
 **Fix:**
 ```bash
 # Test MinIO access
-kubectl run -it --rm debug --image=minio/mc --restart=Never -- \
-  mc alias set minio http://minio-pc1.mynodeone.local:9000 ACCESS_KEY SECRET_KEY
+kubectl run -it --rm debug --image=cgr.dev/chainguard/minio-client:latest --restart=Never -- \
+  alias set minio http://minio-pc1.mynodeone.local:9000 ACCESS_KEY SECRET_KEY
 
 # Verify credentials
 cat ~/minio-<nodename>-credentials.txt

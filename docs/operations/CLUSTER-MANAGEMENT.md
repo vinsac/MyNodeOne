@@ -29,15 +29,10 @@ kubectl top pods -A
 ## Adding Worker Nodes
 
 ```bash
-# On control plane, get join command
-cat /root/mynodeone-join-token.txt
+# On the control plane, get the join token
+sudo cat /var/lib/rancher/k3s/server/agent-token
 
-# On new machine, run join command shown
-sudo k3s agent --server https://... --token ...
-```
-
-Or use the helper script:
-```bash
+# On the new machine, run the helper script and paste the token when asked
 sudo ./scripts/nodes/add-worker-node.sh
 ```
 

@@ -1,5 +1,13 @@
 # PostgreSQL Database Example with Persistent Storage
 # Deploy with: kubectl apply -f postgres-database.yaml
+#
+# The database does not start until you create its credentials, because this example
+# deliberately ships no password (the pod waits in CreateContainerConfigError):
+#
+#   kubectl create secret generic postgres-credentials -n databases \
+#     --from-literal=POSTGRES_USER=admin \
+#     --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+#     --from-literal=POSTGRES_DB=myapp
 
 ---
 apiVersion: v1
@@ -8,18 +16,6 @@ metadata:
   name: databases
   labels:
     name: databases
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-credentials
-  namespace: databases
-type: Opaque
-stringData:
-  POSTGRES_USER: admin
-  POSTGRES_PASSWORD: change-this-password-in-production
-  POSTGRES_DB: myapp
 
 ---
 apiVersion: v1
@@ -54,7 +50,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: postgres:16-alpine
+        image: postgres:16.15-alpine
         ports:
         - containerPort: 5432
           name: postgres

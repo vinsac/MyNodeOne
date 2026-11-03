@@ -53,7 +53,7 @@ external-apps/
 version: '3'
 services:
   web:
-    image: your-registry/myapp:latest
+    image: your-registry/myapp:1.0.0
     ports:
       - "80:80"
 ```

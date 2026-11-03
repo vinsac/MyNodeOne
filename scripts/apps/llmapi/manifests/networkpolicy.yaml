@@ -1,0 +1,201 @@
+# Default-deny ingress for the llmapi namespace, with explicit allows.
+#
+# How this interacts with the public path:
+#   VPS Traefik -> tailnet -> MetalLB IP:80 -> kube-proxy DNAT -> gateway pod:8000
+#
+# k3s enforces NetworkPolicy with its embedded kube-router, which filters in the
+# FORWARD chain. kube-proxy has already done the DNAT in PREROUTING by then, so the
+# packet is addressed to the pod IP on port 8000 (not the Service port 80). Its
+# source is the original client, or the first node's address when kube-proxy
+# masqueraded it on the way to another node. Neither is a pod, so a namespaceSelector
+# or podSelector `from` would never match it and would cut off public traffic. That
+# is why the gateway rule below has no `from` at all: any source, port 8000 only.
+#
+# Traffic that needs no rule here:
+#   - kubelet probes: node-to-local-pod traffic is always allowed (kube-router permits
+#     sources of type LOCAL).
+#   - health-check.sh, monitor-llmapi.sh, manage-keys.sh: these use `kubectl exec` and
+#     `kubectl logs`, which go through the kubelet rather than the pod network.
+#   - Prometheus: it only scrapes the gateway (servicemonitor.yaml), on port 8000,
+#     which the gateway rule already allows.
+#   - Model copy pods (install-llmapi.sh, copy-predownloaded-models.sh) and the backup
+#     shell in scripts/backup: files move through `kubectl exec` or a mounted volume,
+#     and nothing connects to these pods.
+#   - sync-models-to-workers.sh and the health monitor: they run on the node, over SSH
+#     and kubectl.
+#
+# Egress is not restricted. The backends need it to download models, and the backup and
+# restore jobs, like everything else in the namespace, can reach DNS.
+#
+# tests/check_networkpolicy.py evaluates these flows against the manifests.
+#
+# To back this out: kubectl delete networkpolicy -n llmapi --all
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: llmapi
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# Public API, Traefik, MetalLB and Prometheus. See the note above on why there is no `from`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-allow-http
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: llmapi-gateway
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-allow-gateway
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-gateway
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-gateway
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: llmapi-postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-gateway
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# The pg_dump CronJob and the restore Job (scripts/backup/llmapi-postgres-*.yaml) connect
+# over the network, and their pods share this label.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-backup
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: llmapi-postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-postgres-backup
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vllm-allow-gateway
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: vllm
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-gateway
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llamacpp-allow-gateway
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: llamacpp
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: embedding-allow-gateway
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: embedding
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ollama-allow-gateway
+  namespace: llmapi
+spec:
+  podSelector:
+    matchLabels:
+      app: llmapi-ollama
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llmapi-gateway
+    ports:
+    - protocol: TCP
+      port: 11434

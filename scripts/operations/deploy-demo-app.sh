@@ -246,18 +246,14 @@ EOF
                 DEMO_URL="http://$DEMO_IP"
             fi
             
-            # Update local DNS
-            if bash "$PROJECT_ROOT/scripts/lib/service-registry.sh" export-dns "${CLUSTER_DOMAIN}.local" 2>/dev/null > /tmp/demo-dns-entries.txt; then
-                sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
-                sudo sed -i '/# MyNodeOne Services/,/^$/d' /etc/hosts 2>/dev/null || true
-                {
-                    echo ""
-                    cat /tmp/demo-dns-entries.txt
-                    echo ""
-                } | sudo tee -a /etc/hosts > /dev/null
-                rm -f /tmp/demo-dns-entries.txt
-                log_success "Local DNS updated"
-            fi
+            # Update local DNS, through whatever owns /etc/hosts on this machine
+            # shellcheck source=../lib/service-registry-lib.sh
+            source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+            case "$(sr_refresh_hosts)" in
+                updated) log_success "Local DNS updated" ;;
+                deferred) log_info "The node agent adds new names at its next poll (about a minute)" ;;
+                *) log_warn "Could not update local DNS" ;;
+            esac
         else
             # Fallback to old method if new registry not available
             log_warn "Enterprise registry not available, using direct access"

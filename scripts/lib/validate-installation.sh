@@ -63,18 +63,18 @@ run_test() {
     if eval "$test_command" &>/dev/null; then
         echo -e "${GREEN}✓${NC}"
         TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
     else
         if [ "$is_critical" = "true" ]; then
             echo -e "${RED}✗ FAILED${NC}"
             TESTS_FAILED=$((TESTS_FAILED + 1))
-            return 1
         else
             echo -e "${YELLOW}⚠ WARNING${NC}"
             TESTS_WARNED=$((TESTS_WARNED + 1))
-            return 2
         fi
     fi
+    # The counters carry the result. A non-zero return here would stop the whole run
+    # at its first failure under set -e.
+    return 0
 }
 
 validate_common() {
@@ -132,7 +132,7 @@ validate_control_plane() {
         # List registered services
         echo
         log_info "Registered services:"
-        echo "$registry_json" | jq -r 'to_entries[] | "  • \((.value.subdomain // empty) + (if .value.subdomain == "" then "" else "." end) + (env.CLUSTER_DOMAIN // "mynodeone")).local → \(.value.ip)"' 2>/dev/null || echo "  (Could not parse services)"
+        echo "$registry_json" | jq -r 'to_entries[] | (.value.local_name // .value.subdomain // "") as $name | "  • \(if $name == "" then "" else $name + "." end)\(env.CLUSTER_DOMAIN // "mynodeone").local → \(.value.ip)"' 2>/dev/null || echo "  (Could not parse services)"
         echo
     else
         log_warn "Service registry is empty or malformed"
@@ -147,14 +147,31 @@ validate_control_plane() {
     run_test "Longhorn storage class exists" "kubectl get storageclass longhorn" true
     run_test "Default storage class set" "kubectl get storageclass | grep -q '(default)'" true
     
-    # Credentials files
-    if [ -f $ACTUAL_HOME/mynodeone-join-token.txt ]; then
-        log_success "Join token saved (needed for adding nodes)"
-    else
-        log_warn "Join token file not found"
-    fi
-    
+    check_join_token
+
     echo
+}
+
+# The join token stays in the K3s data directory, which only root can read. The copy
+# older installs kept in the home directory is removed by the bootstrap, so finding
+# one now is the problem. This never reads the token, it only checks it is there.
+check_join_token() {
+    local agent_token="${K3S_DATA_DIR:-/var/lib/rancher/k3s}/server/agent-token"
+
+    if [ -f "$ACTUAL_HOME/mynodeone-join-token.txt" ]; then
+        log_warn "Old join token copy found: $ACTUAL_HOME/mynodeone-join-token.txt"
+        log_warn "It is no longer needed. Delete it: shred -u $ACTUAL_HOME/mynodeone-join-token.txt"
+        TESTS_WARNED=$((TESTS_WARNED + 1))
+    fi
+
+    if [ -s "$agent_token" ] || sudo -n test -s "$agent_token" 2>/dev/null; then
+        log_success "Join token present (needed for adding nodes): sudo cat $agent_token"
+    elif [ "$(id -u)" -ne 0 ] && ! sudo -n true 2>/dev/null; then
+        log_info "Could not check the join token without root: $agent_token"
+    else
+        log_warn "Join token not found: $agent_token"
+        TESTS_WARNED=$((TESTS_WARNED + 1))
+    fi
 }
 
 validate_management_laptop() {
@@ -168,7 +185,7 @@ validate_management_laptop() {
     # Configuration
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
-        log_success "Config loaded: Cluster '$CLUSTER_NAME' (domain: $CLUSTER_DOMAIN.local)"
+        log_success "Config loaded: Cluster '${CLUSTER_NAME:-unknown}' (domain: ${CLUSTER_DOMAIN:-unknown}.local)"
     else
         log_error "Config file not found: $CONFIG_FILE"
         TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -426,8 +443,8 @@ main() {
             ;;
     esac
     
-    # Print summary
-    print_summary
+    # Print summary. It returns non-zero on failures, and the exit below reports those.
+    print_summary || true
     
     # Exit with appropriate code
     if [ $TESTS_FAILED -gt 0 ]; then

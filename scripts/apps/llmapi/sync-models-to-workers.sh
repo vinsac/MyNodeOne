@@ -16,14 +16,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_DIR="/var/lib/llmapi/models"
+SOURCE_DIR="${SOURCE_DIR:-/var/lib/llmapi/models}"
 DEST_DIR="/var/lib/llmapi/models"
 
 # Detect control plane user (authoritative source: cluster config)
 # This is critical because SSH keys are owned by the control plane user, not root
 CONTROL_PLANE_USER=""
 if command -v kubectl &>/dev/null && kubectl get nodes &>/dev/null 2>&1; then
-    CONTROL_PLANE_USER=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.control-plane-user}' 2>/dev/null)
+    CONTROL_PLANE_USER=$(kubectl get configmap -n kube-system cluster-info -o jsonpath='{.data.control-plane-user}' 2>/dev/null || true)
 fi
 
 # Fallback to SUDO_USER if cluster config not available
@@ -58,8 +58,13 @@ NC='\033[0m' # No Color
 # =============================================================================
 
 error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
+    report_failure "$1"
     exit 1
+}
+
+# For use inside sync_to_worker: one bad worker must not stop the others.
+report_failure() {
+    echo -e "${RED}ERROR: $1${NC}" >&2
 }
 
 info() {
@@ -174,7 +179,7 @@ sync_to_worker() {
     local ssh_user
     ssh_user=$(check_ssh_access "$node_ip" "$node_name")
     if [[ $? -ne 0 ]]; then
-        error "SSH access check failed for $node_ip"
+        report_failure "SSH access check failed for $node_ip"
         return 1
     fi
     
@@ -211,6 +216,14 @@ sync_to_worker() {
     info "Contents:"
     ls -lh "$SOURCE_DIR" 2>/dev/null || warn "Cannot list source directory"
     echo ""
+
+    # All three model types below use this.
+    local rsync_cmd
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        rsync_cmd="sudo -u $SUDO_USER rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
+    else
+        rsync_cmd="rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
+    fi
     
     # Create destination directory on worker
     info "Creating destination directory on $node_ip..."
@@ -219,7 +232,7 @@ sync_to_worker() {
     if $ssh_cmd -o BatchMode=yes "${ssh_user}@${node_ip}" "sudo mkdir -p $DEST_DIR && sudo chown -R ${ssh_user}:${ssh_user} $DEST_DIR" 2>&1 | tee "$TEMP_DIR/ssh-mkdir.log"; then
         success "Destination directory created: $DEST_DIR"
     else
-        error "Failed to create destination directory on $node_ip"
+        report_failure "Failed to create destination directory on $node_ip"
         info "Error details: $(cat "$TEMP_DIR/ssh-mkdir.log" 2>/dev/null)"
         return 1
     fi
@@ -261,13 +274,6 @@ sync_to_worker() {
         echo ""
         
         info "Running: rsync -av --progress $rsync_ssh_opt ..."
-        local rsync_cmd
-        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-            rsync_cmd="sudo -u $SUDO_USER rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
-        else
-            rsync_cmd="rsync -av --progress -e 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes'"
-        fi
-        
         if eval "$rsync_cmd \"$SOURCE_DIR/vllm/\" \"${ssh_user}@${node_ip}:${DEST_DIR}/vllm/\"" 2>&1 | tee "$TEMP_DIR/rsync-vllm.log"; then
             success "vLLM models synced to $node_ip"
         else
@@ -341,7 +347,7 @@ sync_to_worker() {
             success "✓ Permissions set to ${ssh_user}:${ssh_user} with 755 (init container can read)"
             info "Init container will fix ownership to 1000:1000 when copying to PVC"
         else
-            error "Failed to fix permissions on $node_ip"
+            report_failure "Failed to fix permissions on $node_ip"
             info "Error details: $(cat "$TEMP_DIR/ssh-chown.log" 2>/dev/null)"
             return 1
         fi
@@ -381,8 +387,8 @@ main() {
             info "Using specified IP for sync: $target_ip"
         else
             # Try to get IP from label if hostname provided
-            target_ip=$(kubectl get node "$target_node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null)
-            
+            target_ip=$(kubectl get node "$target_node" -o jsonpath='{.metadata.labels.mynodeone\.io/worker-ip}' 2>/dev/null || true)
+
             if [[ -n "$target_ip" ]]; then
                 worker_data="$target_node $target_ip"
             else
@@ -420,10 +426,13 @@ main() {
         fi
         
         # Pass both IP and hostname to sync_to_worker
-        if sync_to_worker "$target" "$node_name"; then
-            ((success_count++))
+        # </dev/null: ssh and rsync would otherwise read the list of workers from stdin
+        # and end this loop early. The counters avoid ((x++)), which returns non-zero
+        # when x is 0 and would exit under set -e.
+        if sync_to_worker "$target" "$node_name" </dev/null; then
+            success_count=$((success_count + 1))
         else
-            ((fail_count++))
+            fail_count=$((fail_count + 1))
         fi
     done <<< "$worker_data"
     
@@ -442,8 +451,8 @@ main() {
     echo "  • Or scale vLLM to use both GPUs: kubectl scale statefulset/vllm -n llmapi --replicas=2" >&2
     echo "" >&2
     
-    # Return success if at least one node synced successfully, failure if all failed
-    if [[ $success_count -gt 0 ]]; then
+    # Any failure counts, so the caller can say the sync was incomplete.
+    if [[ $fail_count -eq 0 && $success_count -gt 0 ]]; then
         return 0
     else
         return 1

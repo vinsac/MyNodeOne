@@ -38,7 +38,7 @@ source "$SCRIPT_DIR/../lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 
-clear
+clear 2>/dev/null || true
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🗑️  Remove Domain from Cluster"
@@ -116,23 +116,31 @@ fi
 echo "Domain to remove: $DOMAIN"
 echo ""
 
+# A URL belongs to a domain if it is that domain or a subdomain of it. A plain suffix
+# match would also take notexample.com when removing example.com.
+JQ_IN_DOMAIN='def in_domain($d): . == $d or endswith("." + $d);'
+
 # Show services using this domain
 AFFECTED_SERVICES=$(kubectl get configmap -n kube-system domain-registry \
     -o jsonpath='{.data.routing\.json}' 2>/dev/null | \
-    jq -r --arg domain "$DOMAIN" 'to_entries[] | select(((.value.expose // [])[]? | endswith($domain))) | .key' 2>/dev/null || echo "")
+    jq -r --arg domain "$DOMAIN" "$JQ_IN_DOMAIN"'to_entries[] | select(any((.value.expose // [])[]?; in_domain($domain))) | .key' 2>/dev/null || echo "")
 
 if [ -n "$AFFECTED_SERVICES" ]; then
     log_warn "This domain is currently used by the following services:"
     echo ""
-    
+
+    # Only used to label the list, so an unreadable registry falls back to the key.
+    # shellcheck source=../lib/service-registry-lib.sh
+    source "$PROJECT_ROOT/scripts/lib/service-registry-lib.sh"
+    SERVICES_JSON=$(sr_get_services 2>/dev/null) || SERVICES_JSON='{}'
+
     while read -r service; do
-        local_name=$(kubectl get configmap -n kube-system service-registry \
-            -o jsonpath="{.data.services\.json}" 2>/dev/null | \
-            jq -r --arg service "$service" '.[ $service ].local_name // $service' 2>/dev/null || echo "$service")
+        local_name=$(sr_lookup_entry "$SERVICES_JSON" "$service" 2>/dev/null | \
+            jq -r --arg service "$service" 'if (.local_name // "") == "" then $service else .local_name end' 2>/dev/null || echo "$service")
         
         exposed_urls=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r --arg service "$service" --arg domain "$DOMAIN" '.[ $service ].expose[]? | select(endswith($domain))' 2>/dev/null | paste -sd, - || echo "")
+            jq -r --arg service "$service" --arg domain "$DOMAIN" "$JQ_IN_DOMAIN"'.[ $service ].expose[]? | select(in_domain($domain))' 2>/dev/null | paste -sd, - || echo "")
         
         echo "  • $service ($local_name) - exposed at: ${exposed_urls%,}"
     done <<< "$AFFECTED_SERVICES"
@@ -164,7 +172,7 @@ if [ -n "$AFFECTED_SERVICES" ]; then
         # Get URLs ending with this domain
         urls_to_remove=$(kubectl get configmap -n kube-system domain-registry \
             -o jsonpath="{.data.routing\.json}" 2>/dev/null | \
-            jq -r --arg service "$service" --arg domain "$DOMAIN" '.[ $service ].expose[]? | select(endswith($domain))' 2>/dev/null || echo "")
+            jq -r --arg service "$service" --arg domain "$DOMAIN" "$JQ_IN_DOMAIN"'.[ $service ].expose[]? | select(in_domain($domain))' 2>/dev/null || echo "")
         
         while read -r url; do
             if [ -n "$url" ]; then

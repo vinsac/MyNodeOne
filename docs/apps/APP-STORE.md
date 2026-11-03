@@ -273,8 +273,8 @@ To add a new app to the store:
 - Must display access info clearly
 - Must use `validate_prerequisites` from `scripts/apps/lib/validation.sh` for pre-flight checks
 - Must call `post-install-routing.sh` after deployment for service registration and DNS
-- Registry key (in `register` and `post-install-routing`) must match the K8s service name
-- Verification must check `.local_name` field (not `.subdomain`)
+- The name given to `register` and `post-install-routing` must match the K8s service name. The registry then keys the entry on `namespace/service`
+- Verification must check the `local_name` field (not `subdomain`), read with `sr_service_field`
 - Dependencies: `kubectl`, `jq` (for registry verification), Longhorn storage class
 
 ### Service Registration Pattern
@@ -286,8 +286,13 @@ Every app install script must:
    annotations:
      mynodeone.io/subdomain: "${APP_SUBDOMAIN}"
    ```
-2. **Register with matching key**: The first argument to `service-registry.sh register` and `post-install-routing.sh` must be the K8s service name (e.g., `jellyfin`, `open-webui`, `immich-server`)
-3. **Verify with `.local_name`**: Post-registration checks should read `.local_name` from the ConfigMap, not `.subdomain`
+2. **Register with a matching name**: The first argument to `service-registry.sh register` and `post-install-routing.sh` must be the K8s service name (e.g., `jellyfin`, `open-webui`, `immich-server`). The registry keys the entry on `namespace/service` (e.g., `jellyfin/jellyfin`)
+3. **Verify with `local_name`**: Post-registration checks should read `local_name`, not `subdomain`. Use the helpers from `scripts/lib/service-registry-lib.sh`, which accept the key or the bare name, instead of indexing the registry JSON with a bare name:
+   ```bash
+   source scripts/lib/service-registry-lib.sh
+   sr_service_field jellyfin local_name
+   sr_lookup_entry "$(sr_get_services)" jellyfin | jq .
+   ```
 
 See [DEFENSIVE-PROGRAMMING.md](../contributing/DEFENSIVE-PROGRAMMING.md#service-registry-and-domain-handling) for the full pattern.
 

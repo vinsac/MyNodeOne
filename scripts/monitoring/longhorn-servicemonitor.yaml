@@ -1,0 +1,18 @@
+# Lets Prometheus scrape Longhorn. The alert rules in prometheus-alerts/ need these
+# metrics, and the chart does not scrape Longhorn on its own.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: longhorn-prometheus-servicemonitor
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: longhorn-manager
+  namespaceSelector:
+    matchNames:
+      - longhorn-system
+  endpoints:
+    - port: manager

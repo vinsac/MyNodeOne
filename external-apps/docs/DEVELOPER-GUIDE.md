@@ -121,24 +121,24 @@ Your `docker-compose.yml`:
 version: '3'
 services:
   frontend:
-    image: myregistry/myapp-frontend:latest
+    image: myregistry/myapp-frontend:1.0.0
     ports:
       - "3000:3000"
     environment:
       - API_URL=http://backend:8000
 
   backend:
-    image: myregistry/myapp-backend:latest
+    image: myregistry/myapp-backend:1.0.0
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://db:5432/myapp
 
   database:
-    image: postgres:16
+    image: postgres:16.15
     environment:
       - POSTGRES_DB=myapp
-      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
 ```
 
 Deploy:
@@ -340,7 +340,7 @@ bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
 # Answer questions:
 # - App name: mynodeapp
 # - Services: 1
-# - Image: myregistry/mynodeapp:latest
+# - Image: myregistry/mynodeapp:1.0.0
 # - Port: 3000
 # - Memory: 512Mi
 # - CPU: 500m
@@ -358,15 +358,15 @@ bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
 version: '3'
 services:
   frontend:
-    image: myregistry/saas-frontend:latest
+    image: myregistry/saas-frontend:1.0.0
     ports: ["80:80"]
   
   backend:
-    image: myregistry/saas-backend:latest
+    image: myregistry/saas-backend:1.0.0
     ports: ["8000:8000"]
   
   database:
-    image: postgres:16
+    image: postgres:16.15
     volumes:
       - db-data:/var/lib/postgresql/data
 
@@ -410,7 +410,7 @@ bash /path/to/MyNodeOne/external-apps/scripts/deploy.sh
 # Questions:
 # - App name: myapi
 # - Services: 1
-# - Image: myregistry/myapi:latest
+# - Image: myregistry/myapi:1.0.0
 # - Port: 8000
 # - Memory: 512Mi
 # - CPU: 500m
@@ -469,7 +469,7 @@ sudo bash /path/to/MyNodeOne/scripts/domains/sync-dns.sh
 
 ❌ Bad:
 ```yaml
-image: myregistry/myapp:latest
+image: myregistry/myapp:1.0.0
 ```
 
 ✅ Good:

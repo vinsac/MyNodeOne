@@ -11,9 +11,17 @@
 #     --control-plane-ip <ip> \
 #     --node-name <name> \
 #     --node-type <type> \
-#     --api-token <token> \
+#     [--api-token-file <path> | --api-token <token>] \
 #     [--ssh-user <user>] \
-#     [--cluster-domain <domain>]
+#     [--cluster-domain <domain>] \
+#     [--traefik-config-dir <dir>]
+#
+# On a VPS the directory defaults to the current setting in agent.env, then the one
+# holding mynodeone-routes.yml. With several candidates and neither of those, it stops
+# and asks for --traefik-config-dir.
+#
+# Prefer --api-token-file: a token on the command line is visible in `ps`. With
+# neither option, the token in an existing /etc/mynodeone/agent.env is kept.
 ###############################################################################
 
 set -euo pipefail
@@ -57,6 +65,11 @@ SSH_USER=""
 CLUSTER_DOMAIN=""
 API_PORT="8443"
 POLL_INTERVAL="60"
+TRAEFIK_CONFIG_DIR_FLAG=""
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/node-agent-install.sh
+source "$SCRIPT_DIR/../lib/node-agent-install.sh"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -77,6 +90,14 @@ while [[ $# -gt 0 ]]; do
             API_TOKEN="$2"
             shift 2
             ;;
+        --api-token-file)
+            if [ ! -r "$2" ]; then
+                echo "Cannot read API token file: $2"
+                exit 1
+            fi
+            API_TOKEN="$(tr -d '[:space:]' <"$2")"
+            shift 2
+            ;;
         --ssh-user)
             SSH_USER="$2"
             shift 2
@@ -93,25 +114,42 @@ while [[ $# -gt 0 ]]; do
             POLL_INTERVAL="$2"
             shift 2
             ;;
+        --traefik-config-dir)
+            TRAEFIK_CONFIG_DIR_FLAG="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 --control-plane-ip <ip> --node-name <name> --node-type <type> --api-token <token>"
+            echo "Usage: $0 --control-plane-ip <ip> --node-name <name> --node-type <type> [--api-token-file <path> | --api-token <token>]"
             exit 1
             ;;
     esac
 done
+
+# Reconfiguring must not lose a token that already works.
+if [ -z "$API_TOKEN" ]; then
+    API_TOKEN="$(node_agent_existing_token 2>/dev/null || true)"
+fi
 
 # Validate required arguments
 REQUIRED_MISSING=false
 if [ -z "$CONTROL_PLANE_IP" ]; then echo "Missing required argument: --control-plane-ip"; REQUIRED_MISSING=true; fi
 if [ -z "$NODE_NAME" ]; then echo "Missing required argument: --node-name"; REQUIRED_MISSING=true; fi
 if [ -z "$NODE_TYPE" ]; then echo "Missing required argument: --node-type"; REQUIRED_MISSING=true; fi
-if [ -z "$API_TOKEN" ]; then echo "Missing required argument: --api-token"; REQUIRED_MISSING=true; fi
+if [ -z "$API_TOKEN" ]; then echo "Missing required argument: --api-token-file or --api-token"; REQUIRED_MISSING=true; fi
 
 if [ "$REQUIRED_MISSING" = true ]; then
-    echo "Usage: $0 --control-plane-ip <ip> --node-name <name> --node-type <type> --api-token <token> [--ssh-user <user>] [--cluster-domain <domain>]"
+    echo "Usage: $0 --control-plane-ip <ip> --node-name <name> --node-type <type> [--api-token-file <path> | --api-token <token>] [--ssh-user <user>] [--cluster-domain <domain>]"
     exit 1
 fi
+
+# These values go into agent.env, which a root process sources.
+for value in "$CONTROL_PLANE_IP" "$NODE_NAME" "$NODE_TYPE" "$API_TOKEN" "$API_PORT" "$POLL_INTERVAL" "$CLUSTER_DOMAIN"; do
+    if ! node_agent_valid_env_value "$value"; then
+        echo "An argument contains characters that are not allowed in agent.env"
+        exit 1
+    fi
+done
 
 # Debug logging for installation tracking
 log_debug "=== Node Agent Installation Parameters ==="
@@ -122,7 +160,6 @@ log_debug "SSH_USER: ${SSH_USER:-'not set'}"
 log_debug "CLUSTER_DOMAIN: ${CLUSTER_DOMAIN:-'not set (will auto-detect)'}"
 log_debug "API_PORT: $API_PORT"
 log_debug "POLL_INTERVAL: $POLL_INTERVAL"
-log_debug "API_TOKEN: ${API_TOKEN:0:10}..."  # Show only first 10 chars for security
 log_debug "Current user: $(whoami)"
 log_debug "Current home: $HOME"
 log_debug "========================================"
@@ -148,51 +185,6 @@ log_success "Dependencies OK"
 
 log_info "Installing Node Agent..."
 
-# Install node agent binary
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Check multiple locations for the node agent binary
-BINARY_SOURCE=""
-BINARY_LOCATIONS=(
-    "/usr/local/bin/mynodeone-node-agent"  # Already installed
-    "$SCRIPT_DIR/mynodeone-node-agent"     # Scripts directory (for fresh installs)
-    "$SCRIPT_DIR/../lib/node-agent.sh"     # Source script location
-)
-
-for location in "${BINARY_LOCATIONS[@]}"; do
-    if [ -f "$location" ]; then
-        BINARY_SOURCE="$location"
-        break
-    fi
-done
-
-if [ -z "$BINARY_SOURCE" ]; then
-    log_error "Node agent binary not found in any of these locations:"
-    printf '  - %s\n' "${BINARY_LOCATIONS[@]}"
-    exit 1
-fi
-
-# Install to /usr/local/bin if not already there
-if [ ! -f "/usr/local/bin/mynodeone-node-agent" ] || [ "$BINARY_SOURCE" != "/usr/local/bin/mynodeone-node-agent" ]; then
-    cp "$BINARY_SOURCE" /usr/local/bin/mynodeone-node-agent
-    chmod +x /usr/local/bin/mynodeone-node-agent
-    log_success "Node Agent installed from $BINARY_SOURCE"
-else
-    log_success "Node Agent already installed"
-fi
-
-# Install config-paths.sh dependency for Node Agent
-if [ ! -f "/usr/local/bin/config-paths.sh" ]; then
-    if [ -f "$SCRIPT_DIR/../lib/config-paths.sh" ]; then
-        cp "$SCRIPT_DIR/../lib/config-paths.sh" /usr/local/bin/
-        chmod +x /usr/local/bin/config-paths.sh
-        chown root:root /usr/local/bin/config-paths.sh
-        log_success "config-paths.sh dependency installed"
-    else
-        log_warn "config-paths.sh not found, Node Agent may not work properly"
-    fi
-fi
-
 log_info "Configuring Node Agent..."
 
 # Create config directory with correct ownership
@@ -202,19 +194,19 @@ chown root:root /etc/mynodeone
 log_debug "Created /etc/mynodeone directory with root:root ownership"
 
 # Source the central config paths utility
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config-paths.sh"
 
 # Detect TRAEFIK_CONFIG_DIR for VPS nodes
 TRAEFIK_CONFIG_DIR=""
 
-# Fetch CLUSTER_DOMAIN from cluster config
-CLUSTER_DOMAIN="mynodeone"  # Default fallback
+# An explicit --cluster-domain wins; otherwise detect it
+EXPLICIT_CLUSTER_DOMAIN="$CLUSTER_DOMAIN"
+CLUSTER_DOMAIN="${EXPLICIT_CLUSTER_DOMAIN:-mynodeone}"  # Default fallback
 log_info "Detecting cluster domain..."
 log_debug "SSH_USER=${SSH_USER:-'not set'}, CONTROL_PLANE_IP=${CONTROL_PLANE_IP:-'not set'}"
 
 # Method 1: Try SSH fetch from control plane (highest priority)
-if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
+if [[ -z "$EXPLICIT_CLUSTER_DOMAIN" && -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
     log_debug "Attempting to fetch cluster domain via SSH from control plane..."
     DETECTED_DOMAIN=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
         "${SSH_USER}@${CONTROL_PLANE_IP}" \
@@ -229,7 +221,7 @@ if [[ -n "$SSH_USER" && -n "$CONTROL_PLANE_IP" ]]; then
 fi
 
 # Method 2: Local config detection (uses improved get_config_value with proper priority)
-if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
+if [[ -z "$EXPLICIT_CLUSTER_DOMAIN" && "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
     log_debug "Checking local config files for cluster domain..."
     LOCAL_DOMAIN=$(get_config_value "CLUSTER_DOMAIN")
     
@@ -242,30 +234,34 @@ if [[ "$CLUSTER_DOMAIN" == "mynodeone" ]]; then
     fi
 fi
 
+if ! node_agent_valid_env_value "$CLUSTER_DOMAIN"; then
+    log_error "Detected cluster domain contains characters that are not allowed in agent.env"
+    exit 1
+fi
+
 log_info "Final cluster domain: $CLUSTER_DOMAIN"
 log_debug "This will be used for DNS entries: <service>.$CLUSTER_DOMAIN.local"
 
 if [[ "$NODE_TYPE" == "vps" ]]; then
-    # Try to find existing Traefik config directory
-    for dir in /home/*/traefik/config /root/traefik/config /etc/traefik/config; do
-        if [[ -d "$dir" ]]; then
-            TRAEFIK_CONFIG_DIR="$dir"
-            log_info "Found Traefik config directory: $TRAEFIK_CONFIG_DIR"
-            break
-        fi
-    done
-    
-    if [[ -z "$TRAEFIK_CONFIG_DIR" ]]; then
-        # Default to /etc/traefik/config for VPS
-        TRAEFIK_CONFIG_DIR="/etc/traefik/config"
-        log_warn "Traefik config directory not found, using default: $TRAEFIK_CONFIG_DIR"
+    # The existing setting, or else the directory actually holding the routes.
+    if ! TRAEFIK_CONFIG_DIR=$(node_agent_detect_traefik_dir "$TRAEFIK_CONFIG_DIR_FLAG"); then
+        log_error "Could not tell which Traefik config directory to manage. Nothing was changed."
+        exit 1
     fi
+    if ! node_agent_valid_env_value "$TRAEFIK_CONFIG_DIR"; then
+        log_error "Traefik config directory contains characters that are not allowed in agent.env"
+        exit 1
+    fi
+    log_info "Traefik config directory: $TRAEFIK_CONFIG_DIR"
 fi
 
 log_success "Node agent will use cluster domain: $CLUSTER_DOMAIN"
 log_info "DNS entries will be created as: <service>.$CLUSTER_DOMAIN.local"
 
-cat > /etc/mynodeone/agent.env <<EOF
+umask 077
+AGENT_ENV_NEW="$(mktemp /etc/mynodeone/agent.env.XXXXXX)"
+trap 'rm -f "$AGENT_ENV_NEW"' EXIT
+cat > "$AGENT_ENV_NEW" <<EOF
 # MyNodeOne Node Agent Configuration
 # Generated: $(date -Iseconds)
 
@@ -290,56 +286,35 @@ EOF
 
 # Add VPS-specific config
 if [ -n "$TRAEFIK_CONFIG_DIR" ]; then
-    echo "" >> /etc/mynodeone/agent.env
-    echo "# VPS-specific config" >> /etc/mynodeone/agent.env
-    echo "TRAEFIK_CONFIG_DIR=$TRAEFIK_CONFIG_DIR" >> /etc/mynodeone/agent.env
+    echo "" >> "$AGENT_ENV_NEW"
+    echo "# VPS-specific config" >> "$AGENT_ENV_NEW"
+    echo "TRAEFIK_CONFIG_DIR=$TRAEFIK_CONFIG_DIR" >> "$AGENT_ENV_NEW"
 fi
+
+if ! node_agent_keep_unknown_settings "$AGENT_ENV_NEW"; then
+    log_error "Could not read the current agent.env. Nothing was changed."
+    exit 1
+fi
+mv -f "$AGENT_ENV_NEW" /etc/mynodeone/agent.env
+trap - EXIT
 
 chmod 600 /etc/mynodeone/agent.env
-
-# Set proper ownership if running with sudo
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    # Get the actual user's home directory
-    ACTUAL_USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "")
-    if [ -n "$ACTUAL_USER_HOME" ]; then
-        # Ensure the actual user can read the config
-        chown "$SUDO_USER:$SUDO_USER" /etc/mynodeone/agent.env
-        log_info "Config ownership set for user: $SUDO_USER"
-        log_debug "Changed /etc/mynodeone/agent.env ownership to $SUDO_USER:$SUDO_USER"
-    fi
-else
-    log_debug "No sudo user detected, keeping root ownership for agent.env"
-fi
+# A root process sources this file, so only root may own it. It contains the API
+# token too. Nothing else needs it: /etc/mynodeone is 700 root anyway.
+chown root:root /etc/mynodeone/agent.env
+umask 022
 
 log_success "Config created: /etc/mynodeone/agent.env"
 
-log_info "Installing systemd service..."
-# Create systemd service
-cat > /etc/systemd/system/mynodeone-node-agent.service <<EOF
-[Unit]
-Description=MyNodeOne Node Agent
-Documentation=https://github.com/vinsac/MyNodeOne
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/mynodeone-node-agent run
-Restart=always
-RestartSec=10
-User=root
-Group=root
-
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/etc/mynodeone /etc/hosts
-
-[Install]
-WantedBy=multi-user.target
-EOF
+log_info "Installing Node Agent and systemd service..."
+if ! node_agent_install_files; then
+    log_error "Could not install the Node Agent"
+    exit 1
+fi
+if ! node_agent_write_sandbox_dropin "$TRAEFIK_CONFIG_DIR"; then
+    log_error "Could not make the Traefik config directory writable for the agent"
+    exit 1
+fi
 
 systemctl daemon-reload
 systemctl enable mynodeone-node-agent
@@ -355,7 +330,8 @@ else
 fi
 
 log_info "Starting Node Agent..."
-systemctl start mynodeone-node-agent
+# Restart, not start: on a re-run the old version may be running.
+systemctl restart mynodeone-node-agent
 
 # Wait a moment for service to start
 sleep 2
@@ -374,9 +350,10 @@ attempt=1
 
 while [ $attempt -le $max_attempts ]; do
     # Check if node is registered
-    if curl -s -H "X-API-Token: $API_TOKEN" \
+    # The token goes through a config stream so it stays out of `ps`.
+    if curl -s -K <(printf 'header = "X-API-Token: %s"\n' "$API_TOKEN") \
         "http://$CONTROL_PLANE_IP:$API_PORT/api/v1/nodes" | \
-        jq -e ".nodes[]? | select(.name == \"$NODE_NAME\")" >/dev/null 2>&1; then
+        jq -e --arg name "$NODE_NAME" '.nodes[]? | select(.name == $name)' >/dev/null 2>&1; then
         log_success "Heartbeat verification passed - node registered with control plane"
         break
     else

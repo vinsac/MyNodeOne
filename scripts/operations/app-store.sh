@@ -27,7 +27,7 @@ source "$SCRIPT_DIR/../../scripts/lib/project-root.sh" 2>/dev/null || \
 source "$SCRIPT_DIR/../scripts/lib/project-root.sh" 2>/dev/null
 APPS_DIR="$PROJECT_ROOT/scripts/apps"
 
-clear
+clear 2>/dev/null || true
 
 echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║                                                                   ║${NC}"
@@ -133,7 +133,7 @@ install_app() {
 }
 
 while true; do
-    clear
+    clear 2>/dev/null || true
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║           ${MAGENTA}MyNodeOne App Store${CYAN}                                   ║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════╝${NC}"

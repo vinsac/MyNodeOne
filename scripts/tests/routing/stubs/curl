@@ -1,0 +1,56 @@
+#!/bin/bash
+# Fake curl, no network. Answers come from $FAKE_API/<path with / replaced by _>.body
+# and .code (default 404 unless a body exists). A .exit file sets curl's exit status
+# once the body is written, as when a connection drops part way. Touching $FAKE_API/down
+# makes every call fail to connect. Every argv goes to argv.log and config streams to config.log,
+# so tests can check where the token went.
+set -u
+state="${FAKE_API:?}"
+printf '%s\n' "$*" >>"$state/argv.log"
+
+out="" fmt="" url="" fail=false
+while (($#)); do
+    case "$1" in
+        -K | --config) cat "$2" >>"$state/config.log"; shift 2 ;;
+        -o) out="$2"; shift 2 ;;
+        -w) fmt="$2"; shift 2 ;;
+        -H | -d | -X | -m | --connect-timeout | --max-time) shift 2 ;;
+        -f*) fail=true; shift ;;
+        -*) shift ;;
+        *) url="$1"; shift ;;
+    esac
+done
+
+finish() {
+    local code="$1"
+    if [[ -n "$fmt" ]]; then
+        printf '%b' "${fmt//%\{http_code\}/$code}"
+    fi
+}
+
+if [[ -e "$state/down" ]]; then
+    finish 000
+    exit 7
+fi
+
+path="/${url#*://*/}"
+key="${path//\//_}"
+code="404"
+[[ -f "$state/$key.body" ]] && code="200"
+[[ -f "$state/$key.code" ]] && code=$(cat "$state/$key.code")
+
+if $fail && ((code >= 400)); then
+    exit 22
+fi
+
+if [[ -f "$state/$key.body" ]]; then
+    if [[ -n "$out" ]]; then
+        cat "$state/$key.body" >"$out"
+    else
+        cat "$state/$key.body"
+    fi
+elif [[ -n "$out" ]]; then
+    : >"$out"
+fi
+finish "$code"
+exit "$(cat "$state/$key.exit" 2>/dev/null || echo 0)"

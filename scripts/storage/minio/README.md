@@ -34,22 +34,25 @@ MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 - HostPath PersistentVolume
 - Service discovery integration
 
-## ⚠️ Important: Version Constraint
+## ⚠️ Important: Image Source
 
-> [!CAUTION]
-> **Do NOT upgrade MinIO past `RELEASE.2025-04-22T22-12-26Z`**
+MinIO no longer publishes community images, and it archived its GitHub repository on 2026-04-25. Its README says it is no longer maintained. `minio/minio` no longer exists on Docker Hub, and `quay.io/minio/minio` refuses anonymous pulls. The version this project used to pin, `RELEASE.2025-04-22T22-12-26Z`, can't be pulled from either.
 
-In early 2025, MinIO removed the full admin console from the Community Edition. Versions after April 2025 only show an object browser—no user management, IAM policies, or settings.
+**Default image:** `cgr.dev/chainguard/minio`, pinned by digest in `install-minio.sh`. Chainguard builds it from source. Things to know about it:
 
-**Current pinned version:** `minio/minio:RELEASE.2025-04-22T22-12-26Z`
+- **Newer version, reduced console.** MinIO removed user, policy and settings management from the Community console after April 2025, which is why the old version was pinned. Use the `mc` CLI for those tasks.
+- **Non-root.** It runs as UID 65532. `hostPath` volumes ignore `fsGroup`, so the installer sets the owner of the data directory.
+- **`latest` only on the free tier.** To update, take the current digest of `cgr.dev/chainguard/minio:latest`. Older digests remained pullable when sampled in November 2026, but Chainguard doesn't promise that. Mirror the image to your own registry if that matters.
+- **No shell or `mc` in the image**, so `kubectl exec ... sh` doesn't work.
 
-This is the **last version** that includes:
-- Identity management (Users, Groups, Policies)
-- Monitoring and audit logs
-- Configuration settings UI
-- Full administrative console
+To use a different image:
 
-For admin tasks on newer versions, you would need to use the `mc` CLI or MinIO's paid product (AIStor).
+```bash
+MINIO_IMAGE=registry.example.com/minio@sha256:<digest> MINIO_RUN_AS_UID=<uid> \
+  sudo -E ./scripts/storage/minio/install-minio.sh
+```
+
+Because upstream is archived, also consider whether MinIO is the right long-term choice for your data.
 
 ## Dual LoadBalancer Architecture
 
@@ -204,10 +207,9 @@ Example output after installation:
 ### Using mc CLI
 
 ```bash
-# Install mc (MinIO client)
-wget https://dl.min.io/client/mc/release/linux-amd64/mc
-chmod +x mc
-sudo mv mc /usr/local/bin/
+# dl.min.io no longer serves mc. The client runs from Chainguard's image:
+#   docker run -it --rm --entrypoint /usr/bin/mc cgr.dev/chainguard/minio-client:latest --help
+# Use an existing mc install or that image for the commands below.
 
 # Add alias
 mc alias set mynode http://minio-<nodename>.mynodeone.local:9000 admin <password>
@@ -243,8 +245,8 @@ cat ~/minio-<nodename>-credentials.txt
 ### Update MinIO
 
 ```bash
-# Update image
-kubectl set image statefulset/minio minio=minio/minio:latest -n minio-<nodename>
+# Update image (pin a digest, and check the new image's UID matches the data directory owner)
+kubectl set image statefulset/minio minio=cgr.dev/chainguard/minio@sha256:<digest> -n minio-<nodename>
 
 # Or edit StatefulSet
 kubectl edit statefulset minio -n minio-<nodename>

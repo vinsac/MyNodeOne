@@ -1,6 +1,20 @@
 # CronJob Example - Database Backup
 # Automatically backs up PostgreSQL database to MinIO
 # Deploy with: kubectl apply -f cronjob-backup.yaml
+#
+# Backups do not run until you create their credentials, using the real values for
+# your database and MinIO (the job pod waits in CreateContainerConfigError):
+#
+#   kubectl create secret generic backup-credentials -n backups \
+#     --from-literal=POSTGRES_HOST=postgres.databases.svc.cluster.local \
+#     --from-literal=POSTGRES_PORT=5432 \
+#     --from-literal=POSTGRES_USER=admin \
+#     --from-literal=POSTGRES_PASSWORD='<your database password>' \
+#     --from-literal=POSTGRES_DB=myapp \
+#     --from-literal=AWS_ACCESS_KEY_ID='<your MinIO access key>' \
+#     --from-literal=AWS_SECRET_ACCESS_KEY='<your MinIO secret key>' \
+#     --from-literal=AWS_ENDPOINT_URL=http://minio.minio.svc.cluster.local:9000 \
+#     --from-literal=S3_BUCKET=backups
 
 ---
 apiVersion: v1
@@ -9,26 +23,6 @@ metadata:
   name: backups
   labels:
     name: backups
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: backup-credentials
-  namespace: backups
-type: Opaque
-stringData:
-  # PostgreSQL credentials
-  POSTGRES_HOST: postgres.databases.svc.cluster.local
-  POSTGRES_PORT: "5432"
-  POSTGRES_USER: admin
-  POSTGRES_PASSWORD: change-this-password
-  POSTGRES_DB: myapp
-  # MinIO S3 credentials
-  AWS_ACCESS_KEY_ID: minio-access-key
-  AWS_SECRET_ACCESS_KEY: minio-secret-key
-  AWS_ENDPOINT_URL: http://minio.minio.svc.cluster.local:9000
-  S3_BUCKET: backups
 
 ---
 apiVersion: batch/v1
@@ -48,7 +42,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: backup
-            image: postgres:16-alpine
+            image: postgres:16.15-alpine
             command:
             - /bin/sh
             - -c

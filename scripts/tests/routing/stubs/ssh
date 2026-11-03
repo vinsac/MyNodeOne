@@ -1,0 +1,40 @@
+#!/bin/bash
+# Fake ssh, no network. Runs the remote command locally with HOME=$FAKE_VPS_HOME, so
+# the real route check script runs against a temp directory.
+# $FAKE_SSH/down makes it unreachable. $FAKE_SSH/sync-fails fails the fallback sync,
+# and $FAKE_SSH/sync-cleans makes that sync empty the route file.
+set -u
+state="${FAKE_SSH:?}"
+
+while (($#)); do
+    case "$1" in
+        -o | -i) shift 2 ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+shift # user@host
+command="$*"
+
+[[ -e "$state/down" ]] && exit 255
+
+case "$command" in
+    *sync-vps-routes.sh*)
+        echo "sync" >>"$state/sync.log"
+        [[ -e "$state/sync-fails" ]] && exit 1
+        if [[ -e "$state/sync-cleans" ]]; then
+            printf 'http:\n  routers: {}\n' >"$FAKE_VPS_HOME/traefik/config/mynodeone-routes.yml"
+        fi
+        exit 0
+        ;;
+    *"docker ps"*) exit 0 ;;
+esac
+
+# The route check also looks in system-wide directories. Keep it to the temp "VPS",
+# so the result doesn't depend on the machine running the tests.
+command="${command//\/root\/traefik\/config/}"
+command="${command//\/etc\/traefik\/config/}"
+command="${command//\/etc\/traefik\/dynamic/}"
+command="${command//\/home\/\*\/traefik\/config/}"
+
+HOME="$FAKE_VPS_HOME" sh -c "$command"

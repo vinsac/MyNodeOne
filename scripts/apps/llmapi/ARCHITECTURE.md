@@ -966,13 +966,14 @@ initContainers:
 **Migration Path (hostPath → S3):**
 
 ```bash
-# 1. Deploy MinIO in cluster
-helm install minio minio/minio --set replicas=1,persistence.size=500Gi
+# 1. Deploy MinIO in cluster (per-node PGSTY Silo instance; upstream minio/minio images are gone,
+#    see scripts/storage/minio/README.md)
+sudo ./scripts/storage/minio/install-minio.sh
 
 # 2. Upload existing models to S3
 aws s3 sync /var/lib/llmapi/models/vllm/ \
             s3://llmapi-models/vllm/ \
-            --endpoint-url http://minio.default:9000
+            --endpoint-url http://minio.minio-<nodename>.svc.cluster.local:9000
 
 # 3. Update vllm.yaml to use S3 init container
 # 4. Remove hostPath volume and PodSecurity privileged label

@@ -129,9 +129,9 @@ spec:
           
           containers:
           - name: backup
-            # minio/mc no longer exists on Docker Hub. The -dev variant includes the
-            # shell this script needs. Pin a digest for real use.
-            image: cgr.dev/chainguard/minio-client:latest-dev
+            # minio/mc no longer exists on Docker Hub. pgsty/mc is the maintained client
+            # (includes /bin/sh, which this script needs). Pin a digest for real use.
+            image: pgsty/mc:latest
             command: ["/bin/sh", "/scripts/backup.sh"]
             env:
             # MinIO credentials from secret

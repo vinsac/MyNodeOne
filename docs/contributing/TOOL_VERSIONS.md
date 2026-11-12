@@ -34,7 +34,12 @@ This document tracks the versions of cluster-critical tools, images, and Helm ch
   Defined in `scripts/lib/versions.sh` (`METALLB_VERSION`).
 - **Longhorn**: Helm chart `1.7.2`  
   Defined in `scripts/lib/versions.sh` (`LONGHORN_VERSION`).
-- **MinIO**: Installed via Helm in `scripts/installation/bootstrap-control-plane.sh` (chart version pinned there).
+- **MinIO (object storage)**: Runs the **PGSTY Silo** server image `pgsty/silo:RELEASE.2026-11-09T00-00-00Z`,
+  pinned by tag + digest as `MINIO_IMAGE_DEFAULT` in `scripts/storage/minio/install-minio.sh`, which installs it
+  per node (not Helm; override with `MINIO_IMAGE`). Runs as non-root UID `MINIO_RUN_AS_UID` (default 65532). Upstream `minio/minio` images are no longer
+  published; see `scripts/storage/minio/README.md` for why and how to upgrade.
+- **MinIO client (`mc`)**: pgsty/mc `RELEASE.2026-11-12T00-00-00Z`
+  Defined in `scripts/lib/versions.sh` (`MINIO_CLIENT_VERSION`). Example manifests use the `pgsty/mc` image.
 
 ## GitOps and Platform Services
 

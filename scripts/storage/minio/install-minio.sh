@@ -71,10 +71,11 @@ MANIFESTS_DIR="$SCRIPT_DIR/manifests"
 source "$SCRIPT_DIR/../lib/disk-safety.sh"
 
 # MinIO stopped publishing images: minio/minio is gone from Docker Hub and
-# quay.io/minio/minio refuses anonymous pulls. This is Chainguard's free image,
-# rebuilt from source and pinned to the multi-arch index digest (built
-# 2026-11-02). It runs as UID 65532. See README.md for how to update or replace it.
-MINIO_IMAGE_DEFAULT="cgr.dev/chainguard/minio@sha256:090010a3f73f6aa2dff606c61cd0de3640b22748abe19f4e48cce6dc9de7a53f"
+# quay.io/minio/minio refuses anonymous pulls. This is PGSTY Silo, the maintained
+# MinIO server fork that keeps the full admin console (users, groups, policies),
+# pinned by tag + multi-arch index digest (amd64/arm64). It works as UID 65532 with
+# all capabilities dropped. See README.md for why, and how to update or replace it.
+MINIO_IMAGE_DEFAULT="pgsty/silo:RELEASE.2026-11-09T00-00-00Z@sha256:08ce1505b5eacefbad1ca07159b242b9ce045a11c2817e3bc257b25f77bbc02d"
 MINIO_IMAGE="${MINIO_IMAGE:-$MINIO_IMAGE_DEFAULT}"
 MINIO_RUN_AS_UID="${MINIO_RUN_AS_UID:-65532}"
 

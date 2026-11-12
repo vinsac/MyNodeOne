@@ -144,6 +144,13 @@
 
 **Example:** Like Dropbox or Google Drive, but yours.
 
+**In MyNodeOne:** Runs as PGSTY Silo, a maintained MinIO fork (see **Silo**). It is still called
+"MinIO" throughout the cluster.
+
+### Silo (PGSTY Silo)
+**Simple:** The maintained, open-source continuation of the MinIO server, with the full admin
+console. MyNodeOne uses it because upstream MinIO no longer publishes images.
+
 **Use for:** Images, videos, backups, file uploads.
 
 ---

@@ -477,6 +477,32 @@ kubectl get replicas.longhorn.io -n longhorn-system -o json | \
 
 ### MinIO Storage Issues
 
+#### MinIO Pod Stuck in `ImagePullBackOff` (`minio/minio` image)
+**Symptom**: `minio-0` in `minio-<nodename>` shows `ImagePullBackOff`, and `kubectl describe pod`
+says `pull access denied, repository does not exist or may require authorization` for
+`minio/minio:RELEASE...`.
+
+**Cause**: Upstream MinIO stopped distributing images and its Docker Hub images were removed
+(around Sep 2026). A pinned `minio/minio` tag keeps running only while it is cached on the node.
+Once kubelet image garbage collection deletes it (for example during disk pressure, which also
+evicts pods) the recreated pod can never pull it again. This happened in Nov 2026.
+
+**Solution**: Switch to the maintained **PGSTY Silo** image. It is a drop-in replacement and
+reuses the existing data volume in place:
+```bash
+IMG=$(grep -oP '^MINIO_IMAGE_DEFAULT="\K[^"]+' scripts/storage/minio/install-minio.sh)
+kubectl -n minio-<nodename> set image statefulset/minio minio="$IMG"
+kubectl -n minio-<nodename> delete pod minio-0     # if it stays in back-off
+kubectl -n minio-<nodename> rollout status statefulset/minio
+```
+Back up important buckets first if they hold data you can't recreate. See
+`scripts/storage/minio/README.md` → "Server Image".
+
+#### `mc` Install Fails (`dl.min.io` returns 410)
+Upstream `mc` binaries are no longer served. Install the pgsty/mc build instead (see
+`scripts/storage/minio/README.md` → "Using mc CLI"), or run `mc` inside the server pod:
+`kubectl exec -it -n minio-<nodename> minio-0 -- mc ...`.
+
 #### Data "Lost" After Restart
 **Symptom**: MinIO starts but data appears missing. `df -h` shows `/mnt/minio` is mounting the root partition instead of the separate disk.
 

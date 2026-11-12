@@ -93,7 +93,7 @@ with open(work + '/restore-job.sh', 'w') as f:
 
 # MinIO manifests, after the substitutions install-minio.sh makes
 subs = {
-    'MINIO_IMAGE_PLACEHOLDER': 'cgr.dev/chainguard/minio@sha256:abc',
+    'MINIO_IMAGE_PLACEHOLDER': 'pgsty/silo:RELEASE.2026-01-01T00-00-00Z@sha256:abc',
     'MINIO_UID_PLACEHOLDER': '65532',
     'HOST_PATH_PLACEHOLDER': '/mnt/minio',
     'PV_NAME_PLACEHOLDER': 'node1',
@@ -123,7 +123,7 @@ check('statefulset: only known placeholders', not leftover, leftover)
 ss = next(d for d in docs if d['kind'] == 'StatefulSet')
 spec = ss['spec']['template']['spec']
 minio = spec['containers'][0]
-check('statefulset: image comes from a placeholder', minio['image'].startswith('cgr.dev/'), minio['image'])
+check('statefulset: image comes from a placeholder', minio['image'] == subs['MINIO_IMAGE_PLACEHOLDER'], minio['image'])
 check('statefulset: UID set', spec['securityContext']['runAsUser'] == 65532)
 check('statefulset: no privilege escalation', minio['securityContext']['allowPrivilegeEscalation'] is False)
 
@@ -138,6 +138,8 @@ check('PV: labelled for cleanup-node-minio.sh', pv['metadata']['labels'].get('ap
 check('default MinIO image is pinned by digest',
       re.search(r'MINIO_IMAGE_DEFAULT="[^"]+@sha256:[0-9a-f]{64}"', installer) is not None)
 check('old unpullable image is gone', 'minio/minio:RELEASE' not in installer)
+check('default MinIO image is PGSTY Silo (full admin console)',
+      re.search(r'MINIO_IMAGE_DEFAULT="pgsty/silo:RELEASE\.[^"]+@sha256:[0-9a-f]{64}"', installer) is not None)
 
 # Example
 docs = load('scripts/storage/examples/app-with-minio-backup.yaml')

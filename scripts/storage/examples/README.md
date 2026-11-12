@@ -274,8 +274,8 @@ kubectl logs cronjob/app-backup
 **Fix:**
 ```bash
 # Test MinIO access
-kubectl run -it --rm debug --image=cgr.dev/chainguard/minio-client:latest --restart=Never -- \
-  alias set minio http://minio-pc1.mynodeone.local:9000 ACCESS_KEY SECRET_KEY
+kubectl run -it --rm debug --image=pgsty/mc --restart=Never --command -- \
+  mc alias set minio http://minio-pc1.mynodeone.local:9000 ACCESS_KEY SECRET_KEY
 
 # Verify credentials
 cat ~/minio-<nodename>-credentials.txt
@@ -284,6 +284,7 @@ cat ~/minio-<nodename>-credentials.txt
 ## Additional Resources
 
 - [Longhorn Documentation](https://longhorn.io/docs/)
-- [MinIO Documentation](https://min.io/docs/)
+- [Silo Documentation](https://silo.pgsty.com/docs/) (MyNodeOne's MinIO server; see `scripts/storage/minio/README.md`)
+- [MinIO Documentation](https://min.io/docs/) (upstream, archived)
 - [Kubernetes Storage Documentation](https://kubernetes.io/docs/concepts/storage/)
 - MyNodeOne Architecture: `docs/architecture/STORAGE-ARCHITECTURE.md`

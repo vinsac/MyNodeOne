@@ -307,7 +307,10 @@ The Velero scripts remain in `scripts/storage/velero/` for reference only:
 
 To restore Velero functionality:
 1. Install Velero: `sudo ./scripts/storage/velero/install.sh`
-2. Configure backup: `sudo ./scripts/storage/velero/configure-backup.sh`
+2. Configure backup: `sudo ./scripts/storage/velero/configure-backup.sh --config /path/to/backup.env`
+   - With `VELERO_BACKUP_TARGET=minio` it backs up to a per-node MinIO (Silo) instance in
+     `minio-<nodename>`. If more than one `minio-*` namespace exists (including a stale one for a
+     node that left the cluster), set `VELERO_MINIO_NODE=<nodename>`. See `velero/backup.env.example`.
 
 ## Getting Help
 

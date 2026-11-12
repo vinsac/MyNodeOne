@@ -248,21 +248,28 @@ kubectl get pvc <pvc-name> -w
 
 #### Single Instance → Distributed
 
-When you add your second node:
+By default MyNodeOne runs **one independent MinIO instance per node** (installed with
+`scripts/storage/minio/install-minio.sh`, namespace `minio-<nodename>`), so adding a node usually
+means running the installer on that node, not converting to distributed mode.
+
+If you do want a single distributed (erasure-coded) object store across nodes, use the
+**PGSTY Silo** Helm chart. The upstream `minio/minio` chart and images are no longer maintained
+or pullable; Silo is the maintained MinIO fork MyNodeOne uses (see
+`scripts/storage/minio/README.md`). The chart is installed from the Silo source tree:
 
 ```bash
-# Uninstall standalone MinIO
-helm uninstall minio -n minio
-
-# Install distributed MinIO
-helm install minio minio/minio \
-  --namespace minio \
+git clone --depth 1 --branch RELEASE.2026-11-09T00-00-00Z https://github.com/pgsty/silo.git
+helm install silo ./silo/helm/silo \
+  --namespace silo --create-namespace \
   --set mode=distributed \
   --set replicas=4 \
   --set persistence.enabled=true \
   --set persistence.size=2Ti \
   --set persistence.storageClass=longhorn
 ```
+
+Distributed mode starts with empty storage: copy existing buckets over with `mc mirror` from
+the per-node instances.
 
 ## Network Scaling
 

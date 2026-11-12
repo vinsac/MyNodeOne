@@ -107,6 +107,19 @@ MinIO provides S3-compatible object storage for:
 - Media streaming and content delivery
 - LLM model storage and serving
 
+### Server Software: PGSTY Silo
+MyNodeOne runs **[PGSTY Silo](https://github.com/pgsty/silo)** (`pgsty/silo`, AGPL-3.0), a
+community-maintained fork of the MinIO server. Upstream MinIO Community Edition stripped the admin
+console in 2025, stopped publishing images, and is now archived; its `minio/minio` images can no
+longer be pulled. Silo keeps the full admin console (users, groups, policies, settings), ships
+security fixes, and is a drop-in replacement: same S3/admin APIs, `MINIO_*` env vars, `mc` client
+and on-disk format.
+
+"MinIO" in MyNodeOne names (namespaces `minio-<nodename>`, services, `.local` domains, secrets)
+refers to the role, not the vendor, and is intentionally unchanged. The image is pinned by digest as
+`MINIO_IMAGE_DEFAULT` in `scripts/storage/minio/install-minio.sh` (override with `MINIO_IMAGE`); see `scripts/storage/minio/README.md`
+for the history and upgrade procedure.
+
 ### Architecture
 ```
 Each Node: Independent MinIO Instance

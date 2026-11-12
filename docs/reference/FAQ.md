@@ -676,6 +676,19 @@ Yes! Add more disks to existing nodes via Longhorn UI. No downtime required.
 
 Both are needed and complement each other.
 
+### Which MinIO does MyNodeOne run? Why not the official images?
+
+MyNodeOne runs **[PGSTY Silo](https://github.com/pgsty/silo)**, a community-maintained, AGPL-3.0
+fork of the MinIO server. Upstream MinIO Community Edition removed the full admin console in 2025,
+then stopped publishing binaries and images, and archived the project in 2026. Its `minio/minio` images
+can no longer be pulled. Silo keeps the full console (users, groups, policies, settings) and ships
+security fixes, and it is a drop-in replacement (same S3 API, `mc` client, `MINIO_*` settings and data
+format).
+
+Everything is still *named* MinIO in MyNodeOne (namespaces, `.local` domains, services, secrets),
+because the name describes the role. Your apps, DNS names and credentials don't change. Details are
+in `scripts/storage/minio/README.md`.
+
 ### How is my MinIO data protected from mount failures?
 **Safety Valve**: The installation script now applies an "immutable lock" (`chattr +i`) to the `/mnt/minio` directory.
 - If the disk fails to mount, MinIO sees a **read-only** file system and stops, preventing it from silently writing data to your operating system drive.

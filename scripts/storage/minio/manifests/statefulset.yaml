@@ -31,6 +31,7 @@ spec:
                 - NODE_PLACEHOLDER
       containers:
       - name: minio
+        # Set by install-minio.sh (MINIO_IMAGE, default: pinned PGSTY Silo; see ../README.md)
         image: MINIO_IMAGE_PLACEHOLDER
         imagePullPolicy: IfNotPresent
         securityContext:

@@ -24,6 +24,11 @@ export KOMPOSE_VERSION="${KOMPOSE_VERSION:-v1.34.0}"
 
 # Storage
 export LONGHORN_VERSION="${LONGHORN_VERSION:-1.7.2}"
+# MinIO-compatible object storage runs PGSTY Silo (maintained MinIO fork). The server
+# image is pinned (tag + digest) in scripts/storage/minio/manifests/statefulset.yaml.
+# Client: pgsty/mc release used wherever a host `mc` binary is installed
+# (upstream dl.min.io binaries are gone - HTTP 410).
+export MINIO_CLIENT_VERSION="${MINIO_CLIENT_VERSION:-RELEASE.2026-11-12T00-00-00Z}"
 
 # Ingress, Networking & Security
 export CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.16.2}"

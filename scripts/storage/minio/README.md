@@ -34,16 +34,45 @@ MinIO provides S3-compatible object storage for the MyNodeOne cluster.
 - HostPath PersistentVolume
 - Service discovery integration
 
-## ⚠️ Important: Image Source
+## ⚠️ Important: Server Image (PGSTY Silo, not upstream MinIO)
 
-MinIO no longer publishes community images, and it archived its GitHub repository on 2026-04-25. Its README says it is no longer maintained. `minio/minio` no longer exists on Docker Hub, and `quay.io/minio/minio` refuses anonymous pulls. The version this project used to pin, `RELEASE.2025-04-22T22-12-26Z`, can't be pulled from either.
+> [!CAUTION]
+> **Do NOT switch back to `minio/minio` images.** Use the pinned `pgsty/silo` image.
 
-**Default image:** `cgr.dev/chainguard/minio`, pinned by digest in `install-minio.sh`. Chainguard builds it from source. Things to know about it:
+**Default image:** `pgsty/silo:RELEASE.2026-11-09T00-00-00Z`, pinned by digest in `install-minio.sh`
+(`MINIO_IMAGE_DEFAULT`). The installer substitutes it into `manifests/statefulset.yaml`.
 
-- **Newer version, reduced console.** MinIO removed user, policy and settings management from the Community console after April 2025, which is why the old version was pinned. Use the `mc` CLI for those tasks.
-- **Non-root.** It runs as UID 65532. `hostPath` volumes ignore `fsGroup`, so the installer sets the owner of the data directory.
-- **`latest` only on the free tier.** To update, take the current digest of `cgr.dev/chainguard/minio:latest`. Older digests remained pullable when sampled in November 2026, but Chainguard doesn't promise that. Mirror the image to your own registry if that matters.
-- **No shell or `mc` in the image**, so `kubectl exec ... sh` doesn't work.
+Why:
+- **Console removed upstream (2025):** after `RELEASE.2025-04-22T22-12-26Z`, MinIO Community Edition
+  replaced the full admin console with a bare object browser (no users, groups, policies or settings).
+  MyNodeOne originally pinned that release to keep the console.
+- **Upstream distribution ended:** MinIO stopped publishing binaries/images in Oct 2025, put the
+  repo into maintenance mode, then archived it on 2026-04-25. Around Sep 2026 the `minio/minio` and
+  `minio/mc` images disappeared from Docker Hub, and `quay.io/minio/minio` refuses anonymous pulls.
+  A pinned upstream tag keeps working only while it is cached on the node. Once kubelet image GC
+  removes it (for example under disk pressure) the pod is stuck in `ImagePullBackOff`. This happened
+  in Nov 2026.
+- **PGSTY Silo** ([github.com/pgsty/silo](https://github.com/pgsty/silo), AGPL-3.0) is a
+  community-maintained fork of the MinIO server. It restores the full admin console, ships security
+  fixes and signed multi-arch images, and keeps the `MINIO_*` env vars, `server /data` CLI, S3/admin
+  APIs and on-disk format, so it is a drop-in image swap. Silo is not affiliated with MinIO, Inc.
+- **Chainguard (`cgr.dev/chainguard/minio`) was briefly the default** (Nov 2026). It builds current
+  upstream source, so it has the reduced console, ships no shell or `mc`, and its free tier only
+  offers `latest`. Silo replaced it because the full console is a requirement.
+
+Things to know about the Silo image:
+- **Runs as non-root.** The StatefulSet sets `runAsUser`/`runAsGroup` to `MINIO_RUN_AS_UID`
+  (default 65532), drops all capabilities and disallows privilege escalation. `hostPath` volumes
+  ignore `fsGroup`, so the installer sets the owner of the data directory. Silo has been verified to
+  work this way.
+- **Shell and clients included.** The image ships `sh`, `mc` and `mcli`, so
+  `kubectl exec -n minio-<nodename> minio-0 -- mc ...` works. The standalone client image is `pgsty/mc`.
+
+**Naming is unchanged on purpose.** Namespaces (`minio-<nodename>`), the `minio` StatefulSet and
+services, `.local` domains (`minio-<nodename>`, `minio-console-<nodename>`), the `minio-credentials`
+secret and the `/minio/health/*` probe paths all keep the "minio" name. It describes the role (S3
+object storage), and renaming would break app endpoints, DNS, credentials files and backups for no
+functional gain. Only the container image changed.
 
 To use a different image:
 
@@ -52,7 +81,11 @@ MINIO_IMAGE=registry.example.com/minio@sha256:<digest> MINIO_RUN_AS_UID=<uid> \
   sudo -E ./scripts/storage/minio/install-minio.sh
 ```
 
-Because upstream is archived, also consider whether MinIO is the right long-term choice for your data.
+Upgrading: read the [Silo release notes](https://silo.pgsty.com/) first, then update the tag **and**
+digest of `MINIO_IMAGE_DEFAULT` in `install-minio.sh` (and roll running instances with
+`kubectl set image`, below). Downgrading after newer Silo versions have written metadata is not
+guaranteed, so back up important buckets before major upgrades. Mirror the image to your own
+registry if you need to be independent of Docker Hub.
 
 ## Dual LoadBalancer Architecture
 
@@ -207,9 +240,15 @@ Example output after installation:
 ### Using mc CLI
 
 ```bash
-# dl.min.io no longer serves mc. The client runs from Chainguard's image:
-#   docker run -it --rm --entrypoint /usr/bin/mc cgr.dev/chainguard/minio-client:latest --help
-# Use an existing mc install or that image for the commands below.
+# Install mc (MinIO-compatible client from pgsty/mc; upstream dl.min.io binaries are gone)
+# Pick the release pinned in scripts/lib/versions.sh (MINIO_CLIENT_VERSION), e.g.:
+VER=RELEASE.2026-11-12T00-00-00Z; N=20261112000000.0.0; ARCH=amd64   # or arm64
+wget https://github.com/pgsty/mc/releases/download/$VER/mcli_${N}_linux_${ARCH}.tar.gz
+tar -xzf mcli_${N}_linux_${ARCH}.tar.gz mcli
+sudo install -m 0755 mcli /usr/local/bin/mc
+
+# Or skip installing: the server pod already ships `mc` (and `mcli`)
+kubectl exec -it -n minio-<nodename> minio-0 -- mc --version
 
 # Add alias
 mc alias set mynode http://minio-<nodename>.mynodeone.local:9000 admin <password>
@@ -245,8 +284,9 @@ cat ~/minio-<nodename>-credentials.txt
 ### Update MinIO
 
 ```bash
-# Update image (pin a digest, and check the new image's UID matches the data directory owner)
-kubectl set image statefulset/minio minio=cgr.dev/chainguard/minio@sha256:<digest> -n minio-<nodename>
+# Update image (Silo; pin a release tag + digest, never :latest. The image must work as the
+# data directory owner's UID; Silo does. See "Server Image" above.)
+kubectl set image statefulset/minio minio=pgsty/silo:<RELEASE-TAG>@sha256:<DIGEST> -n minio-<nodename>
 
 # Or edit StatefulSet
 kubectl edit statefulset minio -n minio-<nodename>
@@ -432,6 +472,9 @@ With node affinity to ensure pod runs where data is.
 
 ## More Information
 
-- Official docs: https://min.io/docs/minio/kubernetes/upstream/
-- mc client guide: https://min.io/docs/minio/linux/reference/minio-mc.html
-- S3 API compatibility: https://min.io/product/s3-compatibility
+- Silo docs (server, console, `mc` reference): https://silo.pgsty.com/docs/
+- Silo source & releases: https://github.com/pgsty/silo/releases
+- Migrating from upstream MinIO: https://silo.pgsty.com/compatibility/migration/
+- MinIO compatibility audit: https://silo.pgsty.com/compatibility/server/
+- mc client (pgsty fork): https://github.com/pgsty/mc/releases
+- Upstream MinIO docs (archived project, still useful for S3/IAM concepts): https://min.io/docs/
